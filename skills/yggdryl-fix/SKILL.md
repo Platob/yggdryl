@@ -6,8 +6,9 @@ description: Decodes, encodes and streams FIX messages with yggdryl against a FI
 # yggdryl FIX
 
 A FIX field is an ordinary `Field` whose `FIX:` metadata (`FIX:tag`, `FIX:names`,
-`FIX:codeset`, ...) the `fix` protocol view reads; there is no second field
-class. `FixRegistry` is the dictionary: **one namespace** holding scalar fields,
+`FIX:codeset`, ...) the `fix` protocol view reads - in Rust `FixField::new(&field)`
+and `FixFieldMut::new(&mut field)`, the FIX module's own view, `Field` having no
+`as_fix`; there is no second field class. `FixRegistry` is the dictionary: **one namespace** holding scalar fields,
 components (a message is a component carrying `FIX:msgtype`), groups, and the
 named code sets beside them. `FixCodec` is one dictionary plus the pins of a
 run; its `parse_*` readers turn captured bytes into `FixMsg` values - a market
@@ -47,13 +48,13 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | load a stored dictionary | `FixRegistry::from_handle(&LocalFolder::new(path)?)?` | `FixRegistry.from_handle(path)` | `fix.FixRegistry.fromHandle(path)` |
 | the process default | `FixRegistry::from_env()?`, `FixRegistry::install_env(r)?` | `FixRegistry.from_env()`, `FixRegistry.install_env(r)` | `fix.FixRegistry.fromEnv()`, `fix.FixRegistry.installEnv(r)` |
 | a dictionary in memory | `FixRegistry::from_fields([..])?`, `registry.insert(field)?` | `FixRegistry.from_fields([...])`, `registry.insert(field)` | `fix.FixRegistry.fromFields([...])`, `registry.insert(field)` |
-| FIX facts on a field | `field.as_fix().tag()?`, `field.as_fix_mut().set_tag(38)?` | `field.fix.tag`, `field.fix.tag = 38` | `field.fix.tag`, `field.fix.tag = 38` |
+| FIX facts on a field | `FixField::new(&field).tag()?`, `FixFieldMut::new(&mut field).set_tag(38)?` | `field.fix.tag`, `field.fix.tag = 38` | `field.fix.tag`, `field.fix.tag = 38` |
 | look a field up | `field(55)`, `field_by_name`, `field_by_path(&FieldPath)`, `field_by_counter(453)`, `field_by_id(FixId)` | `field(55)`, `field_by_name`, `field_by_path("Parties.PartyID")`, `field_by_counter`, `field_by_id(int)` | `field(55)`, `fieldByName`, `fieldByPath`, `fieldByCounter`, `fieldById` |
 | a message definition | `registry.msgtype("D")?` | `registry.msgtype("D")` | `registry.msgtype('D')` |
 | a field's code set | `registry.codeset_of(field)`, `set_codeset(name, &[FixCode])?` | `codeset_of(field)`, `set_codeset(name, [{...}])` | `codesetOf(field)`, `setCodeset(name, [...])` |
 | persist a dictionary | `registry.commit(&mut folder)?` | `registry.commit(path)` | `registry.commit(path)` |
 | read a venue CBlock (`.cfb`) | `FixRegistry::from_cfb_file(&LocalFile::new(path)?, Some("venue"))?` | `FixRegistry.from_cfb_file(path, "venue")` | `fix.FixRegistry.fromCfbFile(path, 'venue')` |
-| the sources a dictionary was built from | `field.as_fix().sources()`, `registry.sources()`, `get_source("venue")`, `add_source(FixSource::new("venue")?)` | `field.fix.sources`, `registry.sources()`, `get_source("venue")`, `add_source("venue", file=..., pluginside=...)` | `field.fix.sources`, `registry.sources()`, `addSource('venue', { file, pluginside })` |
+| the sources a dictionary was built from | `FixField::new(&field).sources()`, `registry.sources()`, `get_source("venue")`, `add_source(FixSource::new("venue")?)` | `field.fix.sources`, `registry.sources()`, `get_source("venue")`, `add_source("venue", file=..., pluginside=...)` | `field.fix.sources`, `registry.sources()`, `addSource('venue', { file, pluginside })` |
 | fold CBlocks or another dictionary in | `registry.add_cfb_file(&file, None)?`, `registry.add_cfb_files(&[Holder::local("cblocks")?], None)?` (a file, a folder or a glob each), `merge_with(&other)?` - each answering a `FixMerge` | `registry.add_cfb_file(path)`, `add_cfb_files(folder)` or `add_cfb_files(folder / "*.cfb")` - answering a `dict` | not bound (`yggdryl fix ingest`) |
 | a codec for a run | `FixCodec::new(Arc::new(registry)).with_threads(4)` | `FixCodec(registry, threads=4)` | `new fix.FixCodec(registry, { threads: 4 })` |
 | read under one source, stamping its plugin's role | `.with_source("venue")?`, then `msg.msgpluginside()` | `FixCodec(r, source="venue")`, then `msg.msgpluginside` | `{ source: 'venue' }`, then `msg.capture().msgpluginside` |
@@ -67,8 +68,8 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | read a fact | `msg.by_tag(55)?`, `by_name`, `by_path`, `header()`, `get_side()` | `msg.by_tag(55)`, `by_path(...)`, `header()`, `msg.side` | `msg.byTag(55)`, `byPath(...)`, `header()`, `msg.side` |
 | the category, the strike | `msg.marketdatakind()`, `msg.get_strikepx()` (`Market`) | `msg.marketdatakind`, `msg.strikepx` | `msg.marketdatakind`, `msg.strikepx` |
 | the type, how long it stands | `msg.get_marketdatatype()`, `msg.get_timeinforce()` (`Operation`) | `msg.marketdatatype`, `msg.timeinforce` (the `IntEnum` members) | `msg.marketdatatype`, `msg.timeinforce` (the member names) |
-| the parents of an identifier | `registry.parents_of(&IdType::ClOrdId)`, `parent_of(&kind)`, `parent_sources()`; `field.as_fix_mut().set_parents(..)?` | `registry.parents_of("clordid")`, `parent_of("origclordid")`, `field.fix.parents` | `registry.parentsOf('clordid')`, `parentOf('origclordid')`, `field.fix.parents` |
-| a venue's own values onto members | `field.as_fix_mut().set_marketdatatypes(..)?`, `set_timeinforces(&[("D", TimeInForce::Day)])?`; `registry.marketdatatype_of(tag, wire)`, `timeinforce_of(tag, wire)` | `field.fix.marketdatatypes`, `field.fix.timeinforces = [("D", "DAY")]`; `registry.marketdatatype_of`, `timeinforce_of` | `field.fix.marketdatatypes`, `field.fix.timeinforces = [{ wire: 'D', timeinforce: 'DAY' }]`; `registry.marketdatatypeOf`, `timeinforceOf` |
+| the parents of an identifier | `registry.parents_of(&IdType::ClOrdId)`, `parent_of(&kind)`, `parent_sources()`; `FixFieldMut::new(&mut field).set_parents(..)?` | `registry.parents_of("clordid")`, `parent_of("origclordid")`, `field.fix.parents` | `registry.parentsOf('clordid')`, `parentOf('origclordid')`, `field.fix.parents` |
+| a venue's own values onto members | `FixFieldMut::new(&mut field).set_marketdatatypes(..)?`, `set_timeinforces(&[("D", TimeInForce::Day)])?`; `registry.marketdatatype_of(tag, wire)`, `timeinforce_of(tag, wire)` | `field.fix.marketdatatypes`, `field.fix.timeinforces = [("D", "DAY")]`; `registry.marketdatatype_of`, `timeinforce_of` | `field.fix.marketdatatypes`, `field.fix.timeinforces = [{ wire: 'D', timeinforce: 'DAY' }]`; `registry.marketdatatypeOf`, `timeinforceOf` |
 | a message as one market data value | `MarketData::from(msg)` (held whole, kind `fix`), `msg.into_market_leaf()?` (the one leaf it is) | `graph.MarketData(msg)` | `new graph.MarketData(msg)` |
 | compose a message | `FixMsg::with_registry(Arc, root, value)?` | `FixMsg(root, value, registry)` | `new fix.FixMsg(root, value, registry)` |
 | write or clear a fact | `msg.set(key, scalar)?`, `msg.remove(key)?` | `msg.set(key, value)`, `msg.remove(key)` | `msg.set(key, value)`, `msg.remove(key)` |

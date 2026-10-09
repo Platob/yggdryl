@@ -181,20 +181,24 @@ holds one and implements `graph::Event`; the text row is laid out from
 `ElementColumn::ALL` and `EventColumn::ALL`), `enum_leaf!` serves it alone
 from S1. `graph/element.rs`, `graph/column.rs`, `graph/element_column.rs`
 stay in the core as `yggdryl::graph`, the event vocabulary;
-`yggdryl_market::graph` re-exports none of it. `State::from_fix_status`,
-`FIX_STATUS_TAGS` and `from_fix_msgtype` move to `fix/` as free functions in
-S3 and to `yggdryl-fix` in S4, with the Python classmethods redirecting in S3
-and moving to `yggdryl.market.fix` in S5, no alias. All 17 codes are market.
+`yggdryl_market::graph` re-exports none of it. `State`'s FIX doors -
+`from_fix_status`, `FIX_STATUS_TAGS` and `from_fix_msgtype` - move to
+`fix/state.rs` as the free functions `from_status`, `STATUS_TAGS` and
+`from_msgtype` in S3 and to `yggdryl-fix` in S4, with the Python classmethods
+redirecting in S3 and moving to `yggdryl.market.fix` in S5, no alias. The 17
+codes stay core and flat (D25); they are not market.
 
 ### D5, constructor spelling (S3)
 
-Decided: the market type's own associated items - `Isin::dtype()`,
-`Isin::field(name)` (or whatever word the `dtype` rename, out of scope here,
-has reached by then) - replace the 21 `impl DataType` blocks the kind files
-hold (`marketdatakind.rs:278`, `marketdatatype.rs:546` and
-`timeinforce.rs:140` beside the eighteen code ones); no extension trait preserves `DataType::isin()`. `DataType::is_code`,
-`code_width` and `code_name` stay in the core reading the descriptor. S1
-leaves the constructors where they are, S3 applies the spelling in place.
+Decided: the market type's own associated items - `Side::dtype()`,
+`Side::field(name)`, written once in `enum_leaf!`'s market arm for the four
+kinds - replace the four `impl DataType` blocks the kind files hold
+(`side.rs:293`, `timeinforce.rs:141`, `marketdatakind.rs:279`,
+`marketdatatype.rs:547`); no extension trait preserves `DataType::side()`.
+The eighteen code blocks (`DataType::isin()` and its siblings) stay (D25),
+and so do `DataType::is_code`, `code_width` and `code_name`, in the core
+reading the descriptor. S1 leaves the constructors where they are, S3 applies
+the spelling in place.
 
 ### D6, the implementer surface
 
@@ -209,16 +213,25 @@ use` republishes an item a privately declared module holds; a crate-private
 `graph/element.rs:791` inside the published `pub mod element`, used by
 `fix/{batch,codec,messages}.rs`) has its definition moved into
 `implementer.rs` and the core reaches it there, because raising it to `pub`
-where it sits is what AGENTS forbids; a macro (`media_serie!`,
-`define_field_types!` at `typed.rs:991`, `warned!` at
-`logging/warning.rs:107-121`, `delegate_event!` at `graph/mod.rs:47`) is
-`#[macro_export] #[doc(hidden)]`, re-exported from `implementer`, and every
-path it expands to is spelled `$crate::implementer::...` so the expansion
-names nothing private - `warned!` expanding to `$crate::implementer::warn`.
+where it sits is what AGENTS forbids; a macro a moving crate invokes
+(`warned!` at `logging/warning.rs:107-121`, `enum_leaf!`,
+`define_field_types!` at `typed.rs`, whose users are the four market kind
+files, `bytes_dtypes!`, `bytes_scalars!` and `string_scalars!`, and D9's
+`protocol_field_types!`) is `#[macro_export] #[doc(hidden)]`, re-exported
+from `implementer`, and every path it expands to is spelled
+`$crate::implementer::...` so the expansion names nothing private -
+`warned!` expanding to `$crate::implementer::warn`. `media_serie!` has no
+user outside the core after S2b and `delegate_event!` (`graph/mod.rs:47`) is
+market-internal, so neither is exported; S4 respells market's `delegate_*`
+macros.
 Refused: a feature flag that raises `pub(crate)` items (the same API change
 wearing a feature's name, AGENTS); a second copy of a type per crate. S1 publishes what S1 needs (the register's claim doors and nothing
-private), S3 the market and FIX list, S6 the media list, each derived from a
-scratch `git mv` plus `cargo check -p <crate> --message-format=short`.
+private), S3 the market and FIX list, S6 the media list. S3's is proven
+without the new crates, by re-pointing every leaving-file site to
+`crate::implementer::X`, a clean `cargo check --workspace --all-targets
+--all-features --keep-going` and no non-`pub` cross-crate path left; S4's
+`cargo check -p <crate> --message-format=short` finds the method-reached
+residue, and S6's list is derived from a scratch `git mv` plus the same.
 
 ### D7, registration
 
@@ -302,13 +315,13 @@ the FIX door.
 
 | piece | disposition |
 | --- | --- |
-| FIX Latest names in `LOGICAL_NAMES` | `yggdryl-fix` registers them on D8's register; `yggdryl-market` registers `mic`, `exchange` and the code names; the core keeps the non-market names. S3 first greps every reader of a FIX word outside `fix/` |
-| `DateTime64::from_fix_text`/`from_fix_clock`, `Time32/Time64::from_fix_text`, the grammar in `temporal.rs:844-914` | move to `yggdryl-fix` if the ISO part delegates to the public readers with no allocation per value (the FIX parse rows in `allocations.rs` and `fix_allocations` decide); else stay public as the type's FIX spellings, with that reason recorded by S3 |
-| the FIX entry of `for_each_well_known_protocol!`; the `FIX:*` keys | move with the view (D9) |
-| `Scheme::FIX` | moves if it names only the protocol; stays if the URI vocabulary routes on it (S3 reads `scheme.rs:27, 88, 169, 210, 420`) |
+| FIX Latest names in `LOGICAL_NAMES` | the 32 FIX datatype names move to a fix-owned table (`fix/mod.rs`, `pub(crate)`) that the core's seed claims on D8's register until S4, when `yggdryl-fix` registers them itself; the core keeps `mic`, `exchange`, the code names (D25: the codes stay core) and `state`. S3 first greps every reader of a FIX word outside `fix/` |
+| `DateTime64::from_fix_text`/`from_fix_clock`, `Time32/Time64::from_fix_text`, the grammar in `temporal.rs:844-914` | stay in the core, `pub(crate)`, and reach `yggdryl-fix` through `implementer` forwarders: the premise that the ISO part delegates to the public readers is false (it is one flag-selected `clock_at` body over private helpers) and making the readers public would create API; reason recorded by S3 |
+| the FIX entry of `for_each_well_known_protocol!`; the `FIX:*` keys | move with the view (D9); `Field::as_fix`, `Field::as_fix_mut` and `Metadata::as_fix` are deleted with the entry |
+| `Scheme::FIX` | stays: `metadata.rs`'s stack-key read serves known schemes only, and a custom scheme would allocate per read and break `allocations.rs:789` (S3 read `scheme.rs:27, 88, 169, 210, 420`) |
 | `MimeType::{FIX, FIXUL, FIXML, ULLINK}`, the frame classifier | stay as routing vocabulary and the one bounded content read; no medium routes them (`Media::open_as` has no arm; only `mime_type/line.rs` and the bindings' enum tables name them), so nothing registers for them |
 | `parallel.rs` | stays, generic; `ordered` reached through D6; its AGENTS row restated without FIX |
-| logging targets | the facade maps `yggdryl_<crate>::` to `yggdryl.` in one place (`logging/facade.rs:72-76`, whose `strip_prefix("yggdryl")` would otherwise leave `_fix::` and file every moved record as foreign), so the 59 `warned!` sites (28 in `fix/market.rs`) - which pass `module_path!()` as target and deduplication key - and about 120 `log` sites (`fix/` 81, `iceberg/` 29, `graph/` 4, the ISIN registry 6) keep every logger name byte-identical with no edit; the deduplication key is the mapped name; pinned in `rust/tests/logging/` with a record from a `yggdryl_fix::` module. Refused: an explicit `target:` on every site (about 180 edits, and `warned!` has no target argument) |
+| logging targets | the facade names a logger by its module path under `yggdryl` whatever crate holds the module, through a per-crate table in one place (`logging/facade.rs` `is_foreign`/`logger_for`: `yggdryl` and `yggdryl_market` log under `yggdryl`, `yggdryl_<folder>` under `yggdryl.<folder>`, so `yggdryl_fix::build` is `yggdryl.fix.build`, where the literal rule `yggdryl_<crate>::` to `yggdryl.` first written here would have logged `yggdryl.build`; `yggdryl_cli` stays foreign; the old `strip_prefix("yggdryl")` would otherwise leave `_fix::` and file every moved record as foreign), so the 60 `warned!` sites (58 leave the core; 28 in `fix/market.rs`) - which pass `module_path!()` as target and deduplication key - and about 120 `log` sites (`fix/` 81, `iceberg/` 29, `graph/` 4, the ISIN registry 6) keep every logger name byte-identical with no edit; the deduplication key is the mapped name; pinned in `rust/tests/logging/` with a record from a `yggdryl_fix::` module. Refused: an explicit `target:` on every site (about 180 edits, and `warned!` has no target argument) |
 | `StringEnum::{CURRENCIES, COUNTRIES, MICS, SIDES, TIMESINFORCE, PREBUILT}`, `DataType::CODES` | registered listings that move with their codes (S1 makes them answer the register; S4 moves the tables); `generate_fix_dictionary.py` writes only `fix/constants.rs`, re-pointed in S4 |
 
 ### D11, the binding boundary
@@ -1918,6 +1931,128 @@ S6 cuts the other 99. S3 needs no answer from the user.
   above are corrected by this slice's docs phase against these counts
   (`design_inputs.md` B5).
 
+## S3: what was built
+
+The remaining seams in place (D5, D6, D9, D10), as "S3: design" decided, with
+nothing of the market or FIX code moved. Stage 1 wrote the definitions in the
+worktree `wip/s3` on six disjoint file sets with no compiler; stage 2 swept
+the call sites with three exact-string scripts (`scratchpad/s3_sweep/d5.py`,
+`d9.py` over `d9_plan.py` and `overrides.py`, `d6.py`); the lane manager
+pre-settled the worktree under its own check target while P2 landed, then
+squash-merged it onto P2 (one conflict: the `AGENTS.md` Layout rows).
+
+- **D5.** `enum_leaf!`'s market arm writes `pub const fn dtype() ->
+  DataType` and the nullable `pub fn field(name) -> Field` on the four kinds;
+  `DataType::side()`, `timeinforce()`, `marketdatakind()`, `marketdatatype()`
+  and `MarketValue::dtype` are deleted. The sweep re-spelled 158
+  occurrences (docs 77, tests 60, Python 6, skills 6, src 5, benchmarks 3,
+  CLI tests 1; nine nullable `Field::new(.., DataType::side(), true)` became
+  `Side::field(..)`, `allocations.rs` keeping its form as a cost pin) and the
+  test worker 72 in its own files.
+- **D10.** `fix/state.rs` holds `from_status`, `from_msgtype`, `STATUS_TAGS`
+  and the seven tables, byte-identical; `State::from_spelling` reads
+  `STATE_CODES` through `state_from_wire_code`, its one reader; Python's
+  `State.from_fix_status`/`from_fix_msgtype` redirect unchanged until S5. The
+  32 FIX Latest logical names are `fix::LOGICAL_NAMES`, which the core's seed
+  claims beside its own 19 (`logical_names()` byte-identical). The logging
+  facade names a workspace crate's module under `yggdryl` through one table
+  (`CRATES`: `yggdryl` and `yggdryl_market` -> `yggdryl`, `yggdryl_avro`,
+  `_excel`, `_fix`, `_iceberg`, `_parquet`, `_xmla` -> `yggdryl.<folder>`, the
+  bindings and `yggdryl_cli` foreign), and a `warned!` key is that logger name
+  (`facade::write_logger_name`, built from no text), so a module keeps its
+  logger and its warning counts whatever crate holds it.
+- **D9.** `MarketMessage` (supertraits `Event + Operation`, the sealed
+  `EventOperation` seam, `Debug + Send + Sync + 'static`; the boxed
+  `into_market_data`, `into_market_leaf`, `with_previous`, `merge_with`,
+  `restating`, and `stable_hash`, `clone_box`, `dyn_eq`, `as_any`,
+  `into_any`); `MarketData::Fix(Box<dyn MarketMessage>)`,
+  `MarketData::as_message::<T>()`; `impl MarketMessage for FixMsg` and the
+  `From`/`TryFrom` pair in `fix/market.rs`; `MarketData` stays 912 bytes and
+  has no `Hash`, as at HEAD. `protocol_field_types!` is exported
+  (`#[macro_export] #[doc(hidden)]`, `($vis, $scheme, $View, $ViewMut,
+  $label)`, its expansion over public doors and plain code spans); the core's
+  23 views pass `pub(crate)`, `fix/field.rs` mints `FixField`/`FixFieldMut`
+  `pub`; `Field::as_fix`/`as_fix_mut` and `Metadata::as_fix` are gone. The
+  sweep re-spelled 1,664 sites (`rust/tests/fix` 959, `rust/src/fix` 325,
+  docs 113, benchmarks 57, Python 51, Node 44, CLI tests 31, `rust/tests` 31,
+  skills 29, CLI 18, CLI benchmarks 5, examples 1) and the test worker 19;
+  the bindings keep `MarketData.as_fix`/`asFix` through `as_message`.
+- **D6.** `implementer.rs`, `#[doc(hidden)] pub mod` at the crate root, 114
+  names in four sections (both crates, market, FIX, shared with the media
+  crates), by route: R 33 (`pub use` of items raised inside unpublished
+  modules, `Patterns` and `warning::warn` among them), F 47 (37 `#[inline]`
+  function forwarders and 10 constants), A 25 (free forwarders over
+  crate-private associated items, `<type>_<item>`), M 2 (`InstantSequence`
+  and `Staged` moved in with their methods), X 7 (`warned!`, `enum_leaf!`,
+  `define_field_types!`, `protocol_field_types!`, `bytes_dtypes!`,
+  `bytes_scalars!`, `string_scalars!`, exported `#[doc(hidden)]`, their
+  expansions through `$crate::implementer`). Against the design's 115: `Proof`
+  is not exported (`land_unproven_batch` fixes `Proof::Unproven`), four R
+  routes became forwarders where a private inline module stood between
+  (`str_from_value`, `civil_from_days`, `percent_decode`,
+  `write_named_bytes`), and `MarketDescriptor::adopt_code`,
+  `Patterns::read` and `state_from_wire_code`, reached only by expansion or
+  method call, joined. The sweep re-pointed 339 sites (`rust/src/fix` 250,
+  the market root files 51, `graph/` 29, `isin_registry/` 9). The static
+  proof: `scratchpad/work/refs.py` (copy `s3_refs_merged/`) on the merged
+  tree answers 0 market or FIX references to a crate-private core path, and
+  26 FIX references over 15 crate-private market names - S4's
+  `yggdryl_market::implementer`.
+
+### S3 results
+
+| figure | value |
+| --- | --- |
+| the slice | 197 files, +7220 / -4202 before the review's fixes: `rust/src` 82 files +2866/-1697 (new: `implementer.rs` 963 lines, `fix/state.rs`), `rust/tests` 63 files +3393/-1667 (new: `root/implementer.rs`, `fix/state.rs`), benchmarks 7, Python 7, Node 4, CLI 7, docs 17, skills 5, `AGENTS.md`, `.api-inventory.txt` +157/-28 |
+| retired spellings left (`DataType::side()` and siblings, `as_fix(`/`as_fix_mut(` on a field, `MarketValue::dtype`, `State::from_fix_status`/`from_fix_msgtype`/`FIX_STATUS_TAGS`) | 0 outside `.handoff/`, the bindings' own names (`State.from_fix_status`, `MarketData.as_fix`/`asFix`) and prose saying there is no `as_fix` |
+| pins | the dictionary hash `14_542_711_836_201_211_247`, the census, the crate dump, the S0 hashes, `MarketData` at 912 bytes, `logical_names()`, every `allocations` and `iobase_calls` row: green, no number edited |
+| the review (`code-review` at high) | five findings: the `implementer` module hidden (`#[doc(hidden)]`; the forwarders that skip a shape check are the design's door and hide no `unsafe`), `define_field_types!`'s market arm no longer links core items from an invoking crate, the `warned!` key mapped as D10 states (pinned in `rust/tests/logging/warning.rs`); kept: the explicit `CRATES` table (decision (a): a binding is foreign, so no blanket `yggdryl_*` rule - P3/S6d adds `yggdryl_s3`), and `enum_leaf!`'s absolute `::smol_str` (the market crate depends on `smol_str`) |
+
+### S3 checks
+
+Every command ran on the merged tree from `/home/user/yggdryl` with
+`CARGO_INCREMENTAL=0` and the debug info off: the phase suites, then
+`logs/chain_s3.sh` under the scratchpad, then `logs/chain_s3b.sh` over the
+review's last edits (two doc links, the unused `pub(crate) use warned`, two
+test assertions).
+
+| check | result |
+| --- | --- |
+| `cargo check --workspace --all-targets --all-features --keep-going --message-format=short` (the worktree before the merge, then the merged tree) | 2 errors and 3 warnings in the worktree (two `FixField::new(&document)` borrows, three unused imports), then clean |
+| phase suites, all features: `--test root` filtered to the kinds, `state`, `vocabulary`, `datatype`, `implementer`, `protocol`, `market`; `--test graph`; `--test fix`; `--test market_register`; `--test logging`; `--test allocations` and `--test iobase_calls` filtered | 424 of 426 (two of the test worker's assumptions, corrected: 34 of 34 `implementer`), 439, 1026 (the dictionary hash and the crate dump among them, unedited), 7, 88 then 89, 16, 5 |
+| `refs.py` over the merged tree | 0 market or FIX references to a crate-private core path; 26 FIX references over 15 crate-private market names |
+| `cargo test -p yggdryl --all-targets --all-features --no-fail-fast` | 63 targets, 9357 passed, 0 failed, 3 ignored |
+| `cargo test -p yggdryl --all-targets --no-fail-fast` (default features) | 63 targets, 6637 passed, 1 failed - the `implementer` test asserting Iceberg's refusal, which no claimed format makes without the feature; the assertion dropped and the target re-run in `chain_s3b` |
+| `cargo test -p yggdryl-cli --all-targets --no-fail-fast` | 6 targets, 35 passed, 0 failed, 6 ignored |
+| `cargo test -p yggdryl --doc` | 628 passed |
+| `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings`; `cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings` | the first clean; the second refused the then-unused `pub(crate) use warned` (deleted) |
+| `RUSTDOCFLAGS="-D warnings" cargo doc -p yggdryl --no-deps --all-features` | four redundant explicit link targets the sweep's imports made (`fix/mod.rs`, `graph/market_column.rs`), fixed |
+| `cargo fmt --all -- --check` | clean |
+| `maturin develop`, `pytest python/tests --deselect python/tests/test_spark_interop.py`, `mypy --strict` | installed; 2784 passed, 4 skipped; no issues in 70 files |
+| `npm run --prefix node test:package:debug`, `cargo build -p yggdryl-cli`, `npm test --prefix node`, `tsc --noEmit`, `git diff -- node/index.js node/index.d.ts` | the package audit passed; 1122 tests, 1120 passed, the two sandbox `TextDecoder` tests failing as at every slice; tsc clean; the generated files unchanged |
+| `node scripts/build_docs_fix.js --check`, `build_docs_playground.js --check` | current |
+| `mkdocs build --strict` | clean |
+| `check_api_inventory.py`; `generate_internals.py --check` | current (180 source files and 570 `pub` names not described yet); `internals` current |
+| `check_docs_examples.py --lang python` / `javascript` / `rust` | 837 run, 3 skipped, 0 failed; 789 run, 2 skipped, 0 failed; 940 passed |
+| `grep -rn '#\[cfg(test)\]\|#\[test\]\|mod tests' rust/src python/src node/src cli/src` | empty |
+| `chain_s3b`: fmt, clippy in both lanes, `cargo doc` at `-D warnings`, `--test root --test logging` in both lanes and `--test s3` | fmt clean; clippy clean in both lanes; `cargo doc` clean; default features `--test root` 1727 and `--test logging` 82 passed; all features `--test root` 1911, `--test logging` 89, `--test s3` 264 passed; 0 failed |
+| the review: the `code-review` skill at high effort over the whole diff | five findings: three fixed, two kept with their reason ("S3 results" above) |
+| local-only checks (charset tables and interop, ISIN seed, country and MIC tables), benches | not run: nothing the slice touches makes them stale |
+
+### For S4 and S6d
+
+- `yggdryl_market::implementer` publishes the 15 crate-private market names
+  the FIX code reaches (26 references, `s3_refs_merged/edges.json`), and
+  S4's `cargo check -p yggdryl-fix` finds the method-reached residue.
+- `enum_leaf!` expands to `::smol_str` absolutely: the market crate keeps
+  `smol_str` as a direct dependency.
+- The logging facade's `CRATES` lists every workspace crate by name, a
+  binding being foreign: the slice that creates a crate adds its row -
+  `yggdryl_s3` -> `yggdryl.s3` in S6d (D36).
+- `fix::LOGICAL_NAMES` is a core -> fix edge until S4, when the fix crate
+  claims its names itself and must pass `register_logical_name`'s refusal of
+  grammar words the core seed bypasses (`data`).
+
 ## P4: design
 
 ### D38 - the generic event's two instants are `transunix` and `sendunix`, and the element's own names drop `curr`
@@ -1976,7 +2111,7 @@ XXH3-64 of what the element states and `uuid` the UUIDv7 over `transunix`,
 open with `uuid`; the `marketdata` row, the FIX row, the BookService keys and
 the pages spell them.
 
-**Wire.** Crate fields 65_001 `uuid`, 65_002 `hashcode`, 65_007 `transunix`
+**Wire.** Crate fields 65_001 `uuid`, 65_004 `hashcode`, 65_007 `transunix`
 and 65_009 `sendunix`: the tags kept, the names and descriptions re-spelled
 (`UUID_TAG_NAME`, `HASHCODE_TAG_NAME`, `TRANSUNIX_TAG_NAME`,
 `SENDUNIX_TAG_NAME`; every crate-field text naming one of the four re-spelled
@@ -1984,7 +2119,7 @@ with them), so the crate's field shard and the fixed-row component are written
 again (the dump, `YGGDRYL_FIX_DUMP_WRITE=1`), the dictionary hash moves once
 with the sentence "It last moved when `curruuid`, `currhashcode`, `currunix`
 and `recdunix` became `uuid`, `hashcode`, `transunix` and `sendunix`: 65_001,
-65_002, 65_007 and 65_009 re-spelled with their descriptions, so the crate's
+65_004, 65_007 and 65_009 re-spelled with their descriptions, so the crate's
 field shard and the fixed row component were written again. No count of the
 census below moved.", `docs/assets/fix.json` is
 regenerated after the addon, and `rust/tests/fix/equivalence.snapshot` is
@@ -2274,6 +2409,72 @@ medium reaches `Media`, and leaves for `rust/s3/` as `yggdryl-s3`. `aws/` and
 Names: `StorageBackend`, `RegisteredHandle`, `Holder::Registered`,
 `claim_backend`, `backend_for`, `backends`, `Site::Opened`.
 
+## S6: design
+
+### D39 - a leaving medium keeps its rank, and what every S6 move does the same way
+
+**The rank.** `RecordOptions` hashes and orders by the codec's rank, so the
+`s2_pins` hashes and the order pin are the rank's. `media::codec` gains
+`RESERVED_RANKS: [(&str, u8); 4] = [("parquet", 1), ("avro", 2), ("xmla", 4),
+("excel", 6)]` - the ranks the core's leaving media hold, a wire contract that
+never moves, the shape of `MarketDescriptor::RESERVED_*` - and `claim` admits a
+codec whose `(name, rank)` is one of those pairs, refuses a reserved rank under
+another name or a reserved name at another rank, and holds every other medium
+at or above `EXTERNAL_RANK`; the `CORE` refusal stays. So `yggdryl-parquet`'s
+`install()` claims rank 1 as the core did, and every pinned hash, the order pin
+(`the_media_order_by_their_rank`, `media_register.rs`'s expected order) and
+the rank-1 assertion on the media page are byte-identical through the moves.
+
+**The door.** `implementer.rs` grows once for every media move - the items the
+four maps list (`moves_map/{avro,parquet,excel,xmla,iceberg}.md`, section 2:
+about 18 for Avro, 15 for Parquet, 24 for Excel, Iceberg's 46 path items and
+the methods reached by call) - by S3's routes: raise-and-re-export inside a
+crate-private module, a forwarder, a free function over a `pub(crate)`
+inherent method, a move, an exported macro. The eight shared medium helpers
+(`iobase::transfer::{overwrite_arrow_reader_default_with_field,
+append_arrow_reader_default, merge_arrow_reader_default, leaf_writer}`,
+`iomedia::{own_options, container_field, container_row_size,
+dimension_options}`) are one addition serving every move. What Iceberg
+reaches of Avro (the container header, `Cursor`, `DatumCodec`, `parse_header*`,
+`MAGIC`, `Blocks::metadata_bytes`) and of Parquet (`ParquetOptions`,
+`read_batch_reader_with`, `load_metadata`, `schema_from_metadata`,
+`overwrite_buffered`, `READ_AHEAD_BATCHES`, `WHOLE_READ_BYTES`,
+`WRITE_BUFFER_BYTES`, `FileStatistics`) is `pub` in those crates under a
+`#[doc(hidden)] pub mod implementer` of their own, the same door one level
+down.
+
+**The Iceberg view.** `Field::as_iceberg`/`as_iceberg_mut` and the inherent
+`impl IcebergField<'_>` leave the core as the FIX view did (D9):
+`protocol_field_types!` builds `IcebergField`/`IcebergFieldMut` in
+`yggdryl-iceberg`, `IcebergField::new(&field)` the one spelling, the sites
+(about a hundred, in tests, benchmarks, pages and skills) swept by one script.
+`Transform` and the Iceberg type-string spelling (`iceberg/types.rs`,
+`PrimitiveType`) stay the core's (D17).
+
+**The tests.** A core test that builds a leaving crate's object (an
+`IcebergTable` in `isin_registry/store.rs`, `warehouse/*`, `graph/serve.rs`,
+`fix/schema.rs`, `s3/mod_.rs`; an Avro or Parquet handle in about fifteen
+files) cannot dev-depend on that crate (a cycle), so it moves to the crate's
+own `rust/<name>/tests/`, its `//!` line naming the core file it pins and the
+crate it needs; `tests/allocations.rs`' Iceberg block moves with its own
+counting allocator; `FakeS3` and `support/excel_package.rs` stay under
+`rust/tests/support/` and are `#[path]`-included where used.
+
+**`install()` at init.** The Python `_native` module init, the Node addon init
+and the CLI's `main` call `yggdryl_<crate>::install()` once per linked crate,
+in dependency order; a pure-Rust caller installs what it links, and a handle
+whose medium no crate claimed is refused naming the crate, as today. The
+core's seed claims (`media/codec.rs`, `media/format.rs`,
+`warehouse/catalog.rs`, `holder/locator.rs`) go with each move. Avro's
+`snap` and the `snappy` gates leave the core's `parquet` feature with the
+crate (D16); the dead `cfg(iceberg|s3tables)` arms in the core are deleted.
+
+**The order.** Inside lane M46 after S4: avro, parquet, excel, xmla - each a
+commit, one chain and one push for the batch - then, after S6d has landed
+`yggdryl-s3`, iceberg with `s3tables` as its feature depending on
+`yggdryl-s3` (D15, D36). `iceberg` is `after = ["avro", "parquet", "s3"]` in
+the CI leaf table.
+
 ## The ledger
 
 | D# | decision | evidence | slice |
@@ -2282,12 +2483,12 @@ Names: `StorageBackend`, `RegisteredHandle`, `Holder::Registered`,
 | D2 | closed shape over `&'static MarketKind` descriptors; `Scalar` 48 and `Serie` 40 bytes | the spike; `allocations.rs:6540` | S0, built S1 |
 | D3 | `DataTypeId(u8)` newtype with CamelCase consts; the four enum kinds' ids leave it and the seventeen codes' stay (D25); `all()` answers the claimed order | the spike; `datatype_id.rs:28-32, 270` | S0, built S1 |
 | D4 | `State` and the event vocabulary stay core; `State`'s FIX tables move to `fix/` in S3 | `text/line.rs:11-12`, `text/plan.rs:20` | S0 |
-| D5 | the market type's own `dtype()`/`field(name)` items; no extension trait | E0116 | S3 |
-| D6 | one public `implementer` module of forwarders, per-slice list from a scratch `git mv` | AGENTS "never make an item pub inside a published module" | S1, S3, S6 |
+| D5 | the market type's own `dtype()`/`field(name)` items; no extension trait | E0116 | S3, built S3 |
+| D6 | one public `implementer` module of forwarders, per-slice list from a scratch `git mv` | AGENTS "never make an item pub inside a published module" | S1, S3, S6; S3's list built S3 |
 | D7 | explicit idempotent `install()`; intake alone reads the register; the refusal list; the core seeds itself until S4 | `lib.rs:11` denies `unsafe`; `datatype_kind.rs:140-178` | S0, built S1 |
 | D8 | `plugin.rs`: one claim-once `Register<K, V>` and the `Dyn*` helper; market, media and `LOGICAL_NAMES` keys on it | `expression/user.rs:483-494` | S0, built S1/S2 |
-| D9 | a market trait for a message that splits; `MarketKind::Fix` stays; a protocol-view builder | `graph/market_data.rs:44`, `protocol.rs:2078` | S3 |
-| D10 | the table above | `scheme.rs:27-420`, `mime_type/line.rs:80-100`, `logging/facade.rs:72-76`, the 59 `warned!` and about 120 `log` sites counted there | S3 |
+| D9 | a market trait for a message that splits; `MarketKind::Fix` stays; a protocol-view builder | `graph/market_data.rs:44`, `protocol.rs:2078` | S3, built S3 |
+| D10 | the table above | `scheme.rs:27-420`, `mime_type/line.rs:80-100`, `logging/facade.rs:72-76`, the 59 `warned!` and about 120 `log` sites counted there | S3, built S3 |
 | D11 | option (d); sizes recorded; namespace proven in S5; FIX inside the market packages | pyo3 `type_object.rs:88-89`; napi `type_tag.rs:7-15`; the registry reads above | S0, built S5 |
 | D12 | the five crate names, `yggdryl-market` on PyPI and npm (npm put to the user) | the availability reads above | S0, published never by a session |
 | D13 | one `AGENTS.md`, one site, docs runner into `cli/tests/docs_examples.rs` | `check_docs_examples.py:46, 207-213`, `.gitignore:40` | S4 |
@@ -2312,7 +2513,8 @@ Names: `StorageBackend`, `RegisteredHandle`, `Holder::Registered`,
 | D34 | the medium holds its origin (`read_origin_field`), one schema answer, one projection rule (declared ∩ the columns the select and early filter read), one composer in `media_serie.rs` that `read_record_serie` also calls, `source_field` and the five residual copies gone; S8 amended | the user's instruction; `pushdown_map/design_inputs.md`; "P2 results" | S2b, built P2 |
 | D35 | `MediaCache` on every wrapper under `cache_ttl` (milliseconds, 0 realtime, outside the hash feed as `file_threads`), served while open or younger than the TTL, every write door updating or invalidating it | the user's instruction; `pushdown_map/metadata_caches.md`; "P2 results" | S2b, built P2 |
 | D33 | `yggdryl-xmla`, an eighth crate through the media point, `soap/` with it; registered in place in S2b (the core's own media three: `RecordOptions::Xmla`, `Media::Xmla`, `Serie::Xmla` deleted), moved in S6c; the Python `Xmla` class stays in the one native module; the CLI's `xmla serve` depends on it | the user's instruction; the 32 core sites and the 26 import lines above; crates.io 404 | S2b, built S6c |
-| D38 | `currunix` -> `transunix` (the transaction instant, required, the identity and order axis), `recdunix` -> `sendunix` (the technical wire clock, optional, the merge reference), and the element's own `curruuid` -> `uuid`, `currhashcode` -> `hashcode` (`prevuuid`, `crossuuid`, `crosshashcode`, `srcuuids` keep their prefix); precedences, values, derivations, positions and tags unchanged - the carrier's clock first, else `SendingTime(52)`; crate fields 65_001, 65_002, 65_007 and 65_009 re-spelled, so the dump, the dictionary hash (once, with its sentence), the snapshot's keys and `fix.json` move and the census does not | the instants map | P4 |
+| D39 | a leaving medium keeps its rank: `media::codec::RESERVED_RANKS` (`parquet` 1, `avro` 2, `xmla` 4, `excel` 6) admitted by `claim` under the codec's own name, every other medium at or above `EXTERNAL_RANK`, so the `s2_pins` hashes and the order pins are byte-identical through S6; `implementer` grows once per move by S3's routes, Avro and Parquet carry their own hidden `implementer` for what Iceberg reaches; the Iceberg field view built by `protocol_field_types!` in `yggdryl-iceberg` (`IcebergField::new`), `as_iceberg` gone; core tests building a leaving crate's objects move to that crate's tests; `install()` at every init; order avro, parquet, excel, xmla, then iceberg after `yggdryl-s3` | the five media maps | S6 |
+| D38 | `currunix` -> `transunix` (the transaction instant, required, the identity and order axis), `recdunix` -> `sendunix` (the technical wire clock, optional, the merge reference), and the element's own `curruuid` -> `uuid`, `currhashcode` -> `hashcode` (`prevuuid`, `crossuuid`, `crosshashcode`, `srcuuids` keep their prefix); precedences, values, derivations, positions and tags unchanged - the carrier's clock first, else `SendingTime(52)`; crate fields 65_001, 65_004, 65_007 and 65_009 re-spelled, so the dump, the dictionary hash (once, with its sentence), the snapshot's keys and `fix.json` move and the census does not | the instants map | P4 |
 | D37 | `MarketMessage` a concrete public struct in `graph/message.rs` - boxed facts, `StatedFacts`, the entries as an `Arc<Field>` root and a `Scalar` row, `children`, `Metadata`, `Vec<Anomaly>`, `InstrumentStatement` - the four traits implemented once on it; `MarketData::Message`, `MarketKind::Message` (`message`); `FixMsg` the codec's handle over a message (`into_message`, `from_message`), an idmap-mapped tag never an entry, a native message rendered by the inverse idmap else its crate tags; S3's trait, `as_message::<T>()` and `Box<dyn MarketMessage>` deleted | the message map, `message_map/design_inputs.md` | P5 |
 | D36 | `yggdryl-s3` through a storage-backend extension point: `StorageBackend` claimed per scheme on the register (`claim_backend`, `backend_for`, `backends`), asked by `Holder::from_url` after lowering, its answer described; `Holder::Registered(Box<dyn RegisteredHandle>)`; the verbs the wildcards specialized on S3 (`upload_from`, `discard`, `as_leaf`, `as_container`, `set_known_size`) as `IOBase` defaults and `into_byte_stream` over `owned_stream_bytes`; `Site::Opened` with an opener; `aws/` and `auth/` stay core under `aws`; `yggdryl-iceberg[s3tables]` depends on `yggdryl-s3`; CI leaf `s3` with the three exchanges | the backend map, `s3_backend_map/design_inputs.md` | P3 in place, S6d the move |
 | D25 | the seventeen codes stay core and flat; the register holds enum kinds alone (`Code8`/`Code16`), `MarketPayload`, `is_canonical`, `respell` and `CODE_VALUE_RANK` deleted; `yggdryl-market` carries the enums, `graph/` and the ISIN registry | the user's instruction; the S0 pins; one free Code byte | S1 |

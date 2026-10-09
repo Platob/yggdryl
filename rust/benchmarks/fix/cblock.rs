@@ -4,7 +4,7 @@ use std::sync::Arc;
 use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::fs::{FileSystem, FsFile, FsFolder, MemoryFileSystem};
 use yggdryl::holder::Holder;
-use yggdryl::{DataType, FixId, FixRegistry, IOBase};
+use yggdryl::{DataType, FixField, FixId, FixRegistry, IOBase};
 
 /// How many vocabulary tags and bound constraints one measured file holds.
 ///
@@ -147,20 +147,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
     );
     // Every field, group and message the file produced is a stamped member
     // of the dialect it was read under.
-    assert!(
-        registry
-            .field(counter)
-            .unwrap()
-            .as_fix()
-            .has_source(dialect)
-    );
-    assert!(
-        registry
-            .field_by_name("VendorEntries")
-            .unwrap()
-            .as_fix()
-            .has_source(dialect)
-    );
+    assert!(FixField::new(registry.field(counter).unwrap()).has_source(dialect));
+    assert!(FixField::new(registry.field_by_name("VendorEntries").unwrap()).has_source(dialect));
     assert!(
         registry
             .msgtype("D")
@@ -172,10 +160,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // The normalization binding spells every tag, and only the spelling the
     // tag does not already answer to is stored beside its name.
     assert_eq!(
-        registry
-            .field(counter)
-            .unwrap()
-            .as_fix()
+        FixField::new(registry.field(counter).unwrap())
             .names()
             .collect::<Vec<_>>(),
         ["NOVENDORENTRIES_ALT"]

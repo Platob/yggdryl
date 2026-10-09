@@ -58,12 +58,12 @@ use crate::arrow::BatchReader;
 use crate::graph::{Element, Event, Market};
 use crate::identifier::{IDENTIFIER_VALUE_WIDTH, IDENTIFIER_WORD_WIDTH, fold_into};
 use crate::idtype::FIX_SECURITY_SOURCES;
-use crate::logging::warning::warned;
+use crate::implementer::{FISN_WIDTH, warned};
 use crate::serie::{DateTimeNanosecondSerie, Int32Serie, Utf8StringSerie};
 use crate::{
-    ArrowCastOptions, Ccy, Cfi, CodeValue, Country, DataType, Error, Eusipa, FISN_WIDTH, Field,
-    Fisn, Forex, IOBase, IdKey, IdType, Identifier, Isin, Mic, Result, Scalar, Serie,
-    StreamChunkedSerie, StructType, TimeUnit, Timezone,
+    ArrowCastOptions, Ccy, Cfi, CodeValue, Country, DataType, Error, Eusipa, Field, Fisn, Forex,
+    IOBase, IdKey, IdType, Identifier, Isin, Mic, Result, Scalar, Serie, StreamChunkedSerie,
+    TimeUnit, Timezone,
 };
 
 pub(crate) use store::Store;
@@ -325,7 +325,7 @@ static ROW: LazyLock<Field> = LazyLock::new(|| {
     fields.extend(equivalents().map(|kind| Field::new(kind.as_str(), kind.value_dtype(), true)));
     Field::new(
         ROOT,
-        DataType::Struct(StructType::from_unique_fields(fields)),
+        DataType::Struct(crate::implementer::struct_type_from_unique_fields(fields)),
         false,
     )
 });
@@ -885,7 +885,7 @@ impl IsinEntry {
     // states the representation, and the row stays the registry's.
     #[allow(clippy::wrong_self_convention)]
     pub(crate) fn into_row(&self) -> Scalar {
-        Scalar::try_build_sequence(FIELD.field_len(), |slots| {
+        crate::implementer::scalar_try_build_sequence(FIELD.field_len(), |slots| {
             self.write_cells(slots);
             Ok(())
         })
@@ -964,7 +964,7 @@ impl IsinEntry {
         let row = FIELD.scalar(value)?;
         let unread = || Error::InvalidRecord {
             path: SmolStr::new_static("$"),
-            reason: crate::text::expected_got("the canonical isinregistry row", row.kind()),
+            reason: crate::implementer::expected_got("the canonical isinregistry row", row.kind()),
         };
         let cells = row.sequence_rows().ok_or_else(unread)?;
         let [
@@ -1457,7 +1457,7 @@ impl<'t> Found<'t> {
             [first, second]
                 .into_iter()
                 .chain(isins)
-                .map(|isin| Isin::from_proven(isin))
+                .map(|isin| crate::implementer::isin_from_proven(isin))
                 .collect(),
         )
     }
@@ -1835,7 +1835,7 @@ impl IsinTable {
             return Exact::Ended(match self.pick(isin, market, |_| false) {
                 Some(found) => Self::matched(element, found, MatchTier::Isin, false),
                 None => Resolution::Unmatched(Unmatched::UnknownIsin {
-                    stated: Isin::from_proven(isin),
+                    stated: crate::implementer::isin_from_proven(isin),
                 }),
             });
         }
@@ -1972,21 +1972,21 @@ impl IsinTable {
                 continue;
             };
             let held = held.as_str();
-            if crate::fisn::below_threshold(fisn.len(), held.len(), threshold) {
+            if crate::implementer::below_threshold(fisn.len(), held.len(), threshold) {
                 // Scored only where it could still be the best under the
                 // threshold: its length bound passes the best so far.
                 #[allow(clippy::cast_precision_loss)] // a few dozen bytes
                 let bound = 1.0
                     - fisn.len().abs_diff(held.len()) as f64 / fisn.len().max(held.len()) as f64;
                 if conflict.is_none() && below.is_none_or(|(score, _)| bound > score) {
-                    let score = crate::fisn::similarity(fisn, held);
+                    let score = crate::implementer::similarity(fisn, held);
                     if below.is_none_or(|(held, _)| score > held) {
                         below = Some((score, isin));
                     }
                 }
                 continue;
             }
-            let score = crate::fisn::similarity(fisn, held);
+            let score = crate::implementer::similarity(fisn, held);
             match conflict {
                 Some(conflict) => {
                     if score >= threshold && dropped.as_ref().is_none_or(|(held, _)| score > *held)
@@ -2024,21 +2024,22 @@ impl IsinTable {
                     .filter(|(_, listings)| {
                         candidate(listings).is_some_and(|(held, conflict)| {
                             conflict.is_none()
-                                && !crate::fisn::below_threshold(
+                                && !crate::implementer::below_threshold(
                                     fisn.len(),
                                     held.as_str().len(),
                                     threshold,
                                 )
-                                && (crate::fisn::similarity(fisn, held.as_str()) - score).abs()
+                                && (crate::implementer::similarity(fisn, held.as_str()) - score)
+                                    .abs()
                                     <= f64::EPSILON
                         })
                     })
-                    .map(|(isin, _)| Isin::from_proven(isin))
+                    .map(|(isin, _)| crate::implementer::isin_from_proven(isin))
                     .collect(),
             }),
             (None, Some((best, isin))) => Err(Unmatched::BelowThreshold {
                 best,
-                isin: Isin::from_proven(isin),
+                isin: crate::implementer::isin_from_proven(isin),
             }),
             (None, None) => Err(Unmatched::NoCandidate),
         }
@@ -2931,7 +2932,7 @@ impl IsinRegistry {
         // is no instrument's either.
         let pair = ids.contains_kind(&IdType::Forex);
         let statement = Statement {
-            isin: Isin::from_proven(isin),
+            isin: crate::implementer::isin_from_proven(isin),
             updunix: Some(event.get_currunix()),
             firstunix: Some(event.get_currunix()),
             lastunix: Some(event.get_currunix()),
@@ -3171,7 +3172,7 @@ impl IsinRegistry {
     ///
     /// What laying the rows out refuses, which no registry value causes.
     pub fn into_arrow_reader(&self) -> crate::arrow::Result<BatchReader> {
-        crate::arrow::rows::reader(&FIELD, Snapshot::of(&self.table), None, None, None)
+        crate::implementer::reader(&FIELD, Snapshot::of(&self.table), None, None, None)
     }
 }
 
@@ -3394,11 +3395,15 @@ impl Columns {
             path: SmolStr::new_static("$.isin"),
             reason: SmolStr::new_static("expected an ISIN, got null"),
         })?;
-        let mut entry = IsinEntry::new(Isin::from_proven(isin))
+        let mut entry = IsinEntry::new(crate::implementer::isin_from_proven(isin))
             .with_updunix(self.updunix.value(row))
             .with_firstunix(self.firstunix.value(row))
             .with_lastunix(self.lastunix.value(row))
-            .with_cficode(self.cficode.value(row).map(Cfi::from_proven))
+            .with_cficode(
+                self.cficode
+                    .value(row)
+                    .map(crate::implementer::cfi_from_proven),
+            )
             .with_countrycode(
                 self.countrycode
                     .value(row)
@@ -3409,13 +3414,21 @@ impl Columns {
                     .value(row)
                     .and_then(|pair| Forex::new(pair).ok()),
             )
-            .with_underlyingisin(self.underlyingisin.value(row).map(Isin::from_proven))
+            .with_underlyingisin(
+                self.underlyingisin
+                    .value(row)
+                    .map(crate::implementer::isin_from_proven),
+            )
             .with_eusipacode(
                 self.eusipacode
                     .value(row)
                     .and_then(|code| product_category(code, isin)),
             )
-            .with_miccode(self.miccode.value(row).map(Mic::from_proven))
+            .with_miccode(
+                self.miccode
+                    .value(row)
+                    .map(crate::implementer::mic_from_proven),
+            )
             .with_ticker(self.ticker.value(row).map(SmolStr::new))
             .with_fisn(self.fisn.value(row).and_then(|name| Fisn::new(name).ok()))
             .with_currency(

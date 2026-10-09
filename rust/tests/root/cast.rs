@@ -2539,7 +2539,7 @@ mod typed {
 
         use super::cast_into;
         use yggdryl::cast::ArrowCastOptions;
-        use yggdryl::{DataType, Field, Scalar, Serie, TimeUnit, Timezone};
+        use yggdryl::{DataType, Field, Scalar, Serie, TimeInForce, TimeUnit, Timezone};
 
         /// A failed conversion is an error rather than a null.
         fn conversion_error() -> ArrowCastOptions {
@@ -2619,7 +2619,7 @@ mod typed {
                 DataType::Bbg,
                 DataType::Ric,
                 DataType::Figi,
-                DataType::timeinforce(),
+                TimeInForce::dtype(),
                 DataType::Forex,
             ]
         }
@@ -3408,7 +3408,7 @@ mod certification {
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};
-    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie, Side};
 
     /// Cast `source` into a nullable `target` under the default options - the
     /// certified path - and hold every landed row to the target's contract.
@@ -3504,7 +3504,7 @@ mod certification {
         for target in [
             DataType::Ccy,
             DataType::Country,
-            DataType::side(),
+            Side::dtype(),
             DataType::State,
         ] {
             certified(target, Arc::clone(&codes));

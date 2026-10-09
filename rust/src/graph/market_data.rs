@@ -1,6 +1,9 @@
 //! [`MarketData`]: one value over every leaf the graph vocabulary ships,
 //! typed through at the boundary and read generically past it.
 
+use std::any::Any;
+use std::fmt;
+
 use smol_str::{SmolStr, format_smolstr};
 
 use super::book::{BookEvent, SnapshotEvent};
@@ -37,11 +40,12 @@ pub enum MarketData {
     BookEvent(Box<BookEvent>),
     /// A full-snapshot control.
     SnapshotEvent(SnapshotEvent),
-    /// A FIX message held whole: every fact its dictionary reads, its
-    /// fields and its capture, answered through the same traits as every
-    /// leaf. It walks, merges and writes as it is; a book folds the leaves
-    /// it splits into ([`FixMsg::market_data`](crate::FixMsg::market_data)).
-    Fix(Box<crate::FixMsg>),
+    /// A message held whole - a FIX message, every fact its dictionary
+    /// reads, its fields and its capture - answered through the same
+    /// traits as every leaf. It walks, merges and writes as it is; a book
+    /// folds the leaves it splits into
+    /// ([`MarketMessage::into_market_data`]).
+    Fix(Box<dyn MarketMessage>),
 }
 
 impl MarketData {
@@ -251,9 +255,9 @@ impl Element for MarketData {
             (Self::SnapshotEvent(v), Self::SnapshotEvent(previous)) => {
                 v.with_previous(previous).map(Self::SnapshotEvent)
             }
-            (Self::Fix(v), Self::Fix(previous)) => (*v)
-                .with_previous(previous)
-                .map(|held| Self::Fix(Box::new(held))),
+            (Self::Fix(v), Self::Fix(previous)) => {
+                v.with_previous(previous.as_ref()).map(Self::Fix)
+            }
             _ => None,
         }
     }
@@ -284,9 +288,7 @@ impl Element for MarketData {
             (Self::SnapshotEvent(v), Self::SnapshotEvent(other)) => {
                 v.merge_with(other).map(Self::SnapshotEvent)
             }
-            (Self::Fix(v), Self::Fix(other)) => {
-                (*v).merge_with(other).map(|held| Self::Fix(Box::new(held)))
-            }
+            (Self::Fix(v), Self::Fix(other)) => v.merge_with(other.as_ref()).map(Self::Fix),
             _ => None,
         }
     }
@@ -533,7 +535,7 @@ impl MarketData {
             Self::TradeEvent(v) => Some(v),
             Self::BookEvent(v) => Some(v.as_ref()),
             Self::SnapshotEvent(v) => Some(v),
-            Self::Fix(v) => Some(v.as_ref()),
+            Self::Fix(v) => Some(&**v),
             _ => None,
         }
     }
@@ -549,7 +551,7 @@ impl MarketData {
             Self::QuoteEvent(v) => Some(v),
             Self::ExecutionEvent(v) => Some(v),
             Self::TradeEvent(v) => Some(v),
-            Self::Fix(v) => Some(v.as_ref()),
+            Self::Fix(v) => Some(&**v),
             _ => None,
         }
     }
@@ -562,17 +564,108 @@ impl MarketData {
             Self::QuoteEvent(v) => Some(v),
             Self::ExecutionEvent(v) => Some(v),
             Self::TradeEvent(v) => Some(v),
-            Self::Fix(v) => Some(v.as_mut()),
+            Self::Fix(v) => Some(&mut **v),
             _ => None,
         }
     }
 }
 
-/// An [`Event`](super::Event) that is also an [`Operation`](super::Operation):
-/// the seam [`EventIterator`](super::EventIterator) reads `MarketData`'s
-/// five walked kinds through.
-pub(crate) trait EventOperation: super::Event + super::Operation {}
-impl<T: super::Event + super::Operation + ?Sized> EventOperation for T {}
+pub(crate) use seam::EventOperation;
+
+/// Where the walk's seam lives: a module the crate keeps to itself, so the
+/// trait in it is nominally public - which is what lets [`MarketMessage`]
+/// name it as a supertrait, and a held message upcast to it - while no
+/// caller outside the crate can reach it.
+mod seam {
+    use super::super::{Event, Operation};
+
+    /// An event that is also an operation: the seam the event walk reads
+    /// `MarketData`'s five walked kinds through.
+    pub trait EventOperation: Event + Operation {}
+    impl<T: Event + Operation + ?Sized> EventOperation for T {}
+}
+
+/// A message held whole that splits into market leaves: what
+/// [`MarketData::Fix`] holds, a FIX message (`FixMsg`) being the one
+/// implementation.
+///
+/// It answers every fact through the graph traits it extends, so a walk,
+/// a merge and the Arrow writer read it as they read a leaf; it follows,
+/// merges and restates as itself through the boxed forms below, and a book
+/// folds the leaves it splits into ([`Self::into_market_data`]). The last
+/// five methods are what a trait object owes the enum holding it - the
+/// stable hash, a copy, equality - and the downcast back to its own type
+/// ([`MarketData::as_message`]).
+///
+/// Its supertraits are the event and operation traits, the walk's own seam
+/// over the two (crate-private, so a held message reads as every walked
+/// leaf does), `Debug`, `Send`, `Sync` and `'static`.
+pub trait MarketMessage:
+    super::Event + super::Operation + seam::EventOperation + fmt::Debug + Send + Sync + 'static
+{
+    /// Moves the message into the market data leaves it splits into: one
+    /// per operation it states, none for a message with no market reading.
+    ///
+    /// # Errors
+    ///
+    /// Returns the implementation's refusal of a message it cannot split.
+    fn into_market_data(self: Box<Self>) -> Result<Vec<MarketData>>;
+
+    /// Moves the message into the one market data leaf it is.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error where the message is not exactly one leaf.
+    fn into_market_leaf(self: Box<Self>) -> Result<MarketData>;
+
+    /// [`Element::with_previous`], boxed: this message stated as the one
+    /// after `previous`, or nothing where it cannot follow it, where
+    /// following it changes nothing, or where `previous` is a message of
+    /// another type.
+    fn with_previous(
+        self: Box<Self>,
+        previous: &dyn MarketMessage,
+    ) -> Option<Box<dyn MarketMessage>>;
+
+    /// [`Element::merge_with`], boxed: this message with another statement
+    /// of itself folded in, or nothing where `other` is another message,
+    /// a message of another type, or where the fold changes nothing.
+    fn merge_with(self: Box<Self>, other: &dyn MarketMessage) -> Option<Box<dyn MarketMessage>>;
+
+    /// [`Event::restating`](super::Event::restating), boxed: this message
+    /// restated under the live statement of its chain, unchanged where
+    /// `live` is a message of another type.
+    fn restating(self: Box<Self>, live: &dyn MarketMessage) -> Box<dyn MarketMessage>;
+
+    /// The deterministic hash of the message, as its type states it.
+    fn stable_hash(&self) -> u64;
+
+    /// A boxed copy.
+    fn clone_box(&self) -> Box<dyn MarketMessage>;
+
+    /// Equality across the trait object: the same type holding an equal
+    /// message.
+    fn dyn_eq(&self, other: &dyn MarketMessage) -> bool;
+
+    /// The message as `Any`, for [`MarketData::as_message`].
+    fn as_any(&self) -> &dyn Any;
+
+    /// The message as `Any`, owned, for the conversion back to its own
+    /// type.
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
+}
+
+impl Clone for Box<dyn MarketMessage> {
+    fn clone(&self) -> Self {
+        (**self).clone_box()
+    }
+}
+
+impl PartialEq for dyn MarketMessage {
+    fn eq(&self, other: &Self) -> bool {
+        self.dyn_eq(other)
+    }
+}
 
 impl From<MarketData> for Result<MarketData> {
     /// A value as the infallible item of a fallible stream.
@@ -617,30 +710,6 @@ from_leaf!(QuoteEvent, QuoteEvent);
 from_leaf!(ExecutionEvent, ExecutionEvent);
 from_leaf!(TradeEvent, TradeEvent);
 from_leaf!(SnapshotEvent, SnapshotEvent);
-
-impl From<crate::FixMsg> for MarketData {
-    fn from(value: crate::FixMsg) -> Self {
-        Self::Fix(Box::new(value))
-    }
-}
-
-impl TryFrom<MarketData> for crate::FixMsg {
-    type Error = Error;
-
-    fn try_from(value: MarketData) -> Result<Self> {
-        match value {
-            MarketData::Fix(value) => Ok(*value),
-            other => Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$.kind"),
-                reason: format_smolstr!(
-                    "expected {}, got {}",
-                    MarketKind::Fix.as_str(),
-                    other.kind().as_str()
-                ),
-            }),
-        }
-    }
-}
 
 impl From<BookEvent> for MarketData {
     fn from(value: BookEvent) -> Self {
@@ -739,12 +808,13 @@ impl MarketData {
             _ => None,
         }
     }
-    /// Borrows this value as the [`FixMsg`](crate::FixMsg) it holds, where
-    /// it is one.
+    /// Borrows the message this value holds as the type `T` it is, where
+    /// it holds a message of that type: `as_message::<FixMsg>()` reaches a
+    /// FIX message's own surface.
     #[must_use]
-    pub fn as_fix(&self) -> Option<&crate::FixMsg> {
+    pub fn as_message<T: MarketMessage>(&self) -> Option<&T> {
         match self {
-            Self::Fix(value) => Some(value),
+            Self::Fix(message) => message.as_any().downcast_ref::<T>(),
             _ => None,
         }
     }

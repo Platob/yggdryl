@@ -12,11 +12,11 @@ use yggdryl::internals::fix_group_plan::{GroupPlan, tags_is_empty};
 use yggdryl::internals::fix_msgtype::{
     from_field as msgtype_from_field, get_group_plan_by_tag as msgtype_plan,
 };
-use yggdryl::{DataType, Field, FixCategory, FixRegistry, Scalar, StructType};
+use yggdryl::{DataType, Field, FixCategory, FixFieldMut, FixRegistry, Scalar, StructType};
 
 fn tagged(name: &str, tag: i32, dtype: DataType) -> Field {
     let mut field = dtype.required_field(name);
-    field.as_fix_mut().set_tag(tag).unwrap();
+    FixFieldMut::new(&mut field).set_tag(tag).unwrap();
     field
 }
 
@@ -26,7 +26,7 @@ fn parties() -> Field {
         .unwrap()
         .required_field("SubParty");
     let mut nested = DataType::large_serie(subparty).required_field("SubParties");
-    nested.as_fix_mut().set_counter(802).unwrap();
+    FixFieldMut::new(&mut nested).set_counter(802).unwrap();
     let attribution = StructType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
         .map(DataType::from)
         .unwrap()
@@ -42,7 +42,7 @@ fn parties() -> Field {
     .unwrap()
     .required_field("Party");
     let mut group = DataType::serie(item).required_field("Parties");
-    group.as_fix_mut().set_counter(453).unwrap();
+    FixFieldMut::new(&mut group).set_counter(453).unwrap();
     group
 }
 
@@ -82,14 +82,14 @@ fn a_group_opening_with_a_nested_group_is_delimited_by_its_counter() {
         .unwrap()
         .required_field("SubParty");
     let mut nested = DataType::serie(subparty).required_field("SubParties");
-    nested.as_fix_mut().set_counter(802).unwrap();
-    nested.as_fix_mut().set_tag(486_736).unwrap();
+    FixFieldMut::new(&mut nested).set_counter(802).unwrap();
+    FixFieldMut::new(&mut nested).set_tag(486_736).unwrap();
     let item = StructType::from_fields([nested, tagged("PartyID", 448, DataType::utf8())])
         .map(DataType::from)
         .unwrap()
         .required_field("Party");
     let mut group = DataType::serie(item).required_field("Parties");
-    group.as_fix_mut().set_counter(453).unwrap();
+    FixFieldMut::new(&mut group).set_counter(453).unwrap();
     let plan = GroupPlan::from_field(&group).unwrap();
     assert_eq!(plan.delimiter(), Some(802));
     assert_eq!(plan.tag_index(486_736), None);
@@ -102,7 +102,7 @@ fn message_and_nested_scope_borrow_one_precompiled_plan() {
         .map(DataType::from)
         .unwrap()
         .required_field("Report");
-    field.as_fix_mut().set_msgtype("R").unwrap();
+    FixFieldMut::new(&mut field).set_msgtype("R").unwrap();
     let message = msgtype_from_field(field).unwrap();
     let outer = msgtype_plan(&message, 453).unwrap();
     let nested = msgtype_plan(&message, 802).unwrap();
@@ -130,7 +130,7 @@ fn registry_clones_share_plans_and_replacements_recompile_once() {
         .unwrap()
         .required_field("Party");
     let mut replacement = DataType::serie(item).required_field("Parties");
-    replacement.as_fix_mut().set_counter(453).unwrap();
+    FixFieldMut::new(&mut replacement).set_counter(453).unwrap();
     registry
         .update_definition(FixCategory::Groups, replacement)
         .unwrap();
@@ -145,8 +145,8 @@ fn maps_keep_native_key_shape_and_declare_no_numeric_wire_layout() {
     let mut field = DataType::map_of(DataType::utf8(), DataType::utf8(), true)
         .unwrap()
         .nullable_field("nativeids");
-    field.as_fix_mut().set_tag(65_090).unwrap();
-    field.as_fix_mut().set_counter(65_090).unwrap();
+    FixFieldMut::new(&mut field).set_tag(65_090).unwrap();
+    FixFieldMut::new(&mut field).set_counter(65_090).unwrap();
     let plan = GroupPlan::from_field(&field).unwrap();
     let Some(map) = (plan.field().dtype()).as_mapping() else {
         panic!("the native Map layout is preserved")

@@ -150,7 +150,7 @@ pub(super) fn conversation(prose: &[u8]) -> Option<&str> {
     let rest = after(prose, b"{conversationId:")?;
     let end = rest.iter().position(|byte| *byte == b'}')?;
     let text = std::str::from_utf8(&rest[..end]).ok()?.trim();
-    (!text.is_empty() && !crate::code::is_null_like(text)).then_some(text)
+    (!text.is_empty() && !crate::implementer::is_null_like(text)).then_some(text)
 }
 
 /// What follows the first `needle` in `haystack`.

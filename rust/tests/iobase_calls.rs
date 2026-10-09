@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use yggdryl::holder::Buffer;
 use yggdryl::holder::counted::{Calls, Counted};
-use yggdryl::{DigestAlgorithm, IOBase, Url};
+use yggdryl::{DigestAlgorithm, FixFieldMut, IOBase, Url};
 
 /// A handle over `bytes`, named so its media type is what `url` says.
 fn source(bytes: &[u8], url: &str) -> Counted<Buffer> {
@@ -61,7 +61,7 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
     let mut folder = Counted::new(LocalFolder::new(&path).unwrap());
     let calls = Arc::clone(folder.calls());
     let mut field = DataType::utf8().nullable_field("Symbol");
-    field.as_fix_mut().set_tag(55).unwrap();
+    FixFieldMut::new(&mut field).set_tag(55).unwrap();
     let registry = FixRegistry::from_fields([field]).unwrap();
     // Counted measures navigation at this root; child handles own the
     // document reads and writes and are outside this tally. No manifest:

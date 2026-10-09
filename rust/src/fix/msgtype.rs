@@ -6,6 +6,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
+use super::FixField;
 use super::catalog::occurrence_of;
 use super::group_plan::GroupPlan;
 use super::registry::name_digest;
@@ -21,11 +22,11 @@ const CHILD_DOMAIN: u64 = 0x4d53_475f_4348_4c44;
 /// the registry's message-definition methods.
 ///
 /// ```
-/// use yggdryl::{DataType, FixRegistry, StructType};
+/// use yggdryl::{DataType, FixFieldMut, FixRegistry, StructType};
 ///
 /// let mut registry = FixRegistry::new();
 /// let mut field = DataType::from(StructType::from_fields([])?).required_field("Order");
-/// field.as_fix_mut().set_msgtype("D")?;
+/// FixFieldMut::new(&mut field).set_msgtype("D")?;
 /// registry.insert(field)?;
 /// let message = registry.msgtype("D")?;
 /// assert_eq!(message.name(), "Order");
@@ -104,27 +105,29 @@ impl MsgType {
     /// Uses one allocation for the shared XXH3 state, independent of schema size.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        crate::hashing::stable_hash_of(self)
+        crate::implementer::stable_hash_of(self)
     }
 
     pub(super) fn from_field(field: Field) -> Result<Self> {
         if field.is_nullable() || !matches!(field.dtype(), DataType::Struct(_)) {
             return Err(Error::InvalidRecord {
                 path: field.name().into(),
-                reason: crate::text::expected_got("a non-null Struct message definition", field),
+                reason: crate::implementer::expected_got(
+                    "a non-null Struct message definition",
+                    field,
+                ),
             });
         }
-        let code = field
-            .as_fix()
+        let code = FixField::new(&field)
             .msgtype()
             .ok_or_else(|| Error::absent("FIX:msgtype", field.name()))?;
         validate_code(code)?;
-        if let Some(category) = field.as_fix().msgcat()
+        if let Some(category) = FixField::new(&field).msgcat()
             && !super::field::is_msgcat(category)
         {
             return Err(Error::InvalidRecord {
                 path: field.name().into(),
-                reason: crate::text::expected_got(
+                reason: crate::implementer::expected_got(
                     "one fixed FIX message category",
                     format_args!("FIX:msgcat={category:?}"),
                 ),
@@ -137,12 +140,11 @@ impl MsgType {
                 if child.dtype().is_nested() {
                     Ok(None)
                 } else {
-                    child.as_fix().tag()
+                    FixField::new(child).tag()
                 }
             })
             .collect::<Result<Vec<_>>>()?;
-        let identifiers = field
-            .as_fix()
+        let identifiers = FixField::new(&field)
             .compiled_identifier_positions()?
             .into_iter()
             .map(|index| {
@@ -186,12 +188,12 @@ impl MsgType {
     ///
     /// ```
     /// use std::sync::Arc;
-    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructType};
+    /// use yggdryl::{DataType, FixFieldMut, FixMsg, FixRegistry, Scalar, StructType};
     /// let mut id = DataType::utf8().nullable_field("clordid");
-    /// id.as_fix_mut().set_tag(11)?;
+    /// FixFieldMut::new(&mut id).set_tag(11)?;
     /// let mut field = DataType::from(StructType::from_fields([id])?).required_field("order");
-    /// field.as_fix_mut().set_msgtype("D")?;
-    /// field.as_fix_mut().set_identifiers(["11"])?;
+    /// FixFieldMut::new(&mut field).set_msgtype("D")?;
+    /// FixFieldMut::new(&mut field).set_identifiers(["11"])?;
     /// let mut registry = FixRegistry::new();
     /// registry.insert(field.clone())?;
     /// let registry = Arc::new(registry);
@@ -235,10 +237,10 @@ impl MsgType {
     pub(super) fn get_child_by_name(&self, key: &str) -> Option<(&Field, i32)> {
         let digest = name_digest(key, CHILD_DOMAIN);
         let child = self.field.fields().get(*self.children.get(&digest)?)?;
-        if !crate::folds_equal(child.name(), key) {
+        if !crate::implementer::folds_equal(child.name(), key) {
             return None;
         }
-        Some((child, child.as_fix().tag().ok()??))
+        Some((child, FixField::new(child).tag().ok()??))
     }
 
     /// Borrows the complete native message schema without allocating.
@@ -253,8 +255,7 @@ impl MsgType {
 
     /// The exact wire code, preserving case and all non-control text.
     pub fn as_str(&self) -> &str {
-        self.field
-            .as_fix()
+        FixField::new(&self.field)
             .msgtype()
             .expect("a registry message has a validated wire code")
     }
@@ -264,8 +265,7 @@ impl MsgType {
     /// [`MarketDataKind`](crate::MarketDataKind) it names.
     #[must_use]
     pub fn marketdatakind(&self) -> Option<crate::MarketDataKind> {
-        self.field
-            .as_fix()
+        FixField::new(&self.field)
             .msgcat()
             .and_then(crate::MarketDataKind::from_name)
     }
@@ -314,7 +314,7 @@ impl MsgType {
             });
         }
         if let Some(item) = occurrence_of(field) {
-            if let Some(tag) = field.as_fix().counter()? {
+            if let Some(tag) = FixField::new(field).counter()? {
                 let plan = match plans.remove(path) {
                     Some(plan) => plan,
                     None => Arc::new(GroupPlan::from_field(field)?),

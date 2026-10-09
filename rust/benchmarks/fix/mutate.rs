@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
-use yggdryl::{DataType, Field, FixCode, FixRegistry, StructType};
+use yggdryl::{DataType, Field, FixCode, FixField, FixFieldMut, FixRegistry, StructType};
 
 use super::{LARGE_FIELDS, generated, seed, venue};
 
@@ -28,8 +28,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // timer, and so is the drop: every routine hands the registry back as its
     // output rather than letting it fall at the end of the timed closure.
     let mut incoming = DataType::utf8().nullable_field("Incoming");
-    incoming.as_fix_mut().set_tag(9_000).unwrap();
-    incoming.as_fix_mut().set_names(["IncomingAlias"]).unwrap();
+    FixFieldMut::new(&mut incoming).set_tag(9_000).unwrap();
+    FixFieldMut::new(&mut incoming)
+        .set_names(["IncomingAlias"])
+        .unwrap();
     group.bench_function("insert_into_seed", |bencher| {
         bencher.iter_batched(
             || (registry.clone(), incoming.clone()),
@@ -62,7 +64,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .filter(|field| !field.dtype().is_nested())
         .map(|field| {
             let mut field = field.clone();
-            field.as_fix_mut().remove_codeset();
+            FixFieldMut::new(&mut field).remove_codeset();
             field
         })
         .collect();
@@ -76,9 +78,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
 
     // A merge that adds an alias and an alternate tag to a stored field.
     let mut update = DataType::utf8().nullable_field("Symbol");
-    update.as_fix_mut().set_tag(55).unwrap();
-    update.as_fix_mut().set_tags(&[9_001]).unwrap();
-    update.as_fix_mut().set_names(["Sym"]).unwrap();
+    FixFieldMut::new(&mut update).set_tag(55).unwrap();
+    FixFieldMut::new(&mut update).set_tags(&[9_001]).unwrap();
+    FixFieldMut::new(&mut update).set_names(["Sym"]).unwrap();
     group.bench_function("update_in_seed", |bencher| {
         bencher.iter_batched(
             || (registry.clone(), update.clone()),
@@ -104,8 +106,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // component gaining a member that every reference to it then carries -
     // which re-resolves the seed's whole catalog, and is the honest cost.
     let mut renamed = DataType::utf8().nullable_field("symbol");
-    renamed.as_fix_mut().set_tag(9_001).unwrap();
-    renamed.as_fix_mut().set_names(["Ticker"]).unwrap();
+    FixFieldMut::new(&mut renamed).set_tag(9_001).unwrap();
+    FixFieldMut::new(&mut renamed)
+        .set_names(["Ticker"])
+        .unwrap();
     group.bench_function("add_field_same_name_merge", |bencher| {
         bencher.iter_batched(
             || (registry.clone(), renamed.clone()),
@@ -132,10 +136,12 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     let mut seeded = registry.clone();
     let mut venue_symbol = DataType::utf8().nullable_field("VenueSymbol");
-    venue_symbol.as_fix_mut().set_tag(9_010).unwrap();
+    FixFieldMut::new(&mut venue_symbol).set_tag(9_010).unwrap();
     seeded.add_field(venue_symbol).unwrap();
     let mut member = seeded.field(9_010).unwrap().clone();
-    member.as_fix_mut().set_field_ref("VenueSymbol").unwrap();
+    FixFieldMut::new(&mut member)
+        .set_field_ref("VenueSymbol")
+        .unwrap();
     let mut instrument = seeded.field_by_name("Instrument").unwrap().clone();
     instrument
         .set_dtype(DataType::from(
@@ -169,12 +175,12 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // one name, and a list that is folded, deduplicated and sorted.
     let venue = venue();
     let mut movable = DataType::utf8().nullable_field("Movable");
-    movable.as_fix_mut().set_tag(9_000).unwrap();
+    FixFieldMut::new(&mut movable).set_tag(9_000).unwrap();
     group.bench_function("set_tag", |bencher| {
         bencher.iter_batched(
             || movable.clone(),
             |mut field| {
-                field.as_fix_mut().set_tag(9_000).unwrap();
+                FixFieldMut::new(&mut field).set_tag(9_000).unwrap();
                 field
             },
             BatchSize::SmallInput,
@@ -184,7 +190,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter_batched(
             || movable.clone(),
             |mut field| {
-                field.as_fix_mut().set_sources([venue]).unwrap();
+                FixFieldMut::new(&mut field).set_sources([venue]).unwrap();
                 field
             },
             BatchSize::SmallInput,
@@ -194,8 +200,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter_batched(
             || movable.clone(),
             |mut field| {
-                field
-                    .as_fix_mut()
+                FixFieldMut::new(&mut field)
                     .set_sources(["plugin", "CME", venue, "eurex"])
                     .unwrap();
                 field
@@ -204,25 +209,24 @@ pub fn benchmarks(criterion: &mut Criterion) {
         );
     });
     let mut member = movable.clone();
-    member.as_fix_mut().set_sources([venue]).unwrap();
+    FixFieldMut::new(&mut member).set_sources([venue]).unwrap();
     group.bench_function("add_source", |bencher| {
         bencher.iter_batched(
             || member.clone(),
             |mut field| {
-                field.as_fix_mut().add_source("eurex").unwrap();
+                FixFieldMut::new(&mut field).add_source("eurex").unwrap();
                 field
             },
             BatchSize::SmallInput,
         );
     });
     let mut reserved = DataType::utf8().nullable_field("Reserved");
-    reserved.as_fix_mut().set_tag(35).unwrap();
+    FixFieldMut::new(&mut reserved).set_tag(35).unwrap();
     group.bench_function("set_tag_standard", |bencher| {
         bencher.iter_batched(
             || reserved.clone(),
             |mut field| {
-                field
-                    .as_fix_mut()
+                FixFieldMut::new(&mut field)
                     .set_tag(35)
                     .expect("nothing gates a tag on its dictionary");
                 field
@@ -239,9 +243,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter_batched(
             || incoming.clone(),
             |mut field| {
-                field
-                    .as_fix_mut()
-                    .merge_with(&stored.as_fix())
+                FixFieldMut::new(&mut field)
+                    .merge_with(&FixField::new(&stored))
                     .expect("two definitions of one tag");
                 field
             },
@@ -306,10 +309,12 @@ const PARTY_CODESET: &str = "partyidcodeset";
 
 fn coded_catalog() -> FixRegistry {
     let mut party = DataType::utf8().nullable_field("PartyID");
-    party.as_fix_mut().set_tag(448).unwrap();
-    party.as_fix_mut().set_codeset(PARTY_CODESET).unwrap();
+    FixFieldMut::new(&mut party).set_tag(448).unwrap();
+    FixFieldMut::new(&mut party)
+        .set_codeset(PARTY_CODESET)
+        .unwrap();
     let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
-    counter.as_fix_mut().set_tag(453).unwrap();
+    FixFieldMut::new(&mut counter).set_tag(453).unwrap();
     // The vocabulary first: a registry refuses a field naming a set it does
     // not hold.
     let mut registry = FixRegistry::new();
@@ -319,25 +324,27 @@ fn coded_catalog() -> FixRegistry {
     for field in [party.clone(), counter] {
         registry.insert(field).unwrap();
     }
-    party.as_fix_mut().set_field_ref("PartyID").unwrap();
+    FixFieldMut::new(&mut party)
+        .set_field_ref("PartyID")
+        .unwrap();
     let component = StructType::from_fields([party])
         .map(DataType::from)
         .unwrap()
         .required_field("Party");
     registry.insert(component.clone()).unwrap();
     let mut group = DataType::serie(component).nullable_field("Parties");
-    group.as_fix_mut().set_counter(453).unwrap();
-    group.as_fix_mut().set_component("Party").unwrap();
+    FixFieldMut::new(&mut group).set_counter(453).unwrap();
+    FixFieldMut::new(&mut group).set_component("Party").unwrap();
     registry.insert(group).unwrap();
     let mut group = registry.field_by_name("Parties").unwrap().clone();
-    group.as_fix_mut().set_group("Parties").unwrap();
+    FixFieldMut::new(&mut group).set_group("Parties").unwrap();
     // A group is its list alone: the counter is the dictionary's field and
     // no member of the message beside it.
     let mut message = StructType::from_fields([group])
         .map(DataType::from)
         .unwrap()
         .required_field("Order");
-    message.as_fix_mut().set_msgtype("D").unwrap();
+    FixFieldMut::new(&mut message).set_msgtype("D").unwrap();
     registry.insert(message).unwrap();
     registry
 }
@@ -350,21 +357,19 @@ const VENUE_LASTQTY_CODESET: &str = "venuelastqtycodeset";
 /// One realistic definition of tag 32: coded, described, aliased.
 fn merge_source(wording: &str, alias: &str, codeset: &str) -> Field {
     let mut field = DataType::utf8().nullable_field("LastQty");
-    field.as_fix_mut().set_tag(32).expect("a static tag");
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field)
+        .set_tag(32)
+        .expect("a static tag");
+    FixFieldMut::new(&mut field)
         .set_tags(&[65, 66])
         .expect("static alternate tags");
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field)
         .set_names([alias])
         .expect("a spelling the field does not already take");
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field)
         .set_description(wording)
         .expect("a description");
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field)
         .set_codeset(codeset)
         .expect("the set its dictionary holds");
     field

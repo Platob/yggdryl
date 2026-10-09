@@ -5,7 +5,7 @@ mod arrow {
 
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
-    use yggdryl::{DataType, Field, StructType, TimeUnit, Timezone, UnionMode};
+    use yggdryl::{DataType, Field, Side, StructType, TimeInForce, TimeUnit, Timezone, UnionMode};
 
     fn assert_invalid(error: yggdryl::Error, expected_kind: &str, expected_reason: &str) {
         match error {
@@ -454,9 +454,9 @@ mod arrow {
             DataType::Isin,
             DataType::Cusip,
             DataType::Sedol,
-            DataType::side(),
+            Side::dtype(),
             DataType::State,
-            DataType::timeinforce(),
+            TimeInForce::dtype(),
             DataType::Uuid,
             DataType::Version,
             DataType::url(),

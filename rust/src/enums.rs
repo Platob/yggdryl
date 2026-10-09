@@ -196,8 +196,16 @@ fn is_valid_dictionary_key(key: &DataType) -> bool {
 /// `market` static and the numbers beside it too, and gains its `ID`,
 /// `NAME` and `EXTENSION_NAME`, the [`MarketDescriptor`](crate::MarketDescriptor)
 /// it is claimed under - its members and its `read` - and
-/// [`MarketValue`](crate::MarketValue); its scalar is
+/// [`MarketValue`](crate::MarketValue), and its own `dtype()` and
+/// `field(name)` - the datatype every column of the kind declares and a
+/// nullable field of it; its scalar is
 /// [`Scalar::Market`](crate::Scalar::Market), never a variant of its own.
+///
+/// Exported for the crates this core is split into, which declare their
+/// kinds with it: every path it expands to is public, the core's own
+/// crate-private doors reached through [`crate::implementer`].
+#[macro_export]
+#[doc(hidden)]
 macro_rules! enum_leaf {
     // A leaf of the core's own: the datatype has a variant of its own.
     (
@@ -206,7 +214,7 @@ macro_rules! enum_leaf {
             $($(#[$meta:meta])* $variant:ident = $code:literal as $spelling:literal: $doc:literal,)+
         }
     ) => {
-        $crate::enums::enum_leaf!(@members
+        $crate::implementer::enum_leaf!(@members
             $(#[$outer])*
             $vis enum $name: $repr, kind = $kind, extension = $extension, aliases = $aliases {
                 $($(#[$meta])* $variant = $code as $spelling: $doc,)+
@@ -297,7 +305,7 @@ macro_rules! enum_leaf {
             $($(#[$meta:meta])* $variant:ident = $code:literal as $spelling:literal: $doc:literal,)+
         }
     ) => {
-        $crate::enums::enum_leaf!(@members
+        $crate::implementer::enum_leaf!(@members
             $(#[$outer])*
             $vis enum $name: $repr, kind = $kind, extension = $extension, aliases = $aliases {
                 $($(#[$meta])* $variant = $code as $spelling: $doc,)+
@@ -312,6 +320,19 @@ macro_rules! enum_leaf {
             pub const NAME: &'static str = $kind;
             /// The Arrow extension name a column of this enum rides under.
             pub const EXTENSION_NAME: &'static str = $extension;
+
+            /// The datatype of this kind: `DataType::Market` over its
+            /// descriptor, what every column of it declares.
+            #[must_use]
+            pub const fn dtype() -> $crate::DataType {
+                $kind_static.dtype()
+            }
+
+            /// A nullable field of this kind, named `name`.
+            #[must_use]
+            pub fn field(name: impl Into<::smol_str::SmolStr>) -> $crate::Field {
+                $kind_static.field(name, true)
+            }
         }
 
         #[doc = concat!("The registered kind `", $kind, "`: what [`", stringify!($name), "`] states about itself, once.")]
@@ -344,7 +365,7 @@ macro_rules! enum_leaf {
             }
 
             fn into_scalar(self) -> $crate::Scalar {
-                $kind_static.adopt_code(self.code() as u16)
+                $crate::implementer::adopt_market_code(&$kind_static, self.code() as u16)
             }
 
             fn from_scalar(value: &$crate::Scalar) -> Option<&Self> {
@@ -364,7 +385,7 @@ macro_rules! enum_leaf {
             const KIND: &'static $crate::MarketDescriptor = &$kind_static;
 
             fn into_scalar(self) -> $crate::Scalar {
-                $kind_static.adopt_code(self.code() as u16)
+                $crate::implementer::adopt_market_code(&$kind_static, self.code() as u16)
             }
 
             fn from_scalar(value: &$crate::Scalar) -> Option<Self> {
@@ -490,9 +511,9 @@ macro_rules! enum_leaf {
             /// a word no name uses names nothing. A spelling read is kept,
             /// so a column repeating it reads it once.
             fn from_pattern(spelling: &str) -> Option<Self> {
-                static PATTERNS: ::std::sync::LazyLock<$crate::enums::Patterns<$name>> =
+                static PATTERNS: ::std::sync::LazyLock<$crate::implementer::Patterns<$name>> =
                     ::std::sync::LazyLock::new(|| {
-                        $crate::enums::Patterns::new(
+                        $crate::implementer::Patterns::new(
                             $name::ALL.iter().map(|member| (member.as_str(), *member)),
                             $aliases(),
                         )
@@ -577,8 +598,6 @@ macro_rules! enum_leaf {
     };
 }
 
-pub(crate) use enum_leaf;
-
 /// The width an enum leaf's codes are held and stored at: `u8` for a leaf
 /// whose codes fit a byte, `u16` for one whose codes pass 255. The one owner
 /// of the Arrow storage an enum column has, so a writer, a reader and a cast
@@ -615,10 +634,10 @@ impl DataType {
     /// as the code of each, at the leaf's width.
     ///
     /// ```
-    /// use yggdryl::DataType;
+    /// use yggdryl::{DataType, Side};
     ///
     /// assert!(DataType::State.is_enum());
-    /// assert!(DataType::side().is_enum());
+    /// assert!(Side::dtype().is_enum());
     /// assert!(!DataType::Int32.is_enum());
     /// ```
     #[must_use]
@@ -1001,9 +1020,7 @@ mod arrow {
 // Spelling patterns: a member read off the words a spelling is made of.
 // ------------------------------------------------------------------------
 
-pub(crate) use patterns::Patterns;
-
-mod patterns {
+pub(crate) mod patterns {
     //! What every enum leaf reads a spelling by once its exact vocabularies -
     //! the stored name, a wire code, a standard's name folded - name nothing:
     //! the words the spelling is made of. `Part-Filled`, `partial fill`,
@@ -1140,7 +1157,7 @@ mod patterns {
 
     /// The members of one leaf by the set of words each of its names makes,
     /// and the spellings already read.
-    pub(crate) struct Patterns<E: 'static> {
+    pub struct Patterns<E: 'static> {
         /// Each set of words, sorted and joined by a space, and the one
         /// member it names - `None` where two members make it.
         members: HashMap<Box<str>, Option<E>>,
@@ -1157,7 +1174,7 @@ mod patterns {
         /// written with its word breaks - `PARTIALLY_FILLED`,
         /// `GoodTillCancel` - are the vocabulary; a name folded into one run
         /// of lower-case letters - `partfill` - is cut into that vocabulary.
-        pub(crate) fn new(
+        pub fn new(
             stored: impl IntoIterator<Item = (&'static str, E)>,
             aliases: impl IntoIterator<Item = (&'static str, E)>,
         ) -> Self {
@@ -1204,7 +1221,7 @@ mod patterns {
 
         /// The member `spelling`'s words name, or `None` where they name
         /// none or two.
-        pub(crate) fn read(&self, spelling: &str) -> Option<E> {
+        pub fn read(&self, spelling: &str) -> Option<E> {
             let spelling = spelling.trim();
             if let Some(held) = self
                 .cache

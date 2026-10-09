@@ -75,7 +75,7 @@ use super::{FxRates, Metadata};
 use crate::arrow::BatchReader;
 use crate::expression::{Bound, Filter};
 use crate::idkey::KeyReader;
-use crate::path::{Path, Segment};
+use crate::implementer::{Path, Segment};
 use crate::serie::{
     BooleanSerie, DateTimeNanosecondSerie, Decimal128Serie, FixedBytesSerie, MapSerie, SerieSerie,
     UInt8Serie, UInt16Serie, UInt32Serie, UInt64Serie, Utf8StringSerie,
@@ -183,7 +183,7 @@ impl MarketData {
             shape,
             schema,
             batch_row_size: batch_row_size
-                .unwrap_or(crate::arrow::rows::DEFAULT_BATCH_ROW_SIZE)
+                .unwrap_or(crate::implementer::DEFAULT_BATCH_ROW_SIZE)
                 .max(1),
             batch_byte_size,
             ordinal: 0,
@@ -478,7 +478,7 @@ impl Column {
     fn of_name(name: &str) -> Option<Self> {
         root_columns()
             .into_iter()
-            .find(|column| crate::folds_equal(column.name(), name))
+            .find(|column| crate::implementer::folds_equal(column.name(), name))
     }
 
     /// The column's field in the struct `role` names.
@@ -790,10 +790,20 @@ impl<'a> Row<'a> {
             },
             // A message is written as the leaves it splits into, at the
             // writer's intake; held whole, it states its own category.
-            MarketData::Fix(message) => Self {
-                marketdatakind: message.marketdatakind(),
-                ..Self::operation(kind, message.as_ref(), None)
-            },
+            MarketData::Fix(message) => {
+                let message = &**message;
+                Self {
+                    marketdatakind: message.marketdatakind(),
+                    element: message,
+                    event: Some(message),
+                    market: message,
+                    operation: Some(message),
+                    control: None,
+                    executions: None,
+                    book: None,
+                    sources: true,
+                }
+            }
         }
     }
 
@@ -1137,7 +1147,7 @@ fn charge(value: &MarketData) -> u64 {
         MarketData::BookEvent(book) => book.alive_len() + book.delta().len() + book.events().len(),
         _ => 0,
     };
-    (1 + nested as u64) * (crate::arrow::size::ROW_OVERHEAD as u64 + OPERATION_ROW_BYTES)
+    (1 + nested as u64) * (crate::implementer::ROW_OVERHEAD as u64 + OPERATION_ROW_BYTES)
 }
 
 /// A struct's columns as the writer lays them out, resolved once per

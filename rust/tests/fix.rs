@@ -1,5 +1,7 @@
 //! FIX integration tests.
 
+use yggdryl::FixField;
+
 #[path = "support/allocations.rs"]
 mod allocations;
 
@@ -249,8 +251,7 @@ fn crated_fields() -> usize {
         .iter()
         .filter(|field| category_of(field) == yggdryl::FixCategory::Fields)
         .filter(|field| {
-            !field
-                .as_fix()
+            !FixField::new(field)
                 .tag()
                 .ok()
                 .flatten()
@@ -397,7 +398,7 @@ fn definitions(
 fn msgtypes(registry: &yggdryl::FixRegistry) -> impl Iterator<Item = &yggdryl::Field> {
     registry
         .iter()
-        .filter(|field| field.as_fix().msgtype().is_some())
+        .filter(|field| FixField::new(field).msgtype().is_some())
 }
 
 /// Initial registry scalar fields: the crate's own and the standard
@@ -508,6 +509,8 @@ mod schema;
 mod securityids;
 #[path = "fix/source.rs"]
 mod source;
+#[path = "fix/state.rs"]
+mod state;
 #[path = "fix/store.rs"]
 mod store;
 #[path = "fix/ulbridge.rs"]

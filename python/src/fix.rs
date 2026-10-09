@@ -27,10 +27,10 @@ use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture as CoreFixCapture,
     FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec,
-    FixEntry as CoreFixEntry, FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey, FixMerge,
-    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, FixSource as CoreFixSource,
-    IOBase as CoreIOBase, IdType, MarketValue, MsgType as CoreMsgType, Scalar, Side, StructType,
-    TimeUnit, Timezone,
+    FixEntry as CoreFixEntry, FixField, FixFieldMut, FixHeader as CoreFixHeader,
+    FixId as CoreFixId, FixKey, FixMerge, FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry,
+    FixSource as CoreFixSource, IOBase as CoreIOBase, IdType, MarketValue, MsgType as CoreMsgType,
+    Scalar, Side, StructType, TimeUnit, Timezone,
 };
 
 use crate::field::{PyField, core_field_from_value};
@@ -130,7 +130,7 @@ fn source_record<'py>(py: Python<'py>, source: &CoreFixSource) -> PyResult<Bound
 /// datatype's own value door so a spelling the column refuses is refused
 /// here too.
 pub(crate) fn pluginside_from_py(given: &Bound<'_, PyAny>) -> PyResult<Side> {
-    let value = CoreDataType::side()
+    let value = Side::dtype()
         .scalar(from_py(given)?)
         .map_err(|error| value_error(format!("pluginside: {error}")))?;
     <Side as MarketValue>::from_scalar(&value)
@@ -1593,7 +1593,7 @@ impl PyFixFieldIterator {
         // The cursor is the canonical identifier every registered field
         // carries; a field without one cannot be advanced past, so the walk
         // stops there rather than answering it forever.
-        match field.as_fix().id() {
+        match FixField::new(field).id() {
             Ok(Some(id)) => self.after = Some(id),
             _ => self.done = true,
         }
@@ -1768,7 +1768,9 @@ impl PyFixMsg {
                     .dtype()
                     .map_err(value_error)?
                     .nullable_field(format!("{tag}"));
-                field.as_fix_mut().set_tag(tag).map_err(value_error)?;
+                FixFieldMut::new(&mut field)
+                    .set_tag(tag)
+                    .map_err(value_error)?;
                 field
             };
             fields.push(field);

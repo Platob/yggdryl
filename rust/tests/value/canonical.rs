@@ -219,7 +219,7 @@ mod value {
     /// prints on the way out - the same readings a column takes and prints.
     mod readings {
         use yggdryl::Map;
-        use yggdryl::{DataType, Scalar};
+        use yggdryl::{DataType, Scalar, Side};
 
         fn dtype(expression: &str) -> DataType {
             expression.parse().unwrap()
@@ -334,7 +334,7 @@ mod value {
                 DataType::binary().scalar(code).unwrap().as_bytes(),
                 Some(b"USD".as_slice())
             );
-            let member = DataType::side().scalar("1").unwrap();
+            let member = Side::dtype().scalar("1").unwrap();
             assert_eq!(
                 DataType::binary().scalar(member).unwrap().as_bytes(),
                 Some(b"BUYS".as_slice())

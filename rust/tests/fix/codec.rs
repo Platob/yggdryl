@@ -13,7 +13,10 @@ use arrow_array::RecordBatch;
 use yggdryl::State;
 use yggdryl::graph::{Element, Event};
 use yggdryl::text::{TextBytes, TextLine};
-use yggdryl::{DataType, Field, FixCodec, FixEntry, FixId, FixRegistry, Scalar, StructType};
+use yggdryl::{
+    DataType, Field, FixCodec, FixEntry, FixField, FixFieldMut, FixId, FixRegistry, Scalar,
+    StructType,
+};
 
 fn registry() -> Arc<FixRegistry> {
     super::committed_registry()
@@ -587,7 +590,9 @@ fn a_tag_key_and_a_name_key_build_the_same_message() {
 
     // Case and separators fold away, so a renderer's spelling still resolves,
     // and every spelling with the tag is the one id the field carries.
-    let id = registry().field_by_tag(35).unwrap().as_fix().id().unwrap();
+    let id = FixField::new(registry().field_by_tag(35).unwrap())
+        .id()
+        .unwrap();
     for spelling in ["MsgType", "msgtype", "MSG_TYPE", "msg-type", "Msg Type"] {
         let row = format!("8=FIX.4.4|{spelling}=D|10=0|");
         let message = reader.sole_line(row.as_bytes()).expect(&row);
@@ -620,7 +625,9 @@ fn a_value_is_translated_typed_and_kept_as_it_arrived() {
     // `get_by_id` answers the message through.
     let id = FixId::of(54, "Side").unwrap();
     assert_eq!(
-        registry().field_by_tag(54).unwrap().as_fix().id().unwrap(),
+        FixField::new(registry().field_by_tag(54).unwrap())
+            .id()
+            .unwrap(),
         Some(id)
     );
     assert_eq!(FixId::of(54, "side").unwrap(), id);
@@ -1489,12 +1496,12 @@ fn a_code_declared_under_another_name_is_a_second_message_and_the_bare_code_answ
     // stored one. The codec reads a frame under the first holder's grammar.
     let declare = |name: &str| {
         let mut allocation = DataType::Int32.nullable_field("AllocQty");
-        allocation.as_fix_mut().set_tag(80).unwrap();
+        FixFieldMut::new(&mut allocation).set_tag(80).unwrap();
         let mut message = StructType::from_fields([allocation])
             .map(DataType::from)
             .unwrap()
             .required_field(name);
-        message.as_fix_mut().set_msgtype("J").unwrap();
+        FixFieldMut::new(&mut message).set_msgtype("J").unwrap();
         message
     };
     let frame: &[u8] = b"8=FIX.4.4|35=J|70=A1|78=1|79=ACC|80=5|10=0|";
@@ -1843,33 +1850,33 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
     // occurrence being filled, the members that follow fill that group
     // first, and a member of the outer group closes it.
     let mut sub_id = DataType::utf8().nullable_field("partysubid");
-    sub_id.as_fix_mut().set_tag(523).unwrap();
+    FixFieldMut::new(&mut sub_id).set_tag(523).unwrap();
     let mut sub_type = DataType::Int32.nullable_field("partysubidtype");
-    sub_type.as_fix_mut().set_tag(803).unwrap();
+    FixFieldMut::new(&mut sub_type).set_tag(803).unwrap();
     let sub_item = StructType::from_fields([sub_id.clone(), sub_type.clone()])
         .map(DataType::from)
         .unwrap()
         .required_field("partysub");
     let mut sub_count = DataType::Int32.nullable_field("nopartysubids");
-    sub_count.as_fix_mut().set_tag(802).unwrap();
+    FixFieldMut::new(&mut sub_count).set_tag(802).unwrap();
     // The counter is a field of the dictionary and no member of the item:
     // the nested group is its list alone.
     let mut subs = DataType::serie(sub_item).nullable_field("partysubids");
-    subs.as_fix_mut().set_counter(802).unwrap();
+    FixFieldMut::new(&mut subs).set_counter(802).unwrap();
     let mut party_id = DataType::utf8().nullable_field("partyid");
-    party_id.as_fix_mut().set_tag(448).unwrap();
+    FixFieldMut::new(&mut party_id).set_tag(448).unwrap();
     let mut role = DataType::Int32.nullable_field("partyrole");
-    role.as_fix_mut().set_tag(452).unwrap();
+    FixFieldMut::new(&mut role).set_tag(452).unwrap();
     let item = StructType::from_fields([party_id.clone(), role.clone(), subs.clone()])
         .map(DataType::from)
         .unwrap()
         .required_field("party");
     let mut count = DataType::Int32.nullable_field("nopartyids");
-    count.as_fix_mut().set_tag(453).unwrap();
+    FixFieldMut::new(&mut count).set_tag(453).unwrap();
     let mut parties = DataType::serie(item).nullable_field("parties");
-    parties.as_fix_mut().set_counter(453).unwrap();
+    FixFieldMut::new(&mut parties).set_counter(453).unwrap();
     let mut symbol = DataType::utf8().nullable_field("symbol");
-    symbol.as_fix_mut().set_tag(55).unwrap();
+    FixFieldMut::new(&mut symbol).set_tag(55).unwrap();
     // As the generated dictionary does, every member is also a field of its
     // own by tag and every group is a named definition headed by its
     // counter's own field: the item declares the shape, the tag resolves the
@@ -2028,7 +2035,9 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
         .get_field_by_tag(33)
         .expect("the counter's field");
     assert!(
-        counter.as_fix().names().any(|held| held == "linesoftext"),
+        FixField::new(counter)
+            .names()
+            .any(|held| held == "linesoftext"),
         "the 4.2 spelling is still readable off the counter's field",
     );
 }
@@ -2039,18 +2048,20 @@ fn a_group_the_dictionary_holds_as_a_large_serie_is_its_list_alone() {
     // at one: a dictionary that stored its group in the wider variant is still
     // a dictionary of groups, each its list alone.
     let mut party_id = DataType::utf8().nullable_field("partyid");
-    party_id.as_fix_mut().set_tag(448).unwrap();
+    FixFieldMut::new(&mut party_id).set_tag(448).unwrap();
     let item = StructType::from_fields([party_id])
         .map(DataType::from)
         .unwrap()
         .required_field("item");
     let mut group = DataType::large_serie(item.clone()).nullable_field("parties");
-    group.as_fix_mut().set_counter(453).unwrap();
-    group.as_fix_mut().set_component(item.name()).unwrap();
+    FixFieldMut::new(&mut group).set_counter(453).unwrap();
+    FixFieldMut::new(&mut group)
+        .set_component(item.name())
+        .unwrap();
     let mut counter = DataType::Int32.nullable_field("nopartyids");
-    counter.as_fix_mut().set_tag(453).unwrap();
+    FixFieldMut::new(&mut counter).set_tag(453).unwrap();
     let mut symbol = DataType::utf8().nullable_field("symbol");
-    symbol.as_fix_mut().set_tag(55).unwrap();
+    FixFieldMut::new(&mut symbol).set_tag(55).unwrap();
     let mut registry = FixRegistry::from_fields([counter, symbol]).unwrap();
     registry.insert(item).unwrap();
     registry.insert(group).unwrap();
@@ -2197,13 +2208,15 @@ fn separatorless_group_inference_uses_only_direct_members() {
         .unwrap()
         .required_field("minimalparty");
     let mut group = DataType::serie(item).nullable_field("minimalparties");
-    group.as_fix_mut().set_counter(453).unwrap();
+    FixFieldMut::new(&mut group).set_counter(453).unwrap();
     scoped.insert(group.clone()).unwrap();
     let mut definition = StructType::from_fields([group])
         .map(DataType::from)
         .unwrap()
         .required_field("minimalpartiesmessage");
-    definition.as_fix_mut().set_msgtype("ZMIN").unwrap();
+    FixFieldMut::new(&mut definition)
+        .set_msgtype("ZMIN")
+        .unwrap();
     scoped.insert(definition).unwrap();
     let numeric_name = super::fixed_codec(Arc::new(scoped))
         .sole_line(b"MSGTYPE=ZMIN|#453=1|#453[0]=PARTYID=BUYSIDEPARTYROLE=1")
@@ -2417,7 +2430,7 @@ fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
 fn a_date_column_reads_the_compact_wire_date_and_nulls_what_is_not_one() {
     let mut narrow = FixRegistry::new();
     let mut settled = DataType::date32().nullable_field("settldate");
-    settled.as_fix_mut().set_tag(64).unwrap();
+    FixFieldMut::new(&mut settled).set_tag(64).unwrap();
     narrow.insert(settled).unwrap();
     let reader = super::fixed_codec(Arc::new(narrow));
     let read = |line: &[u8]| {
@@ -2473,7 +2486,7 @@ fn clock_intake_keeps_the_declared_datatypes_contract_and_refuses_wrong_layouts(
 
     let mut narrow = FixRegistry::new();
     let mut clock = DataType::utf8().nullable_field("transacttime");
-    clock.as_fix_mut().set_tag(60).unwrap();
+    FixFieldMut::new(&mut clock).set_tag(60).unwrap();
     narrow.insert(clock).unwrap();
     let reader = super::fixed_codec(Arc::new(narrow));
     for value in ["07:39:12.123+05:30", "20240102-10:15:30.000"] {
@@ -3034,7 +3047,9 @@ mod clock_intake_tests {
     };
     use yggdryl::internals::fix_schema::clock_datatype;
     use yggdryl::text::{TextBytes, TextLine};
-    use yggdryl::{DataType, FixCodec, FixMsg, FixRegistry, Scalar, TimeUnit, Timezone};
+    use yggdryl::{
+        DataType, FixCodec, FixFieldMut, FixMsg, FixRegistry, Scalar, TimeUnit, Timezone,
+    };
 
     fn clock(value: i64) -> Scalar {
         Scalar::datetime64(value, TimeUnit::Nanosecond, Timezone::UTC).unwrap()
@@ -3384,7 +3399,9 @@ mod clock_intake_tests {
     fn declared_absence_differs_from_failed_conversion_and_cleaning() {
         let mut registry = FixRegistry::new();
         let mut sending = registry.field_by_tag(52).unwrap().clone();
-        sending.as_fix_mut().set_nulls(["not-sent"]).unwrap();
+        FixFieldMut::new(&mut sending)
+            .set_nulls(["not-sent"])
+            .unwrap();
         registry.insert(sending).unwrap();
         let codec = FixCodec::new(Arc::new(registry))
             .try_with_default_sending_time(Some(clock(17)))

@@ -4,8 +4,8 @@
 use arrow_schema::extension::ExtensionType;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::{
-    BytesType, CcyType, DataType, DataTypeId, Field, SideType, StateType, StringType, UuidType,
-    VersionType,
+    BytesType, CcyType, DataType, DataTypeId, Field, Side, SideType, StateType, StringType,
+    UuidType, VersionType,
 };
 
 /// The Arrow field the crate writes for one datatype.
@@ -52,7 +52,7 @@ fn an_arrow_field_typed_by_a_marker_imports_as_its_datatype() {
         ),
         (
             ArrowField::new("x", ArrowDataType::UInt8, true).with_extension_type(SideType),
-            DataType::side(),
+            Side::dtype(),
         ),
         (
             ArrowField::new("x", ArrowDataType::FixedSizeBinary(16), true)

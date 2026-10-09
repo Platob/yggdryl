@@ -7,8 +7,8 @@
 //! such key again, and a removal clears them.
 
 use super::{committed_registry, fixed_codec};
-use yggdryl::FixMsg;
 use yggdryl::graph::Element;
+use yggdryl::{FixField, FixMsg};
 
 fn parsed(line: &[u8]) -> FixMsg {
     fixed_codec(committed_registry())
@@ -174,7 +174,7 @@ fn the_other_aliased_fields_still_resolve_from_one_spelling() {
     let codec = fixed_codec(std::sync::Arc::clone(&registry));
     let mut checked = 0;
     for field in registry.iter() {
-        let Some(tag) = field.as_fix().tag().ok().flatten() else {
+        let Some(tag) = FixField::new(field).tag().ok().flatten() else {
             continue;
         };
         // A counter's alias names the group it counts, which is its list
@@ -182,7 +182,7 @@ fn the_other_aliased_fields_still_resolve_from_one_spelling() {
         if field.dtype().is_nested() || tag == 37 || registry.get_field_by_counter(tag).is_some() {
             continue;
         }
-        for alias in field.as_fix().names() {
+        for alias in FixField::new(field).names() {
             // An alias that is another field's canonical name reaches that
             // field, as it did before the rule.
             if registry

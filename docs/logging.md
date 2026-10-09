@@ -1444,15 +1444,18 @@ A record that reaches no handler on its propagating chain goes to the last resor
 
 ## The log facade
 
-`install` makes the tree the backend of the [`log`](https://docs.rs/log) facade, which the crate's own records, its dependencies' and the application's go through: a record's target names its logger with `::` spelled `.`, so `yggdryl::iceberg::table` is `yggdryl.iceberg.table`. The facade's ceiling, `log::max_level`, follows the most verbose level any logger handles, so a record nothing handles is refused by the facade before its message is built.
+`install` makes the tree the backend of the [`log`](https://docs.rs/log) facade, which the crate's own records, its dependencies' and the application's go through: a record's target names its logger with `::` spelled `.`, so `yggdryl::iceberg::table` is `yggdryl.iceberg.table`. A logger is named by its module path under `yggdryl` whatever crate holds the module: one table names the workspace's crates, `yggdryl` and `yggdryl_market` logging under `yggdryl` and `yggdryl_<folder>` under `yggdryl.<folder>`, so a module that moves to its own crate keeps its logger. The facade's ceiling, `log::max_level`, follows the most verbose level any logger handles, so a record nothing handles is refused by the facade before its message is built.
 
 | Target | Logger |
 | --- | --- |
 | `yggdryl::iceberg::table` | `yggdryl.iceberg.table` |
 | `yggdryl` | `yggdryl` |
+| `yggdryl_fix::build` | `yggdryl.fix.build` |
+| `yggdryl_market::book` | `yggdryl.book` |
+| `yggdryl_cli::shell` | `yggdryl_cli.shell`, under the foreign floor |
 | `dependency::client` | `dependency.client`, under the foreign floor |
 
-Installing twice is one installation, `basic_config` installs, and another `log` backend already installed is refused with `Error::Conflict`: the facade takes one per process, and a library does not replace what the application chose. `set_foreign_level(Level::WARNING)` admits a record whose target lies outside the `yggdryl` crate only at `WARNING` and above, whatever its logger's level; it is `NOTSET` - no floor - until set, and the Python binding and the Node addon set `WARNING`, so a crate the build depends on says what went wrong and never what it did.
+Installing twice is one installation, `basic_config` installs, and another `log` backend already installed is refused with `Error::Conflict`: the facade takes one per process, and a library does not replace what the application chose. `set_foreign_level(Level::WARNING)` admits a record whose target lies outside the workspace's crates only at `WARNING` and above, whatever its logger's level; it is `NOTSET` - no floor - until set, and the Python binding and the Node addon set `WARNING`, so a crate the build depends on says what went wrong and never what it did.
 
 The facade makes and remembers a logger for at most 4,096 distinct targets. Past that a new target makes no logger, so targets minted per tenant or per request cannot grow the tree: its records go to the nearest logger the tree already has - its own once `get_logger` made it, else its nearest existing ancestor, else the root - and keep their own name, the target with `::` spelled `.`. Static module paths never reach the bound.
 
@@ -1659,7 +1662,7 @@ The warnings are counted by the engine of [Deduplication](#deduplication) in a t
 - `FileHandler::io()` -> the handle, locked: a record arriving on another thread is held and published once the guard drops if it came due, one logged on the guard's own thread waits for the next publish; on that thread `io()` again waits on itself, and `flush` or `close` -> `Error::Io` of kind `Deadlock`, as from inside the handler's own publish.
 - `FileHandler::write(line, level)` -> holds a line another formatter already spelled, as the Python handler does.
 - `install` beside another `log` backend -> `Error::Conflict`; the Python binding and the Node addon then leave that backend in place, and the core's records go to it.
-- A facade target outside `yggdryl` -> held to the foreign floor; `yggdryl_cli::shell` is outside, `yggdryl` and `yggdryl::...` are inside.
+- A facade target outside the workspace's crates -> held to the foreign floor; `yggdryl_cli::shell` is outside, `yggdryl`, `yggdryl::...`, `yggdryl_market::...` and `yggdryl_fix::...` are inside, the last two named `yggdryl.<module>` and `yggdryl.fix.<module>`.
 - More than 4,096 distinct facade targets -> each new one past the bound makes no logger: its records go to the nearest logger the tree has - its own once `get_logger` made it, else its nearest existing ancestor, else the root - under their own name.
 - `%(name)d` -> refused at byte 7: `name is text and takes the s, r or a conversion`; Python's formatter accepts it and fails on the first record, through `handleError`.
 - `%(created)x` -> refused: `created is a fraction and takes the s, r, a, d, i, u, f, F, e, E, g or G conversion`; `%(levelname)q` -> `expected one of the conversions s, r, a, d, i, u, o, x, X, e, E, f, F, g, G, c, got 'q'`.

@@ -12,7 +12,7 @@ mod datatypes {
     use yggdryl::FieldValue as _;
     use yggdryl::{
         ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Serie,
-        StringEnum, StructType,
+        Side, StringEnum, StructType, TimeInForce,
     };
     use yggdryl::{CcyField, CfiField, CountryField, DxFeedExchangeFeed, Mic, MicField};
 
@@ -283,8 +283,8 @@ mod datatypes {
         assert!(refused.to_string().contains("4 bytes"), "{refused}");
         // An enum is no code: it packs into no integer, because its column
         // stores its member's code already.
-        assert!(DataType::side().ascii_packed(b"BUY").is_err());
-        assert!(DataType::timeinforce().ascii_packed(b"GTC").is_err());
+        assert!(Side::dtype().ascii_packed(b"BUY").is_err());
+        assert!(TimeInForce::dtype().ascii_packed(b"GTC").is_err());
     }
 
     #[test]

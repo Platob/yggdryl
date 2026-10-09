@@ -12,7 +12,9 @@ mod residual {
 
     use super::SoleMessage;
     use yggdryl::graph::{Element, Event, Market, Operation};
-    use yggdryl::{DataType, Field, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
+    use yggdryl::{
+        DataType, Field, FixFieldMut, FixMsg, FixRegistry, Scalar, StructType, fix_schema,
+    };
 
     const LINE: &[u8] = b"8=FIX.4.4|35=D|11=A1|55=AAPL|38=100|59=0|9999=x|10=0|";
     const PARTIES: &[u8] =
@@ -448,8 +450,7 @@ mod residual {
             .expect("a regulatory occurrence")
             .required_field("regulatorytradeid");
         let mut groups = DataType::serie(occurrence).nullable_field("regulatorytradeids");
-        groups
-            .as_fix_mut()
+        FixFieldMut::new(&mut groups)
             .set_counter(1907)
             .expect("NoRegulatoryTradeIDs");
         let root = StructType::from_fields([groups])
@@ -526,9 +527,9 @@ mod residual {
     fn shared_tag_children_remain_residual_and_reconstruct_by_name() {
         let registry = super::committed_registry();
         let mut left = DataType::utf8().required_field("venue_symbol");
-        left.as_fix_mut().set_tag(55).expect("a tag");
+        FixFieldMut::new(&mut left).set_tag(55).expect("a tag");
         let mut right = DataType::utf8().required_field("client_symbol");
-        right.as_fix_mut().set_tag(55).expect("a tag");
+        FixFieldMut::new(&mut right).set_tag(55).expect("a tag");
         let root = StructType::from_fields([left, right])
             .map(DataType::from)
             .expect("a message root")
@@ -665,25 +666,29 @@ mod unresolved {
     use super::SoleMessage;
     use yggdryl::graph::Element;
     use yggdryl::xxhash::xxh128;
-    use yggdryl::{DataType, Error, Field, FixEntry, FixRegistry, Scalar, StructType};
+    use yggdryl::{
+        DataType, Error, Field, FixEntry, FixField, FixFieldMut, FixRegistry, Scalar, StructType,
+    };
 
     fn tagged(name: &str, tag: i32) -> Field {
         let mut field = DataType::utf8().nullable_field(name);
-        field.as_fix_mut().set_tag(tag).unwrap();
+        FixFieldMut::new(&mut field).set_tag(tag).unwrap();
         field
     }
 
     #[test]
     fn registry_tag_writers_refuse_nonpositive_values_atomically() {
         let mut field = tagged("positive", 1);
-        field.as_fix_mut().set_counter(2).unwrap();
-        field.as_fix_mut().set_tags(&[3, i32::MAX]).unwrap();
+        FixFieldMut::new(&mut field).set_counter(2).unwrap();
+        FixFieldMut::new(&mut field)
+            .set_tags(&[3, i32::MAX])
+            .unwrap();
         let before = field.clone();
         for tag in [0, -1, i32::MIN] {
             for (key, result) in [
-                ("FIX:tag", field.as_fix_mut().set_tag(tag)),
-                ("FIX:counter", field.as_fix_mut().set_counter(tag)),
-                ("FIX:tags", field.as_fix_mut().set_tags(&[4, tag])),
+                ("FIX:tag", FixFieldMut::new(&mut field).set_tag(tag)),
+                ("FIX:counter", FixFieldMut::new(&mut field).set_counter(tag)),
+                ("FIX:tags", FixFieldMut::new(&mut field).set_tags(&[4, tag])),
             ] {
                 let error = result.unwrap_err();
                 assert!(
@@ -697,11 +702,11 @@ mod unresolved {
                 assert_eq!(field, before, "{key}={tag}");
             }
         }
-        field.as_fix_mut().set_tag(i32::MAX).unwrap();
-        field.as_fix_mut().set_counter(i32::MAX).unwrap();
-        assert_eq!(field.as_fix().tag().unwrap(), Some(i32::MAX));
-        assert_eq!(field.as_fix().counter().unwrap(), Some(i32::MAX));
-        field.as_fix_mut().set_tags(&[]).unwrap();
+        FixFieldMut::new(&mut field).set_tag(i32::MAX).unwrap();
+        FixFieldMut::new(&mut field).set_counter(i32::MAX).unwrap();
+        assert_eq!(FixField::new(&field).tag().unwrap(), Some(i32::MAX));
+        assert_eq!(FixField::new(&field).counter().unwrap(), Some(i32::MAX));
+        FixFieldMut::new(&mut field).set_tags(&[]).unwrap();
         assert!(field.get_metadata("FIX:tags").is_none());
     }
 
@@ -719,9 +724,9 @@ mod unresolved {
                 let mut field = tagged("incoming", 90_001);
                 field.insert_metadata(key, text.as_str()).unwrap();
                 let error = match key {
-                    "FIX:tag" => field.as_fix().tag().unwrap_err(),
-                    "FIX:counter" => field.as_fix().counter().unwrap_err(),
-                    _ => field.as_fix().tags().unwrap_err(),
+                    "FIX:tag" => FixField::new(&field).tag().unwrap_err(),
+                    "FIX:counter" => FixField::new(&field).counter().unwrap_err(),
+                    _ => FixField::new(&field).tags().unwrap_err(),
                 };
                 assert!(
                     matches!(&error, Error::InvalidMetadataValue { key: actual, .. } if actual == key),
@@ -740,11 +745,11 @@ mod unresolved {
             field.insert_metadata(key, "0001").unwrap();
         }
         field.insert_metadata("FIX:tags", "[1]").unwrap();
-        assert_eq!(field.as_fix().tag().unwrap(), Some(1));
-        assert_eq!(field.as_fix().counter().unwrap(), Some(1));
-        assert_eq!(field.as_fix().tags().unwrap(), [1]);
+        assert_eq!(FixField::new(&field).tag().unwrap(), Some(1));
+        assert_eq!(FixField::new(&field).counter().unwrap(), Some(1));
+        assert_eq!(FixField::new(&field).tags().unwrap(), [1]);
         field.insert_metadata("FIX:tags", "[0001]").unwrap();
-        let error = field.as_fix().tags().unwrap_err();
+        let error = FixField::new(&field).tags().unwrap_err();
         assert!(
             matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "FIX:tags"),
             "{error}"
@@ -831,7 +836,7 @@ mod unresolved {
     fn a_group_keeps_resolved_members_and_unknown_children_under_the_stated_counter() {
         let mut registry = FixRegistry::new();
         let mut counter = DataType::Int32.nullable_field("norows");
-        counter.as_fix_mut().set_tag(90_001).unwrap();
+        FixFieldMut::new(&mut counter).set_tag(90_001).unwrap();
         registry.insert(counter).unwrap();
         let mut group = DataType::serie(
             StructType::from_fields([tagged("scopedvalue", 90_002)])
@@ -840,7 +845,7 @@ mod unresolved {
                 .required_field("row"),
         )
         .nullable_field("rows");
-        group.as_fix_mut().set_counter(90_001).unwrap();
+        FixFieldMut::new(&mut group).set_counter(90_001).unwrap();
         registry.insert(group).unwrap();
         assert!(registry.get_field_by_tag(90_002).is_none());
         let codec = super::fixed_codec(Arc::new(registry));
@@ -903,8 +908,12 @@ mod unresolved {
     fn numeric_and_named_aliases_reach_the_canonical_field_and_re_emit_its_tag() {
         let mut registry = super::committed_registry().as_ref().clone();
         let mut symbol = registry.field_by_tag(55).unwrap().clone();
-        symbol.as_fix_mut().set_tags(&[9_000_001]).unwrap();
-        symbol.as_fix_mut().set_names(["SyntheticSymbol"]).unwrap();
+        FixFieldMut::new(&mut symbol)
+            .set_tags(&[9_000_001])
+            .unwrap();
+        FixFieldMut::new(&mut symbol)
+            .set_names(["SyntheticSymbol"])
+            .unwrap();
         registry.insert(symbol).unwrap();
         let codec = super::fixed_codec(Arc::new(registry));
         let canonical = codec.sole_line(b"35=D|55=SYNTH|10=0|").unwrap();

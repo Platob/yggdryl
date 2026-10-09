@@ -326,7 +326,7 @@ fn market_column_schema_has_one_owner_and_order() {
     assert_eq!(MarketColumn::SecurityIds.display(), "Security IDs");
     assert_eq!(MarketColumn::Ticker.datatype(), DataType::utf8());
     assert_eq!(MarketColumn::Unit.datatype(), DataType::Unit);
-    assert_eq!(MarketColumn::Side.datatype(), DataType::side());
+    assert_eq!(MarketColumn::Side.datatype(), Side::dtype());
     assert_eq!(MarketColumn::of_name("Price"), Some(MarketColumn::Price));
     assert_eq!(
         MarketColumn::of_name("Quantity"),

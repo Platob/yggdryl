@@ -11,8 +11,8 @@ use super::SoleMessage;
 use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{
-    DataType, FixCodec, FixDedup, FixMsg, FixRegistry, IdKey, IdSource, IdType, Scalar, StructType,
-    fix_schema,
+    DataType, FixCodec, FixDedup, FixField, FixFieldMut, FixMsg, FixRegistry, IdKey, IdSource,
+    IdType, Scalar, StructType, fix_schema,
 };
 
 fn registry() -> Arc<FixRegistry> {
@@ -31,7 +31,7 @@ fn direction_registry() -> Arc<FixRegistry> {
     let mut registry = FixRegistry::new();
     // Tag 385 as the dictionary types it: text carrying its code set.
     let mut direction = DataType::utf8().nullable_field("MsgDirection");
-    direction.as_fix_mut().set_tag(385).unwrap();
+    FixFieldMut::new(&mut direction).set_tag(385).unwrap();
     registry
         .set_codeset(
             "msgdirectioncodeset",
@@ -41,8 +41,7 @@ fn direction_registry() -> Arc<FixRegistry> {
             ],
         )
         .unwrap();
-    direction
-        .as_fix_mut()
+    FixFieldMut::new(&mut direction)
         .set_codeset("msgdirectioncodeset")
         .unwrap();
     registry.insert(direction).unwrap();
@@ -2463,8 +2462,8 @@ fn a_batch_with_no_arrival_record_cannot_be_written() {
 fn plugin_registry() -> Arc<FixRegistry> {
     let mut registry = registry().as_ref().clone();
     let mut field = DataType::utf8().nullable_field("VenueTag");
-    field.as_fix_mut().set_tag(5001).unwrap();
-    field.as_fix_mut().set_sources(["venue"]).unwrap();
+    FixFieldMut::new(&mut field).set_tag(5001).unwrap();
+    FixFieldMut::new(&mut field).set_sources(["venue"]).unwrap();
     registry.insert(field).unwrap();
     Arc::new(registry)
 }
@@ -2503,7 +2502,7 @@ fn a_rows_msgpluginid_fills_its_own_column_and_selects_no_dialect() {
     // the row is read under: the venue's field says which dictionary spoke
     // it, and the message root says nothing, because a message is not a
     // dictionary member.
-    let venue = registry.field_by_tag(5001).unwrap().as_fix();
+    let venue = FixField::new(registry.field_by_tag(5001).unwrap());
     assert!(venue.has_source("venue"));
     assert_eq!(venue.sources().collect::<Vec<_>>(), ["venue"]);
 
@@ -2516,7 +2515,7 @@ fn a_rows_msgpluginid_fills_its_own_column_and_selects_no_dialect() {
     for spelled in ["venue", "VNU", "OMS_X1_TradeCapture", long.as_str()] {
         let message = one_of(&codec, &plugin_line(body, Some(spelled)));
         assert_eq!(
-            message.as_field().as_fix().sources().count(),
+            FixField::new(message.as_field()).sources().count(),
             0,
             "{spelled}: a message root carries no membership"
         );
@@ -2812,7 +2811,7 @@ fn a_payload_column_spelled_msgpluginid_is_the_payload_and_fills_no_plugin() {
     assert_eq!(streamed.len(), 1);
 
     for message in [&alone, &streamed[0]] {
-        assert_eq!(message.as_field().as_fix().sources().count(), 0);
+        assert_eq!(FixField::new(message.as_field()).sources().count(), 0);
         assert!(
             message
                 .get_by_tag(yggdryl::MSGPLUGINID_TAG_NAME.0)
@@ -3251,7 +3250,7 @@ fn a_dated_capture_reads_a_retired_spelling_and_the_fact_it_names_is_the_events(
     let quiet = one(&line(b"8=FIX.4.4|35=D|11=A|10=0|", [None, Some("")]));
     assert_eq!(quiet.as_field().name(), "D");
     assert_eq!(
-        quiet.as_field().as_fix().sources().count(),
+        FixField::new(quiet.as_field()).sources().count(),
         0,
         "a plugin names no dialect: a message is not a dictionary member"
     );

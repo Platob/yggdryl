@@ -16,9 +16,9 @@
 use regex::bytes::RegexSet;
 use smol_str::SmolStr;
 
-use super::FixRegistry;
 use super::MSGDIRECTION_TAG_NAME;
 use super::directions::{FixDirection, compile, outside_set, repeated};
+use super::{FixField, FixFieldMut, FixRegistry};
 use crate::{DataType, Field};
 
 /// The name tag 385's set gives the code a sent message carries.
@@ -124,7 +124,7 @@ impl MsgDirection {
             || {
                 let mut field =
                     DataType::utf8().required_field(MSGDIRECTION_TAG_NAME.1.to_ascii_lowercase());
-                let _ = field.as_fix_mut().set_tag(MSGDIRECTION_TAG_NAME.0);
+                let _ = FixFieldMut::new(&mut field).set_tag(MSGDIRECTION_TAG_NAME.0);
                 field
             },
             super::build::stated,
@@ -154,7 +154,7 @@ impl MsgDirection {
             rules: Vec::new(),
         };
         let stated: Vec<FixDirection> = {
-            let walk = reading.field.as_fix().directions();
+            let walk = FixField::new(&reading.field).directions();
             if walk.is_stated() {
                 walk.filter_map(|entry| match entry {
                     Ok(entry) => Some(FixDirection::from(entry)),
@@ -286,7 +286,7 @@ impl MsgDirection {
     /// front of it does, `Response:` and `Request:` under the defaults.
     #[must_use]
     pub fn read_bytes(&self, line: &[u8]) -> Option<&str> {
-        let bound = crate::mime_type::line::payload_at(line).unwrap_or(line.len());
+        let bound = crate::implementer::payload_at(line).unwrap_or(line.len());
         self.read_prefix(&line[..bound])
     }
 

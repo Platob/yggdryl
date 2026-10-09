@@ -16,16 +16,14 @@
 //! register, each the code of a member of its closed set; and `state` is
 //! the core's own enum leaf.
 //!
-//! The vocabulary follows the FIX Latest datatype table, plus `mic` -
-//! ISO 10383's name for what FIX calls `Exchange`. The dictionary generator
-//! resolves FIX's `Currency` source type to `ccy`; schema declarations use
-//! `ccy` directly.
-//!
-//! Five FIX base types already have a meaning in the Arrow/SQL grammar and
-//! keep it, because a schema string must not change meaning under a reader:
-//! `int` is `int32`, `float` is `float32`, `char` and `string` are `utf8`, and
-//! `boolean` is `boolean`. The FIX types derived from `int` and `float` do get
-//! registrations, and those carry the precision the base type does not.
+//! The core's own names are its codes and `state`. The codes keep the
+//! names FIX gives them beside their own: `exchange` is FIX's name for what
+//! ISO 10383 calls `mic`, and the dictionary generator resolves FIX's
+//! `Currency` source type to `ccy`, which schema declarations use directly.
+//! The FIX Latest datatype names - `Qty`, `UTCTimestamp`, `Tenor` and the
+//! rest - are the FIX module's own table, which the core's seed claims
+//! beside its names until the FIX crate claims it itself; the listing
+//! reads them as one, in name order.
 //!
 //! | FIX | base | resolves to | why |
 //! | --- | --- | --- | --- |
@@ -35,72 +33,13 @@
 //! | `cfi` | - | `cfi` | ISO 10962, exactly 6 bytes |
 //! | `Side` | char | `side` | a code set the standard declares, stored as its `uint8` code |
 //! | `UnitOfMeasure` | String | `unit` | the unit a quantity is stated in, at most 32 bytes |
-//! | `Language` | String | `fixed_ascii(2)` | ISO 639-1 alpha-2 |
-//! | `MonthYear` | String | `fixed_ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
-//! | `Tenor` | Pattern | `fixed_ascii(8)` | `D5`, `W2`, `M3`, `Y1` |
-//! | `Pattern` | - | `utf8` | the abstract base of `Tenor` and the reserved ranges |
-//! | `Length` | int | `int32` | a byte count |
-//! | `TagNum` | int | `int32` | a FIX tag |
-//! | `SeqNum` | int | `int64` | a session sequence number outgrows `int32` |
-//! | `NumInGroup` | int | `int32` | a repeating-group counter |
-//! | `DayOfMonth` | int | `int8` | 1 through 31 |
-//! | `Reserved100Plus` | Pattern | `int32` | a user-defined enumeration value |
-//! | `Reserved1000Plus` | Pattern | `int32` | as above |
-//! | `Reserved4000Plus` | Pattern | `int32` | as above |
-//! | `Qty` | float | `float64` | the specification states no scale |
-//! | `Price` | float | `float64` | as above |
-//! | `PriceOffset` | float | `float64` | as above, signed |
-//! | `Percentage` | float | `float64` | `0.0525` is 5.25% |
-//! | `Amt` | float | `float64` | one width, so the family is arithmetic |
-//! | `UTCTimestamp` | String | `datetime64(ns,"UTC")` | the instant, at the finest FIX width |
-//! | `TZTimestamp` | String | `datetime64(ns,"UTC")` | the offset resolves into the instant |
-//! | `UTCTimeOnly` | String | `time64(ns)` | a time of day with a fraction |
-//! | `LocalMktTime` | String | `time64(ns)` | a time of day, one type with `UTCTimeOnly` |
-//! | `UTCDateOnly`, `utcdate` | String | `datetime64(ns,"UTC")` | that day at midnight, in UTC |
-//! | `LocalMktDate` | String | `datetime64(ns)` | that day at midnight, stating no zone |
-//! | `LocalMktDatetime` | String | `datetime64(ns)` | a local instant, stating no zone |
-//! | `TZTimeOnly` | String | `datetime64(ns,"UTC")` | the offset resolves into the instant, on the epoch day |
-//! | `MultipleCharValue` | char | `utf8` | space-delimited members |
-//! | `MultipleStringValue` | String | `utf8` | space-delimited members |
-//! | `XID` | String | `utf8` | an XML identifier |
-//! | `XIDREF` | String | `utf8` | a reference to one |
-//! | `data` | - | `binary` | opaque bytes |
-//! | `XMLData` | data | `binary` | an XML document, opaque here |
-//!
-//! The float family is `float64` because the specification declares all five
-//! as `float` subtypes and states no scale for any of them anywhere. A table
-//! whose job is to say what a FIX datatype *is* must not improve on the
-//! specification, and a pinned scale is wrong in both directions: it truncates
-//! a venue quoting finer than eight places and pads every value that does not,
-//! and which venues quote how is a fact about a counterparty rather than about
-//! a datatype. One width also keeps the family arithmetic - `Amt` at 128 bits
-//! beside `Qty` at 64 would make every consumer multiplying a quantity by a
-//! price cast first, per row, forever.
-//!
-//! The cost, plainly: binary floating point does not hold `0.1`, and a column
-//! of `float64` is not where a book's notional should be accumulated over a
-//! day. It is 53 bits of mantissa, exact for every integer quantity below
-//! `2^53` and for the price grids venues actually quote. A venue needing exact
-//! decimal declares its own `decimal(precision,scale)`, which is why these are
-//! names over the ordinary constructors and not a second numeric model.
-//!
-//! `TZTimestamp` keeps the instant and drops the local offset, because an
-//! Arrow column carries one zone for every row. Read it under
-//! `datetime64(ns,"<zone>")` when the local reading is the value.
-//!
-//! `TZTimeOnly` is the same instant under a missing date, and the epoch day
-//! supplies it: `07:39+05:30` is `1970-01-01T02:09:00Z`. That keeps the
-//! reading arithmetic - two of them subtract, one sorts against another, the
-//! offset is resolved rather than carried as text - where the fixed-width
-//! ASCII it used to be kept none of it, and did not even hold the type: the
-//! widest legal `TZTimeOnly` is eighteen bytes and the box was sixteen.
 
 use std::sync::OnceLock;
 
 use smol_str::format_smolstr;
 
 use crate::plugin::Register;
-use crate::{DataType, Error, Result, TimeUnit, Timezone};
+use crate::{DataType, Error, Result};
 
 use crate::parser::normalized;
 
@@ -114,22 +53,16 @@ static LOGICAL_NAMES: Register<&'static str, (&'static str, DataType)> =
     Register::new("logical name");
 static SEEDED: OnceLock<()> = OnceLock::new();
 
-/// A fixed US-ASCII width, spelled once for the listing below.
-///
-/// Every width in the listing is a literal above zero, so the leaf is built
-/// without the validation `DataType::fixed_ascii` runs.
-const fn fixed_ascii(width: u32) -> DataType {
-    DataType::FixedAsciiString(width)
-}
-
-/// The core's own logical names over its own datatypes, claimed first when
-/// the register is seeded. The registered enum kinds' names are the kinds'
-/// own, answered from the market register beside these.
+/// The core's own logical names over its own datatypes - its codes and
+/// `state` - claimed first when the register is seeded, the FIX Latest
+/// names of `crate::fix::LOGICAL_NAMES` beside them. The registered enum
+/// kinds' names are the kinds' own, answered from the market register
+/// beside these.
 ///
 /// The names are stored in their normalized spelling - lowercase, with no
 /// `_`, `-`, or space - which is the form [`DataType::from_logical_name`]
-/// folds a caller's spelling into, so `UTCTimestamp`, `utc_timestamp`,
-/// and `UTC Timestamp` are one name.
+/// folds a caller's spelling into, so `Exchange`, `ex_change` and
+/// `EXCHANGE` are one name.
 const CORE_NAMES: &[(&str, DataType)] = &[
     // The ISO code vocabularies and the securities identifiers are
     // datatypes of their own, so their names resolve to themselves
@@ -165,124 +98,14 @@ const CORE_NAMES: &[(&str, DataType)] = &[
     ("elf", DataType::Elf),
     ("dti", DataType::Dti),
     ("fisn", DataType::Fisn),
-    // The rest are names over a fixed US-ASCII width, which is all they
-    // need.
-    ("language", fixed_ascii(2)),
-    ("monthyear", fixed_ascii(8)),
-    ("tenor", fixed_ascii(8)),
-    ("pattern", DataType::utf8()),
-    // The int family, each carrying the range its base type does not.
-    ("length", DataType::Int32),
-    ("tagnum", DataType::Int32),
-    ("seqnum", DataType::Int64),
-    ("numingroup", DataType::Int32),
-    ("dayofmonth", DataType::Int8),
-    ("reserved100plus", DataType::Int32),
-    ("reserved1000plus", DataType::Int32),
-    ("reserved4000plus", DataType::Int32),
-    // The float family, which the specification declares as `float` and
-    // states no scale for anywhere.
-    //
-    // A table whose job is to say what a FIX datatype *is* must not
-    // improve on the specification, and a pinned scale is wrong in both
-    // directions: it truncates a venue quoting finer than eight places and
-    // pads every value that does not, and which venues quote how is a fact
-    // about a counterparty rather than about a datatype. Two widths in one
-    // family cannot be arithmetic either - `Amt` at 128 bits beside `Qty`
-    // at 64 would make every consumer multiplying a quantity by a price
-    // cast first, per row, forever.
-    //
-    // The cost, said plainly: binary floating point does not hold `0.1`,
-    // and a column of `float64` is not where a book's notional should be
-    // accumulated over a day. It is 53 bits of mantissa - exact for every
-    // integer quantity below `2^53` and for the price grids venues
-    // actually quote - and nothing is lost by the choice, because the
-    // authority for a value is the entry as it arrived: the typed column
-    // is a view for arithmetic, and a consumer needing exact decimal reads
-    // the entry or casts the column.
-    ("qty", DataType::Float64),
-    ("price", DataType::Float64),
-    ("priceoffset", DataType::Float64),
-    ("percentage", DataType::Float64),
-    ("amt", DataType::Float64),
-    // The temporals.
-    (
-        "utctimestamp",
-        DataType::DateTime64 {
-            unit: TimeUnit::Nanosecond,
-            timezone: Timezone::UTC,
-        },
-    ),
-    (
-        "tztimestamp",
-        DataType::DateTime64 {
-            unit: TimeUnit::Nanosecond,
-            timezone: Timezone::UTC,
-        },
-    ),
-    // Every zone-less time of day is one type. A FIX time is ASCII
-    // whatever the version, and the two names differ in which clock the
-    // value is read against rather than in what it can hold - so pinning
-    // one to seconds makes a capture carrying both cast per row to
-    // compare them, and loses a millisecond the wire actually sent.
-    ("utctimeonly", DataType::Time64(TimeUnit::Nanosecond)),
-    ("localmkttime", DataType::Time64(TimeUnit::Nanosecond)),
-    // A FIX date is a day, and a day is an instant at midnight rather
-    // than a second type to cast through: a capture joining a settlement
-    // date to a transact time compares them directly, and a venue that
-    // starts sending a time on a field that carried a date widens no
-    // column. The zone is the one the name states - a UTC date is UTC,
-    // and a local market date states none, so it must not claim one.
-    (
-        "utcdate",
-        DataType::DateTime64 {
-            unit: TimeUnit::Nanosecond,
-            timezone: Timezone::UTC,
-        },
-    ),
-    (
-        "utcdateonly",
-        DataType::DateTime64 {
-            unit: TimeUnit::Nanosecond,
-            timezone: Timezone::UTC,
-        },
-    ),
-    (
-        "localmktdate",
-        DataType::DateTime64 {
-            unit: TimeUnit::Nanosecond,
-            timezone: Timezone::NAIVE,
-        },
-    ),
-    // A local market value states no zone, so it must not claim one.
-    // `Naive` is that statement made explicitly rather than by omission.
-    (
-        "localmktdatetime",
-        DataType::DateTime64 {
-            unit: TimeUnit::Nanosecond,
-            timezone: Timezone::NAIVE,
-        },
-    ),
-    (
-        "tztimeonly",
-        DataType::DateTime64 {
-            unit: TimeUnit::Nanosecond,
-            timezone: Timezone::UTC,
-        },
-    ),
-    // The remaining text and binary shapes.
-    ("multiplecharvalue", DataType::utf8()),
-    ("multiplestringvalue", DataType::utf8()),
-    ("xid", DataType::utf8()),
-    ("xidref", DataType::utf8()),
-    ("data", DataType::binary()),
-    ("xmldata", DataType::binary()),
 ];
 
-/// The core's names claimed, once, before the register answers anything.
+/// The core's names claimed, once, before the register answers anything,
+/// and the FIX Latest names beside them: the FIX module's table, which the
+/// core claims until the FIX crate claims it itself.
 fn seed() {
     SEEDED.get_or_init(|| {
-        for (name, dtype) in CORE_NAMES.iter().cloned() {
+        for (name, dtype) in CORE_NAMES.iter().chain(crate::fix::LOGICAL_NAMES).cloned() {
             // The core states each of its names once.
             LOGICAL_NAMES
                 .claim(name, (name, dtype), CORE)

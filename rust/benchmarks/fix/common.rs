@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{DataType, Field, FixRegistry};
+use yggdryl::{DataType, Field, FixFieldMut, FixRegistry};
 
 /// Large-dictionary size: reportable in release, quick to smoke-test in debug.
 pub(crate) const LARGE_FIELDS: usize = crate::bench_profile::corpus(400, 50);
@@ -29,13 +29,13 @@ fn vendored(count: usize) -> Vec<Field> {
         .map(|index| {
             let mut field = DataType::Int64.nullable_field(format!("Vendor{index:05}"));
             let tag = i32::try_from(5_000 + index).expect("a small tag");
-            field.as_fix_mut().set_tag(tag).expect("a generated tag");
-            field
-                .as_fix_mut()
+            FixFieldMut::new(&mut field)
+                .set_tag(tag)
+                .expect("a generated tag");
+            FixFieldMut::new(&mut field)
                 .set_sources([venue])
                 .expect("a generated membership");
-            field
-                .as_fix_mut()
+            FixFieldMut::new(&mut field)
                 .set_names([format!("VendorAlias{index:05}")])
                 .expect("a generated alias");
             field
@@ -77,9 +77,10 @@ pub(crate) fn generated(count: usize) -> Vec<Field> {
         .map(|index| {
             let mut field = DataType::Int64.nullable_field(format!("Generated{index:05}"));
             let tag = i32::try_from(5_000 + index).expect("a small tag");
-            field.as_fix_mut().set_tag(tag).expect("a generated tag");
-            field
-                .as_fix_mut()
+            FixFieldMut::new(&mut field)
+                .set_tag(tag)
+                .expect("a generated tag");
+            FixFieldMut::new(&mut field)
                 .set_names([format!("GeneratedAlias{index:05}")])
                 .expect("a generated alias");
             field
@@ -101,9 +102,10 @@ pub(crate) fn mixed_categories(count: usize) -> Vec<Field> {
             } else {
                 DataType::Int64.nullable_field(format!("Generated{index:05}"))
             };
-            field.as_fix_mut().set_tag(tag).expect("a generated tag");
-            field
-                .as_fix_mut()
+            FixFieldMut::new(&mut field)
+                .set_tag(tag)
+                .expect("a generated tag");
+            FixFieldMut::new(&mut field)
                 .set_names([format!("MixedAlias{index:05}")])
                 .expect("a generated alias");
             field

@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use std::hint::black_box;
 use yggdryl::graph::{Element, Event};
 use yggdryl::{
-    DataType, Field, FieldPath, FixCode, FixCodeValue, FixCodec, FixId, FixKey, FixRegistry,
-    MimeType,
+    DataType, Field, FieldPath, FixCode, FixCodeValue, FixCodec, FixField, FixFieldMut, FixId,
+    FixKey, FixRegistry, MimeType,
 };
 
 use super::{DIALECT_FIELDS, LARGE_FIELDS, generated, mixed_categories, seed, two_dialects, venue};
@@ -31,8 +31,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
     assert!(registry.get_field_by_name("absent").is_none());
     let mut alternate = registry.clone();
     let mut field = DataType::utf8().nullable_field("AlternateTagBenchmark");
-    field.as_fix_mut().set_tag(9_000).unwrap();
-    field.as_fix_mut().set_tags(&[9_001]).unwrap();
+    FixFieldMut::new(&mut field).set_tag(9_000).unwrap();
+    FixFieldMut::new(&mut field).set_tags(&[9_001]).unwrap();
     alternate.insert(field).unwrap();
     assert_eq!(
         alternate.field(9_001).unwrap(),
@@ -46,7 +46,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .unwrap();
     group.bench_function("identifier_declaration", |bencher| {
         bencher.iter(|| {
-            for name in black_box(identifiers).as_field().as_fix().identifiers() {
+            for name in FixField::new(black_box(identifiers).as_field()).identifiers() {
                 black_box(name);
             }
         });
@@ -127,7 +127,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("field_id", |bencher| {
         let symbol = registry.field(55).unwrap();
-        bencher.iter(|| black_box(symbol).as_fix().id().unwrap().unwrap());
+        bencher.iter(|| FixField::new(black_box(symbol)).id().unwrap().unwrap());
     });
 
     // The generic pair against the specialized one it redirects to.
@@ -171,7 +171,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // lowercase name map that must fold the query to probe it.
     let by_tag: HashMap<i32, Field> = registry
         .iter()
-        .map(|field| (field.as_fix().tag().unwrap().unwrap(), field.clone()))
+        .map(|field| (FixField::new(field).tag().unwrap().unwrap(), field.clone()))
         .collect();
     let by_name: HashMap<String, Field> = registry
         .iter()
@@ -183,7 +183,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // question - it cannot hold two fields on one tag at all.
     let by_id: HashMap<FixId, Field> = registry
         .iter()
-        .map(|field| (field.as_fix().id().unwrap().unwrap(), field.clone()))
+        .map(|field| (FixField::new(field).id().unwrap().unwrap(), field.clone()))
         .collect();
     group.bench_function("baseline_hashmap_tag_hit", |bencher| {
         bencher.iter(|| black_box(&by_tag).get(black_box(&55)));
@@ -209,11 +209,11 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let vendor_alias = format!("VendorAlias{dialect_middle:05}");
     let vendor_id = FixId::of(vendor_tag, &vendor_name).expect("a vendor identifier");
     let vendor = mixed.field(vendor_id).expect("the venue field by its id");
-    assert!(vendor.as_fix().has_source(venue));
-    assert!(!mixed.field(55).unwrap().as_fix().has_source(venue));
+    assert!(FixField::new(vendor).has_source(venue));
+    assert!(!FixField::new(mixed.field(55).unwrap()).has_source(venue));
     assert_eq!(mixed.dialects(), [venue.to_owned()]);
     group.bench_function("has_source_vendor", |bencher| {
-        bencher.iter(|| black_box(vendor).as_fix().has_source(black_box(venue)));
+        bencher.iter(|| FixField::new(black_box(vendor)).has_source(black_box(venue)));
     });
     group.bench_function("id_hit_vendor", |bencher| {
         bencher.iter(|| black_box(&mixed).get_field_by_id(black_box(vendor_id)));
@@ -263,8 +263,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 .unwrap()
                 .required_field("item");
         let mut field = yggdryl::DataType::serie(item).nullable_field(format!("Group{index:05}"));
-        field
-            .as_fix_mut()
+        FixFieldMut::new(&mut field)
             .set_counter(i32::try_from(5_000 + index).unwrap())
             .unwrap();
         realistic.insert(field).unwrap();
@@ -300,9 +299,10 @@ fn vocabulary(count: usize) -> FixRegistry {
         .set_codeset(VOCABULARY, &codes)
         .expect("a valid generated code set");
     let mut field = DataType::utf8().nullable_field("Vocabulary");
-    field.as_fix_mut().set_tag(9995).expect("a static tag");
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field)
+        .set_tag(9995)
+        .expect("a static tag");
+    FixFieldMut::new(&mut field)
         .set_codeset(VOCABULARY)
         .expect("the set the dictionary holds");
     registry

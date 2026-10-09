@@ -3,8 +3,8 @@ use std::hint::black_box;
 use criterion::Criterion;
 use yggdryl::IdKey;
 use yggdryl::{
-    DataType, Field, FieldScalar, Float16, Float32, Float64, IOMode, Scalar, TimeUnit, Timezone,
-    Vocabulary, i256,
+    DataType, Field, FieldScalar, Float16, Float32, Float64, IOMode, MarketDataKind, Scalar, Side,
+    TimeUnit, Timezone, Vocabulary, i256,
 };
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
@@ -83,13 +83,13 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         let leaves: [(&str, DataType, [&str; 5], [i32; 5]); 2] = [
             (
                 "marketdatakind",
-                DataType::marketdatakind(),
+                MarketDataKind::dtype(),
                 ["ORDR", "QUOT", "EXEC", "TRAD", "BOOK"],
                 [10, 14, 8, 21, 3],
             ),
             (
                 "side",
-                DataType::side(),
+                Side::dtype(),
                 ["BUY", "SELL", "1", "2", "SellShort"],
                 [1, 2, 5, 1, 2],
             ),

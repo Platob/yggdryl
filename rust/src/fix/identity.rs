@@ -13,7 +13,7 @@ use crate::{
 
 use super::schema::CLOCK_DATATYPE;
 use super::{
-    CONVERSATIONID_TAG_NAME, FixRegistry, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME,
+    CONVERSATIONID_TAG_NAME, FixField, FixRegistry, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME,
     MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGPLUGINSIDE_TAG_NAME, MSGSESSEVENTID_TAG_NAME,
     MSGSESSIONID_TAG_NAME, SOURCEURL_TAG_NAME,
 };
@@ -181,7 +181,7 @@ impl FixHeader {
                     self.stated_sendingtime = true;
                 }
             }
-            43 => self.possdupflag = crate::boolean::bool_of(value),
+            43 => self.possdupflag = crate::implementer::bool_of(value),
             93 => self.signaturelength = integer_of(value),
             89 => self.signature = value.as_bytes().map(<[u8]>::to_vec),
             10 => self.checksum = text(),
@@ -210,7 +210,7 @@ impl FixHeader {
 /// spelling: a code or an enum member is an identity, whatever it prints.
 pub(super) fn integer_of<T: TryFrom<i128> + TryFrom<u128>>(value: &Scalar) -> Option<T> {
     match value.as_string() {
-        Some(text) => crate::integer::integer_from_text_as(text.as_str()),
+        Some(text) => crate::implementer::integer_from_text_as(text.as_str()),
         None => value.as_i128().and_then(|held| T::try_from(held).ok()),
     }
 }
@@ -1191,13 +1191,16 @@ pub(super) fn refused(
 ) -> Error {
     Error::InvalidRecord {
         path: crate::path::Path::root().field(name).render().into(),
-        reason: crate::text::expected_got(expected, crate::text::elide_display(&actual)),
+        reason: crate::implementer::expected_got(
+            expected,
+            crate::implementer::elide_display(&actual),
+        ),
     }
 }
 
 pub(super) fn validate_field(field: &Field, tag: i32) -> Result<()> {
     if let Some(expected) = required_dtype(tag)
-        && (field.dtype() != &expected || field.as_fix().counter()?.is_some())
+        && (field.dtype() != &expected || FixField::new(field).counter()?.is_some())
     {
         return Err(refused(field.name(), expected, field.dtype()));
     }
@@ -1221,7 +1224,7 @@ pub(super) fn resolve_tag(field: &Field, registry: &FixRegistry) -> Result<Optio
         if let Some(explicit) = registry.facts_of(field).and_then(|facts| facts.tag) {
             return Ok(Some(explicit));
         }
-        if let Some(explicit) = field.as_fix().tag()? {
+        if let Some(explicit) = FixField::new(field).tag()? {
             return Ok(Some(explicit));
         }
     }
@@ -1239,7 +1242,7 @@ pub(super) fn validate_value(name: &str, dtype: &DataType, value: &Scalar) -> Re
         dtype if dtype == &CLOCK_DATATYPE => {
             matches!(value.as_datetime64(), Some((_, TimeUnit::Nanosecond, zone)) if *zone == Timezone::UTC)
         }
-        _ => matches!(value, crate::string_scalars!(_)),
+        _ => matches!(value, crate::implementer::string_scalars!(_)),
     };
     if exact {
         Ok(())

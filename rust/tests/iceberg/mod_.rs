@@ -1725,19 +1725,19 @@ mod types {
                 State::Expired.code(),
             ),
             (
-                DataType::marketdatakind(),
+                MarketDataKind::dtype(),
                 Scalar::from(MarketDataKind::Order),
                 10,
             ),
             (
-                DataType::marketdatakind(),
+                MarketDataKind::dtype(),
                 Scalar::from(MarketDataKind::Unknown),
                 0,
             ),
-            (DataType::side(), Scalar::from(Side::Buy), 1),
-            (DataType::side(), Scalar::from(Side::SellUnd), 17),
+            (Side::dtype(), Scalar::from(Side::Buy), 1),
+            (Side::dtype(), Scalar::from(Side::SellUnd), 17),
             (
-                DataType::timeinforce(),
+                TimeInForce::dtype(),
                 Scalar::from(TimeInForce::GoodTillCancel),
                 2,
             ),
@@ -1759,13 +1759,10 @@ mod types {
             None
         );
         assert_eq!(
-            single_to_value(&26_i32.to_le_bytes(), &DataType::marketdatakind()),
+            single_to_value(&26_i32.to_le_bytes(), &MarketDataKind::dtype()),
             None
         );
-        assert_eq!(
-            single_to_value(&18_i32.to_le_bytes(), &DataType::side()),
-            None
-        );
+        assert_eq!(single_to_value(&18_i32.to_le_bytes(), &Side::dtype()), None);
     }
 
     #[test]

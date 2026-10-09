@@ -3,17 +3,16 @@
 //! operation carries it, and the `Parties` role stating it.
 
 use yggdryl::fix::{FixIdMapKind, FixIdSource};
-use yggdryl::{DataType, Field, FixRegistry, IdKey, IdType};
+use yggdryl::{DataType, Field, FixField, FixFieldMut, FixRegistry, IdKey, IdType};
 
 fn order() -> Field {
     let mut order = DataType::utf8().nullable_field("orderid");
-    order.as_fix_mut().set_tag(37).expect("a tag");
+    FixFieldMut::new(&mut order).set_tag(37).expect("a tag");
     order
 }
 
 fn sources(field: &Field) -> Vec<FixIdSource> {
-    field
-        .as_fix()
+    FixField::new(field)
         .idmap()
         .collect::<yggdryl::Result<Vec<_>>>()
         .expect("a readable document")
@@ -22,12 +21,14 @@ fn sources(field: &Field) -> Vec<FixIdSource> {
 #[test]
 fn a_source_is_written_once_and_read_back_whole() {
     let mut party = DataType::utf8().nullable_field("partyid");
-    party.as_fix_mut().set_tag(448).expect("a tag");
+    FixFieldMut::new(&mut party).set_tag(448).expect("a tag");
     let stated = [
         FixIdSource::new(FixIdMapKind::Identifiers, IdType::CustomerAccount).with_role("24"),
         FixIdSource::new(FixIdMapKind::Identifiers, IdType::EnteringFirm).with_role("7"),
     ];
-    party.as_fix_mut().set_idmap(&stated).expect("two sources");
+    FixFieldMut::new(&mut party)
+        .set_idmap(&stated)
+        .expect("two sources");
     assert_eq!(
         party.get_metadata("FIX:idmap"),
         Some(
@@ -35,7 +36,7 @@ fn a_source_is_written_once_and_read_back_whole() {
         )
     );
     assert_eq!(sources(&party), stated);
-    party.as_fix_mut().set_idmap(&[]).expect("none");
+    FixFieldMut::new(&mut party).set_idmap(&[]).expect("none");
     assert_eq!(party.get_metadata("FIX:idmap"), None);
     assert!(sources(&party).is_empty());
 }
@@ -64,8 +65,7 @@ fn a_source_the_document_cannot_state_is_refused_and_the_field_stands() {
     let source =
         FixIdSource::new(FixIdMapKind::Identifiers, IdType::ExecutingTrader).with_role("a role");
     let mut field = order();
-    let refusal = field
-        .as_fix_mut()
+    let refusal = FixFieldMut::new(&mut field)
         .set_idmap(std::slice::from_ref(&source))
         .expect_err("refused");
     assert!(
@@ -78,8 +78,7 @@ fn a_source_the_document_cannot_state_is_refused_and_the_field_stands() {
         FixIdSource::new(FixIdMapKind::Identifiers, IdType::OrderId),
         FixIdSource::new(FixIdMapKind::Identifiers, IdType::OrderId).with_follow(true),
     ];
-    let refusal = field
-        .as_fix_mut()
+    let refusal = FixFieldMut::new(&mut field)
         .set_idmap(&twice)
         .expect_err("one key twice");
     assert!(refusal.to_string().contains("twice"), "{refusal}");
@@ -105,7 +104,7 @@ fn a_hand_edited_document_is_refused_where_it_stops() {
             .insert_metadata("FIX:idmap", stored)
             .expect("inert text");
         assert!(
-            field.as_fix().idmap().any(|read| read.is_err()),
+            FixField::new(&field).idmap().any(|read| read.is_err()),
             "{stored} is refused"
         );
     }
@@ -131,12 +130,11 @@ fn a_hand_edited_word_that_is_not_what_its_key_holds_is_refused_naming_the_key()
         ),
     ] {
         let mut field = DataType::utf8().nullable_field("partyid");
-        field.as_fix_mut().set_tag(448).expect("a tag");
+        FixFieldMut::new(&mut field).set_tag(448).expect("a tag");
         field
             .insert_metadata("FIX:idmap", stored)
             .expect("inert text");
-        let refused = field
-            .as_fix()
+        let refused = FixField::new(&field)
             .idmap()
             .find_map(Result::err)
             .expect("refused")
@@ -149,8 +147,7 @@ fn a_hand_edited_word_that_is_not_what_its_key_holds_is_refused_naming_the_key()
 fn a_registry_takes_a_role_on_partyid_alone() {
     let mut registry = FixRegistry::new();
     let mut field = order();
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field)
         .set_idmap(&[
             FixIdSource::new(FixIdMapKind::Identifiers, IdType::ExecutingTrader).with_role("12"),
         ])
@@ -164,7 +161,9 @@ fn a_store_writes_the_document_as_the_json_it_is_and_reads_it_back() {
     let mut registry = FixRegistry::new();
     let mut field = order();
     let stated = [FixIdSource::new(FixIdMapKind::Identifiers, IdType::OrderId).with_follow(true)];
-    field.as_fix_mut().set_idmap(&stated).expect("a document");
+    FixFieldMut::new(&mut field)
+        .set_idmap(&stated)
+        .expect("a document");
     registry.add_field(field).expect("a field");
     let json = registry.into_json().expect("a snapshot");
     assert!(

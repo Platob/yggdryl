@@ -120,8 +120,9 @@ use std::sync::{Arc, LazyLock};
 
 use smol_str::SmolStr;
 
+use super::{FixField, FixFieldMut};
 use crate::graph::{ElementColumn, EventColumn, MarketColumn, OperationColumn};
-use crate::{DataType, Field, Result};
+use crate::{DataType, Field, Result, Side};
 
 /// The first tag this crate claims.
 pub const CRATE_TAG_MIN: i32 = 65_000;
@@ -918,23 +919,23 @@ impl Crated {
             !self.derived && matches!(dtype, DataType::Map(_) | DataType::SortedMap(_));
         let fix_datatype = fix_datatype_of(&dtype);
         let mut field = Field::new(name, dtype, !is_always_stated(tag));
-        field.as_fix_mut().set_tag(tag)?;
+        FixFieldMut::new(&mut field).set_tag(tag)?;
         field.set_display(display)?;
         field.set_description(self.fix_wording.unwrap_or(description))?;
         if counts_itself {
-            field.as_fix_mut().set_counter(tag)?;
+            FixFieldMut::new(&mut field).set_counter(tag)?;
         }
         if !self.names.is_empty() {
-            field.as_fix_mut().set_names(self.names.iter().copied())?;
+            FixFieldMut::new(&mut field).set_names(self.names.iter().copied())?;
         }
         if let Some(codeset) = self.codeset {
-            field.as_fix_mut().set_codeset(codeset)?;
+            FixFieldMut::new(&mut field).set_codeset(codeset)?;
         }
         if let Some(datatype) = fix_datatype {
-            field.as_fix_mut().set_datatype(datatype)?;
+            FixFieldMut::new(&mut field).set_datatype(datatype)?;
         }
         if SETTLED_TO_ONE_MESSAGE.contains(&tag) {
-            field.as_fix_mut().set_transient(false)?;
+            FixFieldMut::new(&mut field).set_transient(false)?;
         }
         Ok(field)
     }
@@ -1222,7 +1223,7 @@ const CRATED: [Crated; 52] = [
     ),
     Crated::own(
         MSGPLUGINSIDE_TAG_NAME,
-        || Ok(DataType::side()),
+        || Ok(Side::dtype()),
         "Message Plugin Side",
         "The role of the FIX plugin whose session produced the message, as a \
          side: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW \
@@ -1338,6 +1339,8 @@ fn build() -> Result<Vec<Field>> {
 /// rather than something a caller registers.
 ///
 /// ```
+/// use yggdryl::FixField;
+///
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
 /// assert_eq!(held.len(), 52);
@@ -1354,7 +1357,7 @@ fn build() -> Result<Vec<Field>> {
 /// // Above every tag FIX or a venue publishes, and its tag and name are
 /// // its identity.
 /// let (tag, name) = yggdryl::CURRUUID_TAG_NAME;
-/// let mine = held[0].as_fix().id()?.expect("an identity");
+/// let mine = FixField::new(&held[0]).id()?.expect("an identity");
 /// assert_eq!(mine, yggdryl::FixId::of(tag, name)?);
 /// assert!(yggdryl::is_crate_tag(yggdryl::CROSSCODE_TAG_NAME.0));
 /// assert!(!yggdryl::is_crate_tag(35));
@@ -1371,7 +1374,7 @@ pub fn fix_crate_fields() -> Result<&'static [Field]> {
         .as_deref()
         .ok_or_else(|| crate::Error::InvalidRecord {
             path: "crate".into(),
-            reason: crate::text::expected_got("the crate's own fields", "a build failure"),
+            reason: crate::implementer::expected_got("the crate's own fields", "a build failure"),
         })
 }
 
@@ -1387,9 +1390,9 @@ impl super::FixRegistry {
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
-    /// use yggdryl::{DataType, FixRegistry};
+    /// use yggdryl::{DataType, FixFieldMut, FixRegistry};
     /// let mut field = DataType::utf8().nullable_field("msgtype");
-    /// field.as_fix_mut().set_tag(35)?;
+    /// FixFieldMut::new(&mut field).set_tag(35)?;
     /// let mut registry = FixRegistry::from_fields([field])?;
     /// let message = registry.register_msgtype("P Report Ack", Some("AllocationReportAck"), None)?;
     /// assert_eq!(message.as_str(), "P Report Ack");
@@ -1411,7 +1414,7 @@ impl super::FixRegistry {
         // The set tag 35 reads by, which the dictionary owns: a field naming
         // none is registering the first code of a set of its own, and that
         // set is named after the field.
-        let stated = field.as_fix().codeset().map(SmolStr::new);
+        let stated = FixField::new(field).codeset().map(SmolStr::new);
         let set_name = stated.unwrap_or_else(|| super::FixRegistry::derived_codeset_name(field));
         let held = self.get_codeset(&set_name);
         let mut codes: Vec<super::FixCode> = held
@@ -1453,7 +1456,7 @@ impl super::FixRegistry {
                 return Err(crate::Error::Conflict {
                     expected: "a free message type spelling",
                     actual: "one another code answers to",
-                    path: crate::text::expected_got(
+                    path: crate::implementer::expected_got(
                         format_args!("{spelling:?} at {:?}", value.as_str()),
                         format_args!("{taken:?}"),
                     ),
@@ -1473,13 +1476,13 @@ impl super::FixRegistry {
         // does not hold, so the members are stated before the field points
         // at them.
         next.set_codeset(&set_name, &codes)?;
-        if field.as_fix().codeset().is_none() {
+        if FixField::new(field).codeset().is_none() {
             let mut field = field.clone();
-            field.as_fix_mut().set_codeset(&set_name)?;
+            FixFieldMut::new(&mut field).set_codeset(&set_name)?;
             next.update(field)?;
         }
         if next.get_msgtype(&value).is_none() {
-            let normalized = crate::normalized(codes[at].name());
+            let normalized = crate::implementer::normalized(codes[at].name());
             // A code carrying no name of its own is named after its wire
             // value, and a wire value folded is not a name: `B` would derive
             // `b`, which is the spelling the *other* FIX message answers to,
@@ -1505,7 +1508,7 @@ impl super::FixRegistry {
             };
             let mut message = crate::DataType::from(crate::StructType::from_fields([])?)
                 .required_field(canonical);
-            message.as_fix_mut().set_msgtype(&value)?;
+            FixFieldMut::new(&mut message).set_msgtype(&value)?;
             next.create_definition(crate::FixCategory::Components, message)?;
         }
         // Resolution also rejects a code shared by several contextual definitions.

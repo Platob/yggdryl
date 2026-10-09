@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use super::build::RowStamp;
 use super::{FixCodec, FixMsg};
-use crate::graph::element::InstantSequence;
-use crate::logging::warning::warned;
+use crate::implementer::InstantSequence;
+use crate::implementer::warned;
 use crate::text::TextEntries;
 use crate::{Error, Result};
 

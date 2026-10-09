@@ -57,8 +57,8 @@ use crate::arrow::BatchReader;
 use crate::expression::{Filter, Plan, Projection, Selector, Term};
 use crate::holder::{Buffer, Holder};
 use crate::http::{Method, Request, Response, Server, Status};
+use crate::implementer::expected_got;
 use crate::media::{IORecordOptions, RecordOptions};
-use crate::text::expected_got;
 use crate::{
     ArrowCastOptions, DataType, Decimal, Error, Field, IOBase, IOMedia, MarketDataKind, MimeType,
     Parameters, Result, Scalar, Serie, Side, StreamChunkedSerie, StructType, TimeUnit, Timezone,
@@ -523,7 +523,7 @@ impl BookService {
     /// A `prefix` the server cannot route: one carrying a query, a fragment
     /// or a control byte.
     pub fn route(self: Arc<Self>, server: &Server, prefix: &str) -> Result<Url> {
-        let prefix = crate::http::server::normalize_path(prefix)?;
+        let prefix = crate::implementer::normalize_path(prefix)?;
         let endpoint = server.url_of(&prefix)?;
         let base = if prefix == "/" { "" } else { prefix.as_str() };
         for (leaf, reading) in ROUTES {
@@ -1647,7 +1647,7 @@ fn instant(parameters: &Parameters<'_>, name: &str, zone: Timezone) -> Result<i6
         )
     };
     let dtype = DataType::datetime64(TimeUnit::Nanosecond, zone)?;
-    let read = crate::text::arrow::parse_capture(text, &dtype, None).map_err(|_| refusal())?;
+    let read = crate::implementer::parse_capture(text, &dtype, None).map_err(|_| refusal())?;
     read.as_datetime64()
         .map(|(count, ..)| count)
         .ok_or_else(refusal)
@@ -1673,7 +1673,7 @@ fn limit(parameters: &Parameters<'_>, max: u64) -> Result<u64> {
     let Some(text) = parameters.get("limit").filter(|value| !value.is_empty()) else {
         return Ok(max);
     };
-    let limit: u64 = crate::integer::integer_from_text_as(text).ok_or_else(|| {
+    let limit: u64 = crate::implementer::integer_from_text_as(text).ok_or_else(|| {
         refused(
             "limit",
             expected_got("a count of rows", format_smolstr!("{text:?}")),
@@ -1725,13 +1725,13 @@ fn zoned(unix: i64, zone: Timezone) -> Result<Scalar> {
 
 /// The ISO-8601 text of `unix` in `zone`, for a message.
 fn iso(unix: i64, zone: Timezone) -> String {
-    crate::temporal::format_timestamp(unix, TimeUnit::Nanosecond, &zone)
+    crate::implementer::format_timestamp(unix, TimeUnit::Nanosecond, &zone)
         .map_or_else(|| unix.to_string(), String::from)
 }
 
 /// `unix` to the second as `YYYYMMDDTHHMMSSZ`, for a file name.
 fn compact(unix: i64) -> String {
-    crate::temporal::format_timestamp(unix.div_euclid(NANOS), TimeUnit::Second, &Timezone::UTC)
+    crate::implementer::format_timestamp(unix.div_euclid(NANOS), TimeUnit::Second, &Timezone::UTC)
         .map_or_else(
             || unix.to_string(),
             |text| text.chars().filter(|c| *c != '-' && *c != ':').collect(),

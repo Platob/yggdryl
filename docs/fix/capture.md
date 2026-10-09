@@ -515,7 +515,7 @@ A proprietary group that reuses a standard counter but maps none of that standar
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixRegistry, fix_column_of, fix_schema, fix_schema_tags};
+    use yggdryl::{fix_column_of, fix_schema, fix_schema_tags, FixField, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
@@ -538,7 +538,7 @@ A proprietary group that reuses a standard counter but maps none of that standar
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
     let held = schema.get_field_by_path("msgtype").expect("the msgtype column");
     assert_eq!(held.display(), Some("MsgType"));
-    assert_eq!(held.as_fix().tag()?, Some(35));
+    assert_eq!(FixField::new(held).tag()?, Some(35));
     // The tag rides on the column, so a tag still finds it. Rust only.
     assert_eq!(fix_column_of(&schema, 35), schema.index_of("msgtype"));
     // A field no band claims is still a column, further along.
@@ -1196,7 +1196,7 @@ What each rule reads, in words:
 | `Product(460)` | `SecurityType(167)`, else `CFICode(461)` | the group the dictionary's `SecurityType` code set files the value under, as the `Product` code set spells it - `Agency` is `1`, `Corporate` `3`, `Currency` `4`, `Equity` `5`, `Government` `6`, `Loan` `8`, `Money Market` `9`, `Mortgage` `10`, `Municipal` `11`, `Financing` `13`; `Derivatives` and `Other` answer nothing. A CFI in category `E` is `5` and in `L` is `13` |
 | `TimeInForce(59)` | nothing, on an order `D`, a replace `G` or a report `8` | the field's own definition: absent means `0`, a day order |
 | `OrdStatus(39)` | `ExecType(150)`; else `LeavesQty(151)` and `CumQty(14)` on a trade | the values the two code sets spell alike - not `D`, Restated in one and AcceptedForBidding in the other; a trade leaving nothing is filled, `2`, and one leaving something after doing something is partially filled, `1` - each landing under `OrdStatus`'s own code set, which is where `get_state` reads the element's [state](../types/enum/state.md) |
-| `LeavesQty(151)`, `OrderQty(38)`, `CumQty(14)` | the other two, on a report | Appendix D, by where the order stands as its `OrdStatus(39)` reads ([`State::from_fix_status`](../types/enum/state.md)): nothing is left once it ended, and live or filled `OrderQty = CumQty + LeavesQty`; ended any other way - canceled, done for the day, expired, calculated, rejected - what it asked for is what it did plus `CxlQty(84)`: `OrderQty` answers `CumQty + CxlQty`, and `CumQty` `OrderQty - LeavesQty - CxlQty`, nothing where the report states no `CxlQty`. A report with nothing left that states a positive canceled quantity answers `CumQty + CxlQty` too, and `CxlQty` is read last where nothing says what is left |
+| `LeavesQty(151)`, `OrderQty(38)`, `CumQty(14)` | the other two, on a report | Appendix D, by where the order stands as its `OrdStatus(39)` reads ([`fix::state::from_status`](../types/enum/state.md)): nothing is left once it ended, and live or filled `OrderQty = CumQty + LeavesQty`; ended any other way - canceled, done for the day, expired, calculated, rejected - what it asked for is what it did plus `CxlQty(84)`: `OrderQty` answers `CumQty + CxlQty`, and `CumQty` `OrderQty - LeavesQty - CxlQty`, nothing where the report states no `CxlQty`. A report with nothing left that states a positive canceled quantity answers `CumQty + CxlQty` too, and `CxlQty` is read last where nothing says what is left |
 | `GrossTradeAmt(381)` | `LastQty(32)` x `LastPx(31)` | Appendix D's execution reports; each operand is stated at scale nine, half the target scale, so the product lands back at eighteen digits |
 | `SettlCurrAmt(119)` | `GrossTradeAmt(381)` x `SettlCurrFxRate(155)` | Appendix O, at the same scales |
 | `Currency(15)`, `SettlCurrency(120)` | each other | Appendix O: a trade settling in the currency it was dealt in states it once - except on a currency product, `Product(460)` `4`, whose two currencies are the pair's two legs |

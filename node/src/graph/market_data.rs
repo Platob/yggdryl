@@ -9,10 +9,10 @@ use napi::bindgen_prelude::{
     ClassInstance, Either, Either3, Either10, Env, Function, Result, Unknown,
 };
 use napi_derive::napi;
-use yggdryl::FieldPath;
 use yggdryl::graph::{MarketData as CoreMarketData, MarketKind, MarketView as CoreMarketView};
 use yggdryl::holder::Buffer;
 use yggdryl::ipc::{self, IpcOptions};
+use yggdryl::{FieldPath, FixMsg};
 
 use super::book::{JsBookEvent, JsSnapshotEvent};
 use super::operation::{
@@ -48,8 +48,8 @@ type Leaf = Either10<
 >;
 
 /// The leaf object `data` holds, as the class of its variant.
-fn leaf_object(data: CoreMarketData) -> Leaf {
-    match data {
+fn leaf_object(data: CoreMarketData) -> Result<Leaf> {
+    Ok(match data {
         CoreMarketData::Order(leaf) => Leaf::A(JsOrder::from_core(leaf)),
         CoreMarketData::Quote(leaf) => Leaf::B(JsQuote::from_core(leaf)),
         CoreMarketData::Execution(leaf) => Leaf::C(JsExecution::from_core(leaf)),
@@ -59,8 +59,13 @@ fn leaf_object(data: CoreMarketData) -> Leaf {
         CoreMarketData::TradeEvent(leaf) => Leaf::G(JsTradeEvent::from_core(leaf)),
         CoreMarketData::BookEvent(leaf) => Leaf::H(JsBookEvent::from_core(*leaf)),
         CoreMarketData::SnapshotEvent(leaf) => Leaf::I(JsSnapshotEvent::from_core(leaf)),
-        CoreMarketData::Fix(message) => Leaf::J(JsFixMsg::from_core(*message)),
-    }
+        CoreMarketData::Fix(message) => {
+            let message = message.into_any().downcast::<FixMsg>().map_err(|_| {
+                napi_error("a held message is not a FixMsg: this binding has no class for it")
+            })?;
+            Leaf::J(JsFixMsg::from_core(*message))
+        }
+    })
 }
 
 /// The base64 text of `data`'s one-row `MarketData::arrow_reader` IPC
@@ -272,14 +277,17 @@ impl JsMarketData {
     /// The FIX message this value holds whole, else `null`.
     #[napi]
     pub fn as_fix(&self) -> Option<JsFixMsg> {
-        self.inner.as_fix().cloned().map(JsFixMsg::from_core)
+        self.inner
+            .as_message::<FixMsg>()
+            .cloned()
+            .map(JsFixMsg::from_core)
     }
 
     /// The leaf this value holds, as its own class.
     #[napi(
         ts_return_type = "Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent | FixMsg"
     )]
-    pub fn into_leaf(&self) -> Leaf {
+    pub fn into_leaf(&self) -> Result<Leaf> {
         leaf_object(self.inner.clone())
     }
 

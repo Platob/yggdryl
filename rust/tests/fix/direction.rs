@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use yggdryl::fix::{MsgDirection, RECEIVE_PATTERNS, SEND_PATTERNS};
 use yggdryl::{
-    DataType, Field, FixCode, FixCodec, FixDirection, FixRegistry, MSGDIRECTION_TAG_NAME,
-    StructType,
+    DataType, Field, FixCode, FixCodec, FixDirection, FixField, FixFieldMut, FixRegistry,
+    MSGDIRECTION_TAG_NAME, StructType,
 };
 
 fn reading() -> MsgDirection {
@@ -66,7 +66,7 @@ fn the_reading_is_the_registrys_code_set_and_a_dictionary_without_the_field_answ
     assert_eq!(committed.sent(), "S");
     assert_eq!(committed.recv(), "R");
     assert_eq!(committed.codes().collect::<Vec<_>>(), ["R", "S"]);
-    assert_eq!(committed.field().as_fix().tag().unwrap(), Some(385));
+    assert_eq!(FixField::new(committed.field()).tag().unwrap(), Some(385));
     assert_eq!(committed.field().dtype(), &DataType::utf8());
     assert!(!committed.field().is_nullable());
     // Any spelling of a code resolves to the code; a spelling outside the
@@ -89,7 +89,7 @@ fn the_reading_is_the_registrys_code_set_and_a_dictionary_without_the_field_answ
     assert_eq!(bare.sent(), "S");
     assert_eq!(bare.recv(), "R");
     assert_eq!(bare.codes().collect::<Vec<_>>(), ["S", "R"]);
-    assert_eq!(bare.field().as_fix().tag().unwrap(), Some(385));
+    assert_eq!(FixField::new(bare.field()).tag().unwrap(), Some(385));
     assert_eq!(bare.code("Receive"), Some("R"));
     assert_eq!(bare.read_bytes(b"recv 8=FIX.4.4|35=0|10=017|"), Some("R"));
 
@@ -107,8 +107,10 @@ fn the_reading_is_the_registrys_code_set_and_a_dictionary_without_the_field_answ
         )
         .unwrap();
     let mut field = DataType::utf8().nullable_field("MsgDirection");
-    field.as_fix_mut().set_tag(385).unwrap();
-    field.as_fix_mut().set_codeset(DIRECTION_SET).unwrap();
+    FixFieldMut::new(&mut field).set_tag(385).unwrap();
+    FixFieldMut::new(&mut field)
+        .set_codeset(DIRECTION_SET)
+        .unwrap();
     extended.insert(field).unwrap();
     let reading = extended.msgdirection();
     assert_eq!(reading.sent(), "OUT");
@@ -150,9 +152,13 @@ fn ruled_dictionary() -> FixRegistry {
 
 fn ruled_field(directions: &[FixDirection]) -> Field {
     let mut field = DataType::utf8().nullable_field("MsgDirection");
-    field.as_fix_mut().set_tag(385).unwrap();
-    field.as_fix_mut().set_codeset(DIRECTION_SET).unwrap();
-    field.as_fix_mut().set_directions(directions).unwrap();
+    FixFieldMut::new(&mut field).set_tag(385).unwrap();
+    FixFieldMut::new(&mut field)
+        .set_codeset(DIRECTION_SET)
+        .unwrap();
+    FixFieldMut::new(&mut field)
+        .set_directions(directions)
+        .unwrap();
     field
 }
 
@@ -163,7 +169,10 @@ fn a_dictionary_without_the_property_reads_by_the_defaults_as_data_and_as_readin
     // they are data a caller can read.
     let committed = reading();
     assert!(
-        committed.field().as_fix().directions().next().is_none(),
+        FixField::new(committed.field())
+            .directions()
+            .next()
+            .is_none(),
         "the committed dictionary reads by the defaults"
     );
     let defaults = [
@@ -188,8 +197,10 @@ fn a_dictionary_without_the_property_reads_by_the_defaults_as_data_and_as_readin
         )
         .unwrap();
     let mut field = DataType::utf8().nullable_field("MsgDirection");
-    field.as_fix_mut().set_tag(385).unwrap();
-    field.as_fix_mut().set_codeset(DIRECTION_SET).unwrap();
+    FixFieldMut::new(&mut field).set_tag(385).unwrap();
+    FixFieldMut::new(&mut field)
+        .set_codeset(DIRECTION_SET)
+        .unwrap();
     extended.insert(field).unwrap();
     let extended = extended.msgdirection();
     assert_eq!(
@@ -389,7 +400,9 @@ fn a_pattern_the_regex_crate_refuses_is_refused_by_the_setter_and_dropped_by_the
             "at least one pattern",
         ),
     ] {
-        let refused = field.as_fix_mut().set_directions(&rules).unwrap_err();
+        let refused = FixFieldMut::new(&mut field)
+            .set_directions(&rules)
+            .unwrap_err();
         assert!(refused.to_string().contains(reason), "{refused}");
         assert_eq!(field, before);
     }
@@ -402,8 +415,8 @@ fn a_pattern_the_regex_crate_refuses_is_refused_by_the_setter_and_dropped_by_the
     // under either spelling, and the reading names them when it drops a
     // rule naming neither.
     let mut bare = DataType::utf8().nullable_field("MsgDirection");
-    bare.as_fix_mut().set_tag(385).unwrap();
-    bare.as_fix_mut()
+    FixFieldMut::new(&mut bare).set_tag(385).unwrap();
+    FixFieldMut::new(&mut bare)
         .set_directions(&[
             FixDirection::new("send", ["^TX "]),
             FixDirection::new("Receive", ["^RX "]),
@@ -431,8 +444,7 @@ fn a_pattern_the_regex_crate_refuses_is_refused_by_the_setter_and_dropped_by_the
     // pattern that does not compile, the entry naming no code of the set
     // and the entry naming a code again under another spelling are dropped
     // and the rest read - each drop warned about in the setter's words.
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field)
         .insert(
             "directions",
             concat!(
@@ -456,8 +468,7 @@ fn a_pattern_the_regex_crate_refuses_is_refused_by_the_setter_and_dropped_by_the
     assert_eq!(reading.read_text("QX 8=FIX.4.4|35=D|"), None);
     assert_eq!(reading.read_text("TX <<< 8=FIX.4.4|35=D|"), Some("S"));
     let door = |rules: &[FixDirection]| {
-        ruled_field(&[])
-            .as_fix_mut()
+        FixFieldMut::new(&mut ruled_field(&[]))
             .set_directions(rules)
             .unwrap_err()
             .to_string()
@@ -478,12 +489,11 @@ fn a_pattern_the_regex_crate_refuses_is_refused_by_the_setter_and_dropped_by_the
     // about, states no rule and reads nothing - never the defaults, which
     // are the absent property's.
     let mut field = ruled_field(&[]);
-    assert!(!field.as_fix().directions().is_stated());
-    field
-        .as_fix_mut()
+    assert!(!FixField::new(&field).directions().is_stated());
+    FixFieldMut::new(&mut field)
         .insert("directions", r#"[{"code":"S"}]"#)
         .unwrap();
-    assert!(field.as_fix().directions().is_stated());
+    assert!(FixField::new(&field).directions().is_stated());
     let mut registry = ruled_dictionary();
     registry.insert(field).unwrap();
     let (reading, warnings) = super::warned::during(|| registry.msgdirection());
@@ -513,14 +523,13 @@ fn the_rules_round_trip_through_the_field_escapes_included() {
             r#"{"code":"R","patterns":["(?i)(?:^|\\s)rx\\s"]}]"#,
         ))
     );
-    let read: Vec<FixDirection> = field
-        .as_fix()
+    let read: Vec<FixDirection> = FixField::new(&field)
         .directions()
         .map(|entry| entry.map(FixDirection::from))
         .collect::<yggdryl::Result<_>>()
         .unwrap();
     assert_eq!(read, rules);
-    let entry = field.as_fix().directions().next_ok().unwrap();
+    let entry = FixField::new(&field).directions().next_ok().unwrap();
     assert_eq!(entry.code(), "S");
     assert_eq!(
         entry.patterns().collect::<Vec<_>>(),
@@ -539,10 +548,13 @@ fn the_rules_round_trip_through_the_field_escapes_included() {
     assert_eq!(reading.read_text(r#"say "out" 8=FIX.4.4|35=D|"#), Some("S"));
     assert_eq!(reading.read_text("09:00 rx 8=FIX.4.4|35=D|"), Some("R"));
     assert_eq!(
-        field.as_fix_mut().remove_directions().unwrap(),
+        FixFieldMut::new(&mut field).remove_directions().unwrap(),
         Some(rules.to_vec())
     );
-    assert_eq!(field.as_fix_mut().remove_directions().unwrap(), None);
+    assert_eq!(
+        FixFieldMut::new(&mut field).remove_directions().unwrap(),
+        None
+    );
     assert_eq!(field.get_metadata("FIX:directions"), None);
 }
 
@@ -554,14 +566,18 @@ fn a_merge_lets_the_incoming_table_win_whole() {
     // folded entry by entry: it replaces the stored one.
     let mut incoming = ruled_field(&[FixDirection::new("R", ["^RX "])]);
     let incoming_text = incoming.get_metadata("FIX:directions").unwrap().to_owned();
-    incoming.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
+    FixFieldMut::new(&mut incoming)
+        .merge_with(&FixField::new(&stored))
+        .unwrap();
     assert_eq!(
         incoming.get_metadata("FIX:directions"),
         Some(incoming_text.as_str())
     );
     // The stored one keeps what only it has.
     let mut bare = ruled_field(&[]);
-    bare.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
+    FixFieldMut::new(&mut bare)
+        .merge_with(&FixField::new(&stored))
+        .unwrap();
     assert_eq!(
         bare.get_metadata("FIX:directions"),
         Some(stored_text.as_str())

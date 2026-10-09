@@ -9,7 +9,7 @@
 
 use super::Operation;
 use crate::Identifiers;
-use crate::{DataType, Field, Result, Scalar};
+use crate::{DataType, Field, Result, Scalar, TimeInForce};
 
 /// One column of the facts every operation on the market answers beside the
 /// market's.
@@ -82,7 +82,7 @@ impl OperationColumn {
     pub fn datatype(self) -> DataType {
         match self {
             Self::OrdQty => DataType::Decimal,
-            Self::TimeInForce => DataType::timeinforce(),
+            Self::TimeInForce => TimeInForce::dtype(),
             Self::Tradable => DataType::Boolean,
             Self::Identifiers | Self::PartyIds => Identifiers::dtype(),
         }
@@ -122,7 +122,7 @@ impl OperationColumn {
     pub fn of_name(name: &str) -> Option<Self> {
         Self::ALL
             .into_iter()
-            .find(|column| crate::folds_equal(column.name(), name))
+            .find(|column| crate::implementer::folds_equal(column.name(), name))
     }
 
     /// The column's cell for `operation`: the fact it states, `None` where
@@ -164,7 +164,7 @@ impl OperationColumn {
             Self::Tradable => match value {
                 Scalar::Null => operation.set_tradable(None, true),
                 _ => {
-                    if let Some(held) = crate::boolean::bool_of(value) {
+                    if let Some(held) = crate::implementer::bool_of(value) {
                         operation.set_tradable(Some(held), true);
                     }
                 }

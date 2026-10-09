@@ -29,7 +29,7 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixId, FixRegistry, CURRUNIX_TAG_NAME};
+    use yggdryl::{CURRUNIX_TAG_NAME, DataType, FixField, FixId, FixRegistry};
     use yggdryl::local::LocalFolder;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -41,11 +41,11 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     assert_eq!(registry.iter().count(), 7_782);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
     let parties = registry.field_by_name("parties")?;
-    assert_eq!(parties.as_fix().counter()?, Some(453));
-    assert_eq!(parties.as_fix().component(), Some("party"));
+    assert_eq!(FixField::new(parties).counter()?, Some(453));
+    assert_eq!(FixField::new(parties).component(), Some("party"));
     let metadata = registry.field_by_counter(65_037)?;
     assert_eq!(metadata.name(), "metadata");
-    assert_eq!(metadata.as_fix().tag()?, Some(65_037));
+    assert_eq!(FixField::new(metadata).tag()?, Some(65_037));
     assert!(metadata.dtype().as_mapping().is_some_and(|mapping| mapping.keys_sorted()));
     assert!(registry.get_field_by_tag(65_037).is_none());
     assert_eq!(registry.msgtype("D")?.as_str(), "D");
@@ -55,7 +55,7 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     let currunix = registry.field_by_id(FixId::of(tag, name)?)?;
     assert_eq!(currunix.name(), "currunix");
     assert_eq!(currunix.display(), Some("Current Time"));
-    assert_eq!(currunix.as_fix().id()?, Some(FixId::of(65_007, "CurrUnix")?));
+    assert_eq!(FixField::new(currunix).id()?, Some(FixId::of(65_007, "CurrUnix")?));
     ```
 
 === "Python"

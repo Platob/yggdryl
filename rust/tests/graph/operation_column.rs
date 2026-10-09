@@ -143,7 +143,7 @@ fn operation_column_schema_has_one_owner_and_order() {
     assert_eq!(OperationColumn::OrdQty.datatype(), DataType::Decimal);
     assert_eq!(
         OperationColumn::TimeInForce.datatype(),
-        DataType::timeinforce()
+        TimeInForce::dtype()
     );
     assert_eq!(
         OperationColumn::Identifiers.datatype(),

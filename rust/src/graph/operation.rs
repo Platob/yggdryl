@@ -19,10 +19,10 @@ use std::marker::PhantomData;
 
 use smol_str::SmolStr;
 
-use super::element::Staged;
 use super::facts::{OperationEventFacts, OperationFacts};
 use super::kind::MarketKind;
 use super::{Element, Event, Market, Operation};
+use crate::implementer::Staged;
 use crate::{Decimal, Uuid};
 
 mod sealed {

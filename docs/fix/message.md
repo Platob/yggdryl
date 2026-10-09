@@ -484,25 +484,25 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
     use std::sync::Arc;
 
     use yggdryl::graph::{Element, Event, Market, Operation};
-    use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, FieldPath, StructType, from_json_scalar_with_field, into_json_scalar};
+    use yggdryl::{from_json_scalar_with_field, into_json_scalar, DataType, FieldPath, FixField, FixFieldMut, FixMsg, FixRegistry, Scalar, StructType};
 
     let mut msgtype = DataType::utf8().nullable_field("MsgType");
-    msgtype.as_fix_mut().set_tag(35)?;
+    FixFieldMut::new(&mut msgtype).set_tag(35)?;
     let mut side = DataType::utf8().nullable_field("Side");
-    side.as_fix_mut().set_tag(54)?;
+    FixFieldMut::new(&mut side).set_tag(54)?;
     let mut symbol = DataType::utf8().required_field("Symbol");
-    symbol.as_fix_mut().set_tag(55)?;
-    symbol.as_fix_mut().set_names(["Ticker"])?;
+    FixFieldMut::new(&mut symbol).set_tag(55)?;
+    FixFieldMut::new(&mut symbol).set_names(["Ticker"])?;
     let mut qty = DataType::Int64.required_field("OrderQty");
-    qty.as_fix_mut().set_tag(38)?;
+    FixFieldMut::new(&mut qty).set_tag(38)?;
     let mut party_id = DataType::utf8().nullable_field("PartyID");
-    party_id.as_fix_mut().set_tag(448)?;
+    FixFieldMut::new(&mut party_id).set_tag(448)?;
     let mut count = DataType::Int32.required_field("NoPartyIDs");
-    count.as_fix_mut().set_tag(453)?;
+    FixFieldMut::new(&mut count).set_tag(453)?;
     let party = DataType::from(StructType::from_fields([party_id.clone()])?).required_field("Party");
     let mut parties = DataType::serie(party.clone()).nullable_field("Parties");
-    parties.as_fix_mut().set_counter(453)?;
-    parties.as_fix_mut().set_component("Party")?;
+    FixFieldMut::new(&mut parties).set_counter(453)?;
+    FixFieldMut::new(&mut parties).set_component("Party")?;
     let mut registry = FixRegistry::from_fields([msgtype.clone(), side.clone(), symbol.clone(), qty.clone(), count, party_id])?;
     registry.insert(party)?;
     registry.insert(parties.clone())?;
@@ -559,7 +559,7 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
     assert_eq!(msg.get_crossuuid(), msg.get_curruuid(), "so the message is a chain of one");
 
     // An identifier is the tag and the name together, under the one fold, and exact.
-    let id = registry.field_by_tag(38)?.as_fix().id()?.expect("a tagged field");
+    let id = FixField::new(registry.field_by_tag(38)?).id()?.expect("a tagged field");
     assert_eq!(id, yggdryl::FixId::of(38, "order_qty")?);
     assert_eq!(msg.by_id(id)?, hundred);
     assert!(msg.get_by_id(yggdryl::FixId::of(38, "Quantity")?).is_none(), "another name is another field");

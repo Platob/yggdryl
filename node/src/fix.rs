@@ -48,7 +48,7 @@ use napi_derive::napi;
 use yggdryl::graph::{Element, Event, Market, Metadata, Operation};
 use yggdryl::{
     DataType as CoreDataType, Field as CoreField, FixCapture, FixCode as CoreFixCode,
-    FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec, FixEntry, FixHeader,
+    FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec, FixEntry, FixField, FixHeader,
     FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar,
     TimeUnit, Timezone,
 };
@@ -1153,7 +1153,7 @@ impl Generator for JsFixFieldIterator {
         }
         let found = registry
             .next_field_after(self.after)
-            .map(|field| (field.clone(), field.as_fix().id().ok().flatten()));
+            .map(|field| (field.clone(), FixField::new(field).id().ok().flatten()));
         match found {
             // The cursor is the canonical identifier every registered field
             // carries; a field without one cannot be advanced past, so the

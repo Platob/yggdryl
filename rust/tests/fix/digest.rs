@@ -3,7 +3,7 @@
 
 use super::SoleMessage;
 
-use yggdryl::{DataType, FixCodec, FixDedup, FixId, FixRegistry, Scalar};
+use yggdryl::{DataType, FixCodec, FixDedup, FixField, FixId, FixRegistry, Scalar};
 
 fn reader() -> FixCodec {
     super::fixed_codec(super::committed_registry())
@@ -416,7 +416,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     }
     for name in ["curruuid", "crossuuid", "prevuuid"] {
         assert_eq!(typed(name), &DataType::uuid(), "{name}");
-        assert_eq!(field(name).as_fix().names().count(), 0, "{name}");
+        assert_eq!(FixField::new(field(name)).names().count(), 0, "{name}");
     }
     for name in ["execunix", "recdunix"] {
         assert_eq!(typed(name), &clock, "{name}");
@@ -482,7 +482,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         typed(name),
         &DataType::map_of(DataType::utf8(), DataType::utf8(), true).unwrap()
     );
-    assert_eq!(field(name).as_fix().counter().unwrap(), Some(tag));
+    assert_eq!(FixField::new(field(name)).counter().unwrap(), Some(tag));
     // No partition column: how a layout is cut is the target's - an Iceberg
     // table takes an `hour` transform over `currunix` - and a materialized copy
     // of that instant was a second owner of it.
@@ -496,7 +496,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     // a retired definition leaves no hole.
     let mut last = yggdryl::CRATE_TAG_MIN;
     for field in held {
-        let view = field.as_fix();
+        let view = FixField::new(field);
         let tag = view.tag().unwrap().expect("a tag");
         let id = view.id().unwrap().expect("an identity");
         assert_eq!(tag, last + 1, "{} follows {last}", field.name());
@@ -660,7 +660,7 @@ fn every_registry_registers_the_crates_fields_without_warning() {
     let (registry, warnings) = super::warned::during_all(FixRegistry::new);
     assert!(warnings.is_empty(), "builtin registration: {warnings:?}");
     for field in held {
-        let tag = field.as_fix().tag().unwrap().unwrap();
+        let tag = FixField::new(field).tag().unwrap().unwrap();
         // A derived column is the fixed row's, and no registry files it.
         assert_eq!(
             registry.get_field_by_tag(tag).is_some()

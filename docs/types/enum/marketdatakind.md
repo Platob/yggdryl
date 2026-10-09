@@ -6,7 +6,7 @@ What kind of market data an element is: FIX's MsgCat code set as an enum of twen
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `marketdatakind`, the registered kind `MARKETDATAKIND_KIND` under `DataType::Market`, its marker `MarketDataKindType`, the `MarketDataKind` enum; `DataType::marketdatakind()` |
+| Owns | `marketdatakind`, the registered kind `MARKETDATAKIND_KIND` under `DataType::Market`, its marker `MarketDataKindType`, the `MarketDataKind` enum; `MarketDataKind::dtype()` and `MarketDataKind::field(name)` |
 | Validates | A member, the code of one, or a spelling - the four-letter code in any case, or the member's own word folded - reaches one member; anything else is refused rather than stored |
 | Lazy | Nothing - the member table is static |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
@@ -18,20 +18,20 @@ A reader tells the leaves of market data apart by one column every FIX engine al
 
 ## DataType
 
-`marketdatakind` is the one spelling, `DataType::marketdatakind()` the constructor, `MarketDataKind::ID` the id - a [registered kind](../datatype.md#registered-kinds) under `DataType::Market`; kind `enum`.
+`marketdatakind` is the one spelling, `MarketDataKind::dtype()` the datatype (a `const fn`: what every column of the kind declares) and `MarketDataKind::field(name)` a nullable field of it, `MarketDataKind::ID` the id - a [registered kind](../datatype.md#registered-kinds) under `DataType::Market`; kind `enum`. `DataType` holds no constructor per kind: the kind's own type answers its datatype, and the bindings' doors are unchanged (`DataType("marketdatakind")` in Python, `new DataType('marketdatakind')` in JavaScript).
 
 === "Rust"
 
     ```rust
     use yggdryl::{DataType, DataTypeKind, MarketDataKind};
 
-    assert!(matches!(DataType::marketdatakind(), DataType::Market(kind) if kind.id() == MarketDataKind::ID));
-    assert_eq!(DataType::from_str("marketdatakind")?, DataType::marketdatakind());
-    assert_eq!(DataType::marketdatakind().to_string(), "marketdatakind");
-    assert_eq!(DataType::marketdatakind().kind(), DataTypeKind::Enum);
-    assert_eq!(DataType::marketdatakind().id().as_u8(), 0xc2);
-    assert!(DataType::marketdatakind().is_enum() && !DataType::marketdatakind().is_code());
-    assert_eq!(DataType::marketdatakind().code_width(), None);
+    assert!(matches!(MarketDataKind::dtype(), DataType::Market(kind) if kind.id() == MarketDataKind::ID));
+    assert_eq!(DataType::from_str("marketdatakind")?, MarketDataKind::dtype());
+    assert_eq!(MarketDataKind::dtype().to_string(), "marketdatakind");
+    assert_eq!(MarketDataKind::dtype().kind(), DataTypeKind::Enum);
+    assert_eq!(MarketDataKind::dtype().id().as_u8(), 0xc2);
+    assert!(MarketDataKind::dtype().is_enum() && !MarketDataKind::dtype().is_code());
+    assert_eq!(MarketDataKind::dtype().code_width(), None);
     ```
 
 === "Python"
@@ -62,13 +62,13 @@ A reader tells the leaves of market data apart by one column every FIX engine al
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, MarketDataKindField};
+    use yggdryl::{Field, MarketDataKind, MarketDataKindField};
 
     let kind = MarketDataKindField::unit("marketdatakind", false);
-    assert_eq!(kind.dtype(), &DataType::marketdatakind());
+    assert_eq!(kind.dtype(), &MarketDataKind::dtype());
     assert_eq!(
         kind.to_field(),
-        Field::new("marketdatakind", DataType::marketdatakind(), false)
+        Field::new("marketdatakind", MarketDataKind::dtype(), false)
     );
     ```
 
@@ -102,27 +102,27 @@ The value is the member, whichever spelling named it: `ORDR` for `ORDR`, `ordr`,
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, MarketDataKind, Scalar};
+    use yggdryl::{MarketDataKind, Scalar};
 
-    let order = DataType::marketdatakind().scalar("ORDR")?;
+    let order = MarketDataKind::dtype().scalar("ORDR")?;
     assert_eq!(order, Scalar::from(MarketDataKind::Order));
     assert_eq!(order.kind(), "marketdatakind");
     assert_eq!(MarketDataKind::Order.code(), 10);
 
     // The four-letter code in any case, the member's word and the code reach
     // one member.
-    assert_eq!(DataType::marketdatakind().scalar("ordr")?, order);
-    assert_eq!(DataType::marketdatakind().scalar("order")?, order);
-    assert_eq!(DataType::marketdatakind().scalar(10_i32)?, order);
+    assert_eq!(MarketDataKind::dtype().scalar("ordr")?, order);
+    assert_eq!(MarketDataKind::dtype().scalar("order")?, order);
+    assert_eq!(MarketDataKind::dtype().scalar(10_i32)?, order);
     assert_eq!(
-        DataType::marketdatakind().scalar("market_structure")?,
+        MarketDataKind::dtype().scalar("market_structure")?,
         Scalar::from(MarketDataKind::MarketStructure)
     );
 
     // A stored code is an integer, never text; the code of no member answers
     // nothing.
-    assert!(DataType::marketdatakind().scalar("10").is_err());
-    assert!(DataType::marketdatakind().scalar(26_i32).is_err());
+    assert!(MarketDataKind::dtype().scalar("10").is_err());
+    assert!(MarketDataKind::dtype().scalar(26_i32).is_err());
     ```
 
 === "Python"
@@ -169,9 +169,9 @@ The value is the member, whichever spelling named it: `ORDR` for `ORDR`, `ordr`,
 
     use arrow_array::{Array, ArrayRef, StringArray, UInt8Array};
     use arrow_schema::DataType as ArrowDataType;
-    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
+    use yggdryl::{ArrowCastOptions, Field, MarketDataKind, Serie};
 
-    let kind = Field::new("marketdatakind", DataType::marketdatakind(), false);
+    let kind = Field::new("marketdatakind", MarketDataKind::dtype(), false);
     let arrow = kind.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::UInt8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.marketdatakind");

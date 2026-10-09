@@ -3480,10 +3480,10 @@ fn classify(class: &Bound<'_, PyType>) -> PyResult<ClassKind> {
     if class.is_subclass(classes::enumeration(py)?)? {
         for (native, dtype) in [
             (classes::state(py)?, CoreDataType::State),
-            (classes::marketdatakind(py)?, CoreDataType::marketdatakind()),
-            (classes::marketdatatype(py)?, CoreDataType::marketdatatype()),
-            (classes::side(py)?, CoreDataType::side()),
-            (classes::timeinforce(py)?, CoreDataType::timeinforce()),
+            (classes::marketdatakind(py)?, MarketDataKind::dtype()),
+            (classes::marketdatatype(py)?, MarketDataType::dtype()),
+            (classes::side(py)?, Side::dtype()),
+            (classes::timeinforce(py)?, TimeInForce::dtype()),
         ] {
             if class.is(native) {
                 return Ok(ClassKind::Member(dtype));

@@ -40,8 +40,8 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::code::is_null_like;
-use crate::{DataType, Error, Field, IdKey, IdSource, IdType, Map, Result, Scalar, StructType};
+use crate::implementer::is_null_like;
+use crate::{DataType, Error, Field, IdKey, IdSource, IdType, Map, Result, Scalar};
 
 /// The most bytes a type or a source may be once folded: room for the
 /// longest name a FIX code set gives a party role or an identifier source.
@@ -1140,7 +1140,7 @@ impl Identifiers {
     /// nothing or that its type refuses, and a second value under a key
     /// already held - two spellings of one key.
     pub(crate) fn read_entry(&mut self, text: &str, key: Option<IdKey>, value: &str) -> Result<()> {
-        let path = || format_smolstr!("$['{}']", crate::text::elide_to(text, 64));
+        let path = || format_smolstr!("$['{}']", crate::implementer::elide_to(text, 64));
         let key = key.ok_or_else(|| located(path(), crate::idkey::key_refusal(text)))?;
         let id = Identifier::new(key, value).map_err(|error| located(path(), error))?;
         match self.position(&id.key) {
@@ -1150,8 +1150,8 @@ impl Identifiers {
                 reason: format_smolstr!(
                     "expected one value under {}, got {:?} and {:?}",
                     id.key,
-                    crate::text::elide_to(self.0[at].value(), 64),
-                    crate::text::elide_to(id.value(), 64)
+                    crate::implementer::elide_to(self.0[at].value(), 64),
+                    crate::implementer::elide_to(id.value(), 64)
                 ),
             }),
             Err(at) => {
@@ -1172,7 +1172,7 @@ impl Identifiers {
     /// text key, spelled as [`IdKey`] spells it, to the required text value.
     #[must_use]
     pub fn dtype() -> DataType {
-        let entries = StructType::from_unique_fields(vec![
+        let entries = crate::implementer::struct_type_from_unique_fields(vec![
             Field::new("key", DataType::utf8(), false),
             Field::new("value", DataType::utf8(), false),
         ]);
@@ -1226,7 +1226,7 @@ impl Identifiers {
         let Some(rows) = scalar.sequence_rows() else {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$"),
-                reason: crate::text::expected_got(
+                reason: crate::implementer::expected_got(
                     "a map of identifier keys to values, or a sequence of such maps",
                     scalar.kind(),
                 ),
@@ -1242,7 +1242,7 @@ impl Identifiers {
             let Some(entries) = row.as_mapping() else {
                 return Err(Error::InvalidRecord {
                     path: format_smolstr!("$[{at}]"),
-                    reason: crate::text::expected_got(
+                    reason: crate::implementer::expected_got(
                         "a map of identifier keys to values",
                         row.kind(),
                     ),
@@ -1266,7 +1266,7 @@ impl Identifiers {
             let Some(text) = key.as_str() else {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$"),
-                    reason: crate::text::expected_got(
+                    reason: crate::implementer::expected_got(
                         format_args!("a text key at entry {at}"),
                         key.kind(),
                     ),
@@ -1274,8 +1274,8 @@ impl Identifiers {
             };
             let Some(value) = value.as_str() else {
                 return Err(Error::InvalidRecord {
-                    path: format_smolstr!("$['{}']", crate::text::elide_to(text, 64)),
-                    reason: crate::text::expected_got("a text value", value.kind()),
+                    path: format_smolstr!("$['{}']", crate::implementer::elide_to(text, 64)),
+                    reason: crate::implementer::expected_got("a text value", value.kind()),
                 });
             };
             self.read_entry(text, text.parse().ok(), value)?;

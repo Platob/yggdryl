@@ -37,8 +37,11 @@ use smol_str::{SmolStr, format_smolstr};
 use super::field::FixShape;
 use super::group_plan::GroupPlan;
 use super::memo::{Lookup, Memo};
-use super::{FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
-use crate::logging::warning::warned;
+use super::{
+    FixField, FixFieldMut, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS,
+    occurrence_name,
+};
+use crate::implementer::warned;
 use crate::text::TextBytes;
 use crate::{DataType, Error, Field, Result, Scalar, StructType, Version};
 
@@ -617,7 +620,7 @@ pub(super) fn fill_field<'registry>(
         .and_then(|path| registry.get_field_by_path(path))
         .or_else(|| registry.get_field_by_name(key));
     let field = named?;
-    let tag = field.as_fix().tag().ok().flatten()?;
+    let tag = FixField::new(field).tag().ok().flatten()?;
     // A counter is no field a row fills: the group it counts is its list,
     // whose length is the count.
     if !field.dtype().is_nested() && registry.is_counter_tag(tag) {
@@ -1346,7 +1349,7 @@ impl<'registry> Builder<'registry> {
         // the pair and was applied before this key was resolved at all.
         let absent = match &facts {
             Some(facts) => facts.is_null(text),
-            None => field.as_fix().is_null_value(text),
+            None => FixField::new(field).is_null_value(text),
         };
         if absent {
             return Ok(Scalar::Null);
@@ -1515,13 +1518,14 @@ impl<'registry> Builder<'registry> {
         // by its canonical name or its tag is an alias, ranked as the
         // dictionary lists it.
         let alias: Option<(SmolStr, usize)> = source.and_then(|declared| {
-            if super::field::parse_tag(key).is_some() || crate::folds_equal(key, declared.name()) {
+            if super::field::parse_tag(key).is_some()
+                || crate::implementer::folds_equal(key, declared.name())
+            {
                 return None;
             }
-            declared
-                .as_fix()
+            FixField::new(declared)
                 .names()
-                .position(|name| crate::folds_equal(name, key))
+                .position(|name| crate::implementer::folds_equal(name, key))
                 .map(|rank| (folded_name(key), rank))
         });
         // A market an alias spells is an ISO 10383 MIC or no statement of
@@ -1647,7 +1651,7 @@ impl<'registry> Builder<'registry> {
                 // string an anomaly builds.
                 let spelled = |value: Option<&Scalar>| {
                     value
-                        .and_then(crate::string::str_from_value)
+                        .and_then(crate::implementer::str_from_value)
                         .and_then(Result::ok)
                         .unwrap_or_default()
                 };
@@ -1741,7 +1745,7 @@ impl<'registry> Builder<'registry> {
     /// Counters resolve as scalar fields; the catalog supplies the group.
     fn counter_from(&self, located: &Known<'registry>) -> Option<(Field, i32)> {
         if let Some(group) = located.group {
-            return Some((stated(group), group.as_fix().counter().ok()??));
+            return Some((stated(group), FixField::new(group).counter().ok()??));
         }
         let (_, tag) = located.field?;
         let group = self.numeric_group(tag)?;
@@ -1868,7 +1872,7 @@ impl<'registry> Builder<'registry> {
             Some((field, tag)) => (field, tag, false),
             None => match located.group {
                 Some(known) => {
-                    let tag = known.as_fix().tag().ok().flatten().unwrap_or(0);
+                    let tag = FixField::new(known).tag().ok().flatten().unwrap_or(0);
                     (stated(known), tag, true)
                 }
                 None => (
@@ -1892,7 +1896,7 @@ impl<'registry> Builder<'registry> {
         let facts = self
             .memo
             .facts(declared, || self.registry.codes_document_shared(declared));
-        Field::new_with_metadata(
+        crate::implementer::field_new_with_metadata(
             spelling,
             DataType::utf8(),
             true,
@@ -2200,7 +2204,8 @@ impl<'registry> Builder<'registry> {
         // Every child is the dictionary's own field, a field built for a key
         // the dictionary lacks, or a group closed above, and one slot holds
         // each name, so the root is built as it stands.
-        let root = DataType::from(StructType::from_unique_fields(fields)).required_field(name);
+        let root = DataType::from(crate::implementer::struct_type_from_unique_fields(fields))
+            .required_field(name);
         Ok(Built {
             field: root,
             value: Scalar::from_sequence(values),
@@ -2462,23 +2467,26 @@ impl Slot {
         let mut rows: Vec<(String, Scalar)> = Vec::with_capacity(finished.len());
         for mut occurrence in finished.into_iter().flatten() {
             let mut key = String::new();
-            let row = Scalar::try_fill_sequence(member_fields.len(), |index, slot| {
-                let field = &member_fields[index];
-                if let Some((_, held)) = occurrence
-                    .iter_mut()
-                    .find(|(held, _)| held.name() == field.name())
-                {
-                    *slot = std::mem::replace(held, Scalar::Null);
-                }
-                if keyed && !slot.is_null() {
-                    use std::fmt::Write as _;
-                    key.push_str(field.name());
-                    key.push('=');
-                    let _ = write!(key, "{slot:?}");
-                    key.push('\u{1f}');
-                }
-                Ok(())
-            })?;
+            let row = crate::implementer::scalar_try_fill_sequence(
+                member_fields.len(),
+                |index, slot| {
+                    let field = &member_fields[index];
+                    if let Some((_, held)) = occurrence
+                        .iter_mut()
+                        .find(|(held, _)| held.name() == field.name())
+                    {
+                        *slot = std::mem::replace(held, Scalar::Null);
+                    }
+                    if keyed && !slot.is_null() {
+                        use std::fmt::Write as _;
+                        key.push_str(field.name());
+                        key.push('=');
+                        let _ = write!(key, "{slot:?}");
+                        key.push('\u{1f}');
+                    }
+                    Ok(())
+                },
+            )?;
             rows.push((key, row));
         }
         if keyed {
@@ -2502,7 +2510,7 @@ impl Slot {
 /// shared as the one it is, never rebuilt from its entries - over `item`,
 /// required.
 fn serie_of(field: &Field, item: Field) -> Field {
-    Field::new_with_metadata(
+    crate::implementer::field_new_with_metadata(
         field.name(),
         DataType::serie(item),
         false,
@@ -2547,8 +2555,10 @@ pub(super) fn wire_spelling(field: &Field, shape: FixShape, text: &str) -> Optio
     let read = match field.dtype() {
         DataType::DateTime64 { timezone, .. } => {
             let read = match shape {
-                FixShape::TzTimeOnly => crate::DateTime64::from_fix_clock(text, *timezone),
-                FixShape::Typed => crate::DateTime64::from_fix_text(text, *timezone),
+                FixShape::TzTimeOnly => {
+                    crate::implementer::datetime64_from_fix_clock(text, *timezone)
+                }
+                FixShape::Typed => crate::implementer::datetime64_from_fix_text(text, *timezone),
             };
             read.and_then(|read| {
                 if timezone.is_naive() && !read.timezone().is_naive() {
@@ -2560,8 +2570,8 @@ pub(super) fn wire_spelling(field: &Field, shape: FixShape, text: &str) -> Optio
                 Scalar::datetime64(read.count(), read.unit(), *timezone)
             })
         }
-        DataType::Time32(_) => crate::Time32::from_fix_text(text).map(Scalar::Time32),
-        DataType::Time64(_) => crate::Time64::from_fix_text(text).map(Scalar::Time64),
+        DataType::Time32(_) => crate::implementer::time32_from_fix_text(text).map(Scalar::Time32),
+        DataType::Time64(_) => crate::implementer::time64_from_fix_text(text).map(Scalar::Time64),
         _ => return None,
     };
     Some(read)
@@ -2586,7 +2596,7 @@ pub(super) fn typed_spelling_checked(
 ) -> Result<Scalar> {
     let codes = registry.codes_document(field);
     let translated = codes.and_then(|codes| super::codes::translate(codes, text));
-    typed_translation(field, field.as_fix().shape(), codes, text, translated)
+    typed_translation(field, FixField::new(field).shape(), codes, text, translated)
 }
 
 /// [`typed_spelling`] for a field the registry keeps, the translation
@@ -2637,8 +2647,8 @@ fn typed_translation(
     // value through the name its dictionary gives it.
     let dtype = field.dtype();
     if dtype.is_enum()
-        && let Some(member) =
-            named(spelling).and_then(|name| crate::enums::read_enum_spelling(dtype, name).ok())
+        && let Some(member) = named(spelling)
+            .and_then(|name| crate::implementer::read_enum_spelling(dtype, name).ok())
     {
         return Ok(member);
     }
@@ -2667,10 +2677,10 @@ fn typed_translation(
     // not the type: the refusal names the set - `no code of
     // partysubidtypecodeset is spelled "TraderName"` - where an uncoded
     // field keeps the type's own.
-    match crate::text::prepare_text(candidate, field) {
+    match crate::implementer::with_field(candidate, field) {
         Ok(value) => Ok(value),
         Err(_) if codes.is_some() && translated.is_none() => {
-            let set = field.as_fix().codeset().unwrap_or("its code set");
+            let set = FixField::new(field).codeset().unwrap_or("its code set");
             Err(invalid_value(
                 field,
                 format_args!("no code of {set} is spelled {spelling:?}"),
@@ -2686,7 +2696,7 @@ fn invalid_value(field: &Field, error: impl std::fmt::Display) -> Error {
             .field(field.name())
             .render()
             .into(),
-        reason: format_smolstr!("{}", crate::text::elide_display(&error)),
+        reason: format_smolstr!("{}", crate::implementer::elide_display(&error)),
     }
 }
 
@@ -2703,7 +2713,7 @@ pub(super) fn typed_fill(
         return Ok(Scalar::Null);
     }
     if let Some(text) = value.as_str() {
-        if field.as_fix().is_null_value(text) {
+        if FixField::new(field).is_null_value(text) {
             return Ok(Scalar::Null);
         }
         return typed_spelling_checked(registry, field, text)
@@ -2733,10 +2743,10 @@ pub(super) fn stated(known: &Field) -> Field {
 /// explains itself.
 fn in_scope<'held>(scope: &'held [Field], key: &str) -> Option<(&'held Field, i32)> {
     scope.iter().find_map(|held| {
-        if held.dtype().is_nested() || !crate::folds_equal(held.name(), key) {
+        if held.dtype().is_nested() || !crate::implementer::folds_equal(held.name(), key) {
             return None;
         }
-        Some((held, held.as_fix().tag().ok()??))
+        Some((held, FixField::new(held).tag().ok()??))
     })
 }
 
@@ -2752,7 +2762,7 @@ fn declared_members(group: &Field) -> Vec<i32> {
     member_fields(group)
         .iter()
         .filter_map(|member| {
-            let fix = member.as_fix();
+            let fix = FixField::new(member);
             fix.counter()
                 .ok()
                 .flatten()
@@ -2768,7 +2778,7 @@ pub(super) fn beginstring_field(registry: &FixRegistry) -> Field {
     registry.get_field_by_tag(8).map_or_else(
         || {
             let mut field = DataType::utf8().required_field("beginstring");
-            let _ = field.as_fix_mut().set_tag(8);
+            let _ = FixFieldMut::new(&mut field).set_tag(8);
             field
         },
         stated,
@@ -2780,7 +2790,7 @@ pub(super) fn beginstring_field(registry: &FixRegistry) -> Field {
 /// A `data` field's value is bytes and the row is where they live, so the
 /// typed read hands them over untouched instead of reading a spelling.
 const fn is_binary(dtype: &DataType) -> bool {
-    matches!(dtype, crate::bytes_dtypes!())
+    matches!(dtype, crate::implementer::bytes_dtypes!())
 }
 
 /// One unknown key's own spelling, folded the way every built name is.
@@ -2791,7 +2801,7 @@ const fn is_binary(dtype: &DataType) -> bool {
 /// empties - separators alone - keeps its own spelling, because a child has
 /// to be called something.
 fn folded_name(key: &str) -> SmolStr {
-    let name: SmolStr = crate::parser::folded(key).collect();
+    let name: SmolStr = crate::implementer::folded(key).collect();
     if name.is_empty() {
         SmolStr::new(key)
     } else {

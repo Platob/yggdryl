@@ -10,7 +10,7 @@ mod from_env {
     use std::sync::Arc;
 
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FixRegistry};
+    use yggdryl::{DataType, FixFieldMut, FixRegistry};
 
     const LOCATION: &str = "YGGDRYL_FIX_REGISTRY";
 
@@ -48,7 +48,9 @@ mod from_env {
         // resolves it.
         let good = root.join("good");
         let mut symbol = DataType::utf8().required_field("Symbol");
-        symbol.as_fix_mut().set_tag(55).expect("a valid tag");
+        FixFieldMut::new(&mut symbol)
+            .set_tag(55)
+            .expect("a valid tag");
         FixRegistry::from_fields([symbol])
             .expect("one field")
             .commit(&mut LocalFolder::new(&good).expect("a local folder"))
@@ -85,7 +87,7 @@ mod from_home {
     use std::ffi::OsString;
 
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FixRegistry};
+    use yggdryl::{DataType, FixFieldMut, FixRegistry};
 
     const LOCATION: &str = "YGGDRYL_FIX_REGISTRY";
 
@@ -110,7 +112,9 @@ mod from_home {
         let _ = std::fs::remove_dir_all(&home);
 
         let mut symbol = DataType::utf8().required_field("Symbol");
-        symbol.as_fix_mut().set_tag(55).expect("a valid tag");
+        FixFieldMut::new(&mut symbol)
+            .set_tag(55)
+            .expect("a valid tag");
         FixRegistry::from_fields([symbol])
             .expect("one field")
             .commit(
@@ -147,7 +151,7 @@ mod from_home {
 mod from_install {
     use std::sync::Arc;
 
-    use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructType};
+    use yggdryl::{DataType, FixFieldMut, FixMsg, FixRegistry, Scalar, StructType};
 
     #[test]
     fn an_installed_registry_is_the_default_and_cannot_be_replaced() {
@@ -158,7 +162,9 @@ mod from_install {
             return;
         }
         let mut symbol = DataType::utf8().required_field("Symbol");
-        symbol.as_fix_mut().set_tag(55).expect("a valid tag");
+        FixFieldMut::new(&mut symbol)
+            .set_tag(55)
+            .expect("a valid tag");
         let registry = FixRegistry::from_fields([symbol.clone()]).expect("one field");
         FixRegistry::install_env(registry).expect("nothing has resolved the default yet");
 

@@ -363,12 +363,12 @@ use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::text::{ERROR_TEXT_LIMIT, elide_to, expected_got};
+use crate::implementer::{ERROR_TEXT_LIMIT, elide_to, expected_got};
 use crate::{Charset, DataType, Error, Field, IOBase, Result, Side, StructType, Url};
 
 use super::catalog::{catalog_name, push_member};
 use super::codes::{FixCodes, claims, is_sentinel, names_collide};
-use super::{FixCode, FixRegistry, MSGTYPE_TAG_NAME};
+use super::{FixCode, FixField, FixFieldMut, FixRegistry, MSGTYPE_TAG_NAME};
 
 /// How deep a grammar may nest before the parse stops descending.
 ///
@@ -493,7 +493,7 @@ fn source_file_name(source: Option<&Url>) -> Option<Cow<'_, str>> {
     let name = source
         .filter(|url| !url.to_string().starts_with("mem:"))
         .and_then(Url::file_name)?;
-    Some(crate::uri::percent_decode(name, "url path").unwrap_or(Cow::Borrowed(name)))
+    Some(crate::implementer::percent_decode(name, "url path").unwrap_or(Cow::Borrowed(name)))
 }
 
 /// What every warning this parse logs opens with: the file's name and the
@@ -563,7 +563,8 @@ fn decoded<'bytes>(bytes: &'bytes [u8], prefix: &str) -> Cow<'bytes, str> {
         Some((charset, mark)) => (Ok(charset), &bytes[mark..]),
         None => {
             let head = &bytes[..bytes.len().min(DECLARATION_PROBE)];
-            let declared = crate::xml::declared_charset(head).map(Option::unwrap_or_default);
+            let declared =
+                crate::implementer::declared_charset(head).map(Option::unwrap_or_default);
             (declared, bytes)
         }
     };
@@ -605,7 +606,7 @@ fn decoded<'bytes>(bytes: &'bytes [u8], prefix: &str) -> Cow<'bytes, str> {
 /// in between.
 pub(super) fn stem_dialect(handle: &dyn IOBase) -> Option<Cow<'_, str>> {
     let stem = handle.url().and_then(Url::stem)?;
-    let stem = crate::uri::percent_decode(stem, "url path").unwrap_or(Cow::Borrowed(stem));
+    let stem = crate::implementer::percent_decode(stem, "url path").unwrap_or(Cow::Borrowed(stem));
     let named = stem
         .bytes()
         .next()
@@ -768,7 +769,7 @@ impl<'doc> Parse<'doc> {
     /// Stamps one produced field as a member of this file's dialect.
     fn stamp(&self, field: &mut Field) -> Result<()> {
         match &self.source {
-            Some(source) => field.as_fix_mut().set_sources([source.id()]),
+            Some(source) => FixFieldMut::new(field).set_sources([source.id()]),
             None => Ok(()),
         }
     }
@@ -816,7 +817,7 @@ impl<'doc> Parse<'doc> {
                 let result: Result<()> = (|| {
                     let checkpoint = registry.codeset_checkpoint(&set)?;
                     registry.set_codeset(&set, &codes)?;
-                    if let Err(error) = field.as_fix_mut().set_codeset(&set) {
+                    if let Err(error) = FixFieldMut::new(&mut field).set_codeset(&set) {
                         registry.restore_codeset(checkpoint.0, checkpoint.1);
                         return Err(error);
                     }
@@ -980,7 +981,7 @@ impl<'doc> Parse<'doc> {
         // this message is now a component of that name, and the message is
         // not the member.
         root.set_name(message_name(registry, wire));
-        root.as_fix_mut().set_msgtype(wire)?;
+        FixFieldMut::new(&mut root).set_msgtype(wire)?;
         if registry
             .get_definition(crate::FixCategory::Components, root.name())
             .is_some()
@@ -1250,7 +1251,7 @@ impl<'doc> Parse<'doc> {
             // links none of them, exactly as it names none of them.
             if sharing.len() == 2 {
                 let other = sharing[usize::from(sharing[0] == tag)];
-                if let Err(error) = field.as_fix_mut().set_tags(&[other]) {
+                if let Err(error) = FixFieldMut::new(field).set_tags(&[other]) {
                     warnings.push((
                         position,
                         format_smolstr!("tag {tag} beside tag {other}: {error}"),
@@ -1442,8 +1443,7 @@ impl<'doc> Parse<'doc> {
             );
             return Ok(());
         }
-        if let Err(error) = field
-            .as_fix_mut()
+        if let Err(error) = FixFieldMut::new(&mut field)
             .set_tag(tag)
             .and_then(|()| self.stamp(&mut field))
         {
@@ -1454,7 +1454,7 @@ impl<'doc> Parse<'doc> {
             return Ok(());
         }
         if let Some(described) = described
-            && let Err(error) = field.as_fix_mut().set_description(described)
+            && let Err(error) = FixFieldMut::new(&mut field).set_description(described)
         {
             self.dropped(
                 &self.refused_by(
@@ -1669,10 +1669,10 @@ impl<'doc> Parse<'doc> {
         // map spelled with it reaches the field by the same fold.
         let folded = catalog_name(named);
         let at = self.decoded(|held| {
-            crate::folds_equal(held.field.name(), named)
-                || folded
-                    .as_deref()
-                    .is_some_and(|folded| crate::folds_equal(held.field.name(), folded))
+            crate::implementer::folds_equal(held.field.name(), named)
+                || folded.as_deref().is_some_and(|folded| {
+                    crate::implementer::folds_equal(held.field.name(), folded)
+                })
         })?;
         Some((at, false))
     }
@@ -1893,7 +1893,7 @@ impl<'doc> Parse<'doc> {
         if spelling == self.msgtypes[at].value() {
             return;
         }
-        let key = crate::normalized(spelling);
+        let key = crate::implementer::normalized(spelling);
         if self.spellings.contains_key(&key) {
             return;
         }
@@ -2144,7 +2144,7 @@ impl<'doc> Parse<'doc> {
             let field = &held.field;
             let spellings = [field.name(), spelled(field)]
                 .into_iter()
-                .chain(field.as_fix().names());
+                .chain(FixField::new(field).names());
             for spelling in spellings {
                 claimed
                     .entry(super::registry::name_key(spelling))
@@ -2179,12 +2179,13 @@ impl<'doc> Parse<'doc> {
             {
                 continue;
             }
-            let mut aliases: Vec<SmolStr> = field.as_fix().names().map(SmolStr::new).collect();
+            let mut aliases: Vec<SmolStr> =
+                FixField::new(field).names().map(SmolStr::new).collect();
             if aliases.iter().any(|held| name.eq_ignore_ascii_case(held)) {
                 continue;
             }
             aliases.push(SmolStr::new(&name));
-            if let Err(error) = field.as_fix_mut().set_names(&aliases) {
+            if let Err(error) = FixFieldMut::new(field).set_names(&aliases) {
                 self.dropped(
                     &self.refusal_at(
                         position,
@@ -2372,7 +2373,7 @@ impl<'doc> Parse<'doc> {
                 GROUP_DROPPED,
             );
         };
-        let tag = match counter.as_fix().tag() {
+        let tag = match FixField::new(&counter).tag() {
             Ok(Some(tag)) => tag,
             Ok(None) => {
                 self.dropped(&self.counterless(msgtype), GROUP_DROPPED);
@@ -2401,7 +2402,7 @@ impl<'doc> Parse<'doc> {
         if self
             .vocabulary
             .iter()
-            .any(|field| crate::folds_equal(field.field.name(), &name))
+            .any(|field| crate::implementer::folds_equal(field.field.name(), &name))
         {
             name.push_str("grp");
             if !display.ends_with("Grp") {
@@ -2414,7 +2415,7 @@ impl<'doc> Parse<'doc> {
         if self
             .vocabulary
             .iter()
-            .any(|field| crate::folds_equal(field.field.name(), &entry))
+            .any(|field| crate::implementer::folds_equal(field.field.name(), &entry))
         {
             entry.push_str("component");
             if !entry_display.ends_with("Component") {
@@ -2430,8 +2431,8 @@ impl<'doc> Parse<'doc> {
             group.set_display(&display)?;
             group.set_nullable(counter.is_nullable());
             self.stamp(&mut group)?;
-            group.as_fix_mut().set_counter(tag)?;
-            group.as_fix_mut().set_component(&entry)?;
+            FixFieldMut::new(&mut group).set_counter(tag)?;
+            FixFieldMut::new(&mut group).set_component(&entry)?;
             Ok(group)
         };
         match built() {
@@ -2533,7 +2534,7 @@ impl<'doc> Parse<'doc> {
         // conditionally required field is one that may be absent.
         let required = self
             .attribute(element, "required")
-            .is_some_and(|held| crate::boolean::bool_from_text(&held) == Some(true));
+            .is_some_and(|held| crate::implementer::bool_from_text(&held) == Some(true));
         let mut field = held;
         field.set_nullable(!required);
         self.check_validity(closed)?;
@@ -2550,8 +2551,7 @@ impl<'doc> Parse<'doc> {
     /// warned and dropped.
     fn declared_by_constraint(&mut self, tag: i32) -> Option<Field> {
         let mut field = DataType::utf8().nullable_field(format_smolstr!("{tag}"));
-        if let Err(error) = field
-            .as_fix_mut()
+        if let Err(error) = FixFieldMut::new(&mut field)
             .set_tag(tag)
             .and_then(|()| self.stamp(&mut field))
         {
@@ -2864,7 +2864,7 @@ impl<'doc> Parse<'doc> {
 /// spelling a FIX datatype - `LocalMktDate`, `MonthYear`, `data`, `SeqNum` -
 /// or a datatype name outright reads as what it names.
 fn cblock_type(word: &str) -> Option<DataType> {
-    if crate::folds_equal(word.trim(), "float") {
+    if crate::implementer::folds_equal(word.trim(), "float") {
         return Some(DataType::Float64);
     }
     DataType::from_str(word).ok()
@@ -2954,11 +2954,11 @@ fn message_name(registry: &FixRegistry, wire: &str) -> String {
         .filter(|name| *name != wire)
         .map_or_else(derived, str::to_ascii_lowercase);
     match registry.get_definition(crate::FixCategory::Components, &named) {
-        Some(entry) if entry.as_fix().msgtype() != Some(wire) => {
+        Some(entry) if FixField::new(entry).msgtype() != Some(wire) => {
             log::debug!(
                 "message type {wire:?} takes {:?}: {named:?} names message type {:?}",
                 derived(),
-                entry.as_fix().msgtype().unwrap_or_default()
+                FixField::new(entry).msgtype().unwrap_or_default()
             );
             derived()
         }
@@ -3077,7 +3077,7 @@ impl Structures {
         category: crate::FixCategory,
         field: &Field,
     ) -> Result<Option<String>> {
-        if field.as_fix().msgtype().is_some() {
+        if FixField::new(field).msgtype().is_some() {
             return Ok(None);
         }
         let lookup =
@@ -3094,7 +3094,7 @@ impl Structures {
                 let mut built = std::collections::HashMap::new();
                 for category in [crate::FixCategory::Components, crate::FixCategory::Groups] {
                     for definition in registry.definitions(category) {
-                        if definition.as_fix().msgtype().is_some() {
+                        if FixField::new(definition).msgtype().is_some() {
                             continue;
                         }
                         let key = super::catalog::structural_key(definition, &lookup, &mut memo)?;
@@ -3122,7 +3122,7 @@ impl Structures {
         let Some(held) = &mut self.held else {
             return Ok(());
         };
-        if field.as_fix().msgtype().is_some() {
+        if FixField::new(field).msgtype().is_some() {
             return Ok(());
         }
         let lookup =
@@ -3193,7 +3193,7 @@ fn reuse(
 /// held definition - read again where a later member relaxed it; a member
 /// reading no definition as it is.
 fn reread(registry: &FixRegistry, member: &Field) -> Result<Field> {
-    let view = member.as_fix();
+    let view = FixField::new(member);
     let (category, name) = if let Some(name) = view.group() {
         (crate::FixCategory::Groups, name.to_owned())
     } else if let Some(name) = view.component() {
@@ -3203,8 +3203,8 @@ fn reread(registry: &FixRegistry, member: &Field) -> Result<Field> {
     };
     let mut reread = occurrence(registry.definition(category, &name)?, member);
     match category {
-        crate::FixCategory::Groups => reread.as_fix_mut().set_group(&name)?,
-        _ => reread.as_fix_mut().set_component(&name)?,
+        crate::FixCategory::Groups => FixFieldMut::new(&mut reread).set_group(&name)?,
+        _ => FixFieldMut::new(&mut reread).set_component(&name)?,
     }
     reread.set_name(member.name());
     Ok(reread)
@@ -3275,10 +3275,10 @@ fn catalog_members(
                 structures,
             )?;
             let component = item.name().to_owned();
-            item.as_fix_mut().set_component(&component)?;
+            FixFieldMut::new(&mut item).set_component(&component)?;
             item.set_name(occurrence);
             field.set_dtype(DataType::serie(item))?;
-            field.as_fix_mut().set_component(&component)?;
+            FixFieldMut::new(&mut field).set_component(&component)?;
             field = catalog_entry(
                 registry,
                 crate::FixCategory::Groups,
@@ -3288,14 +3288,14 @@ fn catalog_members(
                 structures,
             )?;
             let name = field.name().to_owned();
-            field.as_fix_mut().set_group(&name)?;
+            FixFieldMut::new(&mut field).set_group(&name)?;
             field.set_name(member);
         }
         _ => {
             // By identity where the child kept the dictionary's name, else by
             // tag: a duplicate constraint or a contended spelling renamed the
             // child, and the tag is what still names the field it constrains.
-            let view = field.as_fix();
+            let view = FixField::new(&field);
             let known = match (view.id()?, view.tag()?) {
                 (Some(id), tag) => registry
                     .get_field_by_id(id)
@@ -3315,7 +3315,7 @@ fn catalog_members(
                 field = known.clone();
                 field.set_name(name);
                 field.set_nullable(nullable);
-                field.as_fix_mut().set_field_ref(known.name())?;
+                FixFieldMut::new(&mut field).set_field_ref(known.name())?;
             }
         }
     }

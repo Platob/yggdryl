@@ -33,34 +33,34 @@ The counter is a scalar field; a reusable component defines one occurrence and t
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FixCode, FixRegistry, FixSource, IOBase, FieldPath, StructType};
+    use yggdryl::{DataType, FieldPath, FixCode, FixField, FixFieldMut, FixRegistry, FixSource, IOBase, StructType};
 
     let path = LocalFolder::temporary()?.path()?.join(format!("ygg-doc-store-{}", std::process::id()));
     let mut root = LocalFolder::new(&path)?;
     let mut count = DataType::Int32.nullable_field("NoPartyIDs");
-    count.as_fix_mut().set_tag(453)?;
+    FixFieldMut::new(&mut count).set_tag(453)?;
     let mut id = DataType::utf8().nullable_field("PartyID");
-    id.as_fix_mut().set_tag(448)?;
-    id.as_fix_mut().set_sources(["venue"])?;
+    FixFieldMut::new(&mut id).set_tag(448)?;
+    FixFieldMut::new(&mut id).set_sources(["venue"])?;
     let mut registry = FixRegistry::from_fields([count, id])?;
     let mut member = registry.field(448)?.clone();
-    member.as_fix_mut().set_field_ref("PartyID")?;
+    FixFieldMut::new(&mut member).set_field_ref("PartyID")?;
     let mut party = DataType::from(StructType::from_fields([member])?).required_field("Party");
-    party.as_fix_mut().set_identifiers(["448"])?;
+    FixFieldMut::new(&mut party).set_identifiers(["448"])?;
     registry.insert(party.clone())?;
     let mut group = DataType::serie(party).nullable_field("Parties");
-    group.as_fix_mut().set_counter(453)?;
-    group.as_fix_mut().set_component("Party")?;
+    FixFieldMut::new(&mut group).set_counter(453)?;
+    FixFieldMut::new(&mut group).set_component("Party")?;
     registry.insert(group)?;
     let mut order = DataType::from(StructType::from_fields([])?).required_field("Order");
-    order.as_fix_mut().set_msgtype("D")?;
+    FixFieldMut::new(&mut order).set_msgtype("D")?;
     registry.insert(order)?;
     // A vocabulary is the dictionary's own, stated before the field that
     // reads by it names it; the store writes it under that name.
     registry.set_codeset("partyidsourcecodeset", &[FixCode::new("Proprietary", "D")])?;
     let mut source = DataType::utf8().nullable_field("PartyIDSource");
-    source.as_fix_mut().set_tag(447)?;
-    source.as_fix_mut().set_codeset("partyidsourcecodeset")?;
+    FixFieldMut::new(&mut source).set_tag(447)?;
+    FixFieldMut::new(&mut source).set_codeset("partyidsourcecodeset")?;
     registry.insert(source)?;
     // What is known of the source is recorded once, in the catalog.
     registry.add_source(FixSource::new("venue")?.with_file("venue.cfb"));
@@ -87,16 +87,16 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     assert_eq!(std::fs::read_dir(&path)?.count(), 5);
     let reloaded = FixRegistry::from_handle(&root)?;
     assert_eq!(reloaded, registry);
-    assert_eq!(reloaded.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
+    assert_eq!(FixField::new(reloaded.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?).tag()?, Some(448));
     // The vocabulary comes back under its name, and the field by that name.
     let held = reloaded.codeset_of(reloaded.field(447)?).expect("the set the field reads by");
     assert_eq!(held.name(), "partyidsourcecodeset");
     assert_eq!(held.code_name("D"), Some("Proprietary"));
     // Membership travels inside the field's own document.
-    assert!(reloaded.field(448)?.as_fix().has_source("venue"));
+    assert!(FixField::new(reloaded.field(448)?).has_source("venue"));
     assert_eq!(reloaded.dialects(), ["venue"]);
     assert_eq!(reloaded.get_source("venue").and_then(FixSource::file), Some("venue.cfb"));
-    assert_eq!(reloaded.field_by_name("Party")?.as_fix().identifiers().collect::<Vec<_>>(), ["PartyID"]);
+    assert_eq!(FixField::new(reloaded.field_by_name("Party")?).identifiers().collect::<Vec<_>>(), ["PartyID"]);
     assert_eq!(reloaded.field_by_counter(65037)?.name(), "metadata");
     root.remove(true)?;
     ```
@@ -336,7 +336,7 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{fix_crate_fields, FixId, FixRegistry, FieldPath};
+    use yggdryl::{fix_crate_fields, FieldPath, FixField, FixId, FixRegistry};
 
     let seed = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("config").join("fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(seed)?)?;
@@ -346,17 +346,17 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert_eq!(registry.field_by_tag(55)?.name(), "symbol");
     assert_eq!(registry.field_by_name("SYMBOL")?.name(), "symbol");
     assert_eq!(registry.field_by_tag(150)?.display(), Some("ExecType"));
-    assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
+    assert_eq!(FixField::new(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?).tag()?, Some(448));
     assert_eq!(registry.field_by_name("ClOrdID")?.display(), Some("ClOrdID"));
     // The id is the tag and the folded name, derived on every read and held
     // in no document, so the stored dictionary spells it nowhere.
     let symbol = FixId::of(55, "Symbol")?;
-    assert_eq!(registry.field_by_tag(55)?.as_fix().id()?, Some(symbol));
+    assert_eq!(FixField::new(registry.field_by_tag(55)?).id()?, Some(symbol));
     assert_eq!(registry.field_by_id(symbol)?.name(), "symbol");
     // Every field is a specification field or one of the crate's own, so no
     // field names a dialect that contributed it.
     assert!(registry.dialects().is_empty());
-    assert!(registry.iter().all(|field| field.as_fix().sources().next().is_none()));
+    assert!(registry.iter().all(|field| FixField::new(field).sources().next().is_none()));
     // The crate's own definitions are in the store and in the registry alike:
     // 51 scalar fields, including `strikepx`, `msgpluginside` and the `srcuuids` serie, plus one Map group.
     assert_eq!(fix_crate_fields()?.len(), 52);

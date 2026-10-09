@@ -76,7 +76,7 @@ use smol_str::SmolStr;
 use crate::StructType;
 use crate::{DataType, Field, Result};
 
-use super::FixRegistry;
+use super::{FixField, FixFieldMut, FixRegistry};
 use smallvec::{SmallVec, smallvec};
 
 /// The standard header, in the order FIX 4.4 declares it.
@@ -298,7 +298,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
     // the reader's word among the message's.
     let rest: Vec<i32> = crated
         .iter()
-        .filter_map(|field| field.as_fix().tag().ok().flatten())
+        .filter_map(|field| FixField::new(field).tag().ok().flatten())
         .filter(|tag| !super::identity::is_capture_tag(*tag))
         .collect();
     band(&mut tags, &rest);
@@ -434,31 +434,29 @@ pub(super) fn fixmsg_definition(registry: &FixRegistry) -> Result<Field> {
     for column in schema.fields() {
         let mut member = column.clone();
         if column.name() != FIXENTRIES_COLUMN {
-            let group = column
-                .as_fix()
+            let group = FixField::new(column)
                 .counter()?
                 .and_then(|counter| registry.get_field_by_counter(counter))
-                .filter(|group| crate::folds_equal(group.name(), column.name()));
-            let scalar = column
-                .as_fix()
+                .filter(|group| crate::implementer::folds_equal(group.name(), column.name()));
+            let scalar = FixField::new(column)
                 .tag()?
                 .and_then(|tag| registry.get_scalar_by_tag(tag))
-                .filter(|scalar| crate::folds_equal(scalar.name(), column.name()));
+                .filter(|scalar| crate::implementer::folds_equal(scalar.name(), column.name()));
             if let Some(group) = group {
-                member.as_fix_mut().set_group(group.name())?;
+                FixFieldMut::new(&mut member).set_group(group.name())?;
             } else if let Some(scalar) = scalar {
-                member.as_fix_mut().set_field_ref(scalar.name())?;
+                FixFieldMut::new(&mut member).set_field_ref(scalar.name())?;
             }
         }
         members.push(member);
     }
-    let mut root = Field::new_with_metadata(
+    let mut root = crate::implementer::field_new_with_metadata(
         schema.name(),
         DataType::from(StructType::from_fields(members)?),
         schema.is_nullable(),
         schema.as_metadata().clone(),
     );
-    root.as_fix_mut().set_tag(tag)?;
+    FixFieldMut::new(&mut root).set_tag(tag)?;
     root.set_display("FIX Message")?;
     root.set_description(
         "The fixed row every message answers as: the crate's own columns, the standard header, \
@@ -492,7 +490,7 @@ pub(super) fn rooted(
             held.set_nullable(!is_required(tag));
             if !fields
                 .iter()
-                .any(|known| crate::folds_equal(known.name(), held.name()))
+                .any(|known| crate::implementer::folds_equal(known.name(), held.name()))
             {
                 fields.push(held);
             }
@@ -508,13 +506,13 @@ pub(super) fn rooted(
             && let Some(held) = super::fix_crate_fields()
                 .unwrap_or_default()
                 .iter()
-                .find(|field| field.as_fix().tag().ok().flatten() == Some(tag))
+                .find(|field| FixField::new(field).tag().ok().flatten() == Some(tag))
         {
             let mut held = held.clone();
             held.set_nullable(!is_required(tag));
             if !fields
                 .iter()
-                .any(|known| crate::folds_equal(known.name(), held.name()))
+                .any(|known| crate::implementer::folds_equal(known.name(), held.name()))
             {
                 fields.push(held);
             }
@@ -526,7 +524,7 @@ pub(super) fn rooted(
             group.set_nullable(true);
             if !fields
                 .iter()
-                .any(|known| crate::folds_equal(known.name(), group.name()))
+                .any(|known| crate::implementer::folds_equal(known.name(), group.name()))
             {
                 fields.push(group);
             }
@@ -641,7 +639,7 @@ pub(super) fn carried(carrier: &Field, read: &Field) -> Vec<usize> {
             !read
                 .fields()
                 .iter()
-                .any(|column| crate::folds_equal(column.name(), held.name()))
+                .any(|column| crate::implementer::folds_equal(column.name(), held.name()))
         })
         .map(|(at, _)| at)
         .collect()
@@ -665,7 +663,7 @@ pub fn fix_column_of(schema: &Field, tag: i32) -> Option<usize> {
 /// under on the wire, else the one its field declares, else the one its name
 /// spells.
 fn column_tag(column: &Field) -> Option<i32> {
-    let view = column.as_fix();
+    let view = FixField::new(column);
     view.counter()
         .ok()
         .flatten()
@@ -771,7 +769,7 @@ fn column_plan_reading(schema: &Field, registry: &FixRegistry, fixed: bool) -> R
                 let counter = match registry.facts_of(column) {
                     Some(facts) => facts.counter,
                     None if column.as_metadata().is_empty() => None,
-                    None => column.as_fix().counter()?,
+                    None => FixField::new(column).counter()?,
                 };
                 let member = match tag {
                     Some(tag) if tag_and_counter(registry, column) != (Some(tag), counter) => {
@@ -836,7 +834,9 @@ fn restated(column: &Field, declared: &Field) -> Result<Field> {
                 None => Ok(ours.clone()),
             })
             .collect::<Result<Vec<Field>>>()?;
-        member.set_dtype(DataType::from(StructType::from_unique_fields(members)))?;
+        member.set_dtype(DataType::from(
+            crate::implementer::struct_type_from_unique_fields(members),
+        ))?;
         return Ok(member);
     }
     // A group's occurrence is named as the fixed row names it: a table
@@ -864,7 +864,7 @@ fn restated(column: &Field, declared: &Field) -> Result<Field> {
 fn refuse_counters_beside_groups(
     registry: &FixRegistry,
     fields: &[Field],
-    path: &crate::path::Path<'_>,
+    path: &crate::implementer::Path<'_>,
 ) -> Result<()> {
     let facts = member_facts(registry, fields);
     for (field, (tag, counter)) in fields.iter().zip(&facts) {
@@ -878,7 +878,7 @@ fn refuse_counters_beside_groups(
         {
             return Err(crate::Error::InvalidRecord {
                 path: path.field(field.name()).render().into(),
-                reason: crate::text::expected_got(
+                reason: crate::implementer::expected_got(
                     "a group alone, its length the count",
                     format_args!(
                         "`{}` ({tag}) counting the group `{}` beside it",
@@ -950,7 +950,7 @@ pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Res
         return column_plan(schema, registry);
     };
     let address = (
-        columns.storage_address(),
+        crate::implementer::struct_type_storage_address(columns),
         Arc::as_ptr(registry).cast::<()>() as usize,
     );
     let planned = PLANNED_BY_ADDRESS.with(|held| {
@@ -958,7 +958,7 @@ pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Res
         let at = held.iter().position(|(held, _)| *held == address)?;
         let (_, (known, resolver, plan)) = &held[at];
         if !(std::ptr::eq(resolver.as_ptr(), Arc::as_ptr(registry))
-            && known.shares_storage_with(columns))
+            && crate::implementer::struct_type_shares_storage_with(known, columns))
         {
             return None;
         }
@@ -982,7 +982,8 @@ pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Res
         if let Some(planned) = held.borrow().get(&shape) {
             for (known, resolver, plan) in planned {
                 if std::ptr::eq(resolver.as_ptr(), Arc::as_ptr(registry))
-                    && (known.shares_storage_with(columns) || known == columns)
+                    && (crate::implementer::struct_type_shares_storage_with(known, columns)
+                        || known == columns)
                 {
                     return Ok(Arc::clone(plan));
                 }
@@ -1030,7 +1031,7 @@ pub(super) fn tag_and_counter(registry: &FixRegistry, field: &Field) -> (Option<
     match registry.facts_of(field) {
         Some(facts) => (facts.tag, facts.counter),
         None => {
-            let view = field.as_fix();
+            let view = FixField::new(field);
             (view.tag().ok().flatten(), view.counter().ok().flatten())
         }
     }
@@ -1287,7 +1288,7 @@ fn entry_json(
         };
     }
     if states_occurrences(registry, entry) {
-        return crate::Scalar::try_sequence(nested.len(), |index| {
+        return crate::implementer::scalar_try_sequence(nested.len(), |index| {
             occurrence_json(registry, &nested[index], key)
         });
     }
@@ -1311,7 +1312,7 @@ fn occurrence_json(
     if nested.is_empty() {
         entry_json(registry, entry, key)
     } else if repeated {
-        crate::Scalar::try_sequence(nested.len(), |index| {
+        crate::implementer::scalar_try_sequence(nested.len(), |index| {
             occurrence_json(registry, &nested[index], key)
         })
     } else {
@@ -1335,7 +1336,7 @@ fn members_json(
     for (name, held) in keyed {
         let value = match held.as_slice() {
             [entry] => entry_json(registry, entry, key)?,
-            many => crate::Scalar::try_sequence(many.len(), |index| {
+            many => crate::implementer::scalar_try_sequence(many.len(), |index| {
                 entry_json(registry, many[index], key)
             })?,
         };
@@ -1397,16 +1398,19 @@ fn keyed_text(
             return Ok(entry.held_value().cloned().unwrap_or_default());
         }
         [entry] => entry_json(registry, entry, key)?,
-        many => {
-            crate::Scalar::try_sequence(many.len(), |index| entry_json(registry, many[index], key))?
-        }
+        many => crate::implementer::scalar_try_sequence(many.len(), |index| {
+            entry_json(registry, many[index], key)
+        })?,
     };
     Ok(SmolStr::from(crate::into_json_scalar(&json)?))
 }
 
 /// A key no dictionary resolved, read back: a member is filed under its own
 /// name, and a name is all it is.
-fn unresolved_key<'key>(key: &'key str, _: &crate::path::Path<'_>) -> Result<(i32, &'key str)> {
+fn unresolved_key<'key>(
+    key: &'key str,
+    _: &crate::implementer::Path<'_>,
+) -> Result<(i32, &'key str)> {
     Ok((0, key))
 }
 
@@ -1474,7 +1478,10 @@ pub(super) fn item_fields(field: &Field) -> Option<&[Field]> {
 
 /// One `tag:name` key read back: the tag, zero only for a member no
 /// dictionary named inside a field one did, and the name after it.
-fn parse_key<'key>(key: &'key str, path: &crate::path::Path<'_>) -> Result<(i32, &'key str)> {
+fn parse_key<'key>(
+    key: &'key str,
+    path: &crate::implementer::Path<'_>,
+) -> Result<(i32, &'key str)> {
     key.split_once(':')
         .and_then(|(tag, name)| {
             let tag = if tag == "0" {
@@ -1489,7 +1496,7 @@ fn parse_key<'key>(key: &'key str, path: &crate::path::Path<'_>) -> Result<(i32,
 
 /// The text one JSON leaf states: a string as it is, a number or a boolean as
 /// its JSON spelling.
-fn leaf_text(value: &crate::Scalar, path: &crate::path::Path<'_>) -> Result<SmolStr> {
+fn leaf_text(value: &crate::Scalar, path: &crate::implementer::Path<'_>) -> Result<SmolStr> {
     if let Some(text) = value.as_str() {
         return Ok(SmolStr::new(text));
     }
@@ -1501,7 +1508,7 @@ fn leaf_text(value: &crate::Scalar, path: &crate::path::Path<'_>) -> Result<Smol
 
 /// How a JSON member key reads back as a tag and a name: `tag:name` in the
 /// `fixentries` column, the name alone in the metadata.
-type KeyReader = for<'key> fn(&'key str, &crate::path::Path<'_>) -> Result<(i32, &'key str)>;
+type KeyReader = for<'key> fn(&'key str, &crate::implementer::Path<'_>) -> Result<(i32, &'key str)>;
 
 /// One entry read back out of the JSON it was written as: the inverse of
 /// [`entry_json`] under `tag:name` keys. An object is members, each key its
@@ -1512,7 +1519,7 @@ fn entry_from_json(
     tag: i32,
     name: &str,
     value: &crate::Scalar,
-    path: &crate::path::Path<'_>,
+    path: &crate::implementer::Path<'_>,
     key: KeyReader,
 ) -> Result<super::FixEntry> {
     if let Some(members) = value.as_struct() {
@@ -1547,13 +1554,16 @@ fn entry_from_json(
 }
 
 fn entry_error(
-    path: &crate::path::Path<'_>,
+    path: &crate::implementer::Path<'_>,
     expected: impl std::fmt::Display,
     actual: impl std::fmt::Display,
 ) -> crate::Error {
     crate::Error::InvalidRecord {
         path: path.render().into(),
-        reason: crate::text::expected_got(expected, crate::text::elide_display(&actual)),
+        reason: crate::implementer::expected_got(
+            expected,
+            crate::implementer::elide_display(&actual),
+        ),
     }
 }
 
@@ -1573,7 +1583,7 @@ fn entry_error(
 fn entries_from_map(
     registry: &FixRegistry,
     value: &crate::Scalar,
-    path: &crate::path::Path<'_>,
+    path: &crate::implementer::Path<'_>,
 ) -> Result<Vec<super::FixEntry>> {
     if value.is_null() {
         return Ok(Vec::new());
@@ -1653,7 +1663,7 @@ fn content_from_entries(
 fn preserve_contended_name(tags: &TagCounts, entry: &super::FixEntry, field: &mut Field) {
     if entry.tag() != 0
         && tags.count(entry.tag()) > 1
-        && !crate::folds_equal(field.name(), entry.name())
+        && !crate::implementer::folds_equal(field.name(), entry.name())
     {
         field.set_name(entry.held_name().clone());
     }
@@ -1711,7 +1721,7 @@ impl TagCounts {
 /// digests are taken the first time the level is asked past that bound, and
 /// every change after it goes through the method naming it - a push, a
 /// rename, a replacement, a swap - so they stay in step with the children. A
-/// [`crate::fold_digest`] only proposes a child: each is confirmed with
+/// [`crate::implementer::fold_digest`] only proposes a child: each is confirmed with
 /// [`crate::folds_equal`], and the lowest position confirmed answers.
 ///
 /// The digests are held on the stack up to 256 children - the fixed row
@@ -1736,23 +1746,23 @@ impl FoldIndex {
             if fields.len() < Self::SCANNED_BELOW {
                 return fields
                     .iter()
-                    .position(|held| crate::folds_equal(held.name(), name));
+                    .position(|held| crate::implementer::folds_equal(held.name(), name));
             }
             self.digests = fields
                 .iter()
                 .enumerate()
-                .map(|(at, held)| (crate::fold_digest(held.name()), at))
+                .map(|(at, held)| (crate::implementer::fold_digest(held.name()), at))
                 .collect();
             self.digests.sort_unstable();
             self.built = true;
         }
-        let digest = crate::fold_digest(name);
+        let digest = crate::implementer::fold_digest(name);
         let from = self.digests.partition_point(|held| held.0 < digest);
         self.digests[from..]
             .iter()
             .take_while(|held| held.0 == digest)
             .map(|held| held.1)
-            .find(|at| crate::folds_equal(fields[*at].name(), name))
+            .find(|at| crate::implementer::folds_equal(fields[*at].name(), name))
     }
 
     /// Appends `field` to `fields`.
@@ -1783,7 +1793,7 @@ impl FoldIndex {
     /// Records `name` at `at`, once the digests are taken.
     fn named(&mut self, name: &str, at: usize) {
         if self.built {
-            let held = (crate::fold_digest(name), at);
+            let held = (crate::implementer::fold_digest(name), at);
             let slot = self.digests.partition_point(|probe| *probe < held);
             self.digests.insert(slot, held);
         }
@@ -1792,7 +1802,9 @@ impl FoldIndex {
     /// Forgets `name` at `at`, once the digests are taken.
     fn unnamed(&mut self, name: &str, at: usize) {
         if self.built
-            && let Ok(slot) = self.digests.binary_search(&(crate::fold_digest(name), at))
+            && let Ok(slot) = self
+                .digests
+                .binary_search(&(crate::implementer::fold_digest(name), at))
         {
             self.digests.remove(slot);
         }
@@ -1821,7 +1833,7 @@ fn push_child(
 /// tag; a tagless bridge child keeps its folded name.
 fn covers_identity(registry: &FixRegistry, field: &Field, entry: &super::FixEntry) -> bool {
     if entry.tag() == 0 {
-        return crate::folds_equal(field.name(), entry.name());
+        return crate::implementer::folds_equal(field.name(), entry.name());
     }
     let (tag, counter) = tag_and_counter(registry, field);
     tag == Some(entry.tag()) || counter == Some(entry.tag())
@@ -1854,7 +1866,7 @@ fn covered_member_index(
                 .enumerate()
                 .filter(|(_, (field, (tag, held_counter)))| {
                     if entry.tag() == 0 {
-                        !counter && crate::folds_equal(field.name(), entry.name())
+                        !counter && crate::implementer::folds_equal(field.name(), entry.name())
                     } else if counter {
                         *held_counter == Some(entry.tag())
                     } else {
@@ -1898,7 +1910,7 @@ fn covers_entry(
             };
             if entry
                 .value()
-                .and_then(crate::integer::integer_from_text_as::<usize>)
+                .and_then(crate::implementer::integer_from_text_as::<usize>)
                 != Some(occurrences.len())
                 || entry.entries().len() != occurrences.len()
             {
@@ -2013,7 +2025,7 @@ fn ordered_group_union(
         for (name, _) in occurrence {
             let Some(index) = union
                 .iter()
-                .position(|field| crate::folds_equal(field.name(), name))
+                .position(|field| crate::implementer::folds_equal(field.name(), name))
             else {
                 return Err(refusal(format!(
                     "member {name} is absent from its group schema"
@@ -2104,7 +2116,7 @@ fn group_from_entry(
         for (field, value) in fields.into_iter().zip(values) {
             match union
                 .iter_mut()
-                .find(|held| crate::folds_equal(held.name(), field.name()))
+                .find(|held| crate::implementer::folds_equal(held.name(), field.name()))
             {
                 // Two occurrences state one member differently - a nested
                 // group one of them left out a level of - so the slot is
@@ -2140,7 +2152,7 @@ fn group_from_entry(
                 .iter()
                 .zip(&facts)
                 .position(|(held, (held_tag, _))| {
-                    crate::folds_equal(held.name(), field.name())
+                    crate::implementer::folds_equal(held.name(), field.name())
                         || (tag.is_some() && *held_tag == tag)
                 })
                 .unwrap_or(usize::MAX)
@@ -2177,7 +2189,12 @@ fn group_from_entry(
     // name and states no counter of its own: the builder left the count to
     // the occurrences beside it, and a counter here would put a second child
     // of that name in the row.
-    let field = Field::new_with_metadata(known.name(), dtype, true, known.as_metadata().clone());
+    let field = crate::implementer::field_new_with_metadata(
+        known.name(),
+        dtype,
+        true,
+        known.as_metadata().clone(),
+    );
     Ok((field, crate::Scalar::from_sequence(rows)))
 }
 
@@ -2205,7 +2222,7 @@ fn scalar_serie_from_entry(
         .zip(&typed)
         .any(|(occurrence, value)| occurrence.value().is_some() && value.is_null());
     let mut item = if raw {
-        Field::new_with_metadata(
+        crate::implementer::field_new_with_metadata(
             entry
                 .entries()
                 .first()
@@ -2233,7 +2250,7 @@ fn scalar_serie_from_entry(
     } else {
         typed
     };
-    let field = Field::new_with_metadata(
+    let field = crate::implementer::field_new_with_metadata(
         entry.held_name().clone(),
         DataType::serie(item),
         true,
@@ -2253,15 +2270,14 @@ fn unknown_nested_from_entry(
     let repeated = entry.entries().len() > 1
         && first.is_some_and(|first| {
             first.tag() == 0
-                && entry
-                    .entries()
-                    .iter()
-                    .all(|held| held.tag() == 0 && crate::folds_equal(held.name(), first.name()))
+                && entry.entries().iter().all(|held| {
+                    held.tag() == 0 && crate::implementer::folds_equal(held.name(), first.name())
+                })
         });
     if repeated {
         let mut known = DataType::utf8().nullable_field(entry.held_name().clone());
         if entry.tag() != 0 {
-            known.as_fix_mut().set_tag(entry.tag())?;
+            FixFieldMut::new(&mut known).set_tag(entry.tag())?;
         }
         if entry
             .entries()
@@ -2288,7 +2304,7 @@ fn unknown_nested_from_entry(
     let mut field =
         DataType::from(StructType::from_fields(fields)?).nullable_field(entry.held_name().clone());
     if entry.tag() != 0 {
-        field.as_fix_mut().set_tag(entry.tag())?;
+        FixFieldMut::new(&mut field).set_tag(entry.tag())?;
     }
     Ok((field, crate::Scalar::from_struct(named)?))
 }
@@ -2303,11 +2319,10 @@ fn alias_lost_to<'registry>(
 ) -> Option<&'registry Field> {
     let reached = registry.get_field_by_name(name)?;
     (!reached.dtype().is_nested()
-        && !crate::folds_equal(reached.name(), name)
-        && reached
-            .as_fix()
+        && !crate::implementer::folds_equal(reached.name(), name)
+        && FixField::new(reached)
             .names()
-            .any(|alias| crate::folds_equal(alias, name)))
+            .any(|alias| crate::implementer::folds_equal(alias, name)))
     .then_some(reached)
 }
 
@@ -2353,7 +2368,7 @@ fn child_from_entry(
             if held.dtype().is_nested() {
                 return Some(held);
             }
-            held.as_fix()
+            FixField::new(held)
                 .tag()
                 .ok()
                 .flatten()
@@ -2368,7 +2383,7 @@ fn child_from_entry(
         }
         let mut field = DataType::utf8().nullable_field(entry.name());
         if entry.tag() != 0 {
-            field.as_fix_mut().set_tag(entry.tag())?;
+            FixFieldMut::new(&mut field).set_tag(entry.tag())?;
         }
         let value = entry
             .value()
@@ -2417,7 +2432,7 @@ fn child_from_entry(
                 .map(|field| SmolStr::new(field.name()))
                 .zip(values)
                 .collect();
-            let field = Field::new_with_metadata(
+            let field = crate::implementer::field_new_with_metadata(
                 known.name(),
                 DataType::from(StructType::from_fields(fields)?),
                 false,
@@ -2432,7 +2447,7 @@ fn child_from_entry(
             if value.is_null()
                 && let Some(text) = entry.value()
             {
-                let field = Field::new_with_metadata(
+                let field = crate::implementer::field_new_with_metadata(
                     entry.held_name().clone(),
                     DataType::utf8(),
                     true,
@@ -2724,9 +2739,9 @@ impl super::FixMsg {
         // the content is the dictionary's fields, each kept only where no
         // column folds to its name: named once by construction, so the
         // root is built as it stands rather than validated once per row.
-        let root = Field::new_with_metadata(
+        let root = crate::implementer::field_new_with_metadata(
             schema.name(),
-            DataType::from(StructType::from_unique_fields(members)),
+            DataType::from(crate::implementer::struct_type_from_unique_fields(members)),
             schema.is_nullable(),
             schema.as_metadata().clone(),
         );
@@ -2879,11 +2894,11 @@ impl super::FixMsg {
         };
 
         if !has_residual_columns {
-            return crate::Scalar::try_sequence(columns.len(), fitted_cell);
+            return crate::implementer::scalar_try_sequence(columns.len(), fitted_cell);
         }
         // The row is written where it is stored: every fitted cell first,
         // then the record decided over them.
-        crate::Scalar::try_build_sequence(columns.len(), |values| {
+        crate::implementer::scalar_try_build_sequence(columns.len(), |values| {
             for (index, slot) in values.iter_mut().enumerate() {
                 *slot = fitted_cell(index)?;
             }
@@ -2947,7 +2962,7 @@ impl super::FixMsg {
                             continue;
                         }
                     } else if source_field.dtype().is_nested()
-                        || !crate::folds_equal(source_field.name(), entry.name())
+                        || !crate::implementer::folds_equal(source_field.name(), entry.name())
                         || !entry.entries().is_empty()
                         || *source_value != values[index]
                         || !covers_entry(self.registry(), column, &values[index], entry)
@@ -3080,7 +3095,7 @@ impl super::FixMsg {
             .map(|member| {
                 spelled
                     .iter()
-                    .position(|field| crate::folds_equal(field.name(), member.name()))
+                    .position(|field| crate::implementer::folds_equal(field.name(), member.name()))
             })
             .collect();
         if !occurrences.is_empty() && !placed.iter().any(Option::is_some) {
@@ -3193,7 +3208,7 @@ fn fitted(column: &Field, value: crate::Scalar) -> Result<crate::Scalar> {
     if let Some(value) = retry
         && let Some(held) = refit(column, value)
     {
-        crate::logging::warning::warned!(
+        crate::implementer::warned!(
             "FIX column kept what reads and nulled the rest",
             column.name(),
             "{refusal}"
@@ -3204,7 +3219,7 @@ fn fitted(column: &Field, value: crate::Scalar) -> Result<crate::Scalar> {
     // refuses one answers with the refusal the value earned.
     match column.scalar(crate::Scalar::Null) {
         Ok(null) => {
-            crate::logging::warning::warned!(
+            crate::implementer::warned!(
                 "FIX column value unreadable, stored as null",
                 column.name(),
                 "{refusal}"

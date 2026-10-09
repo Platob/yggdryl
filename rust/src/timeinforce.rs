@@ -1,9 +1,9 @@
 //! How long an order stands: FIX's `TimeInForce(59)` code set as one enum,
 //! stored as a `uint8`.
 
-use crate::code::folded_spelling;
-use crate::enums::enum_leaf;
-use crate::typed::define_field_types;
+use crate::implementer::define_field_types;
+use crate::implementer::enum_leaf;
+use crate::implementer::folded_spelling;
 
 enum_leaf! {
     /// How long an order stands: `DAY`, `GTC`, `IOC`, `FOK` and the rest of
@@ -31,6 +31,17 @@ enum_leaf! {
     /// // catch-all.
     /// assert_eq!(TimeInForce::from_fix("day"), TimeInForce::Day);
     /// assert_eq!(TimeInForce::from_fix("Z"), TimeInForce::Other);
+    /// ```
+    ///
+    /// Its datatype and a field of it are the kind's own:
+    ///
+    /// ```
+    /// use yggdryl::{TIMEINFORCE_KIND, TimeInForce};
+    ///
+    /// assert_eq!(TimeInForce::dtype(), TIMEINFORCE_KIND.dtype());
+    /// assert_eq!(TimeInForce::dtype().to_string(), "timeinforce");
+    /// assert!(TimeInForce::dtype().is_enum());
+    /// assert!(TimeInForce::field("timeinforce").is_nullable());
     /// ```
     #[non_exhaustive]
     pub enum TimeInForce: u8, kind = "timeinforce", extension = TIMEINFORCE_EXTENSION_NAME, aliases = timeinforce_aliases,
@@ -137,22 +148,6 @@ static FIX_CODES: &[(&str, &str, TimeInForce)] = &[
 /// The Arrow extension name of how long an order stands, over `uint8`
 /// storage.
 pub(crate) const TIMEINFORCE_EXTENSION_NAME: &str = "yggdryl.timeinforce";
-
-impl crate::DataType {
-    /// Creates the time-in-force datatype: how long an order stands.
-    ///
-    /// ```
-    /// use yggdryl::{DataType, TIMEINFORCE_KIND};
-    ///
-    /// assert_eq!(DataType::timeinforce(), TIMEINFORCE_KIND.dtype());
-    /// assert_eq!(DataType::timeinforce().to_string(), "timeinforce");
-    /// assert!(DataType::timeinforce().is_enum());
-    /// ```
-    #[must_use]
-    pub const fn timeinforce() -> Self {
-        Self::Market(crate::MarketType::new(&TIMEINFORCE_KIND))
-    }
-}
 
 // /// A field declared as how long an order stands.
 define_field_types!(

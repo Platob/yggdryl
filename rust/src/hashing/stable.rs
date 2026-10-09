@@ -20,7 +20,7 @@ pub(crate) fn stable_hash_display(value: &impl fmt::Display) -> u64 {
 }
 
 /// Hash a native structural [`Hash`] implementation with the stable sink.
-pub(crate) fn stable_hash_of(value: &impl Hash) -> u64 {
+pub fn stable_hash_of(value: &impl Hash) -> u64 {
     let mut hasher = StableHash::new();
     value.hash(&mut hasher);
     hasher.finish()

@@ -6,7 +6,10 @@ use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{DataType, Field, FixCategory, FixDirection, FixId, FixRegistry, FixSource};
+use yggdryl::{
+    DataType, Field, FixCategory, FixDirection, FixField, FixFieldMut, FixId, FixRegistry,
+    FixSource,
+};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -157,9 +160,7 @@ fn component_identifier_flags_reach_the_core_setter_and_replace_on_update() {
         "ClOrdID",
     ]);
     assert_eq!(
-        workspace
-            .read("components", "Order")
-            .as_fix()
+        FixField::new(&workspace.read("components", "Order"))
             .identifiers()
             .collect::<Vec<_>>(),
         ["ClOrdID", "OrderID"],
@@ -174,7 +175,7 @@ fn component_identifier_flags_reach_the_core_setter_and_replace_on_update() {
     ]);
     let before = workspace.read("components", "Order");
     assert_eq!(
-        before.as_fix().identifiers().collect::<Vec<_>>(),
+        FixField::new(&before).identifiers().collect::<Vec<_>>(),
         ["OrderID"]
     );
     for bad in ["Missing", "ClOrdID,OrderID"] {
@@ -205,9 +206,7 @@ fn component_identifier_flags_reach_the_core_setter_and_replace_on_update() {
         "struct<ClOrdID: utf8, OrderID: utf8>",
     ]);
     assert_eq!(
-        workspace
-            .read("components", "Order")
-            .as_fix()
+        FixField::new(&workspace.read("components", "Order"))
             .identifiers()
             .count(),
         0
@@ -225,8 +224,10 @@ fn all_categories_roundtrip_update_and_delete_in_dependency_order() {
         r#"[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]"#,
     ]);
     let mut side = DataType::Int32.nullable_field("Side");
-    side.as_fix_mut().set_tag(54).unwrap();
-    side.as_fix_mut().set_codeset("sidecodeset").unwrap();
+    FixFieldMut::new(&mut side).set_tag(54).unwrap();
+    FixFieldMut::new(&mut side)
+        .set_codeset("sidecodeset")
+        .unwrap();
     workspace.input("fields", "create", &workspace.document(&side));
     workspace.success(&["fields", "create", "NoPartyIDs", "int32", "--tag", "453"]);
     workspace.success(&[
@@ -238,9 +239,10 @@ fn all_categories_roundtrip_update_and_delete_in_dependency_order() {
     ]);
     let component = workspace.read("components", "Party");
     let mut group = DataType::serie(component.clone()).nullable_field("Parties");
-    group.as_fix_mut().set_counter(453).expect("counter");
-    group
-        .as_fix_mut()
+    FixFieldMut::new(&mut group)
+        .set_counter(453)
+        .expect("counter");
+    FixFieldMut::new(&mut group)
         .set_component("Party")
         .expect("component reference");
     workspace.input("groups", "create", &workspace.document(&group));
@@ -255,7 +257,7 @@ fn all_categories_roundtrip_update_and_delete_in_dependency_order() {
     // A message type makes the component a message, which is required.
     let order = workspace.read("components", "Order");
     assert!(!order.is_nullable());
-    assert_eq!(order.as_fix().msgtype(), Some("D"));
+    assert_eq!(FixField::new(&order).msgtype(), Some("D"));
 
     for (category, name) in [
         ("fields", "Side"),
@@ -271,8 +273,7 @@ fn all_categories_roundtrip_update_and_delete_in_dependency_order() {
         let path = workspace.document(&missing);
         workspace.failure(&[category, "update", "--input", path.to_str().expect("path")]);
         let mut updated = original.clone();
-        updated
-            .as_fix_mut()
+        FixFieldMut::new(&mut updated)
             .set_description("Reviewed definition")
             .expect("description");
         workspace.input(category, "update", &workspace.document(&updated));
@@ -326,9 +327,12 @@ fn field_membership_is_stamped_folded_and_replaced_by_update() {
     create_member(&workspace, "DeskValue", "int32", "5001", "Alpha");
     let created = workspace.read("fields", "5001");
     assert_eq!(created.name(), "DeskValue");
-    assert_eq!(created.as_fix().sources().collect::<Vec<_>>(), ["alpha"]);
-    assert!(created.as_fix().has_source("ALPHA"));
-    assert!(!created.as_fix().has_source("beta"));
+    assert_eq!(
+        FixField::new(&created).sources().collect::<Vec<_>>(),
+        ["alpha"]
+    );
+    assert!(FixField::new(&created).has_source("ALPHA"));
+    assert!(!FixField::new(&created).has_source("beta"));
 
     // One namespace: the same tag under the same folded name is one identity,
     // whatever dictionary claims it.
@@ -357,7 +361,7 @@ fn field_membership_is_stamped_folded_and_replaced_by_update() {
     ]);
     let updated = workspace.read("fields", "5001");
     assert_eq!(
-        updated.as_fix().sources().collect::<Vec<_>>(),
+        FixField::new(&updated).sources().collect::<Vec<_>>(),
         ["alpha", "gamma"]
     );
     let shown = output_text(&workspace.success(&["fields", "read", "DeskValue"]));
@@ -380,7 +384,9 @@ fn field_membership_is_stamped_folded_and_replaced_by_update() {
     assert_eq!(workspace.read("fields", "5001"), updated);
     workspace.success(&["fields", "update", "DeskValue", "int32", "--tag", "5001"]);
     assert_eq!(
-        workspace.read("fields", "5001").as_fix().sources().count(),
+        FixField::new(&workspace.read("fields", "5001"))
+            .sources()
+            .count(),
         0
     );
 
@@ -418,13 +424,24 @@ fn one_namespace_holds_two_fields_on_one_tag_and_lists_by_membership() {
     create_member(&workspace, "OtherName", "int64", "5001", "beta");
     let other = workspace.read("fields", "OtherName");
     assert_eq!(other.dtype(), &DataType::Int64);
-    assert_eq!(other.as_fix().sources().collect::<Vec<_>>(), ["beta"]);
+    assert_eq!(
+        FixField::new(&other).sources().collect::<Vec<_>>(),
+        ["beta"]
+    );
     let holder = workspace.read("fields", "DeskValue");
     assert_eq!(holder.dtype(), &DataType::Int32);
-    assert!(!holder.as_fix().names().any(|alias| alias == "OtherName"));
-    assert!(!other.as_fix().names().any(|alias| alias == "DeskValue"));
+    assert!(
+        !FixField::new(&holder)
+            .names()
+            .any(|alias| alias == "OtherName")
+    );
+    assert!(
+        !FixField::new(&other)
+            .names()
+            .any(|alias| alias == "DeskValue")
+    );
     let by_tag = workspace.read("fields", "5001");
-    assert_eq!(by_tag.as_fix().tag().unwrap(), Some(5001));
+    assert_eq!(FixField::new(&by_tag).tag().unwrap(), Some(5001));
     assert_eq!(by_tag, holder);
 
     // A listing filters on membership and never resolves by it.
@@ -453,20 +470,8 @@ fn one_namespace_holds_two_fields_on_one_tag_and_lists_by_membership() {
     let stored = FixRegistry::from_handle(&LocalFolder::new(workspace.root()).expect("root"))
         .expect("stored dictionary");
     assert_eq!(stored.dialects(), ["alpha", "beta"]);
-    assert!(
-        stored
-            .field_by_name("DeskValue")
-            .unwrap()
-            .as_fix()
-            .has_source("alpha")
-    );
-    assert!(
-        stored
-            .field_by_name("OtherName")
-            .unwrap()
-            .as_fix()
-            .has_source("beta")
-    );
+    assert!(FixField::new(stored.field_by_name("DeskValue").unwrap()).has_source("alpha"));
+    assert!(FixField::new(stored.field_by_name("OtherName").unwrap()).has_source("beta"));
 
     // Deleting one of the two leaves the other alone on the tag, and the
     // deleted name answers nothing: no survivor carries it.
@@ -497,7 +502,7 @@ fn a_field_identity_is_its_tag_and_name_as_one_int() {
     workspace.success(&["fields", "create", "Desk_Value", "int32", "--tag", "5001"]);
     let expected = FixId::of(5001, "deskvalue").expect("identity");
     let field = workspace.read("fields", "5001");
-    assert_eq!(field.as_fix().id().unwrap(), Some(expected));
+    assert_eq!(FixField::new(&field).id().unwrap(), Some(expected));
     let shown = output_text(&workspace.success(&["fields", "read", "Desk_Value"]));
     let identity = shown
         .lines()
@@ -568,9 +573,9 @@ fn a_code_set_is_named_once_and_every_field_reading_by_it_says_so() {
         "sidecodeset",
     ]);
     let field = workspace.read("fields", "54");
-    assert_eq!(field.as_fix().codeset(), Some("sidecodeset"));
+    assert_eq!(FixField::new(&field).codeset(), Some("sidecodeset"));
     assert_eq!(
-        workspace.read("fields", "624").as_fix().codeset(),
+        FixField::new(&workspace.read("fields", "624")).codeset(),
         Some("sidecodeset")
     );
 
@@ -614,7 +619,10 @@ fn a_code_set_is_named_once_and_every_field_reading_by_it_says_so() {
     workspace.failure(&["codesets", "delete", "sidecodeset"]);
     workspace.success(&["fields", "delete", "624"]);
     workspace.success(&["fields", "update", "Side", "int32", "--tag", "54"]);
-    assert_eq!(workspace.read("fields", "54").as_fix().codeset(), None);
+    assert_eq!(
+        FixField::new(&workspace.read("fields", "54")).codeset(),
+        None
+    );
     workspace.success(&["codesets", "delete", "sidecodeset"]);
     workspace.failure(&["codesets", "read", "sidecodeset"]);
 }
@@ -645,9 +653,8 @@ fn direction_rules_are_canonical_inline_metadata_and_invalid_updates_are_atomic(
     let field = workspace.read("fields", "385");
     // The set it names and the rules it carries are one definition, and
     // neither write wiped the other.
-    assert_eq!(field.as_fix().codeset(), Some("msgdirectioncodeset"));
-    let rules = field
-        .as_fix()
+    assert_eq!(FixField::new(&field).codeset(), Some("msgdirectioncodeset"));
+    let rules = FixField::new(&field)
         .directions()
         .map(|rule| rule.map(FixDirection::from))
         .collect::<yggdryl::Result<Vec<_>>>()
@@ -694,9 +701,12 @@ fn direction_rules_are_canonical_inline_metadata_and_invalid_updates_are_atomic(
         r"[]",
     ]);
     let cleared = workspace.read("fields", "385");
-    assert_eq!(cleared.as_fix().directions().count(), 0);
+    assert_eq!(FixField::new(&cleared).directions().count(), 0);
     assert_eq!(cleared.get_metadata("FIX:directions"), None);
-    assert_eq!(cleared.as_fix().codeset(), Some("msgdirectioncodeset"));
+    assert_eq!(
+        FixField::new(&cleared).codeset(),
+        Some("msgdirectioncodeset")
+    );
 }
 
 /// One `CBlock` declaring tag 532 as `declared` and binding it in message `r`.
@@ -765,7 +775,7 @@ fn ingest_folds_a_glob_of_cblocks_in_one_commit_and_names_what_it_passes_over() 
     let held = stored.field_by_tag(532).expect("tag 532 stored");
     assert_eq!(held.dtype(), &DataType::Boolean);
     assert_eq!(
-        held.as_fix().sources().collect::<Vec<_>>(),
+        FixField::new(held).sources().collect::<Vec<_>>(),
         ["axessiq_fix44", "tradeweb_fix44"]
     );
     assert!(stored.msgtype("r").is_ok(), "the message arrived");
@@ -916,11 +926,7 @@ fn ingest_refuses_a_location_holding_nothing_and_sync_names_the_verb_for_a_cbloc
     ]));
     assert!(text.contains("1 file(s)"), "{text}");
     assert_eq!(
-        workspace
-            .loaded()
-            .field_by_tag(532)
-            .expect("stored")
-            .as_fix()
+        FixField::new(workspace.loaded().field_by_tag(532).expect("stored"))
             .sources()
             .collect::<Vec<_>>(),
         ["venue"]
@@ -1029,7 +1035,7 @@ fn a_dialect_creates_its_sources_entry_and_check_reports_what_dangles_or_is_unre
     let mut folder = LocalFolder::new(workspace.root()).expect("root");
     let mut registry = FixRegistry::from_handle(&folder).expect("stored dictionary");
     let mut field = registry.field_by_name("DeskValue").unwrap().clone();
-    field.as_fix_mut().set_sources(["ghost"]).unwrap();
+    FixFieldMut::new(&mut field).set_sources(["ghost"]).unwrap();
     registry
         .update_definition(FixCategory::Fields, field)
         .unwrap();
@@ -1115,7 +1121,7 @@ fn the_plugin_side_is_a_schema_column_an_intrinsic_set_and_clean_under_check() {
         .unwrap();
     assert_eq!(columns[at - 1], "msgpluginid");
     assert_eq!(columns[at + 1], "msgoriginator");
-    assert_eq!(written.fields()[at].dtype(), &DataType::side());
+    assert_eq!(written.fields()[at].dtype(), &Side::dtype());
     assert!(!written.fields()[at].is_nullable());
 
     // The intrinsic set is listed and read like any other, and refuses a

@@ -2,9 +2,9 @@
 //! lifecycle enum, stored as a `uint8`.
 
 use crate::Side;
-use crate::code::folded_spelling;
-use crate::enums::enum_leaf;
-use crate::typed::define_field_types;
+use crate::implementer::define_field_types;
+use crate::implementer::enum_leaf;
+use crate::implementer::folded_spelling;
 
 enum_leaf! {
     /// The business category of a market data element: the FIX MsgCat code
@@ -41,6 +41,17 @@ enum_leaf! {
     /// assert_eq!(MarketDataKind::OrderBatch.as_str(), "ORDB");
     /// // A stored code is an integer, never text.
     /// assert_eq!(MarketDataKind::from_spelling("10"), None);
+    /// ```
+    ///
+    /// Its datatype and a field of it are the kind's own:
+    ///
+    /// ```
+    /// use yggdryl::{MARKETDATAKIND_KIND, MarketDataKind};
+    ///
+    /// assert_eq!(MarketDataKind::dtype(), MARKETDATAKIND_KIND.dtype());
+    /// assert_eq!(MarketDataKind::dtype().to_string(), "marketdatakind");
+    /// assert!(MarketDataKind::dtype().is_enum());
+    /// assert!(MarketDataKind::field("marketdatakind").is_nullable());
     /// ```
     #[non_exhaustive]
     pub enum MarketDataKind: u8, kind = "marketdatakind", extension = MARKETDATAKIND_EXTENSION_NAME, aliases = marketdatakind_aliases,
@@ -275,22 +286,6 @@ fn marketdatakind_aliases() -> Vec<(&'static str, MarketDataKind)> {
 /// The Arrow extension name of a market data element's kind, over `uint8`
 /// storage.
 pub(crate) const MARKETDATAKIND_EXTENSION_NAME: &str = "yggdryl.marketdatakind";
-
-impl crate::DataType {
-    /// Creates the market data kind datatype: FIX's MsgCat code set.
-    ///
-    /// ```
-    /// use yggdryl::{DataType, MARKETDATAKIND_KIND};
-    ///
-    /// assert_eq!(DataType::marketdatakind(), MARKETDATAKIND_KIND.dtype());
-    /// assert_eq!(DataType::marketdatakind().to_string(), "marketdatakind");
-    /// assert!(DataType::marketdatakind().is_enum());
-    /// ```
-    #[must_use]
-    pub const fn marketdatakind() -> Self {
-        Self::Market(crate::MarketType::new(&MARKETDATAKIND_KIND))
-    }
-}
 
 // /// A field declared as a market data element's kind.
 define_field_types!(

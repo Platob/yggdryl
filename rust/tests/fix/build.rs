@@ -7,8 +7,8 @@
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextOptions, read_text_lines};
 use yggdryl::{
-    DataType, DateTime64, FixCodec, FixMsg, Scalar, Time64, TimeUnit, Timezone, Url, Value,
-    fix_schema, into_json_scalar,
+    DataType, DateTime64, FixCodec, FixField, FixFieldMut, FixMsg, Scalar, Time64, TimeUnit,
+    Timezone, Url, Value, fix_schema, into_json_scalar,
 };
 
 use super::SoleMessage;
@@ -166,10 +166,7 @@ fn every_capture_value_the_dispatch_refused_types_through_its_fields_own_reader(
 fn every_field_states_the_fix_datatype_it_was_declared_under() {
     let registry = super::committed_registry();
     let declared = |tag: i32| {
-        registry
-            .field_by_tag(tag)
-            .expect("a dictionary field")
-            .as_fix()
+        FixField::new(registry.field_by_tag(tag).expect("a dictionary field"))
             .datatype()
             .map(str::to_owned)
     };
@@ -207,8 +204,7 @@ fn every_field_states_the_fix_datatype_it_was_declared_under() {
     let unstated: Vec<&str> = registry
         .iter()
         .filter(|field| {
-            field
-                .as_fix()
+            FixField::new(field)
                 .tag()
                 .ok()
                 .flatten()
@@ -217,7 +213,7 @@ fn every_field_states_the_fix_datatype_it_was_declared_under() {
                     field.dtype(),
                     DataType::Struct(_) | DataType::Serie(_) | DataType::LargeSerie(_)
                 )
-                && field.as_fix().datatype().is_none()
+                && FixField::new(field).datatype().is_none()
         })
         .map(|field| field.name())
         .collect();
@@ -225,12 +221,16 @@ fn every_field_states_the_fix_datatype_it_was_declared_under() {
     // The property is one word of the specification's, set and read on any
     // field; an empty name removes it.
     let mut field = DataType::utf8().nullable_field("tenor");
-    field.as_fix_mut().set_datatype("Tenor").unwrap();
-    assert_eq!(field.as_fix().datatype(), Some("Tenor"));
-    assert!(field.as_fix_mut().set_datatype("Month Year").is_err());
-    assert_eq!(field.as_fix().datatype(), Some("Tenor"));
-    field.as_fix_mut().set_datatype("").unwrap();
-    assert_eq!(field.as_fix().datatype(), None);
+    FixFieldMut::new(&mut field).set_datatype("Tenor").unwrap();
+    assert_eq!(FixField::new(&field).datatype(), Some("Tenor"));
+    assert!(
+        FixFieldMut::new(&mut field)
+            .set_datatype("Month Year")
+            .is_err()
+    );
+    assert_eq!(FixField::new(&field).datatype(), Some("Tenor"));
+    FixFieldMut::new(&mut field).set_datatype("").unwrap();
+    assert_eq!(FixField::new(&field).datatype(), None);
 }
 
 /// A FIX value the type's reader took is the typed scalar in the row, and

@@ -996,6 +996,16 @@ impl fmt::Debug for UncheckedFieldScalar<'_> {
     }
 }
 
+/// Declares one datatype's zero-sized marker - a parameter-free core leaf,
+/// or a registered kind under the one `Market` variant - with its
+/// `DataTypeValue` contract and, for a kind, its field alias.
+///
+/// Exported for the crates this core is split into, which declare their
+/// kinds' markers with it: every path it expands to is public, and the docs
+/// it writes for a kind link only the kind itself, since a link to a core
+/// item would resolve in the crate that invokes it.
+#[macro_export]
+#[doc(hidden)]
 macro_rules! define_field_types {
     // A registered kind's marker: the zero-sized value that stands for the
     // kind under the one `Market` variant, answering the kind's own
@@ -1006,7 +1016,7 @@ macro_rules! define_field_types {
         #[doc = concat!(
             "The datatype of a [`",
             stringify!($leaf),
-            "`] field: the registered kind under [`crate::DataType::Market`]."
+            "`] field: the registered kind under `DataType::Market`."
         )]
         #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub struct $marker;
@@ -1014,7 +1024,7 @@ macro_rules! define_field_types {
         #[doc = concat!(
             "A field of [`",
             stringify!($leaf),
-            "`] values: [`FieldOf`](crate::FieldOf) over its marker, widened to the root as [`crate::Field::Market`]."
+            "`] values: `FieldOf` over its marker, widened to the root as `Field::Market`."
         )]
         pub type $alias = $crate::FieldOf<$marker>;
 

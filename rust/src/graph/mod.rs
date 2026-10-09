@@ -462,7 +462,7 @@ pub use iterator::EventIterator;
 pub use kind::MarketKind;
 pub use market::{FxRates, Market, Metadata, Operation, empty_fxrates, empty_metadata};
 pub use market_column::MarketColumn;
-pub use market_data::MarketData;
+pub use market_data::{MarketData, MarketMessage};
 pub use operation::{
     BookRef, Execution, ExecutionEvent, ExecutionKind, MdUpdateAction, OperationElement,
     OperationEvent, OperationKind, Order, OrderEvent, OrderKind, Quote, QuoteEvent, QuoteKind,

@@ -11,7 +11,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::{BookEvent, Element, Event, Market};
 use crate::arrow::BatchReader;
-use crate::text::expected_got;
+use crate::implementer::expected_got;
 use crate::{
     DataType, Decimal, Error, Field, Result, Scalar, Side, StructType, TimeUnit, Timezone,
 };
@@ -342,7 +342,7 @@ impl Candle {
         let rows = candles
             .into_iter()
             .map(|candle| candle.map(|candle| candle.into_scalar()));
-        Ok(crate::arrow::rows::result_reader(
+        Ok(crate::implementer::result_reader(
             &field,
             rows,
             batch_row_size,

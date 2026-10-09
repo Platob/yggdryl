@@ -65,7 +65,7 @@ use std::sync::LazyLock;
 use crate::xxhash::Xxh128;
 
 use super::msg::FixMsg;
-use super::{MSGTYPE_TAG_NAME, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
+use super::{FixField, MSGTYPE_TAG_NAME, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 
 /// Every tag the digest leaves out, sorted once.
 ///
@@ -86,7 +86,7 @@ static ENVELOPE_TAGS: LazyLock<Vec<i32>> = LazyLock::new(|| {
         super::fix_crate_fields()
             .unwrap_or_default()
             .iter()
-            .filter_map(|field| field.as_fix().tag().ok().flatten()),
+            .filter_map(|field| FixField::new(field).tag().ok().flatten()),
     );
     tags.sort_unstable();
     tags.dedup();

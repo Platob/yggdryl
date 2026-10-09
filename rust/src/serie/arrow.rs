@@ -519,7 +519,7 @@ impl Proof {
 ///
 /// Bounded by the root's node count, which [`Field::validate_bounded`]
 /// caps, and built once per plan or per holder.
-pub(crate) struct Resolved {
+pub struct Resolved {
     field: Arc<Field>,
     /// The address of the slot `field` was resolved from: its place in the
     /// parent's shared storage, or the root's own box.
@@ -537,7 +537,8 @@ impl Resolved {
     /// The root is one its holder already proved bounded - at its Arrow
     /// import, at the plan's compile, or by [`Field::validate_bounded`]
     /// at a one-off door - so the walk here is bounded by that proof.
-    pub(crate) fn of(root: Arc<Field>) -> Self {
+    #[must_use]
+    pub fn of(root: Arc<Field>) -> Self {
         Self::from_arc(&root)
     }
 

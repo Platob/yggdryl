@@ -4,8 +4,8 @@
 
 use smol_str::SmolStr;
 
-use crate::text::expected_got;
-use crate::{DataType, Decimal, Error, Field, Result, Scalar, StructType, Uuid};
+use crate::implementer::expected_got;
+use crate::{DataType, Decimal, Error, Field, Result, Scalar, Uuid};
 
 /// The cells a limit states, in the order its datatype declares them.
 const NAMES: [&str; 4] = ["price", "quantity", "uuids", "tradable"];
@@ -67,7 +67,7 @@ impl Limit {
     /// [`DataType::Decimal`].
     #[must_use]
     pub fn dtype() -> DataType {
-        DataType::Struct(StructType::from_unique_fields(vec![
+        DataType::Struct(crate::implementer::struct_type_from_unique_fields(vec![
             DataType::Decimal.nullable_field(NAMES[0]),
             DataType::Decimal.required_field(NAMES[1]),
             DataType::serie(DataType::Uuid.required_field("uuid")).required_field(NAMES[2]),

@@ -188,7 +188,7 @@ Hold these facts:
 | merge two statements of one event | `event.merge_with(&other)` | `event.merge_with(other)` | `event.mergeWith(other)` |
 | walk a stream into chains | `EventIterator::new(items, sorted)`, `.with_snapshot_ns(ns)` | `graph.EventIterator(items, sorted=True, snapshot_ns=None)` | `new graph.EventIterator(items, sorted, snapshotNs)` (sorted defaults to `true`) |
 | any leaf as one value | `MarketData::from(leaf)`, `kind()`, `marketdatakind()`, `as_order_event()`, `TryFrom` | `graph.MarketData(leaf)`, `.kind`, `.marketdatakind`, `.as_order_event()`, `.into_leaf()` | `new graph.MarketData(leaf)`, `.kind`, `.marketdatakind`, `.asOrderEvent()`, `.intoLeaf()` |
-| a FIX message held whole | `MarketData::from(msg)` (kind `fix`, its `marketdatakind`), `as_fix()`, `FixMsg::try_from(value)?`; written and folded as the leaves it splits into | `graph.MarketData(msg)`, `.as_fix()` | `new graph.MarketData(msg)`, `.asFix()` |
+| a FIX message held whole | `MarketData::from(msg)` (kind `fix`, its `marketdatakind`), `as_message::<FixMsg>()`, `FixMsg::try_from(value)?`; written and folded as the leaves it splits into | `graph.MarketData(msg)`, `.as_fix()` | `new graph.MarketData(msg)`, `.asFix()` |
 | the `marketdata` row schema | `MarketData::field()?` | `graph.MarketData.field()` | `graph.MarketData.field()` |
 | leaves to Arrow batches | `MarketData::arrow_reader(values, None, None)?` | `graph.MarketData.arrow_reader(values)` | `graph.MarketData.arrowReader(values)` |
 | Arrow batches to leaves | `MarketData::from_arrow_reader(reader)?` | `graph.MarketData.from_arrow_reader(source)` | `graph.MarketData.fromArrowReader(reader)` |

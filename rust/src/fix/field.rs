@@ -1,5 +1,10 @@
 //! The `FIX:` vocabulary, on the field views that carry it.
 //!
+//! [`FixField`] and [`FixFieldMut`] are minted here by the core's protocol
+//! view builder under [`Scheme::FIX`], so the views and their keys belong to
+//! the FIX code alone: a caller borrows one with `FixField::new(&field)` or
+//! `FixFieldMut::new(&mut field)`.
+//!
 //! One type reads each property and one type writes it, and both reach the
 //! metadata only through the view's own `get`, `insert` and `remove`, so
 //! [`Field`](crate::Field)'s cache-aware mutation and metadata validation
@@ -15,8 +20,8 @@ use super::FixId;
 use super::directions::{FixDirection, FixDirections};
 use super::document::{Cursor, Numbers, Words, Writer, is_word, repeated_number, repeated_word};
 use super::idmap::{FixIdSource, FixIdSources};
-use crate::folds_equal;
-use crate::{DataType, Error, FixField, FixFieldMut, Result};
+use crate::implementer::folds_equal;
+use crate::{DataType, Error, Result, Scheme};
 
 /// The sources that contributed this field, a JSON array of ids folded and
 /// sorted, each the id of an entry of the registry's sources catalog; absent
@@ -93,6 +98,14 @@ pub(super) const SEPARATOR: char = ',';
 
 /// What a tag is, spelled once for every refusal.
 const TAG_SHAPE: &str = "a FIX tag, a decimal integer from 1 to 2147483647";
+
+crate::implementer::protocol_field_types!(
+    pub,
+    Scheme::FIX,
+    FixField,
+    FixFieldMut,
+    "Financial Information eXchange"
+);
 
 /// Parse one positive tag strictly: decimal digits only, never signed.
 ///
@@ -171,8 +184,9 @@ impl<'field> FixField<'field> {
     pub fn is_transient(&self) -> Result<bool> {
         match self.get(TRANSIENT) {
             None => Ok(true),
-            Some(stored) => crate::boolean::bool_from_text(stored)
-                .ok_or_else(|| self.invalid(TRANSIENT, crate::boolean::BOOLEAN_SPELLINGS, stored)),
+            Some(stored) => crate::implementer::bool_from_text(stored).ok_or_else(|| {
+                self.invalid(TRANSIENT, crate::implementer::BOOLEAN_SPELLINGS, stored)
+            }),
         }
     }
 
@@ -376,7 +390,7 @@ impl<'field> FixField<'field> {
             let tag = parse_tag(spelling);
             let mut reached = None;
             for (position, child) in self.as_field().fields().iter().enumerate() {
-                let view = child.as_fix();
+                let view = FixField::new(child);
                 let named = folds_equal(child.name(), spelling)
                     || view.names().any(|name| folds_equal(name, spelling));
                 let tagged = match tag {
@@ -500,17 +514,17 @@ impl<'field> FixField<'field> {
     ///
     /// ```
     /// use yggdryl::fix::FixDirection;
-    /// use yggdryl::DataType;
+    /// use yggdryl::{DataType, FixField, FixFieldMut};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut direction = DataType::utf8().nullable_field("msgdirection");
-    /// direction.as_fix_mut().set_tag(385)?;
-    /// direction.as_fix_mut().set_directions(&[
+    /// FixFieldMut::new(&mut direction).set_tag(385)?;
+    /// FixFieldMut::new(&mut direction).set_directions(&[
     ///     FixDirection::new("S", ["^TX "]),
     ///     FixDirection::new("R", ["^RX "]),
     /// ])?;
     ///
-    /// let entry = direction.as_fix().directions().next().expect("one rule")?;
+    /// let entry = FixField::new(&direction).directions().next().expect("one rule")?;
     /// assert_eq!(entry.code(), "S");
     /// assert_eq!(entry.parse_patterns()?, ["^TX "]);
     /// # Ok(())
@@ -529,18 +543,18 @@ impl<'field> FixField<'field> {
     ///
     /// ```
     /// use yggdryl::fix::{FixIdMapKind, FixIdSource};
-    /// use yggdryl::{DataType, IdType};
+    /// use yggdryl::{DataType, FixField, FixFieldMut, IdType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut order = DataType::utf8().nullable_field("orderid");
-    /// order.as_fix_mut().set_tag(37)?;
+    /// FixFieldMut::new(&mut order).set_tag(37)?;
     /// let source = FixIdSource::new(FixIdMapKind::Identifiers, IdType::OrderId).with_follow(true);
-    /// order.as_fix_mut().set_idmap(&[source.clone()])?;
+    /// FixFieldMut::new(&mut order).set_idmap(&[source.clone()])?;
     /// assert_eq!(
     ///     order.get_metadata("FIX:idmap"),
     ///     Some(r#"[{"map":"identifiers","key":"orderid","follow":true}]"#)
     /// );
-    /// assert_eq!(order.as_fix().idmap().collect::<yggdryl::Result<Vec<_>>>()?, [source]);
+    /// assert_eq!(FixField::new(&order).idmap().collect::<yggdryl::Result<Vec<_>>>()?, [source]);
     /// # Ok(())
     /// # }
     /// ```
@@ -561,14 +575,14 @@ impl<'field> FixField<'field> {
     /// belonging to the write.
     ///
     /// ```
-    /// use yggdryl::DataType;
+    /// use yggdryl::{DataType, FixField, FixFieldMut};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut orderid = DataType::utf8().nullable_field("orderid");
-    /// orderid.as_fix_mut().set_tag(37)?;
-    /// orderid.as_fix_mut().set_parents(["ParentOrderID", "origorderid"])?;
+    /// FixFieldMut::new(&mut orderid).set_tag(37)?;
+    /// FixFieldMut::new(&mut orderid).set_parents(["ParentOrderID", "origorderid"])?;
     /// assert_eq!(orderid.get_metadata("FIX:parents"), Some(r#"["parentorderid","origorderid"]"#));
-    /// assert_eq!(orderid.as_fix().parents().collect::<Vec<_>>(), ["parentorderid", "origorderid"]);
+    /// assert_eq!(FixField::new(&orderid).parents().collect::<Vec<_>>(), ["parentorderid", "origorderid"]);
     /// # Ok(())
     /// # }
     /// ```
@@ -611,17 +625,16 @@ impl<'field> FixField<'field> {
     /// element as the member it chooses.
     ///
     /// ```
-    /// use yggdryl::{DataType, MarketDataType};
+    /// use yggdryl::{DataType, FixField, FixFieldMut, MarketDataType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut ordtype = DataType::utf8().nullable_field("ordtype");
-    /// ordtype.as_fix_mut().set_tag(40)?;
-    /// ordtype
-    ///     .as_fix_mut()
+    /// FixFieldMut::new(&mut ordtype).set_tag(40)?;
+    /// FixFieldMut::new(&mut ordtype)
     ///     .set_marketdatatypes(&[("Z", MarketDataType::OrdPegged)])?;
     /// assert_eq!(ordtype.get_metadata("FIX:marketdatatype"), Some(r#"["Z=ORDPEGGED"]"#));
     /// assert_eq!(
-    ///     ordtype.as_fix().marketdatatypes().collect::<Vec<_>>(),
+    ///     FixField::new(&ordtype).marketdatatypes().collect::<Vec<_>>(),
     ///     [("Z", MarketDataType::OrdPegged)]
     /// );
     /// # Ok(())
@@ -645,16 +658,16 @@ impl<'field> FixField<'field> {
     /// it chooses.
     ///
     /// ```
-    /// use yggdryl::{DataType, TimeInForce};
+    /// use yggdryl::{DataType, FixField, FixFieldMut, TimeInForce};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut tif = DataType::utf8().nullable_field("timeinforce");
-    /// tif.as_fix_mut().set_tag(59)?;
-    /// tif.as_fix_mut()
+    /// FixFieldMut::new(&mut tif).set_tag(59)?;
+    /// FixFieldMut::new(&mut tif)
     ///     .set_timeinforces(&[("G", TimeInForce::GoodTillCancel)])?;
     /// assert_eq!(tif.get_metadata("FIX:timeinforce"), Some(r#"["G=GTC"]"#));
     /// assert_eq!(
-    ///     tif.as_fix().timeinforces().collect::<Vec<_>>(),
+    ///     FixField::new(&tif).timeinforces().collect::<Vec<_>>(),
     ///     [("G", TimeInForce::GoodTillCancel)]
     /// );
     /// # Ok(())
@@ -946,14 +959,14 @@ impl FixFieldMut<'_> {
     /// the field unchanged.
     ///
     /// ```
-    /// use yggdryl::DataType;
+    /// use yggdryl::{DataType, FixField, FixFieldMut};
     /// use yggdryl::StructType;
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut order = DataType::utf8().nullable_field("clordid");
-    /// order.as_fix_mut().set_tag(11)?;
+    /// FixFieldMut::new(&mut order).set_tag(11)?;
     /// let mut component = DataType::from(StructType::from_fields([order])?).required_field("order");
-    /// component.as_fix_mut().set_identifiers(["11"])?;
-    /// assert_eq!(component.as_fix().identifiers().collect::<Vec<_>>(), ["clordid"]);
+    /// FixFieldMut::new(&mut component).set_identifiers(["11"])?;
+    /// assert_eq!(FixField::new(&component).identifiers().collect::<Vec<_>>(), ["clordid"]);
     /// # Ok(())
     /// # }
     /// ```
@@ -1123,12 +1136,12 @@ impl FixFieldMut<'_> {
     ///
     /// ```
     /// use yggdryl::fix::FixDirection;
-    /// use yggdryl::DataType;
+    /// use yggdryl::{DataType, FixFieldMut};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut direction = DataType::utf8().nullable_field("msgdirection");
-    /// direction.as_fix_mut().set_tag(385)?;
-    /// direction.as_fix_mut().set_directions(&[
+    /// FixFieldMut::new(&mut direction).set_tag(385)?;
+    /// FixFieldMut::new(&mut direction).set_directions(&[
     ///     FixDirection::new("S", [r"^TX\b"]),
     ///     FixDirection::new("R", [r"^RX\b"]),
     /// ])?;
@@ -1140,7 +1153,7 @@ impl FixFieldMut<'_> {
     ///     ))
     /// );
     ///
-    /// direction.as_fix_mut().set_directions(&[])?;
+    /// FixFieldMut::new(&mut direction).set_directions(&[])?;
     /// assert_eq!(direction.get_metadata("FIX:directions"), None);
     /// # Ok(())
     /// # }
@@ -1304,16 +1317,16 @@ impl FixFieldMut<'_> {
     ///
     /// ```
     /// use yggdryl::fix::FixDirection;
-    /// use yggdryl::DataType;
+    /// use yggdryl::{DataType, FixFieldMut};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut direction = DataType::utf8().nullable_field("msgdirection");
-    /// direction.as_fix_mut().set_tag(385)?;
+    /// FixFieldMut::new(&mut direction).set_tag(385)?;
     /// let rules = [FixDirection::new("S", [">>>"]), FixDirection::new("R", ["<<<"])];
-    /// direction.as_fix_mut().set_directions(&rules)?;
+    /// FixFieldMut::new(&mut direction).set_directions(&rules)?;
     ///
-    /// assert_eq!(direction.as_fix_mut().remove_directions()?, Some(rules.to_vec()));
-    /// assert_eq!(direction.as_fix_mut().remove_directions()?, None);
+    /// assert_eq!(FixFieldMut::new(&mut direction).remove_directions()?, Some(rules.to_vec()));
+    /// assert_eq!(FixFieldMut::new(&mut direction).remove_directions()?, None);
     /// # Ok(())
     /// # }
     /// ```

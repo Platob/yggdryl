@@ -14,8 +14,8 @@ use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::expression::{IntoOrderings, Ordering as OrderBy, Selector};
 use yggdryl::{
-    ArrowCastOptions, DataType, Error, Field, FieldPath, KeySeries, Scalar, Serie, SortOptions,
-    StreamChunkedSerie, StructType, TimeUnit, Timezone,
+    ArrowCastOptions, DataType, Error, Field, FieldPath, KeySeries, Scalar, Serie, Side,
+    SortOptions, StreamChunkedSerie, StructType, TimeUnit, Timezone,
 };
 
 /// `field` without the order its root declares: what a sort leaves equal
@@ -2348,7 +2348,7 @@ fn the_record_rung_agrees_with_its_run_under_every_ordering() {
     // ordered by its value.
     let field = StructType::from_fields([
         DataType::Mic.required_field("venue"),
-        DataType::side().required_field("side"),
+        Side::dtype().required_field("side"),
         DataType::Int64.required_field("count"),
     ])
     .map(DataType::from)

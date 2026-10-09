@@ -55,7 +55,7 @@ fn a_bound_is_read_under_the_one_iceberg_mapping_and_a_decimal_s_stays_unknown()
     // An enum column is Iceberg's `int` - the one mapping's word - so its
     // bound reads back as the member the code names.
     assert_eq!(
-        single_to_value(&2_i32.to_le_bytes(), &DataType::side()),
+        single_to_value(&2_i32.to_le_bytes(), &Side::dtype()),
         Some(Scalar::from(Side::Sell))
     );
     // A text column is a string whatever its layout, a code too.

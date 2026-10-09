@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{Field, FixCategory, FixCommit, FixKey, FixRegistry, FixSource, Result};
+use yggdryl::{Field, FixCategory, FixCommit, FixField, FixKey, FixRegistry, FixSource, Result};
 
 use crate::style;
 
@@ -108,7 +108,7 @@ pub fn committed(report: &FixCommit) -> String {
 
 /// One field's row in a listing.
 fn row(field: &Field) -> Vec<String> {
-    let view = field.as_fix();
+    let view = FixField::new(field);
     let tag = view
         .tag()
         .ok()
@@ -143,13 +143,12 @@ pub fn list(
     let mut matched = 0_usize;
     for field in store.registry().definitions(category) {
         if let Some(dialect) = dialect
-            && !field.as_fix().has_source(dialect)
+            && !FixField::new(field).has_source(dialect)
         {
             continue;
         }
         if let Some(held) = &folded {
-            let tag = field
-                .as_fix()
+            let tag = FixField::new(field)
                 .tag()
                 .ok()
                 .flatten()
@@ -186,7 +185,7 @@ pub fn read(store: &Store, category: FixCategory, key: &str, json: bool) -> Resu
         );
         return Ok(());
     }
-    let view = field.as_fix();
+    let view = FixField::new(field);
 
     style::heading(field.name());
     style::entry("category", category.as_str());
@@ -235,7 +234,7 @@ pub fn list_codesets(store: &Store, filter: Option<&str>, limit: usize) {
     let registry = store.registry();
     let mut readers: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     for field in registry {
-        if let Some(name) = field.as_fix().codeset() {
+        if let Some(name) = FixField::new(field).codeset() {
             *readers.entry(name).or_default() += 1;
         }
     }
@@ -360,7 +359,7 @@ pub fn update(store: &mut Store, category: FixCategory, field: Field) -> Result<
 /// The source ids a definition names, owned, so the catalog can take them
 /// once the definition has landed.
 fn sources_of(field: &Field) -> Vec<String> {
-    field.as_fix().sources().map(str::to_owned).collect()
+    FixField::new(field).sources().map(str::to_owned).collect()
 }
 
 /// Holds the sources catalog to the ids a definition just stated, so no id

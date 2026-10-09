@@ -1,8 +1,8 @@
 //! FIX's side of a trade: an enum stored as the `uint8` code of its member.
 
-use crate::code::folded_spelling;
-use crate::enums::enum_leaf;
-use crate::typed::define_field_types;
+use crate::implementer::define_field_types;
+use crate::implementer::enum_leaf;
+use crate::implementer::folded_spelling;
 
 enum_leaf! {
     /// FIX's `Side(54)`: which side of the market a trade took.
@@ -33,6 +33,17 @@ enum_leaf! {
     /// assert_eq!(Side::Both.code(), 99);
     /// assert_eq!(Side::Both.fix_code(), None);
     /// assert_eq!(Side::Unknown.merge_with(Side::Both), Side::Both);
+    /// ```
+    ///
+    /// Its datatype and a field of it are the kind's own:
+    ///
+    /// ```
+    /// use yggdryl::{SIDE_KIND, Side};
+    ///
+    /// assert_eq!(Side::dtype(), SIDE_KIND.dtype());
+    /// assert_eq!(Side::dtype().to_string(), "side");
+    /// assert!(Side::dtype().is_enum());
+    /// assert!(Side::field("side").is_nullable());
     /// ```
     pub enum Side: u8, kind = "side", extension = SIDE_EXTENSION_NAME, aliases = side_aliases,
     market = SIDE_KIND [0xc3, 29, 53, 28] {
@@ -289,22 +300,6 @@ static SIDE_NAMES: &[(&str, Side)] = &[
 
 /// The Arrow extension name of FIX's side of a trade, over `uint8` storage.
 pub(crate) const SIDE_EXTENSION_NAME: &str = "yggdryl.side";
-
-impl crate::DataType {
-    /// Creates FIX's side of a trade, stored as the `uint8` code of its
-    /// member.
-    ///
-    /// ```
-    /// use yggdryl::DataType;
-    ///
-    /// assert_eq!(DataType::side().to_string(), "side");
-    /// assert!(DataType::side().is_enum());
-    /// ```
-    #[must_use]
-    pub const fn side() -> Self {
-        Self::Market(crate::MarketType::new(&SIDE_KIND))
-    }
-}
 
 // /// A side-typed field: FIX's side of a trade.
 define_field_types!(SideType, SideField, market = SIDE_KIND, Side);

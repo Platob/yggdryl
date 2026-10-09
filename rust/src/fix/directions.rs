@@ -394,14 +394,14 @@ impl<'field> FixDirections<'field> {
     /// fallible door, naming the byte a hand edit stopped it at.
     ///
     /// ```
-    /// use yggdryl::DataType;
+    /// use yggdryl::{DataType, FixField};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut field = DataType::utf8().nullable_field("msgdirection");
     /// field.set_metadata([("FIX:directions", r#"[{"code":"S"}]"#)])?;
     /// // The entry states no `patterns`, which the grammar requires.
-    /// assert!(field.as_fix().directions().next_ok().is_none());
-    /// assert!(field.as_fix().directions().next().expect("a refusal").is_err());
+    /// assert!(FixField::new(&field).directions().next_ok().is_none());
+    /// assert!(FixField::new(&field).directions().next().expect("a refusal").is_err());
     /// # Ok(())
     /// # }
     /// ```

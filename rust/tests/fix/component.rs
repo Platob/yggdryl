@@ -3,14 +3,17 @@
 
 use std::sync::Arc;
 
-use yggdryl::{DataType, Field, FixCategory, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
+use yggdryl::{
+    DataType, Field, FixCategory, FixField, FixFieldMut, FixMsg, FixRegistry, Scalar, StructType,
+    fix_schema,
+};
 
 fn mapping_group(name: &str, tag: i32, sorted: bool) -> Field {
     let mut field = DataType::map_of(DataType::utf8(), DataType::utf8(), sorted)
         .unwrap()
         .nullable_field(name);
-    field.as_fix_mut().set_tag(tag).unwrap();
-    field.as_fix_mut().set_counter(tag).unwrap();
+    FixFieldMut::new(&mut field).set_tag(tag).unwrap();
+    FixFieldMut::new(&mut field).set_counter(tag).unwrap();
     field
 }
 
@@ -50,7 +53,9 @@ fn maps_are_groups_with_one_reserved_counter_and_never_scalar_fields() {
     let before = registry.clone();
     let mut conflicting = mapping_group("anotherids", 65_090, true);
     assert!(registry.insert(conflicting.clone()).is_err());
-    conflicting.as_fix_mut().set_counter(65_091).unwrap();
+    FixFieldMut::new(&mut conflicting)
+        .set_counter(65_091)
+        .unwrap();
     assert!(registry.insert(conflicting).is_err());
     assert!(
         registry
@@ -65,12 +70,11 @@ fn map_counters_refuse_scalar_collisions_in_either_insertion_order() {
     let group = mapping_group("nativeids", 65_090, true);
     for alternate in [false, true] {
         let mut scalar = DataType::Int32.nullable_field("count");
-        scalar
-            .as_fix_mut()
+        FixFieldMut::new(&mut scalar)
             .set_tag(if alternate { 9001 } else { 65_090 })
             .unwrap();
         if alternate {
-            scalar.as_fix_mut().set_tags(&[65_090]).unwrap();
+            FixFieldMut::new(&mut scalar).set_tags(&[65_090]).unwrap();
         }
         for scalar_first in [false, true] {
             let mut registry = FixRegistry::new();
@@ -111,11 +115,11 @@ fn ordinary_serie_groups_still_require_a_separate_int32_counter() {
             .required_field("occurrence"),
     )
     .nullable_field("ordinary");
-    group.as_fix_mut().set_counter(9001).unwrap();
+    FixFieldMut::new(&mut group).set_counter(9001).unwrap();
     let mut registry = FixRegistry::new();
     assert!(registry.insert(group.clone()).is_err());
     let mut wrong = DataType::Int64.nullable_field("count");
-    wrong.as_fix_mut().set_tag(9001).unwrap();
+    FixFieldMut::new(&mut wrong).set_tag(9001).unwrap();
     registry.insert(wrong).unwrap();
     assert!(registry.insert(group).is_err());
 }
@@ -150,8 +154,8 @@ fn metadata_has_exactly_one_nullable_sorted_column_without_a_scalar_counter() {
     assert_eq!(columns.len(), 1);
     let column = columns[0];
     assert!(column.is_nullable());
-    assert_eq!(column.as_fix().tag().unwrap(), Some(65_037));
-    assert_eq!(column.as_fix().counter().unwrap(), Some(65_037));
+    assert_eq!(FixField::new(column).tag().unwrap(), Some(65_037));
+    assert_eq!(FixField::new(column).counter().unwrap(), Some(65_037));
     let Some(map) = (column.dtype()).as_mapping() else {
         panic!("metadata is a Map")
     };
@@ -246,8 +250,10 @@ fn map_paths_distinguish_present_missing_and_absent_maps() {
 fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
     let mut registry = FixRegistry::new();
     let mut label = DataType::utf8().nullable_field("label");
-    label.as_fix_mut().set_tag(9001).unwrap();
-    label.as_fix_mut().set_names(["Metadata"]).unwrap();
+    FixFieldMut::new(&mut label).set_tag(9001).unwrap();
+    FixFieldMut::new(&mut label)
+        .set_names(["Metadata"])
+        .unwrap();
     registry.insert(label.clone()).unwrap();
     let map = registry.get_field_by_counter(65_037).unwrap().clone();
     let schema = StructType::from_fields([label, map])
@@ -298,8 +304,10 @@ fn map_and_component_roots_remain_ambiguous_despite_scalar_aliases() {
         let mut registry = FixRegistry::new();
         if scalar_alias {
             let mut label = DataType::utf8().nullable_field("label");
-            label.as_fix_mut().set_tag(9001).unwrap();
-            label.as_fix_mut().set_names(["Metadata"]).unwrap();
+            FixFieldMut::new(&mut label).set_tag(9001).unwrap();
+            FixFieldMut::new(&mut label)
+                .set_names(["Metadata"])
+                .unwrap();
             registry.insert(label).unwrap();
         }
         let component = StructType::from_fields([DataType::utf8().nullable_field("note")])
@@ -328,7 +336,7 @@ fn map_and_component_roots_remain_ambiguous_despite_scalar_aliases() {
 fn canonical_scalar_and_map_names_conflict_atomically_in_either_order() {
     let group = mapping_group("nativeids", 65_090, true);
     let mut scalar = DataType::utf8().nullable_field("NATIVEIDS");
-    scalar.as_fix_mut().set_tag(9001).unwrap();
+    FixFieldMut::new(&mut scalar).set_tag(9001).unwrap();
     for scalar_first in [false, true] {
         let mut registry = FixRegistry::new();
         if scalar_first {

@@ -18,7 +18,7 @@ use super::operation::{
 };
 use super::{Element, Event, Market, Operation};
 use crate::expression::IntoFilter;
-use crate::logging::warning::warned;
+use crate::implementer::warned;
 use crate::xxhash::Xxh3;
 use crate::{
     Ccy, Decimal, Error, IdKey, IdType, Identifier, Isin, Limit, Result, Side, State, Unit, Uuid,
@@ -1263,7 +1263,7 @@ impl Ladder {
     fn digest(&self) -> u64 {
         let mut digest = Xxh3::new();
         {
-            let mut staged = super::element::Staged::new(&mut digest);
+            let mut staged = crate::implementer::Staged::new(&mut digest);
             staged.write(&(self.len() as u64).to_be_bytes());
             for operation in self.live() {
                 staged.write(operation.operation_event().operation_word().as_bytes());

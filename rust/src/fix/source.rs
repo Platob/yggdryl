@@ -14,7 +14,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::document::is_word;
 use super::field::SOURCES_KEY;
-use crate::code::folded_spelling;
+use crate::implementer::folded_spelling;
 use crate::{Error, Result, Scalar, Side};
 
 /// What a source id is, spelled once for every refusal.
@@ -173,7 +173,7 @@ impl FixSource {
             reason,
         };
         let record = value.as_struct().ok_or_else(|| {
-            refused(crate::text::expected_got(
+            refused(crate::implementer::expected_got(
                 "a JSON source entry object",
                 value.kind(),
             ))

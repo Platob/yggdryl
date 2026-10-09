@@ -7,7 +7,9 @@ use std::sync::Arc;
 
 use yggdryl::fs::{FileSystem, FsFile, MemoryFileSystem};
 use yggdryl::holder::Buffer;
-use yggdryl::{DataType, Error, Field, FixCodec, FixId, FixRegistry, IOBase, Side};
+use yggdryl::{
+    DataType, Error, Field, FixCodec, FixField, FixFieldMut, FixId, FixRegistry, IOBase, Side,
+};
 
 /// A CBlock in the exact shape a production file has: the same element order,
 /// the same attribute order, the same escaping, the same self-closing forms.
@@ -361,7 +363,7 @@ fn parse(body: &str) -> (FixRegistry, Vec<Field>) {
 
 /// The dialects a field is a member of, for one assertion over the list.
 fn sources(field: &Field) -> Vec<&str> {
-    field.as_fix().sources().collect()
+    FixField::new(field).sources().collect()
 }
 
 /// One root's children by name, in document order.
@@ -396,8 +398,7 @@ fn the_vocabulary_becomes_a_dictionary_of_lower_cased_names() {
     assert_eq!(registry.dialects(), [DIALECT]);
 
     // The description's entities are unescaped, never kept as opaque bytes.
-    let described = field
-        .as_fix()
+    let described = FixField::new(field)
         .description()
         .expect("a description")
         .to_owned();
@@ -406,7 +407,7 @@ fn the_vocabulary_becomes_a_dictionary_of_lower_cased_names() {
 
     // `<description />` contributes no key rather than an empty one.
     let empty = registry.field_by_tag(10001).expect("ExludedDealers");
-    assert_eq!(empty.as_fix().description(), None);
+    assert_eq!(FixField::new(empty).description(), None);
 
     // A missing `alt` falls back to the tag rendered as text.
     assert_eq!(registry.field_by_tag(22830).unwrap().name(), "22830");
@@ -475,8 +476,8 @@ fn a_grammar_becomes_one_root_flattened_across_part() {
 
     // The duplicate keeps the tag, which is what recovers it.
     let fields = root.dtype().as_fields().unwrap();
-    assert_eq!(fields[0].as_fix().tag().unwrap(), Some(8));
-    assert_eq!(fields[6].as_fix().tag().unwrap(), Some(8));
+    assert_eq!(FixField::new(&fields[0]).tag().unwrap(), Some(8));
+    assert_eq!(FixField::new(&fields[6]).tag().unwrap(), Some(8));
 }
 
 #[test]
@@ -513,8 +514,8 @@ fn a_nested_grammar_is_its_group_alone_and_its_counter_a_dictionary_field() {
     );
     let group = fields.iter().find(|held| held.name() == "legs").unwrap();
     assert_eq!(group.display(), Some("Legs"));
-    assert_eq!(group.as_fix().tag().unwrap(), None);
-    assert_eq!(group.as_fix().counter().unwrap(), Some(555));
+    assert_eq!(FixField::new(group).tag().unwrap(), None);
+    assert_eq!(FixField::new(group).counter().unwrap(), Some(555));
     let DataType::Serie(item) = group.dtype() else {
         panic!("a serie, got {}", group.dtype());
     };
@@ -534,8 +535,8 @@ fn a_nested_grammar_is_its_group_alone_and_its_counter_a_dictionary_field() {
     let DataType::Serie(inner) = members[1].dtype() else {
         panic!("a nested serie, got {}", members[1].dtype());
     };
-    assert_eq!(members[1].as_fix().tag().unwrap(), None);
-    assert_eq!(members[1].as_fix().counter().unwrap(), Some(604));
+    assert_eq!(FixField::new(&members[1]).tag().unwrap(), None);
+    assert_eq!(FixField::new(&members[1]).counter().unwrap(), Some(604));
     assert_eq!(members[1].display(), Some("LegSecurityAltIDGrp"));
     assert_eq!(inner.display(), Some("LegSecurityAltIDComponent"));
     assert_eq!(
@@ -560,16 +561,19 @@ fn the_root_element_is_read_past_and_the_dialect_is_a_membership() {
     for field in registry.iter() {
         // Crate fields and unstated SendingTime are seeds, not this file's
         // declarations. Its TransactTime replaces the standard seed.
-        if field
-            .as_fix()
+        if FixField::new(field)
             .tag()
             .unwrap()
             .is_some_and(|tag| yggdryl::is_crate_tag(tag) || tag == 52)
         {
-            assert!(!field.as_fix().has_source(DIALECT), "{}", field.name());
+            assert!(
+                !FixField::new(field).has_source(DIALECT),
+                "{}",
+                field.name()
+            );
             continue;
         }
-        assert!(field.as_fix().has_source(DIALECT), "{}", field.name());
+        assert!(FixField::new(field).has_source(DIALECT), "{}", field.name());
     }
 
     // The same file written from the other side of the session lands
@@ -585,7 +589,7 @@ fn the_root_element_is_read_past_and_the_dialect_is_a_membership() {
     let (bare, _) = FixRegistry::from_cfb_file(&handle(CBLOCK), None).unwrap();
     assert!(bare.field_by_tag(6).is_ok());
     assert!(bare.dialects().is_empty());
-    assert!(!bare.field_by_tag(6).unwrap().as_fix().has_source(DIALECT));
+    assert!(!FixField::new(bare.field_by_tag(6).unwrap()).has_source(DIALECT));
 }
 
 #[test]
@@ -619,10 +623,7 @@ fn replacing_a_referenced_cblock_field_is_atomic_and_unreferenced_fields_replace
     assert_eq!(standalone.len(), before + 1);
     assert_eq!(standalone.field_by_tag(6).unwrap().name(), "avgpx");
     assert_eq!(
-        standalone
-            .field_by_tag(6)
-            .unwrap()
-            .as_fix()
+        FixField::new(standalone.field_by_tag(6).unwrap())
             .names()
             .collect::<Vec<_>>(),
         [] as [&str; 0],
@@ -654,7 +655,10 @@ fn catalog_members_resolve_codes_declared_after_their_grammar() {
         let occurrence = message.as_field().get_field(name).unwrap();
         let canonical = registry.field_by_tag(tag).unwrap();
         assert_eq!(roots[0].get_field(name), Some(occurrence));
-        assert_eq!(occurrence.as_fix().field_ref(), Some(canonical.name()));
+        assert_eq!(
+            FixField::new(occurrence).field_ref(),
+            Some(canonical.name())
+        );
         assert_eq!(occurrence.is_nullable(), nullable);
         // The occurrence reads by the set the canonical field reads by, which
         // the maps and the message types declared after this grammar.
@@ -667,7 +671,7 @@ fn catalog_members_resolve_codes_declared_after_their_grammar() {
     let repeated = message.as_field().get_field("beginstring2").unwrap();
     assert_eq!(roots[0].get_field("beginstring2"), Some(repeated));
     assert!(repeated.is_nullable());
-    assert_eq!(repeated.as_fix().field_ref(), Some("beginstring"));
+    assert_eq!(FixField::new(repeated).field_ref(), Some("beginstring"));
 }
 
 #[test]
@@ -711,7 +715,7 @@ fn venue_groups_and_their_components_carry_the_membership_and_key_on_the_counter
         assert_eq!(held.dtype(), &DataType::Int32);
         let id = FixId::of(counter, held.name()).unwrap();
         assert_eq!(registry.field(id).unwrap().dtype(), &DataType::Int32);
-        assert_eq!(held.as_fix().id().unwrap(), Some(id));
+        assert_eq!(FixField::new(held).id().unwrap(), Some(id));
         assert!(
             registry
                 .msgtype("D")
@@ -808,13 +812,13 @@ fn a_split_definition_is_named_for_the_message_it_was_read_in() {
             assert!(occurrence.get_field(member).is_some(), "{component}");
         }
         let held = registry.definition(Groups, group).unwrap();
-        assert_eq!(held.as_fix().component(), Some(component), "{group}");
+        assert_eq!(FixField::new(held).component(), Some(component), "{group}");
         // The message reaches the split it was read with.
         let root = registry.msgtype(message).unwrap().as_field();
         assert!(
             root.fields()
                 .iter()
-                .any(|member| member.as_fix().group() == Some(group)),
+                .any(|member| FixField::new(member).group() == Some(group)),
             "{message}"
         );
     }
@@ -892,7 +896,7 @@ fn a_second_binding_that_widens_a_held_definition_into_a_split_leaves_one_defini
             assert!(
                 root.fields()
                     .iter()
-                    .any(|member| member.as_fix().group() == Some("underlyings")),
+                    .any(|member| FixField::new(member).group() == Some("underlyings")),
                 "{message}"
             );
         }
@@ -1289,7 +1293,7 @@ fn a_warning_the_core_raised_names_the_declaration_that_asked_for_it() {
     let holder = registry.field_by_tag(35).unwrap();
     assert_eq!(holder.name(), "msgtype");
     assert_eq!(
-        holder.as_fix().names().collect::<Vec<_>>(),
+        FixField::new(holder).names().collect::<Vec<_>>(),
         [] as [&str; 0],
         "the holder lends no alias",
     );
@@ -1297,8 +1301,8 @@ fn a_warning_the_core_raised_names_the_declaration_that_asked_for_it() {
         .field_by_id(FixId::of(35, "SomethingElse").unwrap())
         .unwrap();
     assert_eq!(second.name(), "somethingelse");
-    assert_eq!(second.as_fix().tag().unwrap(), Some(35));
-    assert!(second.as_fix().names().next().is_none());
+    assert_eq!(FixField::new(second).tag().unwrap(), Some(35));
+    assert!(FixField::new(second).names().next().is_none());
     assert_eq!(
         registry.get_field_by_name("SomethingElse").map(Field::name),
         Some("somethingelse"),
@@ -1307,7 +1311,7 @@ fn a_warning_the_core_raised_names_the_declaration_that_asked_for_it() {
     // The constraint named tag 35, and the message keeps a child on it.
     let bound = roots[0].dtype().as_fields().unwrap();
     assert_eq!(bound.len(), 1);
-    assert_eq!(bound[0].as_fix().tag().unwrap(), Some(35));
+    assert_eq!(FixField::new(&bound[0]).tag().unwrap(), Some(35));
 }
 
 #[test]
@@ -1369,18 +1373,18 @@ fn a_description_keeps_its_words_and_loses_its_layout() {
     let (registry, _) =
         FixRegistry::from_cfb_file(&handle(&body), None).expect("a readable CBlock");
     assert_eq!(
-        registry.field_by_tag(58).unwrap().as_fix().description(),
+        FixField::new(registry.field_by_tag(58).unwrap()).description(),
         Some("Free format text string. May hold the separator , an escaped one , and a <SOH>."),
     );
     // Layout alone is the file saying nothing, exactly as `<description />` is.
     assert_eq!(
-        registry.field_by_tag(59).unwrap().as_fix().description(),
+        FixField::new(registry.field_by_tag(59).unwrap()).description(),
         None
     );
     // A CDATA section is how a description holds a `<` or an `&` without
     // escaping one, so it is content and is never unescaped again.
     assert_eq!(
-        registry.field_by_tag(60).unwrap().as_fix().description(),
+        FixField::new(registry.field_by_tag(60).unwrap()).description(),
         Some("Held as <yyyymmdd-hh:mm:ss> & nothing else."),
     );
 
@@ -1390,8 +1394,8 @@ fn a_description_keeps_its_words_and_loses_its_layout() {
         .add_cfb_file(&handle(&body), Some("bloomberg"))
         .unwrap();
     assert_eq!(
-        folded.field_by_tag(58).unwrap().as_fix().description(),
-        registry.field_by_tag(58).unwrap().as_fix().description(),
+        FixField::new(folded.field_by_tag(58).unwrap()).description(),
+        FixField::new(registry.field_by_tag(58).unwrap()).description(),
     );
 }
 
@@ -1414,7 +1418,7 @@ fn only_the_description_element_describes_a_tag() {
 </cplugin-configuration>"#;
     let (registry, _) = FixRegistry::from_cfb_file(&handle(body), None).expect("a readable CBlock");
     assert_eq!(
-        registry.field_by_tag(35).unwrap().as_fix().description(),
+        FixField::new(registry.field_by_tag(35).unwrap()).description(),
         Some("The message type. Case-bearing."),
     );
 }
@@ -1563,8 +1567,10 @@ fn the_message_types_a_file_declares_become_the_code_set_of_tag_35() {
         )
         .unwrap();
     let mut held = DataType::utf8().nullable_field("MsgType");
-    held.as_fix_mut().set_tag(35).unwrap();
-    held.as_fix_mut().set_codeset("msgtypecodeset").unwrap();
+    FixFieldMut::new(&mut held).set_tag(35).unwrap();
+    FixFieldMut::new(&mut held)
+        .set_codeset("msgtypecodeset")
+        .unwrap();
     dictionary.insert(held).unwrap();
     dictionary.merge_with(&registry).unwrap();
     let merged = dictionary.field_by_tag(35).unwrap();
@@ -1750,7 +1756,10 @@ fn a_map_reaches_the_field_it_spells_and_one_entry_never_refuses_the_file() {
             .code_value("paris"),
         Some("XPAR")
     );
-    assert_eq!(registry.field_by_tag(100).unwrap().as_fix().codeset(), None);
+    assert_eq!(
+        FixField::new(registry.field_by_tag(100).unwrap()).codeset(),
+        None
+    );
 
     // Whitespace around a name is not a spelling, so it neither breaks the
     // match nor flips the orientation. An entry stating nothing on a side is
@@ -1812,12 +1821,12 @@ fn a_files_whole_vocabulary_lands_with_the_maps_that_sit_past_its_grammar() {
         "advside",
     ] {
         let held = registry.field_by_name(name).expect(name);
-        assert!(held.as_fix().has_source(DIALECT), "{name}");
+        assert!(FixField::new(held).has_source(DIALECT), "{name}");
     }
 
     // Every field is keyed, so it enters a dictionary as it stands.
     let avgpx = registry.field_by_name("avgpx").expect("AvgPx");
-    assert_eq!(avgpx.as_fix().tag().unwrap(), Some(6));
+    assert_eq!(FixField::new(avgpx).tag().unwrap(), Some(6));
     assert_eq!(sources(avgpx), [DIALECT]);
     assert_eq!(
         sources(registry.field_by_name("exludeddealers").unwrap()),
@@ -1885,15 +1894,14 @@ fn an_unnamed_file_takes_its_dialect_from_its_own_stem() {
     for field in buffered.iter() {
         // Crate fields and unstated SendingTime are seeds, not this file's
         // declarations.
-        if field
-            .as_fix()
+        if FixField::new(field)
             .tag()
             .unwrap()
             .is_some_and(|tag| yggdryl::is_crate_tag(tag) || tag == 52)
         {
             continue;
         }
-        assert!(field.as_fix().has_source(DIALECT), "{}", field.name());
+        assert!(FixField::new(field).has_source(DIALECT), "{}", field.name());
     }
 }
 
@@ -2080,16 +2088,12 @@ fn folding_a_cblock_into_the_committed_dictionary_keeps_what_it_holds_and_restat
             before.field_by_tag(tag).unwrap().dtype(),
             "tag {tag} keeps its stored datatype"
         );
-        assert!(held.as_fix().has_source("bloomberg"), "tag {tag}");
+        assert!(FixField::new(held).has_source("bloomberg"), "tag {tag}");
     }
     let held = seeded.field_by_tag(6).unwrap();
     assert_eq!(held.dtype(), &DataType::DECIMAL);
     assert!(
-        seeded
-            .field_by_tag(10001)
-            .unwrap()
-            .as_fix()
-            .has_source("bloomberg"),
+        FixField::new(seeded.field_by_tag(10001).unwrap()).has_source("bloomberg"),
         "the rest of the file arrived"
     );
     assert_eq!(seeded.field_by_tag(35).unwrap().dtype(), &DataType::utf8());
@@ -2135,14 +2139,13 @@ fn a_spelling_two_tags_share_names_neither_of_them() {
     // Each names the other's tag, so a reader holding either reaches the one
     // the file said the same thing about.
     assert_eq!(
-        registry.field_by_tag(44).unwrap().as_fix().tags().unwrap(),
+        FixField::new(registry.field_by_tag(44).unwrap())
+            .tags()
+            .unwrap(),
         vec![3044]
     );
     assert_eq!(
-        registry
-            .field_by_tag(3044)
-            .unwrap()
-            .as_fix()
+        FixField::new(registry.field_by_tag(3044).unwrap())
             .tags()
             .unwrap(),
         vec![44]
@@ -2163,7 +2166,7 @@ fn a_spelling_two_tags_share_names_neither_of_them() {
     for tag in [44, 3044, 3045] {
         let field = registry.field_by_tag(tag).expect("a declared tag");
         assert_eq!(field.name(), tag.to_string());
-        assert!(field.as_fix().tags().unwrap().is_empty(), "tag {tag}");
+        assert!(FixField::new(field).tags().unwrap().is_empty(), "tag {tag}");
     }
 
     // The folding door reads the same file the same way.
@@ -2232,7 +2235,7 @@ fn a_spelling_two_tags_share_names_neither_of_them() {
         FixRegistry::from_cfb_file(&handle(mapped), Some(DIALECT)).expect("a readable CBlock");
     for tag in [44, 3044] {
         assert_eq!(
-            registry.field_by_tag(tag).unwrap().as_fix().codeset(),
+            FixField::new(registry.field_by_tag(tag).unwrap()).codeset(),
             None,
             "tag {tag} keeps no code set from an ambiguous map",
         );
@@ -2263,7 +2266,9 @@ fn a_spelling_two_tags_share_names_neither_of_them() {
     assert_eq!(registry.field_by_tag(20044).unwrap().name(), "20044");
     assert!(registry.get_field_by_name("Price").is_none());
     assert_eq!(
-        registry.field_by_tag(44).unwrap().as_fix().tags().unwrap(),
+        FixField::new(registry.field_by_tag(44).unwrap())
+            .tags()
+            .unwrap(),
         vec![20044]
     );
 }
@@ -2293,17 +2298,14 @@ fn both_doors_keep_the_second_declaration_of_one_tag_as_a_second_field() {
     let holder = registry.field_by_tag(44).unwrap();
     assert_eq!(holder.name(), "price");
     assert_eq!(
-        holder.as_fix().names().collect::<Vec<_>>(),
+        FixField::new(holder).names().collect::<Vec<_>>(),
         [] as [&str; 0],
         "the holder lends no alias",
     );
     let lastpx = FixId::of(44, "LastPx").unwrap();
     assert_eq!(registry.field_by_id(lastpx).unwrap().name(), "lastpx");
     assert!(
-        registry
-            .field_by_id(lastpx)
-            .unwrap()
-            .as_fix()
+        FixField::new(registry.field_by_id(lastpx).unwrap())
             .names()
             .next()
             .is_none()
@@ -2321,8 +2323,8 @@ fn both_doors_keep_the_second_declaration_of_one_tag_as_a_second_field() {
     // in the one tag's slot, ordered by their ids and not by declaration.
     let ids: Vec<(i32, FixId)> = registry
         .iter()
-        .filter(|field| field.as_fix().tag().unwrap() == Some(44))
-        .map(|field| (44, field.as_fix().id().unwrap().unwrap()))
+        .filter(|field| FixField::new(field).tag().unwrap() == Some(44))
+        .map(|field| (44, FixField::new(field).id().unwrap().unwrap()))
         .collect();
     let mut sorted = ids.clone();
     sorted.sort_by_key(|(_, id)| id.digest());
@@ -2330,7 +2332,7 @@ fn both_doors_keep_the_second_declaration_of_one_tag_as_a_second_field() {
     assert_eq!(ids, sorted, "identity order within a tag");
     let held: Vec<i32> = registry
         .iter()
-        .filter_map(|field| field.as_fix().tag().unwrap())
+        .filter_map(|field| FixField::new(field).tag().unwrap())
         .filter(|tag| !yggdryl::is_crate_tag(*tag))
         .collect();
     assert_eq!(
@@ -2386,8 +2388,7 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
     // declared is read past: which version a run reads at is the codec's pin.
     assert_eq!(dictionary.dialects(), ["morgan"]);
     for field in dictionary.iter() {
-        if field
-            .as_fix()
+        if FixField::new(field)
             .tag()
             .unwrap()
             .is_some_and(|tag| yggdryl::is_crate_tag(tag) || tag == 52)
@@ -2511,7 +2512,7 @@ fn a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_st
     // by its name and carries the membership.
     assert_eq!(seeded.msgtype("D").unwrap().name(), first_holder);
     let bound = seeded.msgtype("message44").expect("the file's own message");
-    assert_eq!(bound.as_field().as_fix().msgtype(), Some("D"));
+    assert_eq!(FixField::new(bound.as_field()).msgtype(), Some("D"));
     assert_eq!(sources(bound.as_field()), ["venue"]);
     assert!(sources(seeded.msgtype("D").unwrap().as_field()).is_empty());
 
@@ -2579,7 +2580,7 @@ fn reading_a_cblock_in_whole_restates_a_changed_width_and_names_the_file_it_pass
     let url = file.url().unwrap().to_string();
     assert_eq!(merge.dropped.len(), 1, "{:?}", merge.dropped);
     for drop in &merge.dropped {
-        assert_eq!(drop.incoming.as_fix().tag().unwrap(), Some(43));
+        assert_eq!(FixField::new(&drop.incoming).tag().unwrap(), Some(43));
         assert_eq!(drop.source.as_deref(), Some(url.as_str()));
         assert!(drop.to_string().starts_with(&url), "{drop}");
         assert_eq!(sources(&drop.incoming), [DIALECT]);
@@ -2588,13 +2589,7 @@ fn reading_a_cblock_in_whole_restates_a_changed_width_and_names_the_file_it_pass
         seeded.field_by_tag(43).unwrap(),
         before.field_by_tag(43).unwrap()
     );
-    assert!(
-        seeded
-            .field_by_tag(58)
-            .unwrap()
-            .as_fix()
-            .has_source(DIALECT)
-    );
+    assert!(FixField::new(seeded.field_by_tag(58).unwrap()).has_source(DIALECT));
 
     // What leaves nothing to keep is still refused whole: a document that is
     // not XML folds nothing.
@@ -2650,7 +2645,7 @@ fn a_normalization_spells_a_tag_and_the_vocabulary_keeps_its_name() {
         Some("22830"),
     );
     assert_eq!(
-        held.as_fix().names().collect::<Vec<_>>(),
+        FixField::new(held).names().collect::<Vec<_>>(),
         ["EXCLUDEDDEALERS", "EXCLUDED_DEALERS"],
         "in the order the file spelled them",
     );
@@ -2664,12 +2659,18 @@ fn a_name_a_tag_already_answers_to_is_not_stored_a_second_time() {
     // the vocabulary spelled `LegSecurityID`. Most of a real binding is this.
     let held = registry.field_by_tag(602).expect("LegSecurityID");
     assert_eq!(held.name(), "legsecurityid");
-    assert_eq!(held.as_fix().names().collect::<Vec<_>>(), [] as [&str; 0]);
+    assert_eq!(
+        FixField::new(held).names().collect::<Vec<_>>(),
+        [] as [&str; 0]
+    );
     assert!(registry.get_field_by_name("LEGSECURITYID").is_some());
 
     // The same, spelled with the file's own casing inside a nested group.
     let alt = registry.field_by_tag(605).expect("LegSecurityAltID");
-    assert_eq!(alt.as_fix().names().collect::<Vec<_>>(), [] as [&str; 0]);
+    assert_eq!(
+        FixField::new(alt).names().collect::<Vec<_>>(),
+        [] as [&str; 0]
+    );
 }
 
 #[test]
@@ -2689,10 +2690,7 @@ fn only_an_unconditional_reference_to_one_tag_is_a_name_for_it() {
     // no evaluator to say what the decoded value would be. Tag 603 is reached
     // by the name its own `vocabulary-tag` gave it and by nothing this added.
     assert_eq!(
-        registry
-            .field_by_tag(603)
-            .expect("LegSecurityIDSource")
-            .as_fix()
+        FixField::new(registry.field_by_tag(603).expect("LegSecurityIDSource"))
             .names()
             .collect::<Vec<_>>(),
         [] as [&str; 0],
@@ -2714,7 +2712,7 @@ fn only_an_unconditional_reference_to_one_tag_is_a_name_for_it() {
     let cfi = registry.field_by_tag(608).expect("608");
     assert_eq!(cfi.name(), "legcficode");
     assert_eq!(cfi.display(), Some("LEGCFICODE"));
-    assert!(cfi.as_fix().names().next().is_none());
+    assert!(FixField::new(cfi).names().next().is_none());
     assert_eq!(
         registry.get_field_by_name("LEGCFICODE").map(Field::name),
         Some("legcficode"),
@@ -2753,10 +2751,7 @@ fn a_spelling_that_cannot_be_answered_is_dropped_and_never_refused() {
         "the first claim keeps it",
     );
     assert_eq!(
-        registry
-            .field_by_tag(22831)
-            .expect("the second claimant")
-            .as_fix()
+        FixField::new(registry.field_by_tag(22831).expect("the second claimant"))
             .names()
             .collect::<Vec<_>>(),
         [] as [&str; 0],
@@ -2766,12 +2761,13 @@ fn a_spelling_that_cannot_be_answered_is_dropped_and_never_refused() {
     // too: a canonical name always wins a lookup, so the alias would be a
     // spelling stored where nothing could ever reach it.
     assert_eq!(
-        registry
-            .field_by_tag(22832)
-            .expect("the tag spelled as another")
-            .as_fix()
-            .names()
-            .collect::<Vec<_>>(),
+        FixField::new(
+            registry
+                .field_by_tag(22832)
+                .expect("the tag spelled as another")
+        )
+        .names()
+        .collect::<Vec<_>>(),
         [] as [&str; 0],
     );
     assert_eq!(
@@ -2785,12 +2781,13 @@ fn a_spelling_that_cannot_be_answered_is_dropped_and_never_refused() {
     // spelling goes exactly as it did above. The standard tag is still what
     // the name reaches.
     assert_eq!(
-        registry
-            .field_by_tag(22834)
-            .expect("the venue tag spelled as a standard one")
-            .as_fix()
-            .names()
-            .collect::<Vec<_>>(),
+        FixField::new(
+            registry
+                .field_by_tag(22834)
+                .expect("the venue tag spelled as a standard one")
+        )
+        .names()
+        .collect::<Vec<_>>(),
         [] as [&str; 0],
     );
     assert_eq!(
@@ -2816,7 +2813,7 @@ fn both_doors_carry_the_names_a_normalization_spelled() {
         .expect("a readable CBlock");
     let held = folded.field_by_tag(22830).expect("the unnamed tag");
     assert_eq!(
-        held.as_fix().names().collect::<Vec<_>>(),
+        FixField::new(held).names().collect::<Vec<_>>(),
         ["EXCLUDEDDEALERS", "EXCLUDED_DEALERS"],
         "the folding door carries them too",
     );
@@ -2903,19 +2900,13 @@ fn a_message_resolves_the_spelling_two_of_its_tags_share() {
     // Each carries the other's tag, so the pair the file made is recoverable
     // from either half of it.
     assert_eq!(
-        registry
-            .field_by_tag(11024)
-            .unwrap()
-            .as_fix()
+        FixField::new(registry.field_by_tag(11024).unwrap())
             .tags()
             .unwrap(),
         vec![11025]
     );
     assert_eq!(
-        registry
-            .field_by_tag(11025)
-            .unwrap()
-            .as_fix()
+        FixField::new(registry.field_by_tag(11025).unwrap())
             .tags()
             .unwrap(),
         vec![11024]
@@ -2932,7 +2923,7 @@ fn a_message_resolves_the_spelling_two_of_its_tags_share() {
     assert_eq!(
         registry
             .get_field_by_name("FixingCenter")
-            .and_then(|held| held.as_fix().tag().ok().flatten()),
+            .and_then(|held| FixField::new(held).tag().ok().flatten()),
         Some(11033),
     );
 
@@ -3048,7 +3039,7 @@ fn the_captures_trade_capture_frame_reads_against_the_dialect_that_declares_it()
     // Named as the dictionary names the tag: a spelling two tags share
     // names neither, so the member spells its tag and displays the spelling.
     assert_eq!(currency.name(), "11024");
-    assert_eq!(currency.as_fix().tag().unwrap(), Some(11024));
+    assert_eq!(FixField::new(currency).tag().unwrap(), Some(11024));
     let held = message
         .by_name("hedgegroups")
         .expect("the hedge group")
@@ -3165,7 +3156,7 @@ fn two_grammars_bound_under_one_wire_type_are_one_message_carrying_both() {
     assert_eq!(
         registry
             .iter()
-            .filter(|field| field.as_fix().msgtype().is_some())
+            .filter(|field| FixField::new(field).msgtype().is_some())
             .count(),
         1
     );
@@ -3339,7 +3330,7 @@ fn counterparties_typing_one_tag_two_ways_fold_whole_and_name_the_file_passed_ov
     assert_eq!(merge.dropped.len(), 1, "{:?}", merge.dropped);
     assert_eq!(merge.restated, 1, "tradeweb's text, under the held flag");
     let drop = &merge.dropped[0];
-    assert_eq!(drop.incoming.as_fix().tag().unwrap(), Some(532));
+    assert_eq!(FixField::new(&drop.incoming).tag().unwrap(), Some(532));
     assert_eq!(drop.incoming.dtype(), &DataType::Int32);
     assert_eq!(sources(&drop.incoming), ["bloomberg_fix44_dropcopy"]);
     assert!(
@@ -3366,7 +3357,7 @@ fn counterparties_typing_one_tag_two_ways_fold_whole_and_name_the_file_passed_ov
     let member = message
         .fields()
         .iter()
-        .find(|member| member.as_fix().tag().unwrap() == Some(532))
+        .find(|member| FixField::new(member).tag().unwrap() == Some(532))
         .expect("tag 532 in the message");
     assert_eq!(member.dtype(), &DataType::Boolean);
 
@@ -3413,7 +3404,12 @@ fn a_field_passed_over_by_its_name_takes_the_members_reading_it_along() {
     let passed: Vec<(&str, Option<i32>)> = merge
         .dropped
         .iter()
-        .map(|drop| (drop.incoming.name(), drop.incoming.as_fix().tag().unwrap()))
+        .map(|drop| {
+            (
+                drop.incoming.name(),
+                FixField::new(&drop.incoming).tag().unwrap(),
+            )
+        })
         .collect();
     assert_eq!(
         passed,
@@ -3433,7 +3429,7 @@ fn a_field_passed_over_by_its_name_takes_the_members_reading_it_along() {
     let tags: Vec<Option<i32>> = message
         .fields()
         .iter()
-        .map(|member| member.as_fix().tag().unwrap())
+        .map(|member| FixField::new(member).tag().unwrap())
         .collect();
     assert!(
         tags.contains(&Some(55)) && !tags.contains(&Some(6001)),
@@ -3523,7 +3519,7 @@ fn a_group_one_dialect_split_for_a_message_folds_into_the_group_that_message_rea
         message
             .fields()
             .iter()
-            .any(|member| member.as_fix().group() == Some("underlyings")),
+            .any(|member| FixField::new(member).group() == Some("underlyings")),
         "D reads the held group"
     );
 
@@ -3554,8 +3550,8 @@ fn a_group_one_dialect_split_for_a_message_folds_into_the_group_that_message_rea
     let groups: Vec<(&str, Option<&str>)> = message
         .fields()
         .iter()
-        .filter(|member| member.as_fix().group().is_some())
-        .map(|member| (member.name(), member.as_fix().group()))
+        .filter(|member| FixField::new(member).group().is_some())
+        .map(|member| (member.name(), FixField::new(member).group()))
         .collect();
     assert_eq!(
         groups,
@@ -3577,12 +3573,13 @@ fn a_group_one_dialect_split_for_a_message_folds_into_the_group_that_message_rea
         "a second fold of the same files changes nothing"
     );
     assert_eq!(
-        registry
-            .definition(Groups, "underlyings_newordersingle")
-            .unwrap()
-            .as_fix()
-            .counter()
-            .unwrap(),
+        FixField::new(
+            registry
+                .definition(Groups, "underlyings_newordersingle")
+                .unwrap()
+        )
+        .counter()
+        .unwrap(),
         Some(712),
         "the other group arrives as one of its own"
     );
@@ -3613,14 +3610,14 @@ fn a_field_merged_by_its_name_is_read_by_the_members_of_its_file_under_the_held_
         .expect("both files fold");
     assert!(merge.is_clean(), "{:?}", merge.dropped);
     let held = registry.field_by_tag(9002).unwrap();
-    assert_eq!(held.as_fix().tag().unwrap(), Some(9001));
+    assert_eq!(FixField::new(held).tag().unwrap(), Some(9001));
     let message = registry.msgtype("D").unwrap().as_field();
     let member = message
         .fields()
         .iter()
-        .find(|member| member.as_fix().field_ref() == Some("venueref"))
+        .find(|member| FixField::new(member).field_ref() == Some("venueref"))
         .expect("the member reading VenueRef");
-    assert_eq!(member.as_fix().tag().unwrap(), Some(9001));
+    assert_eq!(FixField::new(member).tag().unwrap(), Some(9001));
 }
 
 #[test]
@@ -3659,9 +3656,9 @@ fn a_spelling_another_field_holds_merges_into_that_field_and_the_members_reading
         "venueordertype"
     );
     let clientref = registry.field_by_name("ClientRef").unwrap();
-    assert_eq!(clientref.as_fix().tag().unwrap(), Some(9002));
+    assert_eq!(FixField::new(clientref).tag().unwrap(), Some(9002));
     assert!(
-        clientref.as_fix().tags().unwrap().is_empty(),
+        FixField::new(clientref).tags().unwrap().is_empty(),
         "9001 is VenueOrderType's and joins no alternate"
     );
     assert_eq!(sources(clientref), ["a", "b"]);
@@ -3669,14 +3666,14 @@ fn a_spelling_another_field_holds_merges_into_that_field_and_the_members_reading
     let member = message
         .fields()
         .iter()
-        .find(|member| member.as_fix().field_ref() == Some("clientref"))
+        .find(|member| FixField::new(member).field_ref() == Some("clientref"))
         .expect("the member reading ClientRef");
-    assert_eq!(member.as_fix().tag().unwrap(), Some(9002));
+    assert_eq!(FixField::new(member).tag().unwrap(), Some(9002));
     assert!(
         message
             .fields()
             .iter()
-            .all(|member| member.as_fix().tag().unwrap() != Some(9001)),
+            .all(|member| FixField::new(member).tag().unwrap() != Some(9001)),
         "no member reads VenueOrderType's tag"
     );
 }
@@ -3721,17 +3718,17 @@ fn a_held_tag_redeclared_under_a_held_name_merges_into_the_name_s_holder_and_its
     assert_eq!(merge.sources, 2);
     assert_eq!(registry.field_by_tag(541).unwrap().name(), "maturitydate");
     let second = registry.field_by_name("MaturityDate2").unwrap();
-    assert_eq!(second.as_fix().tag().unwrap(), Some(9999));
-    assert!(second.as_fix().tags().unwrap().is_empty());
+    assert_eq!(FixField::new(second).tag().unwrap(), Some(9999));
+    assert!(FixField::new(second).tags().unwrap().is_empty());
     assert_eq!(sources(second), ["a", "b"]);
     for msgtype in ["D", "8"] {
         let message = registry.msgtype(msgtype).unwrap().as_field();
         let member = message
             .fields()
             .iter()
-            .find(|member| member.as_fix().field_ref() == Some("maturitydate2"))
+            .find(|member| FixField::new(member).field_ref() == Some("maturitydate2"))
             .unwrap_or_else(|| panic!("message {msgtype} reads MaturityDate2"));
-        assert_eq!(member.as_fix().tag().unwrap(), Some(9999));
+        assert_eq!(FixField::new(member).tag().unwrap(), Some(9999));
     }
     assert_eq!(
         children(registry.msgtype("D").unwrap().as_field()),
@@ -3787,7 +3784,12 @@ fn a_member_is_the_field_it_reads_before_the_name_it_carries_whichever_file_fold
         let mut read: Vec<(Option<i32>, Option<&str>)> = message
             .fields()
             .iter()
-            .map(|member| (member.as_fix().tag().unwrap(), member.as_fix().field_ref()))
+            .map(|member| {
+                (
+                    FixField::new(member).tag().unwrap(),
+                    FixField::new(member).field_ref(),
+                )
+            })
             .collect();
         read.sort_unstable();
         assert_eq!(
@@ -3838,7 +3840,7 @@ fn a_group_counted_by_a_field_held_as_text_retypes_it_whichever_file_sorts_first
             message
                 .fields()
                 .iter()
-                .any(|member| member.as_fix().group() == Some("underlyings")),
+                .any(|member| FixField::new(member).group() == Some("underlyings")),
             "D reads the group"
         );
         // Retyping a field another dialect declared is said, not done
@@ -3865,7 +3867,7 @@ fn a_group_counted_by_a_field_held_as_text_retypes_it_whichever_file_sorts_first
     let mut held = DataType::decimal(38, 18)
         .unwrap()
         .nullable_field("nounderlyings");
-    held.as_fix_mut().set_tag(711).unwrap();
+    FixFieldMut::new(&mut held).set_tag(711).unwrap();
     let mut registry = FixRegistry::from_fields([held]).unwrap();
     let tree = cblock_tree(&[("b.cfb", &underlyings(""))]);
     let merge = registry
@@ -3949,7 +3951,7 @@ fn a_definition_another_dictionary_derived_a_held_tag_for_takes_a_free_one() {
         yggdryl::FixCategory::Groups,
     ] {
         for definition in seeded.definitions(category) {
-            let tag = definition.as_fix().tag().unwrap().unwrap();
+            let tag = FixField::new(definition).tag().unwrap().unwrap();
             if let Some(held) = tags.insert(tag, definition.name().to_owned()) {
                 panic!("{held:?} and {:?} both hold {tag}", definition.name());
             }
@@ -3958,7 +3960,7 @@ fn a_definition_another_dictionary_derived_a_held_tag_for_takes_a_free_one() {
     assert!(
         seeded
             .definitions(yggdryl::FixCategory::Groups)
-            .any(|group| group.as_fix().counter().unwrap() == Some(9100)),
+            .any(|group| FixField::new(group).counter().unwrap() == Some(9100)),
         "the venue's group arrived"
     );
 }
@@ -4494,7 +4496,7 @@ fn every_coarser_cblock_word_restates_under_the_committed_datatype_and_a_contrad
     assert_eq!(merge.dropped.len(), 1, "{:?}", merge.dropped);
     assert_eq!(merge.restated, 1, "Price, again");
     let drop = &merge.dropped[0];
-    assert_eq!(drop.incoming.as_fix().tag().unwrap(), Some(43));
+    assert_eq!(FixField::new(&drop.incoming).tag().unwrap(), Some(43));
     assert_eq!(drop.incoming.dtype(), &DataType::Int32);
     assert!(
         drop.reason.contains("boolean") && drop.reason.contains("int32"),
@@ -4610,7 +4612,7 @@ fn an_unnamed_tag_in_one_file_is_the_field_another_file_names() {
         assert!(merge.dropped.is_empty(), "{:?}", merge.dropped);
         let held: Vec<&Field> = registry
             .iter()
-            .filter(|field| field.as_fix().tag().unwrap() == Some(541))
+            .filter(|field| FixField::new(field).tag().unwrap() == Some(541))
             .collect();
         assert_eq!(held.len(), 1, "one field on the tag: {held:?}");
         assert_eq!(held[0].name(), "maturitydate");
@@ -4620,8 +4622,8 @@ fn an_unnamed_tag_in_one_file_is_the_field_another_file_names() {
         let members: Vec<(&str, Option<&str>)> = message
             .fields()
             .iter()
-            .filter(|member| member.as_fix().tag().unwrap() == Some(541))
-            .map(|member| (member.name(), member.as_fix().field_ref()))
+            .filter(|member| FixField::new(member).tag().unwrap() == Some(541))
+            .map(|member| (member.name(), FixField::new(member).field_ref()))
             .collect();
         // One member, named as the field is: the member the file that named
         // the tag declared and the one the file that did not declared are
@@ -4656,7 +4658,7 @@ fn an_unnamed_tag_in_one_file_is_the_field_another_file_names() {
     assert_eq!(last.display(), Some("LegLastPx"));
     for field in [spot, last] {
         assert!(
-            field.as_fix().tags().unwrap().is_empty(),
+            FixField::new(field).tags().unwrap().is_empty(),
             "{}",
             field.name()
         );
@@ -4681,11 +4683,15 @@ fn a_field_arriving_on_a_held_tag_lends_the_holder_no_name() {
     assert!(merge.dropped.is_empty(), "{:?}", merge.dropped);
     let held: Vec<&Field> = registry
         .iter()
-        .filter(|field| field.as_fix().tag().unwrap() == Some(1132))
+        .filter(|field| FixField::new(field).tag().unwrap() == Some(1132))
         .collect();
     assert_eq!(held.len(), 2, "{held:?}");
     for field in held {
-        assert!(field.as_fix().names().next().is_none(), "{}", field.name());
+        assert!(
+            FixField::new(field).names().next().is_none(),
+            "{}",
+            field.name()
+        );
     }
     assert_eq!(
         registry.field_by_tag(1132).unwrap().name(),
@@ -4890,19 +4896,19 @@ fn two_fields_a_fold_lands_on_one_held_field_are_two_members_of_one_message() {
     assert!(merge.is_clean(), "{:?}", merge.dropped);
     let held = seeded.field_by_tag(9037).unwrap();
     assert_eq!(held.name(), "orderid");
-    assert_eq!(held.as_fix().tag().unwrap(), Some(37));
+    assert_eq!(FixField::new(held).tag().unwrap(), Some(37));
     let message = seeded
         .definition(yggdryl::FixCategory::Components, "message38")
         .unwrap();
     let reading: Vec<(&str, Option<&str>, Option<i32>)> = message
         .fields()
         .iter()
-        .filter(|member| member.as_fix().field_ref() == Some("orderid"))
+        .filter(|member| FixField::new(member).field_ref() == Some("orderid"))
         .map(|member| {
             (
                 member.name(),
-                member.as_fix().field_ref(),
-                member.as_fix().tag().unwrap(),
+                FixField::new(member).field_ref(),
+                FixField::new(member).tag().unwrap(),
             )
         })
         .collect();
@@ -4956,7 +4962,7 @@ fn a_field_passed_over_on_a_held_tag_leaves_its_members_reading_the_held_field()
         dealer
             .fields()
             .iter()
-            .map(|member| (member.name(), member.as_fix().field_ref()))
+            .map(|member| (member.name(), FixField::new(member).field_ref()))
             .collect::<Vec<_>>(),
         [("dealerid", Some("dealerid"))]
     );
@@ -5011,7 +5017,9 @@ fn a_group_counted_by_a_field_merged_onto_another_tag_counts_the_held_group() {
     let merge = merge.expect("one group, one counter");
     assert!(merge.is_clean(), "{:?}", merge.dropped);
     assert_eq!(
-        seeded.field_by_tag(20001).unwrap().as_fix().tag().unwrap(),
+        FixField::new(seeded.field_by_tag(20001).unwrap())
+            .tag()
+            .unwrap(),
         Some(1907)
     );
     let message = seeded
@@ -5021,7 +5029,7 @@ fn a_group_counted_by_a_field_merged_onto_another_tag_counts_the_held_group() {
         message
             .fields()
             .iter()
-            .any(|member| member.as_fix().group() == Some("regulatorytradeids")),
+            .any(|member| FixField::new(member).group() == Some("regulatorytradeids")),
         "the venue's AE reads the committed group"
     );
 }
@@ -5049,7 +5057,7 @@ fn a_group_counted_by_a_count_s_alternate_tag_counts_the_held_group() {
         message
             .fields()
             .iter()
-            .any(|member| member.as_fix().group() == Some("regulatorytradeids")),
+            .any(|member| FixField::new(member).group() == Some("regulatorytradeids")),
         "both venues' AE read the committed group"
     );
 }
@@ -5076,7 +5084,7 @@ fn a_group_held_under_its_name_on_another_counter_arrives_under_its_counter() {
     let group = seeded
         .definition(yggdryl::FixCategory::Groups, "regulatorytradeids_20001")
         .expect("the venue's group under its counter");
-    assert_eq!(group.as_fix().counter().unwrap(), Some(20001));
+    assert_eq!(FixField::new(group).counter().unwrap(), Some(20001));
     let message = seeded
         .definition(yggdryl::FixCategory::Components, "message4145")
         .unwrap();
@@ -5084,12 +5092,11 @@ fn a_group_held_under_its_name_on_another_counter_arrives_under_its_counter() {
         .fields()
         .iter()
         .filter(|member| {
-            member
-                .as_fix()
+            FixField::new(member)
                 .group()
                 .is_some_and(|name| name.starts_with("regulatorytradeids"))
         })
-        .map(|member| (member.name(), member.as_fix().group()))
+        .map(|member| (member.name(), FixField::new(member).group()))
         .collect();
     assert_eq!(
         groups,
@@ -5120,7 +5127,7 @@ fn a_group_counted_by_another_field_s_alternate_tag_is_passed_over_and_the_field
     assert!(merge.failed.is_empty(), "{:?}", merge.failed);
     let text = seeded.field_by_tag(58).unwrap();
     assert_eq!(text.dtype(), committed.field_by_tag(58).unwrap().dtype());
-    assert!(text.as_fix().tags().unwrap().contains(&9001));
+    assert!(FixField::new(text).tags().unwrap().contains(&9001));
     let passed: Vec<String> = merge.dropped.iter().map(ToString::to_string).collect();
     assert!(
         passed
@@ -5131,7 +5138,7 @@ fn a_group_counted_by_another_field_s_alternate_tag_is_passed_over_and_the_field
     assert!(
         seeded
             .definitions(yggdryl::FixCategory::Groups)
-            .all(|group| group.as_fix().counter().unwrap() != Some(58)),
+            .all(|group| FixField::new(group).counter().unwrap() != Some(58)),
         "no group is counted by Text"
     );
 }
@@ -5236,7 +5243,7 @@ fn a_spelling_no_catalog_name_holds_is_folded_and_kept_as_the_display() {
         message
             .fields()
             .iter()
-            .any(|member| member.as_fix().field_ref() == Some("otc_trade_flags"))
+            .any(|member| FixField::new(member).field_ref() == Some("otc_trade_flags"))
     );
 }
 
@@ -5361,9 +5368,13 @@ fn a_message_declaring_a_group_another_declared_alike_reads_that_group_however_s
         let member = message
             .fields()
             .iter()
-            .find(|member| member.as_fix().group().is_some())
+            .find(|member| FixField::new(member).group().is_some())
             .unwrap_or_else(|| panic!("message {wire} holds the group"));
-        assert_eq!(member.as_fix().group(), Some("parties"), "message {wire}");
+        assert_eq!(
+            FixField::new(member).group(),
+            Some("parties"),
+            "message {wire}"
+        );
         assert_eq!(member.display(), Some("Parties"), "message {wire}");
         let item = super::item_of(member);
         assert!(
@@ -5463,7 +5474,7 @@ fn two_cblocks_declaring_one_component_differing_only_in_nullability_and_sources
         );
         let parties = registry.definition(Groups, "parties").unwrap();
         assert_eq!(sources(parties), ["a", "b"], "{strict} first");
-        assert_eq!(parties.as_fix().component(), Some("party"));
+        assert_eq!(FixField::new(parties).component(), Some("party"));
         assert!(
             super::item_of(parties)
                 .get_field("partyidsource")
@@ -5476,8 +5487,8 @@ fn two_cblocks_declaring_one_component_differing_only_in_nullability_and_sources
         let members: Vec<(&str, Option<&str>)> = message
             .fields()
             .iter()
-            .filter(|member| member.as_fix().group().is_some())
-            .map(|member| (member.name(), member.as_fix().group()))
+            .filter(|member| FixField::new(member).group().is_some())
+            .map(|member| (member.name(), FixField::new(member).group()))
             .collect();
         assert_eq!(members, [("parties", Some("parties"))], "{strict} first");
     }
@@ -5532,8 +5543,8 @@ fn a_dialect_declaring_a_held_structure_under_another_name_reads_the_held_defini
         let members: Vec<(&str, Option<&str>)> = message
             .fields()
             .iter()
-            .filter(|member| member.as_fix().group().is_some())
-            .map(|member| (member.name(), member.as_fix().group()))
+            .filter(|member| FixField::new(member).group().is_some())
+            .map(|member| (member.name(), FixField::new(member).group()))
             .collect();
         assert_eq!(members, [(member, Some("parties"))], "message {wire}");
     }
@@ -5582,8 +5593,14 @@ fn a_message_declaring_a_held_structure_under_another_name_reads_the_held_defini
     let members: Vec<(&str, Option<&str>, Option<&str>)> = message
         .fields()
         .iter()
-        .filter(|member| member.as_fix().group().is_some())
-        .map(|member| (member.name(), member.as_fix().group(), member.display()))
+        .filter(|member| FixField::new(member).group().is_some())
+        .map(|member| {
+            (
+                member.name(),
+                FixField::new(member).group(),
+                member.display(),
+            )
+        })
         .collect();
     assert_eq!(members, [("dealers", Some("parties"), Some("Parties"))]);
 }
@@ -5697,11 +5714,11 @@ fn a_held_structure_under_a_name_held_for_another_is_the_held_definition_in_one_
             .as_field()
             .fields()
             .iter()
-            .filter(|member| member.as_fix().group().is_some())
+            .filter(|member| FixField::new(member).group().is_some())
             .map(|member| {
                 (
                     member.name().to_owned(),
-                    member.as_fix().group().map(str::to_owned),
+                    FixField::new(member).group().map(str::to_owned),
                 )
             })
             .collect()
@@ -5711,7 +5728,12 @@ fn a_held_structure_under_a_name_held_for_another_is_the_held_definition_in_one_
             .filter(|group| {
                 group.name().starts_with("parties") || group.name().starts_with("nested")
             })
-            .map(|group| (group.name().to_owned(), group.as_fix().counter().unwrap()))
+            .map(|group| {
+                (
+                    group.name().to_owned(),
+                    FixField::new(group).counter().unwrap(),
+                )
+            })
             .collect()
     };
 
@@ -5898,8 +5920,8 @@ fn a_dialect_naming_a_held_group_s_counter_after_its_own_wider_group_widens_the_
     let members: Vec<(&str, Option<&str>)> = message
         .fields()
         .iter()
-        .filter(|member| member.as_fix().group().is_some())
-        .map(|member| (member.name(), member.as_fix().group()))
+        .filter(|member| FixField::new(member).group().is_some())
+        .map(|member| (member.name(), FixField::new(member).group()))
         .collect();
     assert_eq!(members, [("parties", Some("parties"))]);
     let party = registry.definition(Components, "party").unwrap();
@@ -5954,12 +5976,15 @@ fn a_second_binding_of_one_wire_type_folds_into_the_first_member_by_member() {
         .find(|member| member.name() == "legs")
         .expect("S reads its legs");
     let group = registry
-        .definition(yggdryl::FixCategory::Groups, legs.as_fix().group().unwrap())
+        .definition(
+            yggdryl::FixCategory::Groups,
+            FixField::new(legs).group().unwrap(),
+        )
         .unwrap();
     let component = registry
         .definition(
             yggdryl::FixCategory::Components,
-            group.as_fix().component().unwrap(),
+            FixField::new(group).component().unwrap(),
         )
         .unwrap();
     for member in ["legsymbol", "legqty", "legpricetype"] {
@@ -6154,11 +6179,7 @@ fn an_ingest_holds_the_dialect_in_the_sources_catalog_under_the_file_it_read() {
     assert_eq!(entry.file(), Some("Venue FIX44.cfb"));
     assert_eq!(registry.dialects(), ["venue fix44"]);
     assert!(
-        registry
-            .field_by_name("exludeddealers")
-            .unwrap()
-            .as_fix()
-            .has_source("Venue FIX44")
+        FixField::new(registry.field_by_name("exludeddealers").unwrap()).has_source("Venue FIX44")
     );
     // A supplied name is the id, and the file is still the handle's.
     let mut supplied = FixRegistry::new();
@@ -6278,7 +6299,7 @@ fn the_root_type_names_the_plugins_role_which_the_dialects_entry_states() {
     );
     // The role is the entry's, never a field's: the file's own fields carry
     // their membership and nothing else of the root.
-    let avgpx = dictionary.field_by_tag(6).unwrap().as_fix();
+    let avgpx = FixField::new(dictionary.field_by_tag(6).unwrap());
     assert_eq!(avgpx.sources().collect::<Vec<_>>(), ["buy", "overlay"]);
     assert!(avgpx.codeset().is_none());
 }

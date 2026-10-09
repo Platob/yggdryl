@@ -6,7 +6,7 @@ How long an order stands: FIX `TimeInForce(59)` as an enum of fifteen members - 
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `timeinforce`, the registered kind `TIMEINFORCE_KIND` under `DataType::Market`, its marker `TimeInForceType`, the `TimeInForce` enum; `DataType::timeinforce()` |
+| Owns | `timeinforce`, the registered kind `TIMEINFORCE_KIND` under `DataType::Market`, its marker `TimeInForceType`, the `TimeInForce` enum; `TimeInForce::dtype()` and `TimeInForce::field(name)` |
 | Validates | A member, the code of one, or a spelling - the stored name in any case, the FIX specification's name folded, or the `TimeInForce(59)` wire value unfolded - reaches one member; anything else is refused rather than stored |
 | Lazy | Nothing - the member table is static |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
@@ -19,20 +19,20 @@ What `as_str` answers and every text format writes is the member's stored name -
 
 ## DataType
 
-`timeinforce` is the one spelling, `DataType::timeinforce()` the constructor, `TimeInForce::ID` the id - a [registered kind](../datatype.md#registered-kinds) under `DataType::Market`; kind `enum`.
+`timeinforce` is the one spelling, `TimeInForce::dtype()` the datatype (a `const fn`: what every column of the kind declares) and `TimeInForce::field(name)` a nullable field of it, `TimeInForce::ID` the id - a [registered kind](../datatype.md#registered-kinds) under `DataType::Market`; kind `enum`. `DataType` holds no constructor per kind: the kind's own type answers its datatype, and the bindings' doors are unchanged (`DataType("timeinforce")` in Python, `new DataType('timeinforce')` in JavaScript).
 
 === "Rust"
 
     ```rust
     use yggdryl::{DataType, DataTypeKind, TimeInForce};
 
-    assert!(matches!(DataType::timeinforce(), DataType::Market(kind) if kind.id() == TimeInForce::ID));
-    assert_eq!(DataType::from_str("timeinforce")?, DataType::timeinforce());
-    assert_eq!(DataType::timeinforce().to_string(), "timeinforce");
-    assert_eq!(DataType::timeinforce().kind(), DataTypeKind::Enum);
-    assert_eq!(DataType::timeinforce().id().as_u8(), 0xc5);
-    assert!(DataType::timeinforce().is_enum() && !DataType::timeinforce().is_code());
-    assert_eq!(DataType::timeinforce().code_width(), None);
+    assert!(matches!(TimeInForce::dtype(), DataType::Market(kind) if kind.id() == TimeInForce::ID));
+    assert_eq!(DataType::from_str("timeinforce")?, TimeInForce::dtype());
+    assert_eq!(TimeInForce::dtype().to_string(), "timeinforce");
+    assert_eq!(TimeInForce::dtype().kind(), DataTypeKind::Enum);
+    assert_eq!(TimeInForce::dtype().id().as_u8(), 0xc5);
+    assert!(TimeInForce::dtype().is_enum() && !TimeInForce::dtype().is_code());
+    assert_eq!(TimeInForce::dtype().code_width(), None);
     ```
 
 === "Python"
@@ -63,11 +63,11 @@ What `as_str` answers and every text format writes is the member's stored name -
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, TimeInForceField};
+    use yggdryl::{TimeInForce, TimeInForceField};
 
     let tif = TimeInForceField::unit("timeinforce", true);
-    assert_eq!(tif.dtype(), &DataType::timeinforce());
-    assert_eq!(tif.to_field(), Field::new("timeinforce", DataType::timeinforce(), true));
+    assert_eq!(tif.dtype(), &TimeInForce::dtype());
+    assert_eq!(tif.to_field(), TimeInForce::field("timeinforce"));
     ```
 
 === "Python"
@@ -100,29 +100,29 @@ The value is the member, whichever spelling named it: `GTC` for `GTC`, `gtc`, FI
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Scalar, TimeInForce};
+    use yggdryl::{Scalar, TimeInForce};
 
-    let gtc = DataType::timeinforce().scalar("GTC")?;
+    let gtc = TimeInForce::dtype().scalar("GTC")?;
     assert_eq!(gtc, Scalar::from(TimeInForce::GoodTillCancel));
     assert_eq!(gtc.kind(), "timeinforce");
     assert_eq!(TimeInForce::GoodTillCancel.code(), 2);
 
     // The stored name in any case, FIX's name, the wire value and the code
     // reach one member.
-    assert_eq!(DataType::timeinforce().scalar("gtc")?, gtc);
-    assert_eq!(DataType::timeinforce().scalar("GoodTillCancel")?, gtc);
-    assert_eq!(DataType::timeinforce().scalar("1")?, gtc);
-    assert_eq!(DataType::timeinforce().scalar(2_i32)?, gtc);
+    assert_eq!(TimeInForce::dtype().scalar("gtc")?, gtc);
+    assert_eq!(TimeInForce::dtype().scalar("GoodTillCancel")?, gtc);
+    assert_eq!(TimeInForce::dtype().scalar("1")?, gtc);
+    assert_eq!(TimeInForce::dtype().scalar(2_i32)?, gtc);
     // Text is a spelling, an integer a code: `1` is the code of `DAY`.
     assert_eq!(
-        DataType::timeinforce().scalar(1_i32)?,
+        TimeInForce::dtype().scalar(1_i32)?,
         Scalar::from(TimeInForce::Day)
     );
 
     // A spelling nothing publishes, or the code of no member, answers nothing
     // rather than a guess.
-    assert!(DataType::timeinforce().scalar("Z").is_err());
-    assert!(DataType::timeinforce().scalar(14_i32).is_err());
+    assert!(TimeInForce::dtype().scalar("Z").is_err());
+    assert!(TimeInForce::dtype().scalar(14_i32).is_err());
     ```
 
 === "Python"
@@ -176,9 +176,9 @@ The value is the member, whichever spelling named it: `GTC` for `GTC`, `gtc`, FI
 
     use arrow_array::{Array, ArrayRef, Int64Array, StringArray, UInt8Array};
     use arrow_schema::DataType as ArrowDataType;
-    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
+    use yggdryl::{ArrowCastOptions, Field, Serie, TimeInForce};
 
-    let tif = Field::new("timeinforce", DataType::timeinforce(), false);
+    let tif = Field::new("timeinforce", TimeInForce::dtype(), false);
     let arrow = tif.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::UInt8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.timeinforce");
@@ -343,12 +343,11 @@ A venue that states how long an order stands in a field of its own, or spells `T
     use std::sync::Arc;
 
     use yggdryl::graph::Operation;
-    use yggdryl::{DataType, FixCodec, FixRegistry, TimeInForce};
+    use yggdryl::{DataType, FixCodec, FixFieldMut, FixRegistry, TimeInForce};
 
     let mut venue = DataType::utf8().nullable_field("VenueTif");
-    venue.as_fix_mut().set_tag(20059)?;
-    venue
-        .as_fix_mut()
+    FixFieldMut::new(&mut venue).set_tag(20059)?;
+    FixFieldMut::new(&mut venue)
         .set_timeinforces(&[("D", TimeInForce::Day), ("G", TimeInForce::GoodTillCancel)])?;
     assert_eq!(venue.get_metadata("FIX:timeinforce"), Some(r#"["D=DAY","G=GTC"]"#));
 

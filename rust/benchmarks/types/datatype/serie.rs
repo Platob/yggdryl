@@ -16,7 +16,7 @@ use arrow_array::{
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields};
 use criterion::{BatchSize, Criterion};
 use yggdryl::{
-    ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Selector, Serie, SerieValue,
+    ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Selector, Serie, SerieValue, Side,
     SortOptions, StructType, TimeUnit, Timezone, UnionMode,
 };
 
@@ -380,7 +380,7 @@ fn coded_ticks_column() -> Serie {
         DataType::from(
             StructType::from_fields([
                 DataType::Mic.required_field("venue"),
-                DataType::side().required_field("side"),
+                Side::dtype().required_field("side"),
                 DataType::Int64.required_field("count"),
             ])
             .expect("three named children"),

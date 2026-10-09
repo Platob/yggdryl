@@ -125,11 +125,7 @@ impl JsDataType {
             "large_cp1252" => CoreDataType::large_cp1252(),
             "cp1252_view" => CoreDataType::cp1252_view(),
             "large_cp1252_view" => CoreDataType::large_cp1252_view(),
-            "side" => CoreDataType::side(),
             "state" => CoreDataType::State,
-            "marketdatakind" => CoreDataType::marketdatakind(),
-            "marketdatatype" => CoreDataType::marketdatatype(),
-            "timeinforce" => CoreDataType::timeinforce(),
             "unit" => CoreDataType::Unit,
             "ric" => CoreDataType::Ric,
             "uuid" => CoreDataType::uuid(),
@@ -141,11 +137,17 @@ impl JsDataType {
             "timezone" => CoreDataType::Timezone,
             "mimetype" => CoreDataType::MimeType,
             "mediatype" => CoreDataType::MediaType,
-            _ => {
-                return Err(Error::from_reason(format!(
-                    "{kind:?} is not a parameter-free datatype kind"
-                )));
-            }
+            // A registered enum kind is named by the register, so a kind the
+            // core or another crate claims reaches this door with no arm of
+            // its own; a core name is never read as one.
+            _ => match yggdryl::market::kind_named(&kind) {
+                Some(market) => market.dtype(),
+                None => {
+                    return Err(Error::from_reason(format!(
+                        "{kind:?} is not a parameter-free datatype kind"
+                    )));
+                }
+            },
         };
         Ok(Self::from_core(inner))
     }

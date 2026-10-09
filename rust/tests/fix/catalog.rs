@@ -10,7 +10,7 @@
 
 use yggdryl::FixCategory::{Components, Groups};
 use yggdryl::internals::fix_catalog::structural_key;
-use yggdryl::{DataType, Field, FixRegistry, StructType};
+use yggdryl::{DataType, Field, FixFieldMut, FixRegistry, StructType};
 
 /// A dictionary holding the three party fields and a leg symbol, the wire
 /// fields every definition below reads.
@@ -24,7 +24,7 @@ fn dictionary() -> FixRegistry {
         (600, "LegSymbol", DataType::utf8()),
     ] {
         let mut field = dtype.nullable_field(name);
-        field.as_fix_mut().set_tag(tag).unwrap();
+        FixFieldMut::new(&mut field).set_tag(tag).unwrap();
         registry.insert(field).unwrap();
     }
     registry
@@ -36,7 +36,7 @@ fn dictionary() -> FixRegistry {
 fn reads(registry: &FixRegistry, name: &str, nullable: bool) -> Field {
     let mut member = registry.field_by_name(name).expect(name).clone();
     member.set_nullable(nullable);
-    member.as_fix_mut().set_field_ref(name).unwrap();
+    FixFieldMut::new(&mut member).set_field_ref(name).unwrap();
     member
 }
 
@@ -55,8 +55,10 @@ fn group(registry: &FixRegistry, name: &str, counter: i32, component: &str) -> F
     let mut item = registry.definition(Components, component).unwrap().clone();
     item.set_name(component);
     let mut group = DataType::serie(item).nullable_field(name);
-    group.as_fix_mut().set_counter(counter).unwrap();
-    group.as_fix_mut().set_component(component).unwrap();
+    FixFieldMut::new(&mut group).set_counter(counter).unwrap();
+    FixFieldMut::new(&mut group)
+        .set_component(component)
+        .unwrap();
     group
 }
 
@@ -74,7 +76,7 @@ fn the_structure_is_the_members_tags_and_fields_and_nothing_a_declaration_adds_t
             reads(&registry, "partyidsource", true),
         ],
     );
-    party.as_fix_mut().set_sources(["venue"]).unwrap();
+    FixFieldMut::new(&mut party).set_sources(["venue"]).unwrap();
     let mut dealer = component(
         "dealer",
         "Dealer",
@@ -83,7 +85,9 @@ fn the_structure_is_the_members_tags_and_fields_and_nothing_a_declaration_adds_t
             reads(&registry, "partyidsource", false),
         ],
     );
-    dealer.as_fix_mut().set_description("A dealer.").unwrap();
+    FixFieldMut::new(&mut dealer)
+        .set_description("A dealer.")
+        .unwrap();
     registry.insert_definition(Components, party).unwrap();
     registry.insert_definition(Components, dealer).unwrap();
     let party = registry.definition(Components, "party").unwrap();
@@ -164,7 +168,7 @@ fn a_group_is_its_counter_over_the_structure_of_the_component_it_draws_on() {
     // the two fields beside each other.
     let mut member = registry.definition(Groups, "parties").unwrap().clone();
     member.remove_metadata("FIX:tag");
-    member.as_fix_mut().set_group("parties").unwrap();
+    FixFieldMut::new(&mut member).set_group("parties").unwrap();
     let report = component(
         "report",
         "Report",
@@ -195,7 +199,7 @@ fn a_group_is_its_counter_over_the_structure_of_the_component_it_draws_on() {
         panic!("a serie group");
     };
     let mut item = item.as_ref().clone();
-    item.as_fix_mut().set_component("nobody").unwrap();
+    FixFieldMut::new(&mut item).set_component("nobody").unwrap();
     dangling.set_dtype(DataType::serie(item)).unwrap();
     let error = structural_key(&registry, &dangling).unwrap_err();
     assert!(error.to_string().contains("nobody"), "{error}");

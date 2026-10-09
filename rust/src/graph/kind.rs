@@ -26,8 +26,10 @@ pub enum MarketKind {
     BookEvent,
     /// A full-snapshot control: [`SnapshotEvent`](super::SnapshotEvent).
     SnapshotEvent,
-    /// A FIX message held whole: [`FixMsg`](crate::FixMsg), the category
-    /// it is filed under the category its dictionary files its type under.
+    /// A message held whole: a
+    /// [`MarketMessage`](super::market_data::MarketMessage) - a FIX
+    /// message - filed under the category its dictionary files its type
+    /// under.
     Fix,
 }
 

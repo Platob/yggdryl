@@ -11,7 +11,7 @@ use std::sync::Arc;
 use yggdryl::graph::{Event, Market, Operation};
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};
-use yggdryl::{Figi, IdKey, IdType, Isin, State};
+use yggdryl::{Figi, FixFieldMut, IdKey, IdType, Isin, State};
 use yggdryl::{FixCodec, FixMsg, FixRegistry, Scalar, StringEnum, Timezone, Url};
 
 fn reader() -> FixCodec {
@@ -963,7 +963,7 @@ fn every_registry_fills_by_the_same_rules() {
             .field_by_tag(tag)
             .expect("a standard field")
             .clone();
-        field.as_fix_mut().remove_codeset();
+        FixFieldMut::new(&mut field).remove_codeset();
         field
     };
     let small =
@@ -2003,7 +2003,7 @@ mod parentage {
     use std::sync::Arc;
 
     use yggdryl::graph::{Element, Event, Market, Operation};
-    use yggdryl::{FixCodec, FixMsg, IdType};
+    use yggdryl::{FixCodec, FixFieldMut, FixMsg, IdType};
 
     use super::SoleMessage;
 
@@ -2180,8 +2180,7 @@ mod parentage {
     fn a_registrys_own_list_of_parents_is_the_one_the_walk_reads() {
         let mut registry = (*super::super::committed_registry()).clone();
         let mut orderid = registry.field_by_tag(37).expect("OrderID(37)").clone();
-        orderid
-            .as_fix_mut()
+        FixFieldMut::new(&mut orderid)
             .set_parents(["parentorderid", "grandparentorderid", "origorderid"])
             .expect("three types");
         registry.update(orderid).expect("the field restated");
@@ -2468,7 +2467,7 @@ fn a_fill_split_report_keeps_its_leaves_as_its_quantity() {
 fn text_registry(tags: &[(&str, i32)]) -> Arc<FixRegistry> {
     let fields = tags.iter().map(|&(name, tag)| {
         let mut field = yggdryl::DataType::utf8().nullable_field(name);
-        field.as_fix_mut().set_tag(tag).expect("a tag");
+        FixFieldMut::new(&mut field).set_tag(tag).expect("a tag");
         field
     });
     Arc::new(FixRegistry::from_fields(fields).expect("a dictionary"))
@@ -2516,12 +2515,12 @@ fn a_resend_flag_a_dictionary_left_as_text_marks_a_replay_as_a_boolean_does() {
         .map(|tag| {
             let held = committed.field_by_tag(tag).expect("a committed field");
             let mut field = held.dtype().clone().nullable_field(held.name());
-            field.as_fix_mut().set_tag(tag).expect("a tag");
+            FixFieldMut::new(&mut field).set_tag(tag).expect("a tag");
             field
         })
         .chain(std::iter::once({
             let mut field = yggdryl::DataType::utf8().nullable_field("possresend");
-            field.as_fix_mut().set_tag(97).expect("a tag");
+            FixFieldMut::new(&mut field).set_tag(97).expect("a tag");
             field
         }));
     let registry = FixRegistry::from_fields(fields).expect("a dictionary");

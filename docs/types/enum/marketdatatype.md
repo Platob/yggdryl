@@ -6,7 +6,7 @@ What type of its kind a market element is - how an order is priced, what a quote
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `marketdatatype`, the registered kind `MARKETDATATYPE_KIND` under `DataType::Market`, its marker `MarketDataTypeType`, the `MarketDataType` enum; `DataType::marketdatatype()`; `MARKETDATATYPE_FIX_TAGS` and `MARKETDATATYPE_MSGTYPE_RULES` |
+| Owns | `marketdatatype`, the registered kind `MARKETDATATYPE_KIND` under `DataType::Market`, its marker `MarketDataTypeType`, the `MarketDataType` enum; `MarketDataType::dtype()` and `MarketDataType::field(name)`; `MARKETDATATYPE_FIX_TAGS` and `MARKETDATATYPE_MSGTYPE_RULES` |
 | Validates | A member, the code of one, or a spelling - the stored name in any case, or the FIX specification's own name for the value, folded - reaches one member; anything else is refused rather than stored |
 | Lazy | Nothing - the member table is static |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
@@ -18,20 +18,20 @@ The kind says what an element is - an order, a quote, a trade, a book; the type 
 
 ## DataType
 
-`marketdatatype` is the one spelling, `DataType::marketdatatype()` the constructor, `MarketDataType::ID` the id - a [registered kind](../datatype.md#registered-kinds) under `DataType::Market`; kind `enum`.
+`marketdatatype` is the one spelling, `MarketDataType::dtype()` the datatype (a `const fn`: what every column of the kind declares) and `MarketDataType::field(name)` a nullable field of it, `MarketDataType::ID` the id - a [registered kind](../datatype.md#registered-kinds) under `DataType::Market`; kind `enum`. `DataType` holds no constructor per kind: the kind's own type answers its datatype, and the bindings' doors are unchanged (`DataType("marketdatatype")` in Python, `new DataType('marketdatatype')` in JavaScript).
 
 === "Rust"
 
     ```rust
     use yggdryl::{DataType, DataTypeKind, MarketDataType};
 
-    assert!(matches!(DataType::marketdatatype(), DataType::Market(kind) if kind.id() == MarketDataType::ID));
-    assert_eq!(DataType::from_str("marketdatatype")?, DataType::marketdatatype());
-    assert_eq!(DataType::marketdatatype().to_string(), "marketdatatype");
-    assert_eq!(DataType::marketdatatype().kind(), DataTypeKind::Enum);
-    assert_eq!(DataType::marketdatatype().id().as_u8(), 0xc4);
-    assert!(DataType::marketdatatype().is_enum() && !DataType::marketdatatype().is_code());
-    assert_eq!(DataType::marketdatatype().code_width(), None);
+    assert!(matches!(MarketDataType::dtype(), DataType::Market(kind) if kind.id() == MarketDataType::ID));
+    assert_eq!(DataType::from_str("marketdatatype")?, MarketDataType::dtype());
+    assert_eq!(MarketDataType::dtype().to_string(), "marketdatatype");
+    assert_eq!(MarketDataType::dtype().kind(), DataTypeKind::Enum);
+    assert_eq!(MarketDataType::dtype().id().as_u8(), 0xc4);
+    assert!(MarketDataType::dtype().is_enum() && !MarketDataType::dtype().is_code());
+    assert_eq!(MarketDataType::dtype().code_width(), None);
     ```
 
 === "Python"
@@ -62,13 +62,13 @@ The kind says what an element is - an order, a quote, a trade, a book; the type 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, MarketDataTypeField};
+    use yggdryl::{Field, MarketDataType, MarketDataTypeField};
 
     let kind = MarketDataTypeField::unit("marketdatatype", false);
-    assert_eq!(kind.dtype(), &DataType::marketdatatype());
+    assert_eq!(kind.dtype(), &MarketDataType::dtype());
     assert_eq!(
         kind.to_field(),
-        Field::new("marketdatatype", DataType::marketdatatype(), false)
+        Field::new("marketdatatype", MarketDataType::dtype(), false)
     );
     ```
 
@@ -102,27 +102,27 @@ The value is the member, whichever spelling named it: `ORDLIMIT` for `ORDLIMIT`,
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, MarketDataType, Scalar};
+    use yggdryl::{MarketDataType, Scalar};
 
-    let limit = DataType::marketdatatype().scalar("ORDLIMIT")?;
+    let limit = MarketDataType::dtype().scalar("ORDLIMIT")?;
     assert_eq!(limit, Scalar::from(MarketDataType::OrdLimit));
     assert_eq!(limit.kind(), "marketdatatype");
     assert_eq!(MarketDataType::OrdLimit.code(), 102);
 
     // The stored name in any case, FIX's own name and the code reach one member.
-    assert_eq!(DataType::marketdatatype().scalar("ordlimit")?, limit);
-    assert_eq!(DataType::marketdatatype().scalar("Limit")?, limit);
-    assert_eq!(DataType::marketdatatype().scalar(102_i32)?, limit);
+    assert_eq!(MarketDataType::dtype().scalar("ordlimit")?, limit);
+    assert_eq!(MarketDataType::dtype().scalar("Limit")?, limit);
+    assert_eq!(MarketDataType::dtype().scalar(102_i32)?, limit);
     assert_eq!(
-        DataType::marketdatatype().scalar("block trade")?,
+        MarketDataType::dtype().scalar("block trade")?,
         Scalar::from(MarketDataType::TrdBlock)
     );
 
     // A stored code is an integer, never text; a wire value is no spelling;
     // the code of no member answers nothing.
-    assert!(DataType::marketdatatype().scalar("102").is_err());
-    assert!(DataType::marketdatatype().scalar("2").is_err());
-    assert!(DataType::marketdatatype().scalar(198_i32).is_err());
+    assert!(MarketDataType::dtype().scalar("102").is_err());
+    assert!(MarketDataType::dtype().scalar("2").is_err());
+    assert!(MarketDataType::dtype().scalar(198_i32).is_err());
     ```
 
 === "Python"
@@ -169,9 +169,9 @@ The value is the member, whichever spelling named it: `ORDLIMIT` for `ORDLIMIT`,
 
     use arrow_array::{Array, ArrayRef, StringArray, UInt16Array};
     use arrow_schema::DataType as ArrowDataType;
-    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
+    use yggdryl::{ArrowCastOptions, Field, MarketDataType, Serie};
 
-    let kind = Field::new("marketdatatype", DataType::marketdatatype(), false);
+    let kind = Field::new("marketdatatype", MarketDataType::dtype(), false);
     let arrow = kind.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::UInt16);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.marketdatatype");

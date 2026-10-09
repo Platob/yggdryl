@@ -7,7 +7,8 @@ use std::sync::Arc;
 
 use yggdryl::graph::{Element, Event, Market};
 use yggdryl::{
-    DataType, Field, FixCodec, FixRegistry, IdKey, Scalar, StructType, fix_column_of, fix_schema,
+    DataType, Field, FixCodec, FixField, FixFieldMut, FixRegistry, IdKey, Scalar, Side, StructType,
+    fix_column_of, fix_schema,
 };
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
@@ -253,7 +254,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             schema
                 .fields()
                 .iter()
-                .filter(|field| field.as_fix().tag().unwrap() == Some(tag))
+                .filter(|field| FixField::new(field).tag().unwrap() == Some(tag))
                 .count(),
             1
         );
@@ -328,7 +329,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     let typed = |tag: i32| fields[column_of(&schema, tag)].dtype().clone();
     assert_eq!(typed(15), DataType::Ccy, "Currency(15)");
     assert_eq!(typed(120), DataType::Ccy, "SettlCurrency(120)");
-    assert_eq!(typed(54), DataType::side(), "Side(54)");
+    assert_eq!(typed(54), Side::dtype(), "Side(54)");
     assert_eq!(typed(35), DataType::utf8(), "MsgType(35)");
     assert!(
         matches!(typed(60), DataType::DateTime64 { .. }),
@@ -558,9 +559,9 @@ fn a_row_read_against_one_schema_then_another_answers_each_schema_s_own_columns(
     // rebuilt one and the first again each fill their own columns.
     let wide = fix_schema(&registry, "fix").unwrap();
     let mut symbol = DataType::utf8().nullable_field("symbol");
-    symbol.as_fix_mut().set_tag(55).unwrap();
+    FixFieldMut::new(&mut symbol).set_tag(55).unwrap();
     let mut side = DataType::utf8().nullable_field("side");
-    side.as_fix_mut().set_tag(54).unwrap();
+    FixFieldMut::new(&mut side).set_tag(54).unwrap();
     let narrow = fix_schema(&FixRegistry::from_fields([side, symbol]).unwrap(), "fix").unwrap();
     let rebuilt = fix_schema(&registry, "fix").unwrap();
     assert_eq!(rebuilt, wide, "one dictionary, one schema");
@@ -1502,8 +1503,8 @@ fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
         .expect("the regulatory trade identifiers column");
     let field = &schema.fields()[at_group];
     assert_eq!(field.display(), Some("RegulatoryTradeIDs"));
-    assert_eq!(field.as_fix().tag().unwrap(), Some(497_401));
-    assert_eq!(field.as_fix().counter().unwrap(), Some(1907));
+    assert_eq!(FixField::new(field).tag().unwrap(), Some(497_401));
+    assert_eq!(FixField::new(field).counter().unwrap(), Some(1907));
     assert!(registry.get_field_by_name("regulatorytradeidgrp").is_none());
     let DataType::Serie(item) = field.dtype() else {
         panic!("regulatorytradeids is a Serie, got {}", field.dtype());
@@ -1524,7 +1525,7 @@ fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
     let member_tags: Vec<_> = item
         .fields()
         .iter()
-        .map(|member| member.as_fix().tag().unwrap())
+        .map(|member| FixField::new(member).tag().unwrap())
         .collect();
     assert_eq!(
         member_tags,
@@ -1631,7 +1632,7 @@ fn children_one_fold_names_rebuild_as_the_first_of_them_ascii_or_not() {
     let fixed = fix_schema(&registry, "fix").unwrap();
     let tagged = |name: &str, tag: i32| {
         let mut field = DataType::utf8().nullable_field(name);
-        field.as_fix_mut().set_tag(tag).unwrap();
+        FixFieldMut::new(&mut field).set_tag(tag).unwrap();
         field
     };
     let mut children = fixed.fields().to_vec();

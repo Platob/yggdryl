@@ -1,26 +1,28 @@
-//! `rust/src/fix/field.rs`: what a field states under `FIX:parents` - the
-//! identifier types holding the parents of the identifier it states, nearest
-//! first - written folded and once each, read without a copy, and held to
-//! that form by every registry that takes the field.
+//! `rust/src/fix/field.rs`: the FIX view of a field - `FixField` and
+//! `FixFieldMut`, minted here under `Scheme::FIX` by the core's exported view
+//! builder, borrowed with `FixField::new(&field)` and
+//! `FixFieldMut::new(&mut field)` - and what a field states under
+//! `FIX:parents`: the identifier types holding the parents of the identifier
+//! it states, nearest first, written folded and once each, read without a
+//! copy, and held to that form by every registry that takes the field.
 
-use yggdryl::{DataType, Error, Field, FixRegistry};
+use yggdryl::{DataType, Error, Field, FixField, FixFieldMut, FixRegistry, Scheme};
 
 fn orderid() -> Field {
     let mut field = DataType::utf8().nullable_field("OrderID");
-    field.as_fix_mut().set_tag(37).expect("a tag");
+    FixFieldMut::new(&mut field).set_tag(37).expect("a tag");
     field
 }
 
 fn parents(field: &Field) -> Vec<&str> {
-    field.as_fix().parents().collect()
+    FixField::new(field).parents().collect()
 }
 
 #[test]
 fn a_list_is_written_folded_in_the_order_given_and_read_back() {
     let mut field = orderid();
     assert!(parents(&field).is_empty(), "a field states none until told");
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field)
         .set_parents(["ParentOrderID", "Grand_Parent-Order ID", "OrigOrderID"])
         .expect("three types");
     assert_eq!(
@@ -32,8 +34,7 @@ fn a_list_is_written_folded_in_the_order_given_and_read_back() {
         ["parentorderid", "grandparentorderid", "origorderid"]
     );
     // A second statement replaces the first whole.
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field)
         .set_parents(["origorderid"])
         .expect("one type");
     assert_eq!(parents(&field), ["origorderid"]);
@@ -42,38 +43,34 @@ fn a_list_is_written_folded_in_the_order_given_and_read_back() {
 #[test]
 fn an_empty_list_removes_the_property_and_remove_answers_what_it_held() {
     let mut field = orderid();
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field)
         .set_parents(["origorderid"])
         .expect("one type");
     assert_eq!(
         field.get_metadata("FIX:parents"),
         Some(r#"["origorderid"]"#)
     );
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field)
         .set_parents::<[&str; 0], &str>([])
         .expect("none");
     assert_eq!(field.get_metadata("FIX:parents"), None);
     assert!(parents(&field).is_empty());
 
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field)
         .set_parents(["parentorderid"])
         .expect("one type");
     assert_eq!(
-        field.as_fix_mut().remove_parents().as_deref(),
+        FixFieldMut::new(&mut field).remove_parents().as_deref(),
         Some(r#"["parentorderid"]"#)
     );
-    assert_eq!(field.as_fix_mut().remove_parents(), None);
+    assert_eq!(FixFieldMut::new(&mut field).remove_parents(), None);
     assert!(parents(&field).is_empty());
 }
 
 #[test]
 fn a_spelling_no_type_folds_from_and_a_repeat_are_refused_and_the_field_stands() {
     let mut field = orderid();
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field)
         .set_parents(["parentorderid"])
         .expect("one type");
     for stated in [
@@ -84,8 +81,7 @@ fn a_spelling_no_type_folds_from_and_a_repeat_are_refused_and_the_field_stands()
         // One type under two spellings is one type twice.
         vec!["origorderid", "Orig_Order-ID"],
     ] {
-        let refusal = field
-            .as_fix_mut()
+        let refusal = FixFieldMut::new(&mut field)
             .set_parents(stated.iter().copied())
             .expect_err("refused");
         assert!(
@@ -125,8 +121,7 @@ fn a_hand_edited_document_is_refused_by_the_registry_that_would_take_it() {
     }
     // What the setter writes is taken.
     let mut field = orderid();
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field)
         .set_parents(["parentorderid", "origorderid"])
         .expect("two types");
     assert!(FixRegistry::new().add_field(field).expect("a field"));
@@ -136,8 +131,7 @@ fn a_hand_edited_document_is_refused_by_the_registry_that_would_take_it() {
 fn a_store_writes_the_list_as_the_json_it_is_and_reads_it_back() {
     let mut registry = FixRegistry::new();
     let mut field = orderid();
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field)
         .set_parents(["parentorderid", "origorderid"])
         .expect("two types");
     registry.add_field(field).expect("a field");
@@ -160,7 +154,7 @@ fn a_stored_transient_flag_reads_every_spelling_the_crate_reads_for_a_flag() {
                 .insert_metadata("FIX:transient", stored)
                 .expect("inert text");
         }
-        field.as_fix().is_transient()
+        FixField::new(&field).is_transient()
     };
     assert!(
         transient(None).expect("a field says nothing"),
@@ -181,4 +175,89 @@ fn a_stored_transient_flag_reads_every_spelling_the_crate_reads_for_a_flag() {
             "{stored}: {refusal}"
         );
     }
+}
+
+/// What `rust/tests/root/protocol.rs` pins of every view the core mints, pinned
+/// of the FIX one the exported builder mints under `Scheme::FIX`: it spells its
+/// own prefix and reads back what its mutable twin wrote.
+#[test]
+fn the_fix_view_spells_its_own_scheme_prefix() {
+    let mut field = DataType::Int64.required_field("probe");
+    FixFieldMut::new(&mut field)
+        .insert("x", "1")
+        .expect("the FIX protocol accepts its own property");
+
+    assert_eq!(field.get_metadata("FIX:x"), Some("1"));
+    let view = FixField::new(&field);
+    assert_eq!(view.prefix(), "FIX");
+    assert_eq!(view.key("x"), "FIX:x");
+    assert_eq!(view.get("x"), Some("1"));
+    assert_eq!((&view).into_iter().collect::<Vec<_>>(), [("x", "1")]);
+    assert_eq!(FixFieldMut::new(&mut field).prefix(), "FIX");
+}
+
+/// The named view is the scheme door with the protocol chosen: the same
+/// properties as `Field::protocol(&Scheme::FIX)`, and `Scheme::FIX` stays the
+/// core's, since a known scheme's properties are read without allocating.
+#[test]
+fn the_fix_view_is_the_scheme_door_with_the_protocol_chosen() {
+    let mut field = orderid();
+    FixFieldMut::new(&mut field)
+        .set_parents(["origorderid"])
+        .expect("one type");
+    FixFieldMut::new(&mut field)
+        .insert("x", "1")
+        .expect("a property");
+
+    let named = FixField::new(&field);
+    let door = field.protocol(&Scheme::FIX);
+    assert_eq!(named.prefix(), door.prefix());
+    assert_eq!(named.len(), door.len());
+    assert_eq!(
+        named.iter().collect::<Vec<_>>(),
+        door.iter().collect::<Vec<_>>()
+    );
+    assert_eq!(named.get("tag"), Some("37"));
+    assert_eq!(named.get("parents"), Some(r#"["origorderid"]"#));
+}
+
+/// The mutable view hands back the typed read view of the field it borrows,
+/// so a typed remover reads its own typed prior value, and lends the field.
+#[test]
+fn the_mutable_fix_view_reads_back_typed_and_lends_its_field() {
+    let mut field = DataType::utf8().nullable_field("OrderID");
+    let mut view = FixFieldMut::new(&mut field);
+    view.set_tag(37).expect("a tag");
+    view.set_parents(["parentorderid", "origorderid"])
+        .expect("two types");
+    assert_eq!(view.as_protocol().tag().expect("a tag"), Some(37));
+    assert_eq!(
+        view.as_protocol().parents().collect::<Vec<_>>(),
+        ["parentorderid", "origorderid"]
+    );
+    let lent: &Field = view.as_ref();
+    assert_eq!(lent.name(), "OrderID");
+    assert_eq!(lent.get_metadata("FIX:tag"), Some("37"));
+}
+
+/// `Field` carries no FIX accessor and a metadata snapshot neither: a
+/// snapshot reads the FIX keys through the scheme door, by bare name.
+#[test]
+fn a_metadata_snapshot_reads_the_fix_keys_through_the_scheme() {
+    let mut field = orderid();
+    FixFieldMut::new(&mut field)
+        .set_parents(["origorderid"])
+        .expect("one type");
+    field
+        .insert_metadata("SPARK:x", "1")
+        .expect("another protocol's property");
+
+    let metadata = field.as_metadata();
+    let fix = metadata.protocol(&Scheme::FIX);
+    assert_eq!(fix.prefix(), "FIX");
+    assert_eq!(fix.key("tag"), "FIX:tag");
+    assert_eq!(fix.get("tag"), Some("37"));
+    assert_eq!(fix.get("parents"), Some(r#"["origorderid"]"#));
+    assert_eq!(fix.get("x"), None, "another protocol's key is not FIX's");
+    assert_eq!(fix.len(), 2);
 }

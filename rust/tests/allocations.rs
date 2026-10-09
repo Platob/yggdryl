@@ -41,9 +41,10 @@ use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lin
 use yggdryl::xmla::Rowset;
 use yggdryl::{
     ArrowCastOptions, ArrowCastPlan, Charset, ChunkedSerie, DataType, DataTypeId, Decimal, Field,
-    FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec, FixId, FixMsg, FixRegistry, IdSource,
-    IdType, Identifier, Int64, MediaType, MimeType, PythonKind, PythonMetadata, Scalar, Serie,
-    Side, SortOptions, State, TimeUnit, Timezone, Value, Variant, Version,
+    FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec, FixFieldMut, FixId, FixMsg,
+    FixRegistry, IdSource, IdType, Identifier, Int64, MediaType, MimeType, PythonKind,
+    PythonMetadata, Scalar, Serie, Side, SortOptions, State, TimeUnit, Timezone, Value, Variant,
+    Version,
 };
 use yggdryl::{
     Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, StructType, UncheckedFieldScalar, Uuid,
@@ -617,40 +618,44 @@ fn fix_registry(extra: usize) -> FixRegistry {
         .expect("a struct item")
         .required_field("item");
     let mut parties = DataType::serie(item).nullable_field("Parties");
-    parties
-        .as_fix_mut()
+    FixFieldMut::new(&mut parties)
         .set_counter(453)
         .expect("a static counter");
     let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
-    counter.as_fix_mut().set_tag(453).expect("a static tag");
+    FixFieldMut::new(&mut counter)
+        .set_tag(453)
+        .expect("a static tag");
     let mut symbol = DataType::utf8().nullable_field("Symbol");
-    symbol.as_fix_mut().set_tag(55).expect("a static tag");
-    symbol
-        .as_fix_mut()
+    FixFieldMut::new(&mut symbol)
+        .set_tag(55)
+        .expect("a static tag");
+    FixFieldMut::new(&mut symbol)
         .set_tags(&[65])
         .expect("a static alternate tag");
-    symbol
-        .as_fix_mut()
+    FixFieldMut::new(&mut symbol)
         .set_names(["Ticker", "SecuritySymbolIdentifier"])
         .expect("static aliases");
     let mut msgtype = DataType::utf8().nullable_field("MsgType");
-    msgtype.as_fix_mut().set_tag(35).expect("a static tag");
+    FixFieldMut::new(&mut msgtype)
+        .set_tag(35)
+        .expect("a static tag");
     let mut trade = DataType::utf8().nullable_field("TradeID");
-    trade.as_fix_mut().set_tag(5_001).expect("a static tag");
-    trade
-        .as_fix_mut()
+    FixFieldMut::new(&mut trade)
+        .set_tag(5_001)
+        .expect("a static tag");
+    FixFieldMut::new(&mut trade)
         .set_sources([VENUE])
         .expect("a static membership");
-    trade
-        .as_fix_mut()
+    FixFieldMut::new(&mut trade)
         .set_names(["TradeIdentifier"])
         .expect("a static alias");
     let generated = (0..extra).map(|index| {
         let mut field = DataType::Int64.nullable_field(format!("Generated{index:04}"));
         let tag = i32::try_from(1_100 + index).expect("a small tag");
-        field.as_fix_mut().set_tag(tag).expect("a generated tag");
-        field
-            .as_fix_mut()
+        FixFieldMut::new(&mut field)
+            .set_tag(tag)
+            .expect("a generated tag");
+        FixFieldMut::new(&mut field)
             .set_names([format!("GeneratedAlias{index:04}")])
             .expect("a generated alias");
         field
@@ -727,9 +732,8 @@ fn reading_which_way_a_line_moved_allocates_nothing() {
     }
     let mut ruled = FixRegistry::new();
     let mut field = DataType::utf8().nullable_field("MsgDirection");
-    field.as_fix_mut().set_tag(385).unwrap();
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field).set_tag(385).unwrap();
+    FixFieldMut::new(&mut field)
         .set_directions(&[
             yggdryl::FixDirection::new("S", [r"(?i)(?:^|\s)tx\s", ">>>"]),
             yggdryl::FixDirection::new("R", [r"(?i)(?:^|\s)rx\s", "<<<"]),
@@ -759,9 +763,10 @@ fn a_fix_code_lookup_allocates_nothing() {
         )
         .expect("a static code set");
     let mut field = DataType::utf8().nullable_field("Side");
-    field.as_fix_mut().set_tag(9_995).expect("a static tag");
-    field
-        .as_fix_mut()
+    FixFieldMut::new(&mut field)
+        .set_tag(9_995)
+        .expect("a static tag");
+    FixFieldMut::new(&mut field)
         .set_codeset("sidecodeset")
         .expect("the set the field reads by");
     // The field names the set and the dictionary holds its members, so the
@@ -791,11 +796,14 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
     let vendor = FixId::of(5_001, "TradeID").expect("a vendor identifier");
     let foreign = FixId::of(5_001, "OtherTradeID").expect("a foreign identifier");
     let mut symbol = DataType::utf8().nullable_field("Symbol");
-    symbol.as_fix_mut().set_tag(55).expect("a static tag");
+    FixFieldMut::new(&mut symbol)
+        .set_tag(55)
+        .expect("a static tag");
     let mut trade = DataType::utf8().nullable_field("TradeID");
-    trade.as_fix_mut().set_tag(5_001).expect("a static tag");
-    trade
-        .as_fix_mut()
+    FixFieldMut::new(&mut trade)
+        .set_tag(5_001)
+        .expect("a static tag");
+    FixFieldMut::new(&mut trade)
         .set_sources([VENUE])
         .expect("a static membership");
     let root = StructType::from_fields([symbol, trade, DataType::utf8().nullable_field("9999")])
@@ -4039,7 +4047,7 @@ fn coded_orders(rows: usize) -> Serie {
     let root = DataType::from(
         StructType::from_fields([
             DataType::Mic.required_field("venue"),
-            DataType::side().required_field("side"),
+            Side::dtype().required_field("side"),
             DataType::Int64.required_field("count"),
         ])
         .expect("three children"),
@@ -5328,7 +5336,7 @@ fn a_text_to_boolean_cast_allocates_nothing_per_cell() {
 #[test]
 fn a_registered_column_cell_read_allocates_nothing() {
     for rows in [64_usize, 4_096] {
-        let side = DataType::side();
+        let side = Side::dtype();
         let members = Serie::from_scalars(
             side.clone().nullable_field("side"),
             (0..rows).map(|row| {
@@ -5359,7 +5367,7 @@ fn a_registered_column_cell_read_allocates_nothing() {
 /// buffers whatever its length, never a lookup or a value per row.
 #[test]
 fn a_registered_cast_ingest_costs_the_same_at_any_length() {
-    let side = Field::new("side", DataType::side(), true);
+    let side = Field::new("side", Side::dtype(), true);
     let text = Field::new("side", DataType::utf8(), true);
     let names = ArrowCastPlan::compile(&text, &side, ArrowCastOptions::new())
         .expect("text casts into an enum");
@@ -6814,11 +6822,15 @@ const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 28), (16, 29), (64, 31)];
 /// kilobytes, so a numeric dictionary could not state the case at all.
 fn fix_text_registry(count: usize) -> FixRegistry {
     let mut msgtype = DataType::utf8().nullable_field("MsgType");
-    msgtype.as_fix_mut().set_tag(35).expect("a static tag");
+    FixFieldMut::new(&mut msgtype)
+        .set_tag(35)
+        .expect("a static tag");
     let generated = (0..count).map(|index| {
         let mut field = DataType::utf8().nullable_field(format!("Text{index:04}"));
         let tag = i32::try_from(2_000 + index).expect("a small tag");
-        field.as_fix_mut().set_tag(tag).expect("a generated tag");
+        FixFieldMut::new(&mut field)
+            .set_tag(tag)
+            .expect("a generated tag");
         field
     });
     FixRegistry::from_fields(std::iter::once(msgtype).chain(generated))
@@ -6897,7 +6909,9 @@ fn fix_group_registry(members: usize) -> FixRegistry {
     let declared = (0..members).map(|index| {
         let mut field = DataType::utf8().nullable_field(format!("Member{index:04}"));
         let tag = i32::try_from(3_000 + index).expect("a small tag");
-        field.as_fix_mut().set_tag(tag).expect("a generated tag");
+        FixFieldMut::new(&mut field)
+            .set_tag(tag)
+            .expect("a generated tag");
         field
     });
     let item = StructType::from_fields(declared)
@@ -6905,14 +6919,17 @@ fn fix_group_registry(members: usize) -> FixRegistry {
         .expect("a struct item")
         .required_field("item");
     let mut parties = DataType::serie(item).nullable_field("Parties");
-    parties
-        .as_fix_mut()
+    FixFieldMut::new(&mut parties)
         .set_counter(453)
         .expect("a static counter");
     let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
-    counter.as_fix_mut().set_tag(453).expect("a static tag");
+    FixFieldMut::new(&mut counter)
+        .set_tag(453)
+        .expect("a static tag");
     let mut msgtype = DataType::utf8().nullable_field("MsgType");
-    msgtype.as_fix_mut().set_tag(35).expect("a static tag");
+    FixFieldMut::new(&mut msgtype)
+        .set_tag(35)
+        .expect("a static tag");
     let mut registry = FixRegistry::from_fields([msgtype, counter])
         .expect("the generated dictionary has no conflict");
     registry.insert(parties).expect("the group definition");
@@ -7214,16 +7231,19 @@ fn a_fix_message_read_from_a_line_costs_what_its_pairs_cost() {
 fn a_fix_line_carrying_a_clock_and_a_time_of_day_costs_what_a_line_of_integers_costs() {
     let typed = |dtype: DataType, tag: i32, datatype: &str| {
         let mut field = dtype.nullable_field(format!("Typed{tag}"));
-        field.as_fix_mut().set_tag(tag).expect("a static tag");
-        field
-            .as_fix_mut()
+        FixFieldMut::new(&mut field)
+            .set_tag(tag)
+            .expect("a static tag");
+        FixFieldMut::new(&mut field)
             .set_datatype(datatype)
             .expect("a FIX datatype name");
         field
     };
     let registry = |clocks: bool| {
         let mut msgtype = DataType::utf8().nullable_field("MsgType");
-        msgtype.as_fix_mut().set_tag(35).expect("a static tag");
+        FixFieldMut::new(&mut msgtype)
+            .set_tag(35)
+            .expect("a static tag");
         let (time, clock) = if clocks {
             (
                 typed(

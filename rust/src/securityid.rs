@@ -132,7 +132,7 @@ const INSTRUMENT_CURRENCY: usize = 3;
 /// The shortest and longest instrument key: an ISIN, a MIC and a currency
 /// of three up to a currency's bound, `_` between them.
 const INSTRUMENT_SHORTEST: usize = 12 + 1 + 4 + 1 + INSTRUMENT_CURRENCY;
-const INSTRUMENT_LONGEST: usize = 12 + 1 + 4 + 1 + crate::CCY_WIDTH;
+const INSTRUMENT_LONGEST: usize = 12 + 1 + 4 + 1 + crate::implementer::CCY_WIDTH;
 
 /// The Bloomberg yellow keys a terminal identifier ends with.
 const YELLOW_KEYS: [&str; 9] = [
@@ -227,14 +227,14 @@ impl SymbolCode {
         if parts.next().is_some()
             || !shaped(isin, 12..=12)
             || !shaped(mic, 4..=4)
-            || !shaped(ccy, INSTRUMENT_CURRENCY..=crate::CCY_WIDTH)
+            || !shaped(ccy, INSTRUMENT_CURRENCY..=crate::implementer::CCY_WIDTH)
         {
             return None;
         }
         let isin = Isin::new(isin)
             .ok()
             .filter(|held| Isin::is_closed(held.as_str()));
-        let mic = crate::Mic::from_market(mic);
+        let mic = crate::implementer::mic_from_market(mic);
         let ccy = crate::Ccy::new(ccy).ok();
         (isin.is_some() || mic.is_some() || ccy.is_some()).then_some(Self::Instrument {
             isin,

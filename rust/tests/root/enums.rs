@@ -12,8 +12,8 @@ use arrow_array::{
 };
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::{
-    ArrowCastOptions, DataType, EnumRepr, Field, MarketDataKind, Scalar, Serie, Side, State,
-    StructType,
+    ArrowCastOptions, DataType, EnumRepr, Field, MarketDataKind, MarketDataType, Scalar, Serie,
+    Side, State, StructType,
 };
 
 fn strict() -> ArrowCastOptions {
@@ -34,10 +34,10 @@ fn a_leaf_holds_its_codes_at_the_narrowest_width_they_fit() {
     );
     assert!(two > 255, "a state's code passes a byte");
     for (dtype, storage) in [
-        (DataType::side(), ArrowDataType::UInt8),
-        (DataType::marketdatakind(), ArrowDataType::UInt8),
+        (Side::dtype(), ArrowDataType::UInt8),
+        (MarketDataKind::dtype(), ArrowDataType::UInt8),
         (DataType::State, ArrowDataType::UInt16),
-        (DataType::marketdatatype(), ArrowDataType::UInt16),
+        (MarketDataType::dtype(), ArrowDataType::UInt16),
     ] {
         let arrow = Field::new("x", dtype.clone(), true)
             .into_arrow_field()
@@ -50,7 +50,7 @@ fn a_leaf_holds_its_codes_at_the_narrowest_width_they_fit() {
 /// code no member takes is refused naming the row, whatever width held it.
 #[test]
 fn every_integer_width_lands_as_the_codes_it_holds() {
-    let side = Field::new("side", DataType::side(), true);
+    let side = Side::field("side");
     let sources: [ArrayRef; 6] = [
         Arc::new(Int8Array::from(vec![1, 2])),
         Arc::new(Int16Array::from(vec![1, 2])),
@@ -114,11 +114,7 @@ fn a_column_casts_out_to_any_integer_and_to_text() {
         .unwrap();
     assert_eq!(names.scalar(1).unwrap(), Scalar::from("FILLED"));
 
-    let side = Serie::from_scalars(
-        Field::new("side", DataType::side(), true),
-        [Scalar::from(Side::SellUnd)],
-    )
-    .unwrap();
+    let side = Serie::from_scalars(Side::field("side"), [Scalar::from(Side::SellUnd)]).unwrap();
     let narrow = side
         .cast(&Field::new("x", DataType::Int8, true), strict())
         .unwrap()
@@ -144,7 +140,7 @@ fn a_column_casts_out_to_any_integer_and_to_text() {
 #[test]
 fn nested_enum_leaves_cast_from_and_to_any_integer() {
     let target = StructType::from_fields([
-        Field::new("side", DataType::side(), true),
+        Side::field("side"),
         Field::new(
             "states",
             DataType::serie(DataType::State.nullable_field("item")),
@@ -297,12 +293,12 @@ fn a_column_of_one_enum_leaf_is_never_cast_into_another() {
     use yggdryl::{ArrowCastPlan, Side, State, TimeInForce};
 
     let sides = Serie::from_scalars(
-        Field::new("s", DataType::side(), false),
+        Field::new("s", Side::dtype(), false),
         [Scalar::from(Side::Buy), Scalar::from(Side::Sell)],
     )
     .unwrap();
     let tifs = Serie::from_scalars(
-        Field::new("t", DataType::timeinforce(), false),
+        Field::new("t", TimeInForce::dtype(), false),
         [
             Scalar::from(TimeInForce::Day),
             Scalar::from(TimeInForce::GoodTillCancel),
@@ -315,9 +311,9 @@ fn a_column_of_one_enum_leaf_is_never_cast_into_another() {
     )
     .unwrap();
     for (source, target) in [
-        (&sides, DataType::timeinforce()),
-        (&tifs, DataType::side()),
-        (&states, DataType::side()),
+        (&sides, TimeInForce::dtype()),
+        (&tifs, Side::dtype()),
+        (&states, Side::dtype()),
         (&tifs, DataType::State),
     ] {
         let target = Field::new("x", target, false);
@@ -346,7 +342,7 @@ fn a_column_of_one_enum_leaf_is_never_cast_into_another() {
     }
     let same = sides
         .cast(
-            &Field::new("same", DataType::side(), false),
+            &Field::new("same", Side::dtype(), false),
             ArrowCastOptions::new(),
         )
         .unwrap();

@@ -61,11 +61,11 @@ use smallvec::SmallVec;
 use smol_str::SmolStr;
 
 use crate::arrow::BatchReader;
-use crate::arrow::rows::{Closing, canonical_closing_reader};
 use crate::arrow::scalar_memory_size;
 use crate::graph::{ElementColumn, EventColumn};
-use crate::logging::warning::warned;
-use crate::serie::{Proof, Resolved, land_batch};
+use crate::implementer::warned;
+use crate::implementer::{Closing, canonical_closing_reader};
+use crate::implementer::{Resolved, land_unproven_batch};
 use crate::text::TextOptions;
 use crate::{
     DataType, DataTypeKind, Error, Field, Result, Scalar, Serie, StreamChunkedSerie,
@@ -78,7 +78,7 @@ use super::codec::{FixCodec, Placed, SOH, Spread};
 use super::messages::source_failure;
 use super::msg::FixMsg;
 use super::{FIXENTRIES_COLUMN, FixMessages};
-use crate::graph::element::InstantSequence;
+use crate::implementer::InstantSequence;
 
 /// The name the fixed row's root takes: what the schema is asked for, and
 /// what a batch of FIX rows is read back under.
@@ -87,7 +87,9 @@ const ROOT_NAME: &str = "fix";
 impl FixCodec {
     /// The root a batch of rows is read against, from its Arrow schema.
     fn row_field(schema: &arrow_schema::Schema) -> Result<Field> {
-        Ok(crate::arrow::field_from_arrow_schema(ROOT_NAME, schema)?)
+        Ok(crate::implementer::field_from_arrow_schema(
+            ROOT_NAME, schema,
+        )?)
     }
 
     /// Parses a stream of Arrow batches of capture rows into a stream of
@@ -142,7 +144,7 @@ impl FixCodec {
         // message crosses a thread between the two halves - but the messages
         // of a job's first instant, which cross once to be placed.
         let worker = schema.clone();
-        let batches = crate::parallel::ordered(
+        let batches = crate::implementer::ordered(
             SourceJobs::over(source, self.threads()),
             self.threads(),
             1,
@@ -248,7 +250,7 @@ impl FixCodec {
                 carried_messages(held.and_then(|(batch, row)| reader.row(&batch, row)))
             })));
         }
-        let rows = crate::parallel::ordered(
+        let rows = crate::implementer::ordered(
             SourceJobs::over(source, threads),
             threads,
             1,
@@ -407,7 +409,7 @@ impl FixCodec {
         };
         let root = Resolved::of(Arc::new(schema.clone()));
         let pluginside = self.pluginside();
-        let read = crate::parallel::ordered(
+        let read = crate::implementer::ordered(
             StructRows::over(source, root, refused.is_some()),
             self.threads(),
             self.chunk(),
@@ -468,7 +470,7 @@ impl FixCodec {
         // on several, in the messages' order, and is charged there what the
         // row lands as; the batches then close on the rows as they come, on
         // the one thread that pulls them.
-        let rows = crate::parallel::ordered(
+        let rows = crate::implementer::ordered(
             messages.into_iter().map(|held| held.into()),
             self.threads(),
             self.chunk(),
@@ -660,7 +662,7 @@ impl FixCodec {
         if field.index_of(FIXENTRIES_COLUMN).is_none() {
             return Err(Error::InvalidRecord {
                 path: smol_str::SmolStr::new_static(FIXENTRIES_COLUMN),
-                reason: crate::text::expected_got(
+                reason: crate::implementer::expected_got(
                     "a batch carrying its residual entries",
                     "one holding only lifted columns",
                 ),
@@ -853,7 +855,7 @@ fn payload_column_of(carrier: &Field, payload: &str, at: Option<usize>) -> Resul
     };
     Err(Error::InvalidRecord {
         path: smol_str::SmolStr::new(payload),
-        reason: crate::text::expected_got(
+        reason: crate::implementer::expected_got(
             format_args!("a text or binary column named {payload}"),
             actual,
         ),
@@ -880,7 +882,9 @@ impl Payload {
         if matches!(column, Serie::FixedString(_)) {
             return Self::Cell(column.clone());
         }
-        if column.is_string_storage() || column.is_byte_storage() {
+        if crate::implementer::serie_is_string_storage(column)
+            || crate::implementer::serie_is_byte_storage(column)
+        {
             return Self::Stored(column.clone());
         }
         match column.as_utf8() {
@@ -892,7 +896,9 @@ impl Payload {
     /// The bytes one row carries, empty where it carries none.
     fn get(&self, row: usize) -> Result<Cow<'_, [u8]>> {
         Ok(match self {
-            Self::Stored(held) => Cow::Borrowed(held.value_bytes(row).unwrap_or_default()),
+            Self::Stored(held) => {
+                Cow::Borrowed(crate::implementer::serie_value_bytes(held, row).unwrap_or_default())
+            }
             Self::Code(held) => Cow::Borrowed(held.value(row).map_or(&[][..], str::as_bytes)),
             Self::Cell(held) => {
                 let value = held.scalar(row)?;
@@ -927,7 +933,7 @@ struct Landed {
 fn is_parameter(name: &str, payload: &str) -> bool {
     [payload, BEGINSTRING_COLUMN, DIRECTION_COLUMN]
         .iter()
-        .any(|held| crate::folds_equal(held, name))
+        .any(|held| crate::implementer::folds_equal(held, name))
 }
 
 struct Columns {
@@ -969,7 +975,7 @@ impl Columns {
         let named = |wanted: &str| {
             fields
                 .iter()
-                .position(|held| crate::folds_equal(held.name(), wanted))
+                .position(|held| crate::implementer::folds_equal(held.name(), wanted))
         };
         let payload_at = payload_column_of(carrier, payload, named(payload))?;
         let reached = |held: &Field| codec.fill_target(held.name()).map(|(_, tag)| tag);
@@ -1417,14 +1423,14 @@ fn landed(
     batch: RecordBatch,
     start: usize,
 ) -> crate::arrow::Result<SmallVec<[Serie; 1]>> {
-    match land_batch(root, batch.clone(), &Proof::Unproven) {
+    match land_unproven_batch(root, batch.clone()) {
         Ok(records) => return Ok(smallvec::smallvec![records]),
         Err(error) if error.is_source_failure() => return Err(error),
         Err(_) => {}
     }
     let mut kept = SmallVec::new();
     for row in 0..batch.num_rows() {
-        match land_batch(root, batch.slice(row, 1), &Proof::Unproven) {
+        match land_unproven_batch(root, batch.slice(row, 1)) {
             Ok(records) => kept.push(records),
             Err(error) if error.is_source_failure() => return Err(error),
             Err(error) => warned!(

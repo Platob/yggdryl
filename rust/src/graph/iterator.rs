@@ -6,10 +6,10 @@ use std::collections::{BTreeSet, HashMap};
 use std::iter::FusedIterator;
 use std::vec;
 
-use super::element::InstantSequence;
 use super::market::base_crosscode;
 use super::{Element, Market};
-use crate::logging::warning::warned;
+use crate::implementer::InstantSequence;
+use crate::implementer::warned;
 use crate::{IdType, Identifiers};
 use crate::{MarketDataKind, Side, State, Uuid};
 
@@ -338,7 +338,7 @@ mod sealed {
                 (Self::TradeEvent(this), Self::TradeEvent(live)) => {
                     Self::TradeEvent(this.restating(live))
                 }
-                (Self::Fix(this), Self::Fix(live)) => Self::Fix(Box::new((*this).restating(live))),
+                (Self::Fix(this), Self::Fix(live)) => Self::Fix(this.restating(live.as_ref())),
                 (this, _) => this,
             }
         }

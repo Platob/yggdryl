@@ -72,14 +72,13 @@ use smallvec::SmallVec;
 use smol_str::SmolStr;
 
 use crate::graph::Element as _;
+use crate::implementer::warned;
 use crate::isin_registry::IsinTable;
-use crate::logging::warning::warned;
-use crate::mime_type::line;
 use crate::text::{TextBytes, TextEntries, TextEntry, TextLine, TextOptions};
 use crate::{Error, Field, IsinRegistry, Result, Scalar, Side, Version};
 
 use super::build::{BEGINSTRING_COLUMN, Builder, Fill, FixPair, RowExtras, root_name, version_of};
-use super::{FixMessages, FixMsg, FixRegistry};
+use super::{FixField, FixMessages, FixMsg, FixRegistry};
 
 /// One bridge row read into the pairs a build folds in, beside the message
 /// type it declared.
@@ -221,7 +220,7 @@ fn bridge_row(value: &[u8]) -> bool {
 /// Whether an `XmlData` value is a document rather than a bridge row: it
 /// opens a tag, which a row never does.
 fn document(value: &[u8]) -> bool {
-    line::trim_ascii(value).first() == Some(&b'<')
+    crate::implementer::trim_ascii(value).first() == Some(&b'<')
 }
 
 /// The width of the separator standing at `at`, when one does.
@@ -236,7 +235,7 @@ fn separator_width(page: &[u8], at: usize) -> Option<usize> {
     if matches!(tail.first(), Some(&SOH | &b'|')) {
         return Some(1);
     }
-    line::SOH_MARKERS
+    crate::implementer::SOH_MARKERS
         .iter()
         .find(|marker| tail.starts_with(marker))
         .map(|marker| marker.len())
@@ -296,7 +295,7 @@ fn data_end(
     let opens = entry.key_bytes().end() as usize + 1;
     let stated = stated
         .and_then(|value| std::str::from_utf8(value).ok())
-        .and_then(crate::integer::integer_from_text_as::<usize>);
+        .and_then(crate::implementer::integer_from_text_as::<usize>);
     if let Some(span) = stated.and_then(|length| opens.checked_add(length))
         && cut_at(entry, &entries[after..], span)
     {
@@ -321,7 +320,7 @@ fn data_end(
         .find(|held| held.key_bytes().as_bytes() == b"10")?;
     let at = checksum.key_bytes().start() as usize;
     let page = checksum.key_bytes().page()?;
-    let width = line::SOH_MARKERS
+    let width = crate::implementer::SOH_MARKERS
         .iter()
         .find(|marker| page[..at].ends_with(marker))
         .map_or(1, |marker| marker.len());
@@ -440,7 +439,7 @@ impl CaptureRole {
     /// identity as the message's source, which is all a line says about a
     /// message; the batch door reads a carrier's columns the same way.
     fn of(name: &str, codec: &FixCodec) -> Self {
-        let is = |known: &str| crate::folds_equal(known, name);
+        let is = |known: &str| crate::implementer::folds_equal(known, name);
         if is(BEGINSTRING_COLUMN) {
             return Self::Version;
         }
@@ -586,14 +585,14 @@ where
 /// item passes through and places nothing.
 pub(super) struct Placed<I> {
     source: I,
-    sequence: crate::graph::element::InstantSequence,
+    sequence: crate::implementer::InstantSequence,
 }
 
 impl<I> Placed<I> {
     pub(super) fn over(source: I) -> Self {
         Self {
             source,
-            sequence: crate::graph::element::InstantSequence::default(),
+            sequence: crate::implementer::InstantSequence::default(),
         }
     }
 }
@@ -678,7 +677,7 @@ impl FixCodec {
     /// Borrows the message type declared by a captured line without parsing a message.
     #[must_use]
     pub fn infer_msgtype_bytes(line: &[u8]) -> Option<&[u8]> {
-        line::inspect(line).msgtype()
+        crate::implementer::inspect(line).msgtype()
     }
 
     /// Borrows the message type declared by a captured text line.
@@ -920,7 +919,7 @@ impl FixCodec {
             return Err(Error::Parse {
                 target: "msgdirection",
                 position: 0,
-                reason: crate::text::expected_got(
+                reason: crate::implementer::expected_got(
                     format_args!("one of {}", codes.join(", ")),
                     format_args!("{spelling:?}"),
                 ),
@@ -1379,7 +1378,9 @@ impl FixCodec {
 
     /// One configured spelling as the code it names.
     fn resolve_msgtype(&self, spelling: &str) -> SmolStr {
-        if spelling.is_empty() || crate::folds_equal(spelling, super::build::UNKNOWN_MSGTYPE) {
+        if spelling.is_empty()
+            || crate::implementer::folds_equal(spelling, super::build::UNKNOWN_MSGTYPE)
+        {
             return SmolStr::new_static(super::build::UNKNOWN_MSGTYPE);
         }
         self.registry.get_msgtype(spelling).map_or_else(
@@ -1477,14 +1478,14 @@ impl FixCodec {
 
     /// Whether one raw value is a stated absence rather than a value.
     fn is_absent(&self, value: &[u8]) -> bool {
-        let trimmed = line::trim_ascii(value);
+        let trimmed = crate::implementer::trim_ascii(value);
         self.null_values
             .iter()
             .any(|spelling| spelling.as_bytes().eq_ignore_ascii_case(trimmed))
     }
 
-    fn entries(&self, page: &TextBytes) -> (Option<TextEntries>, line::Located) {
-        TextEntries::from_bytes_direct_located(page)
+    fn entries(&self, page: &TextBytes) -> (Option<TextEntries>, crate::implementer::Located) {
+        crate::implementer::text_entries_from_bytes_direct_located(page)
     }
 
     /// Parses one log line into an iterator of the messages it carries,
@@ -1637,7 +1638,7 @@ impl FixCodec {
         // is a range of it.
         let pages = lines.into_iter().map(|line| paged(line.as_ref()));
         Placed::over(
-            crate::parallel::ordered(
+            crate::implementer::ordered(
                 pages,
                 threads,
                 self.chunk(),
@@ -1805,7 +1806,7 @@ impl FixCodec {
         // page it is a range of, never a byte - and read where it lands.
         let owned = lines.map(|line| line.map(Into::<TextLine>::into));
         Placed::over(Spread::Threaded(
-            crate::parallel::ordered(
+            crate::implementer::ordered(
                 owned,
                 self.threads(),
                 self.chunk(),
@@ -1922,7 +1923,10 @@ impl FixCodec {
         // A row that located no frame may carry a JSON document instead, and
         // the scan that finds one is run here and nowhere else: the span is
         // kept whole, so where the payload opens is the one answer.
-        let document = frame_at.is_none().then(|| line::json_span(row)).flatten();
+        let document = frame_at
+            .is_none()
+            .then(|| crate::implementer::json_span(row))
+            .flatten();
         let opens = frame_at
             .or_else(|| document.as_ref().map(|span| span.start))
             .unwrap_or(row.len());
@@ -1982,7 +1986,7 @@ impl FixCodec {
         // An XML document a transport wrote prose in front of opens before
         // any pair the locator could read as a bridge row, and is read as
         // the document it is, by its attributes.
-        if let Some((_, open)) = line::document_behind_prefix(row) {
+        if let Some((_, open)) = crate::implementer::document_behind_prefix(row) {
             let pairs = fixml_pairs(&row[open..])?;
             if !self.reads_pairs(&pairs) {
                 return Ok(FixMessages::none());
@@ -2363,7 +2367,7 @@ impl FixCodec {
         if !held.marked {
             return Some(Judged::Ranged(held.key.clone()));
         }
-        let stripped = line::trim_ascii(held.key());
+        let stripped = crate::implementer::trim_ascii(held.key());
         let judged = if stripped.first() == Some(&b'#') {
             let written: Vec<(TextBytes, TextBytes)> = arrived
                 .iter()
@@ -2380,12 +2384,12 @@ impl FixCodec {
         };
         match judged {
             Hashed::Duplicate => {
-                let marked = line::trim_ascii(held.value());
+                let marked = crate::implementer::trim_ascii(held.value());
                 let digest = stem_digest(stem_of(stripped));
                 if let Some((_, key, value)) = bare.iter().find(|(held_digest, key, _)| {
                     *held_digest == digest && folds_twin(key, stripped)
                 }) {
-                    let value = line::trim_ascii(value);
+                    let value = crate::implementer::trim_ascii(value);
                     // A marked counter is the group's spelling and no fact:
                     // the group is its list, whose length is the count, and
                     // the marked occurrences are numbered past the bare ones
@@ -2568,13 +2572,13 @@ impl FixCodec {
         let tag = super::field::parse_tag(key);
         declared
             .iter()
-            .filter_map(|field| field.as_fix().counter().ok().flatten())
+            .filter_map(|field| FixField::new(field).counter().ok().flatten())
             .any(|counter| {
                 tag == Some(counter)
                     || self
                         .registry
                         .get_field_by_tag(counter)
-                        .is_some_and(|field| crate::folds_equal(field.name(), key))
+                        .is_some_and(|field| crate::implementer::folds_equal(field.name(), key))
             })
     }
 
@@ -2586,11 +2590,12 @@ impl FixCodec {
         let Some(group) = self.group_definition(sub, message) else {
             return false;
         };
-        let counter = group.as_fix().counter().ok().flatten();
+        let counter = FixField::new(group).counter().ok().flatten();
         declared.iter().any(|field| {
-            crate::folds_equal(field.name(), group.name())
-                || counter
-                    .is_some_and(|counter| field.as_fix().counter().ok().flatten() == Some(counter))
+            crate::implementer::folds_equal(field.name(), group.name())
+                || counter.is_some_and(|counter| {
+                    FixField::new(field).counter().ok().flatten() == Some(counter)
+                })
         })
     }
 
@@ -3159,7 +3164,8 @@ fn msgtype_of<'a>(pairs: impl IntoIterator<Item = (&'a [u8], &'a [u8])>) -> Opti
     for (key, value) in pairs {
         // The key folds the way every other key folds, so `MSG_TYPE` and
         // `Msg Type` name the type too.
-        let folded = std::str::from_utf8(key).is_ok_and(|key| crate::folds_equal(key, "MsgType"));
+        let folded = std::str::from_utf8(key)
+            .is_ok_and(|key| crate::implementer::folds_equal(key, "MsgType"));
         if folded || key == b"35" {
             return Some(SmolStr::new(String::from_utf8_lossy(value)));
         }
@@ -3219,7 +3225,7 @@ fn fixml_pairs(body: &[u8]) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
 /// and a body that opens at its own first pair is bounded at zero and reads
 /// exactly as it did.
 fn bounded<'entries>(page: &TextBytes, entries: &'entries TextEntries) -> &'entries [TextEntry] {
-    let opens = line::payload_at(page.as_bytes()).unwrap_or(0);
+    let opens = crate::implementer::payload_at(page.as_bytes()).unwrap_or(0);
     framed_entries(entries.as_slice(), page.start() as usize + opens)
 }
 
@@ -3241,7 +3247,7 @@ fn second_frame(target: &'static str, position: usize) -> Error {
     Error::Parse {
         target,
         position,
-        reason: crate::text::expected_got("one frame", "a second"),
+        reason: crate::implementer::expected_got("one frame", "a second"),
     }
 }
 
@@ -3537,8 +3543,8 @@ fn declares(declared: &[Field], key: &[u8]) -> bool {
     let key = key.trim();
     let tag = super::field::parse_tag(key);
     declared.iter().any(|field| {
-        crate::folds_equal(field.name(), key)
-            || (tag.is_some() && field.as_fix().tag().ok().flatten() == tag)
+        crate::implementer::folds_equal(field.name(), key)
+            || (tag.is_some() && FixField::new(field).tag().ok().flatten() == tag)
     })
 }
 
@@ -3639,8 +3645,7 @@ fn split_on_declared_members(
     let names: SmallVec<[&str; 16]> = declared
         .iter()
         .map(|field| {
-            field
-                .as_fix()
+            FixField::new(field)
                 .counter()
                 .ok()
                 .flatten()

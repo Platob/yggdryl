@@ -5,7 +5,7 @@
 use smol_str::format_smolstr;
 
 use crate::holder::Holder;
-use crate::logging::warning::warned;
+use crate::implementer::warned;
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::{Error, IOBase, IOMedia, IOMode, IOResult, MimeType, Result, Url};
 
@@ -50,7 +50,7 @@ impl Store {
         let mut keeps_row = native_table || !container;
         if !native_table
             && container
-            && let Some(located) = crate::media::format::locate(&holder)?
+            && let Some(located) = crate::implementer::locate(&holder)?
         {
             if !located.is_whole() {
                 return Err(Error::InvalidRecord {
@@ -387,7 +387,7 @@ impl IsinRegistry {
         if store.native_table {
             let snapshot = Self::snapshot_reader(&self.table)?;
             let written = store.holder.write_serie(
-                crate::iomedia::arrow_serie(snapshot)?,
+                crate::implementer::arrow_serie(snapshot)?,
                 IOMode::Overwrite,
                 Some(&store.write_options()),
             )?;
@@ -395,7 +395,7 @@ impl IsinRegistry {
             self.dirty = false;
             return Ok(written);
         }
-        if container && let Some(mut located) = crate::media::format::locate(&store.holder)? {
+        if container && let Some(mut located) = crate::implementer::locate(&store.holder)? {
             if self.table.is_empty() {
                 located.clear()?;
             } else {
@@ -408,7 +408,7 @@ impl IsinRegistry {
         }
         if container {
             let encoding = store.options.mime_type();
-            for part in crate::media::partition::record_parts(&store.holder, encoding)? {
+            for part in crate::implementer::record_parts(&store.holder, encoding)? {
                 part?.remove(false)?;
             }
         } else if self.table.is_empty() {
@@ -434,7 +434,7 @@ impl IsinRegistry {
 
     /// The rows of `table` as the stream [`Self::into_arrow_reader`] answers.
     fn snapshot_reader(table: &IsinTable) -> Result<crate::arrow::BatchReader> {
-        Ok(crate::arrow::rows::reader(
+        Ok(crate::implementer::reader(
             &super::FIELD,
             super::Snapshot::of(table),
             None,

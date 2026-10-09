@@ -20,7 +20,7 @@ Field metadata the library reads: reserved keys, `SCHEME:name` properties behind
 | `DIGEST:by`, `PARTITION:by`, `SORT:by`, `TRANSFORM:by` | one shape, a JSON array of expression texts, each read by the grammar its key names and stored as that grammar spells it: a term for `DIGEST:by` (`["*"]` and absence selecting every non-holder column) and for `TRANSFORM:by` (a function's arguments), a term with an optional alias for `PARTITION:by`, an `order by` key for `SORT:by`; an empty, repeated or unparseable entry is refused naming the key |
 | `PYTHON:module`, `PYTHON:qualname` | the declaring Python class, as dotted names Python itself could have written; `<locals>` is the one non-identifier segment a qualified name may carry |
 | `PYTHON:kind` | `field`, `dataclass`, `typed_dict`, `named_tuple`, `enum`, `newtype`, `type_alias`, or `class`; anything else refused |
-| view | borrow of the one metadata map, cache-aware writes |
+| view | borrow of the one metadata map, cache-aware writes; a core protocol's is `field.as_<protocol>()` / `as_<protocol>_mut()`, the FIX view's is `FixField::new(&field)` / `FixFieldMut::new(&mut field)` - minted in the FIX module by the exported `protocol_field_types!` builder, `Field` and `Metadata` carrying no `as_fix` (a bare `Metadata` snapshot of FIX is `metadata.protocol(&Scheme::FIX)`) |
 | Rust `set` | replaces only this protocol's keys; bindings expose `update`, not `set` |
 
 ## Use
@@ -292,7 +292,7 @@ Typed accessors parse and canonicalize both ways.
 
 ## Views
 
-Typed vocabulary lives on the view, never on `Field`;
+Typed vocabulary lives on the view, never on `Field`; a protocol the core owns has its view behind `Field::as_<protocol>`, and one it does not own mints its own with the exported `protocol_field_types!` - `($vis, $scheme, $view, $view_mut, $label)`, public constructors for a crate's view, `pub(crate)` for the core's twenty-three;
 [`Field::apply_arrow_batch`](field.md#applying-a-schema) is the cast alone and fills no column a
 view's protocol declares - the `transform` and `digest` views' own `apply_arrow_batch` do, the
 `transform` view's `apply_arrow_reader` under one plan for a whole stream. The one writer that
@@ -304,7 +304,7 @@ its stored schema derives for every row written to it.
 | --- | --- |
 | `HttpField`, `HttpFieldMut` | `content_type`, `content_length`, `mime_type`, `media_type`, `location` |
 | [`IcebergField`, `IcebergFieldMut`](../media/iceberg.md) | `doc`, `schema_id`, `spec_id`, `transform` |
-| [`FixField`, `FixFieldMut`](../fix/index.md) | `id` (derived from the tag and the name, never stored), `tag` and `tags` (positive only), `aliases`, `sources` (the ids of the sources that contributed it, each an entry of the registry's catalog), `identifiers` (a component's direct scalar members), `codeset` (the name of the vocabulary the dictionary holds its values under), `description` |
+| [`FixField`, `FixFieldMut`](../fix/index.md) (`FixField::new(&field)`) | `id` (derived from the tag and the name, never stored), `tag` and `tags` (positive only), `aliases`, `sources` (the ids of the sources that contributed it, each an entry of the registry's catalog), `identifiers` (a component's direct scalar members), `codeset` (the name of the vocabulary the dictionary holds its values under), `description` |
 | [`DigestField`, `DigestFieldMut`](../hashing.md) | `is_holder`, `algorithm`, `by`, `apply_arrow_batch`, and their setters; `time`, `unit`, `is_coupled` and their setters |
 | `IdentityField` | no typed vocabulary: arbitrary inert text under `IDENTITY:` |
 | [`PartitionField`, `PartitionFieldMut`](#partition-columns) | `by`, `declares_partition`; `set_by`, `set_by_texts`, `remove_by`; [`Field::with_partition_by`](#partition-columns) is what marks the identity columns and materializes the derived ones, each a [transform](../expression/selectors.md#a-selector-declares-a-schema) column applied through `as_transform().apply_arrow_batch` |

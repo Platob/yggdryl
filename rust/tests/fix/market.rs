@@ -9,8 +9,8 @@ use yggdryl::graph::{
     Operation,
 };
 use yggdryl::{
-    DataType, Decimal, Error, Field, FixCode, FixMsg, FixRegistry, IdKey, IdSource, IdType,
-    Identifier, MarketDataKind, Scalar, Side, State, StructType,
+    DataType, Decimal, Error, Field, FixCode, FixFieldMut, FixMsg, FixRegistry, IdKey, IdSource,
+    IdType, Identifier, MarketDataKind, Scalar, Side, State, StructType,
 };
 
 fn message(line: &[u8]) -> FixMsg {
@@ -1185,7 +1185,7 @@ fn msgtype_edits_resettle_derived_operation_ids_and_leave_stated_ids_alone() {
 fn marketdatakind_registry_values_are_stable_int32_operation_ids() {
     let registry = committed_registry();
     let field = registry.field(yggdryl::MARKETDATAKIND_TAG_NAME.0).unwrap();
-    assert_eq!(field.dtype(), &DataType::marketdatakind());
+    assert_eq!(field.dtype(), &MarketDataKind::dtype());
     let codes = registry
         .codeset_of(field)
         .expect("the marketdatakind vocabulary");
@@ -1292,8 +1292,8 @@ fn marketdatakind_operation_ids_are_intrinsic_while_custom_msgtypes_choose_a_cat
 
     let mut venue =
         DataType::from(StructType::from_fields([]).unwrap()).required_field("venuequote");
-    venue.as_fix_mut().set_msgtype("ZZ").unwrap();
-    venue.as_fix_mut().set_msgcat("QUOT").unwrap();
+    FixFieldMut::new(&mut venue).set_msgtype("ZZ").unwrap();
+    FixFieldMut::new(&mut venue).set_msgcat("QUOT").unwrap();
     registry.insert(venue).unwrap();
     let custom = fixed_codec(Arc::new(registry))
         .sole_line(b"8=FIX.4.4|35=ZZ|52=20260921-10:00:00|10=0|")
@@ -2164,7 +2164,7 @@ fn book_scope_escapes_external_delimiters_injectively() {
 
 fn tagged(name: &str, tag: i32, dtype: DataType) -> Field {
     let mut field = dtype.required_field(name);
-    field.as_fix_mut().set_tag(tag).unwrap();
+    FixFieldMut::new(&mut field).set_tag(tag).unwrap();
     field
 }
 
@@ -2187,7 +2187,7 @@ fn too_wide_price(msgtype: &str) -> FixMsg {
         .unwrap()
         .required_field("MDEntry");
     let mut entries = DataType::serie(item).required_field("MDEntries");
-    entries.as_fix_mut().set_counter(268).unwrap();
+    FixFieldMut::new(&mut entries).set_counter(268).unwrap();
     let counter = tagged("NoMDEntries", 268, DataType::Int32);
     let registry = Arc::new(
         FixRegistry::from_fields([counter, msgtype_field.clone(), entries.clone()])
@@ -3945,8 +3945,7 @@ fn a_book_entry_is_a_bid_or_an_offer_as_the_dictionary_reads_its_entry_type() {
     assert_eq!(leaves(committed_registry()), 0);
     let mut registry = FixRegistry::clone(&committed_registry());
     let mut entry_type = registry.field(269).expect("MDEntryType").clone();
-    entry_type
-        .as_fix_mut()
+    FixFieldMut::new(&mut entry_type)
         .set_marketdatatypes(&[
             ("B", yggdryl::MarketDataType::BookBid),
             ("O", yggdryl::MarketDataType::BookOffer),
@@ -3956,4 +3955,91 @@ fn a_book_entry_is_a_bid_or_an_offer_as_the_dictionary_reads_its_entry_type() {
         .insert(entry_type)
         .expect("the field takes its mapping");
     assert_eq!(leaves(Arc::new(registry)), 2);
+}
+
+/// A FIX message is the market message `MarketData::Fix` holds: it implements
+/// the graph's `MarketMessage` trait here, so the boxed forms the enum
+/// dispatches through are the message's own, and the conversions between the
+/// enum and the message live beside the message.
+mod market_message {
+    use super::{leaf_of, message};
+    use yggdryl::graph::market_data::MarketMessage;
+    use yggdryl::graph::{Element, MarketData, MarketKind};
+    use yggdryl::{Error, FixMsg};
+
+    const ORDER: &[u8] =
+        b"8=FIX.4.4|35=D|52=20240102-10:00:00.000|11=C1|55=ACME|54=1|40=2|44=100|38=5|59=0|10=0|";
+    const NEXT: &[u8] =
+        b"8=FIX.4.4|35=D|52=20240102-10:00:01.000|11=C2|55=ACME|54=2|40=2|44=101|38=3|59=1|10=0|";
+
+    fn is_market_message<T: MarketMessage>() {}
+
+    #[test]
+    fn a_fix_message_boxes_into_the_variant_and_comes_back_as_itself() {
+        is_market_message::<FixMsg>();
+        let source = message(ORDER);
+        let held = MarketData::from(source.clone());
+        assert_eq!(held.kind(), MarketKind::Fix);
+        assert!(matches!(held, MarketData::Fix(_)));
+        assert_eq!(held.as_message::<FixMsg>(), Some(&source));
+        assert_eq!(FixMsg::try_from(held).unwrap(), source);
+    }
+
+    /// Any value but a held FIX message is refused at `$.kind`, naming the
+    /// kind it expected and the one it got - the conversion lives in `fix/`,
+    /// and what it does not hold is a leaf, not a message.
+    #[test]
+    fn a_value_that_holds_no_fix_message_is_refused_by_kind() {
+        let leaf = leaf_of(message(ORDER));
+        assert_eq!(leaf.as_message::<FixMsg>(), None);
+        let refused = FixMsg::try_from(leaf).unwrap_err();
+        assert!(
+            matches!(
+                &refused,
+                Error::InvalidRecord { path, reason }
+                    if path == "$.kind" && reason.starts_with("expected fix, got ")
+            ),
+            "{refused}"
+        );
+    }
+
+    /// The boxed split is the message's own: the leaves it reports and the
+    /// one leaf it is.
+    #[test]
+    fn the_boxed_split_is_the_messages_own() {
+        let source = message(ORDER);
+        let direct = source.clone().into_market_data().expect("the leaves");
+        let boxed = MarketMessage::into_market_data(Box::new(source.clone())).expect("the leaves");
+        assert_eq!(boxed, direct);
+        assert_eq!(boxed.len(), 1, "one order, one leaf");
+
+        let direct = FixMsg::into_market_leaf(source.clone()).expect("one leaf");
+        let boxed = MarketMessage::into_market_leaf(Box::new(source)).expect("one leaf");
+        assert_eq!(boxed, direct);
+    }
+
+    /// The enum follows and merges a held message as the message itself
+    /// follows and merges, and follows nothing that is not a held message of
+    /// its own type.
+    #[test]
+    fn the_enum_follows_and_merges_a_held_message_as_the_message_does() {
+        let first = message(ORDER);
+        let next = message(NEXT);
+        let held_first = MarketData::from(first.clone());
+        let held_next = MarketData::from(next.clone());
+
+        assert_eq!(
+            Element::with_previous(held_next.clone(), &held_first),
+            Element::with_previous(next.clone(), &first).map(MarketData::from),
+        );
+        assert_eq!(
+            Element::merge_with(held_next.clone(), &held_first),
+            Element::merge_with(next.clone(), &first).map(MarketData::from),
+        );
+
+        // A leaf is not a held message: nothing follows it, nothing folds it.
+        let leaf = leaf_of(first);
+        assert!(Element::with_previous(held_next.clone(), &leaf).is_none());
+        assert!(Element::merge_with(held_next, &leaf).is_none());
+    }
 }

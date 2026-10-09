@@ -7,7 +7,8 @@ use std::sync::Arc;
 use arrow_array::{Array, ArrayRef, StringArray, UInt8Array};
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::{
-    ArrowCastOptions, DataType, DataTypeKind, Field, Scalar, Serie, StringEnum, TimeInForce,
+    ArrowCastOptions, DataType, DataTypeKind, Field, MarketType, Scalar, Serie, StringEnum,
+    TIMEINFORCE_KIND, TimeInForce,
 };
 
 /// Every shipped wire value and the name the standard gives it, as the
@@ -30,11 +31,38 @@ fn shipped() -> Vec<(String, String)> {
         .collect()
 }
 
+/// A kind states its own datatype and a nullable field of it - inherent items
+/// of the enum, where `DataType` once held a constructor per kind - and both
+/// are the descriptor's own, so a crate declaring a kind gets the same pair.
+#[test]
+fn a_time_in_force_states_its_own_datatype_and_a_nullable_field_of_it() {
+    let dtype = TimeInForce::dtype();
+    assert_eq!(dtype, DataType::Market(MarketType::new(&TIMEINFORCE_KIND)));
+    assert_eq!(dtype, TIMEINFORCE_KIND.dtype());
+    assert_eq!(dtype, DataType::from_str("timeinforce").unwrap());
+    assert_eq!(dtype.id(), TimeInForce::ID);
+    assert_eq!(dtype.to_string(), "timeinforce");
+    assert!(dtype.is_enum());
+
+    let field = TimeInForce::field("timeinforce");
+    assert_eq!(field.name(), "timeinforce");
+    assert!(field.is_nullable(), "a kind's field is nullable");
+    assert_eq!(field.dtype(), &dtype);
+    assert_eq!(field, TIMEINFORCE_KIND.field("timeinforce", true));
+    // Any text names it; nullability is the field's, so the required one is
+    // the descriptor's alone.
+    assert_eq!(
+        TimeInForce::field(String::from("a timeinforce")).name(),
+        "a timeinforce"
+    );
+    assert!(!TIMEINFORCE_KIND.field("timeinforce", false).is_nullable());
+}
+
 #[test]
 fn the_time_in_force_is_an_enum_leaf_over_uint8_codes() {
-    let dtype = DataType::timeinforce();
+    let dtype = TimeInForce::dtype();
     assert_eq!(DataType::from_str("timeinforce").unwrap(), dtype);
-    assert_eq!(DataType::timeinforce(), dtype);
+    assert_eq!(TimeInForce::dtype(), dtype);
     assert_eq!(dtype.to_string(), "timeinforce");
     assert_eq!(dtype.kind(), DataTypeKind::Enum);
     assert!(dtype.is_enum() && !dtype.is_code());
@@ -116,11 +144,11 @@ fn a_spelling_reads_as_one_member_and_a_stranger_is_refused() {
 
     // The value door reads the same spellings and codes.
     assert_eq!(
-        DataType::timeinforce().scalar("ioc").unwrap(),
+        TimeInForce::dtype().scalar("ioc").unwrap(),
         Scalar::from(TimeInForce::ImmediateOrCancel)
     );
     assert_eq!(
-        DataType::timeinforce().scalar(5_i32).unwrap(),
+        TimeInForce::dtype().scalar(5_i32).unwrap(),
         Scalar::from(TimeInForce::FillOrKill)
     );
 }
@@ -151,18 +179,14 @@ fn the_retired_spelling_unkn_names_no_time_in_force() {
         serde_json::from_str::<TimeInForce>("\"UKNW\"").unwrap(),
         TimeInForce::Unknown
     );
-    assert!(
-        DataType::timeinforce()
-            .scalar(Scalar::from("UNKN"))
-            .is_err()
-    );
+    assert!(TimeInForce::dtype().scalar(Scalar::from("UNKN")).is_err());
 }
 
 /// A text column lands as the codes its spellings name, and the column
 /// renders back as the stored names.
 #[test]
 fn a_text_column_lands_as_codes_and_renders_as_names() {
-    let field = Field::new("timeinforce", DataType::timeinforce(), true);
+    let field = Field::new("timeinforce", TimeInForce::dtype(), true);
     let landed = Serie::from_arrow_array(
         Some(&field),
         Arc::new(StringArray::from(vec!["0", "GTC", "ImmediateOrCancel"])) as ArrayRef,

@@ -211,7 +211,11 @@ pub(crate) fn own_options<'o, M: IOMedia + ?Sized>(
 /// A stream of batches as the serie it is: read as transport, so a write of
 /// it through the serie doors hands the batches on untouched - over an
 /// identity plan the reader itself.
-pub(crate) fn arrow_serie(batches: crate::arrow::BatchReader) -> Result<crate::Serie> {
+///
+/// # Errors
+///
+/// Returns an error when the reader's schema cannot form a record root.
+pub fn arrow_serie(batches: crate::arrow::BatchReader) -> Result<crate::Serie> {
     Ok(crate::Serie::from(landed(batches)?))
 }
 

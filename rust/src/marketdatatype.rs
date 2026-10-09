@@ -3,9 +3,9 @@
 //! report, a quote request, a mass cancel or a market data request - as one
 //! enum, stored as a `uint16`.
 
-use crate::code::folded_spelling;
-use crate::enums::enum_leaf;
-use crate::typed::define_field_types;
+use crate::implementer::define_field_types;
+use crate::implementer::enum_leaf;
+use crate::implementer::folded_spelling;
 
 enum_leaf! {
     /// The type of a market data element within its kind: how an order is
@@ -42,6 +42,17 @@ enum_leaf! {
     /// assert_eq!(MarketDataType::from_fix(828, "999"), Some(MarketDataType::TrdOther));
     /// // A field that types nothing reads as none.
     /// assert_eq!(MarketDataType::from_fix(54, "1"), None);
+    /// ```
+    ///
+    /// Its datatype and a field of it are the kind's own:
+    ///
+    /// ```
+    /// use yggdryl::{MARKETDATATYPE_KIND, MarketDataType};
+    ///
+    /// assert_eq!(MarketDataType::dtype(), MARKETDATATYPE_KIND.dtype());
+    /// assert_eq!(MarketDataType::dtype().to_string(), "marketdatatype");
+    /// assert!(MarketDataType::dtype().is_enum());
+    /// assert!(MarketDataType::field("marketdatatype").is_nullable());
     /// ```
     #[non_exhaustive]
     pub enum MarketDataType: u16, kind = "marketdatatype", extension = MARKETDATATYPE_EXTENSION_NAME, aliases = marketdatatype_aliases,
@@ -543,23 +554,6 @@ static FIX_NAMES: &[(&str, MarketDataType)] = &[
 
 /// The Arrow extension name of a market data type, over `uint16` storage.
 pub(crate) const MARKETDATATYPE_EXTENSION_NAME: &str = "yggdryl.marketdatatype";
-
-impl crate::DataType {
-    /// Creates the market data type datatype: an element's order, quote,
-    /// trade or book entry type.
-    ///
-    /// ```
-    /// use yggdryl::{DataType, MARKETDATATYPE_KIND};
-    ///
-    /// assert_eq!(DataType::marketdatatype(), MARKETDATATYPE_KIND.dtype());
-    /// assert_eq!(DataType::marketdatatype().to_string(), "marketdatatype");
-    /// assert!(DataType::marketdatatype().is_enum());
-    /// ```
-    #[must_use]
-    pub const fn marketdatatype() -> Self {
-        Self::Market(crate::MarketType::new(&MARKETDATATYPE_KIND))
-    }
-}
 
 // /// A field declared as a market data element's type.
 define_field_types!(

@@ -31,7 +31,7 @@ mod leaves {
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::{
-        ArrowCastOptions, Charset, DataType, DataTypeId, Field, Scalar, Serie, StringEnum,
+        ArrowCastOptions, Charset, DataType, DataTypeId, Field, Scalar, Serie, Side, StringEnum,
         StructType, Term, Url,
     };
     use yggdryl::{IOBase, IOMedia};
@@ -612,7 +612,7 @@ mod leaves {
             DataType::fixed_ascii(17).unwrap(),
             DataType::fixed_utf8(4).unwrap(),
             DataType::utf8(),
-            DataType::side(),
+            Side::dtype(),
         ] {
             let message = Field::new("side", refused.clone(), false)
                 .try_with_string_enum(&sides)

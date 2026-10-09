@@ -26,12 +26,12 @@ use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
-use super::element::{
+use super::{Element, Event};
+use crate::CodeValue;
+use crate::implementer::{
     Staged, earliest, fold_event_instants, follow_timed, latest, merge_element,
     merge_event_element, merge_timed, moved, restate_event, right_is_reference, stated,
 };
-use super::{Element, Event};
-use crate::CodeValue;
 use crate::securityid::{SymbolCode, embedded};
 use crate::xxhash::Xxh3;
 use crate::{
@@ -1242,7 +1242,7 @@ pub(crate) fn follow_identity<E: Element + Market + ?Sized>(this: &mut E, live: 
             |side| this.set_side(side, true),
         );
     }
-    changed | super::element::follow_element(this, live)
+    changed | crate::implementer::follow_element(this, live)
 }
 
 /// The market facts an event takes from the statement it follows: the

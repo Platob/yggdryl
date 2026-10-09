@@ -44,33 +44,33 @@
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixRegistry, FieldPath, StructType};
+    use yggdryl::{DataType, FieldPath, FixField, FixFieldMut, FixRegistry, StructType};
 
     let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
-    counter.as_fix_mut().set_tag(453)?;
+    FixFieldMut::new(&mut counter).set_tag(453)?;
     let mut party_id = DataType::utf8().nullable_field("PartyID");
-    party_id.as_fix_mut().set_tag(448)?;
+    FixFieldMut::new(&mut party_id).set_tag(448)?;
     let mut registry = FixRegistry::from_fields([counter, party_id])?;
 
     // One door files each by its shape: a Struct is a component, a Serie of
     // one a group, and a scalar a field.
     let mut member = registry.field(448)?.clone();
-    member.as_fix_mut().set_field_ref("PartyID")?;
+    FixFieldMut::new(&mut member).set_field_ref("PartyID")?;
     let party = DataType::from(StructType::from_fields([member])?).required_field("Party");
     registry.insert(party.clone())?;
     let mut parties = DataType::serie(party).nullable_field("Parties");
-    parties.as_fix_mut().set_counter(453)?;
-    parties.as_fix_mut().set_component("Party")?;
+    FixFieldMut::new(&mut parties).set_counter(453)?;
+    FixFieldMut::new(&mut parties).set_component("Party")?;
     registry.insert(parties)?;
 
     let mut group = registry.field_by_name("Parties")?.clone();
-    group.as_fix_mut().set_group("Parties")?;
+    FixFieldMut::new(&mut group).set_group("Parties")?;
     let mut order = DataType::from(StructType::from_fields([group])?).required_field("Order");
-    order.as_fix_mut().set_msgtype("D")?;
+    FixFieldMut::new(&mut order).set_msgtype("D")?;
     registry.insert(order)?;
 
     assert_eq!(registry.field(453)?.dtype(), &DataType::Int32);
-    assert_eq!(registry.field_by_path(&FieldPath::from_str("Order.Parties.PartyID")?)?.as_fix().tag()?, Some(448));
+    assert_eq!(FixField::new(registry.field_by_path(&FieldPath::from_str("Order.Parties.PartyID")?)?).tag()?, Some(448));
     let message = registry.msgtype("D")?;
     assert_eq!(message.name(), "Order");
     assert_eq!(message.get_group_by_tag(453).expect("the group the counter opens").name(), "Parties");
@@ -170,20 +170,20 @@ The generator gives every group a collection display. A unique published plural 
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructType};
+    use yggdryl::{DataType, FixField, FixFieldMut, FixMsg, FixRegistry, Scalar, StructType};
 
     let mut client = DataType::utf8().nullable_field("clordid");
-    client.as_fix_mut().set_tag(11)?;
-    client.as_fix_mut().set_names(["ClientOrder"])?;
+    FixFieldMut::new(&mut client).set_tag(11)?;
+    FixFieldMut::new(&mut client).set_names(["ClientOrder"])?;
     let mut server = DataType::utf8().nullable_field("orderid");
-    server.as_fix_mut().set_tag(37)?;
+    FixFieldMut::new(&mut server).set_tag(37)?;
     let mut order = DataType::from(StructType::from_fields([client.clone(), server.clone()])?).required_field("order");
-    order.as_fix_mut().set_msgtype("D")?;
-    order.as_fix_mut().set_identifiers(["37", "ClientOrder"])?;
-    assert_eq!(order.as_fix().identifiers().collect::<Vec<_>>(), ["clordid", "orderid"]);
+    FixFieldMut::new(&mut order).set_msgtype("D")?;
+    FixFieldMut::new(&mut order).set_identifiers(["37", "ClientOrder"])?;
+    assert_eq!(FixField::new(&order).identifiers().collect::<Vec<_>>(), ["clordid", "orderid"]);
     assert_eq!(order.get_metadata("FIX:identifiers"), Some("clordid,orderid"));
     let before = order.clone();
-    assert!(order.as_fix_mut().set_identifiers(["clordid", "11"]).is_err());
+    assert!(FixFieldMut::new(&mut order).set_identifiers(["clordid", "11"]).is_err());
     assert_eq!(order, before);
 
     let mut registry = FixRegistry::new();
@@ -304,13 +304,13 @@ Every name lookup reads four word pairs either way - `offer`/`ask`, `size`/`qty`
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixId, FixKey, FixRegistry};
+    use yggdryl::{DataType, FixField, FixFieldMut, FixId, FixKey, FixRegistry};
 
     let mut msgtype = DataType::utf8().nullable_field("MsgType");
-    msgtype.as_fix_mut().set_tag(35)?;
+    FixFieldMut::new(&mut msgtype).set_tag(35)?;
     let registry = FixRegistry::from_fields([msgtype])?;
 
-    let id = registry.field(35)?.as_fix().id()?.expect("a tagged field");
+    let id = FixField::new(registry.field(35)?).id()?.expect("a tagged field");
     assert_eq!(id, FixId::of(35, "msg_type")?);
     assert!(FixId::of(0, "MsgType").is_err());
     assert_eq!(registry.field(FixKey::Id(id))?.name(), "MsgType");
@@ -384,30 +384,30 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixId, FixRegistry};
+    use yggdryl::{DataType, FixField, FixFieldMut, FixId, FixRegistry};
 
     let mut symbol = DataType::utf8().nullable_field("Symbol");
-    symbol.as_fix_mut().set_tag(55)?;
+    FixFieldMut::new(&mut symbol).set_tag(55)?;
     let mut registry = FixRegistry::from_fields([symbol])?;
 
     // The same folded name under another tag: one field, one more number.
     let mut spelled = DataType::utf8().nullable_field("symbol");
-    spelled.as_fix_mut().set_tag(9055)?;
-    spelled.as_fix_mut().set_sources(["blp"])?;
+    FixFieldMut::new(&mut spelled).set_tag(9055)?;
+    FixFieldMut::new(&mut spelled).set_sources(["blp"])?;
     assert!(!registry.add_field(spelled)?, "merged");
     let holder = registry.field_by_tag(9055)?;
     assert_eq!(holder.name(), "Symbol");
-    assert_eq!(holder.as_fix().tags()?, [9055]);
-    assert_eq!(holder.as_fix().sources().collect::<Vec<_>>(), ["blp"]);
+    assert_eq!(FixField::new(holder).tags()?, [9055]);
+    assert_eq!(FixField::new(holder).sources().collect::<Vec<_>>(), ["blp"]);
 
     // The same tag under another name: a second field beside the holder.
     let mut venue = DataType::utf8().nullable_field("VenueSymbol");
-    venue.as_fix_mut().set_tag(55)?;
-    venue.as_fix_mut().set_sources(["xnas"])?;
+    FixFieldMut::new(&mut venue).set_tag(55)?;
+    FixFieldMut::new(&mut venue).set_sources(["xnas"])?;
     assert!(registry.add_field(venue)?, "added");
     assert_eq!(registry.field_by_tag(55)?.name(), "Symbol", "the bare tag answers the holder");
-    assert_eq!(registry.field_by_tag(55)?.as_fix().names().count(), 0, "neither learns the other's name");
-    assert!(!registry.field_by_tag(55)?.as_fix().has_source("xnas"));
+    assert_eq!(FixField::new(registry.field_by_tag(55)?).names().count(), 0, "neither learns the other's name");
+    assert!(!FixField::new(registry.field_by_tag(55)?).has_source("xnas"));
     let newcomer = registry.field_by_id(FixId::of(55, "venue_symbol")?)?;
     assert_eq!(newcomer.name(), "VenueSymbol");
     assert_eq!(registry.field_by_name("VenueSymbol")?.name(), "VenueSymbol", "reached by its own name");
@@ -416,17 +416,17 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
     // A field named by nothing but its tag is unnamed: the first name to
     // arrive on the tag names it, and a later unnamed one merges into it.
     let mut unnamed = DataType::utf8().nullable_field("541");
-    unnamed.as_fix_mut().set_tag(541)?;
+    FixFieldMut::new(&mut unnamed).set_tag(541)?;
     assert!(registry.add_field(unnamed.clone())?, "added");
     let mut maturity = DataType::utf8().nullable_field("MaturityDate");
-    maturity.as_fix_mut().set_tag(541)?;
+    FixFieldMut::new(&mut maturity).set_tag(541)?;
     assert!(!registry.add_field(maturity)?, "merged, and named");
     assert!(!registry.add_field(unnamed)?, "merged");
     assert_eq!(registry.field_by_tag(541)?.name(), "MaturityDate");
 
     // Tag-major, the tag's holder first, then id; the seeded clocks and the
     // crate's own fields sit on their own tags around them.
-    let names: Vec<&str> = registry.iter().filter(|field| field.as_fix().tag().ok().flatten() < Some(65_000)).map(|field| field.name()).collect();
+    let names: Vec<&str> = registry.iter().filter(|field| FixField::new(field).tag().ok().flatten() < Some(65_000)).map(|field| field.name()).collect();
     assert_eq!(names, ["sendingtime", "Symbol", "VenueSymbol", "transacttime", "MaturityDate"]);
     ```
 
@@ -551,12 +551,12 @@ What is known of a source is recorded once, in the registry's sources catalog ra
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixRegistry, FixSource, Side};
+    use yggdryl::{DataType, FixFieldMut, FixRegistry, FixSource, Side};
 
     let mut registry = FixRegistry::new();
     let mut venue = DataType::utf8().nullable_field("VenueTag");
-    venue.as_fix_mut().set_tag(20001)?;
-    venue.as_fix_mut().set_sources(["Venue"])?;
+    FixFieldMut::new(&mut venue).set_tag(20001)?;
+    FixFieldMut::new(&mut venue).set_sources(["Venue"])?;
     registry.insert(venue)?;
     // The field names its source; the catalog records what is known of it, once.
     assert_eq!(registry.dialects(), ["venue"]);
@@ -664,16 +664,16 @@ These mutations preserve stored canonical spelling for case-only input changes. 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixRegistry};
+    use yggdryl::{DataType, FixFieldMut, FixRegistry};
 
     let mut registry = FixRegistry::new();
     let mut symbol = DataType::utf8().nullable_field("Symbol");
-    symbol.as_fix_mut().set_tag(55)?;
+    FixFieldMut::new(&mut symbol).set_tag(55)?;
     assert!(registry.insert(symbol.clone())?.is_none(), "it arrived");
     assert!(registry.insert(symbol.clone())?.is_some(), "and the second insert replaced it");
     assert!(!registry.add_field(symbol.clone())?, "the lenient twin folds it in");
     symbol.set_name("SYMBOL");
-    symbol.as_fix_mut().set_description("Instrument symbol")?;
+    FixFieldMut::new(&mut symbol).set_description("Instrument symbol")?;
     registry.update(symbol)?;
     // A case-only rename keeps the stored spelling, and the metadata merged.
     assert_eq!(registry.field(55)?.name(), "Symbol");
@@ -748,7 +748,7 @@ The set is stated first, because a registry refuses a field whose `FIX:codeset` 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixCode, FixRegistry};
+    use yggdryl::{DataType, FixCode, FixField, FixFieldMut, FixRegistry};
 
     let mut registry = FixRegistry::new();
     registry.set_codeset("sidecodeset", &[
@@ -757,12 +757,12 @@ The set is stated first, because a registry refuses a field whose `FIX:codeset` 
     ])?;
 
     let mut side = DataType::utf8().nullable_field("Side");
-    side.as_fix_mut().set_tag(54)?;
-    side.as_fix_mut().set_codeset("sidecodeset")?;
+    FixFieldMut::new(&mut side).set_tag(54)?;
+    FixFieldMut::new(&mut side).set_codeset("sidecodeset")?;
     registry.insert(side)?;
 
     // The field carries the name; the dictionary answers the members.
-    assert_eq!(registry.field(54)?.as_fix().codeset(), Some("sidecodeset"));
+    assert_eq!(FixField::new(registry.field(54)?).codeset(), Some("sidecodeset"));
     let set = registry.codeset_of(registry.field(54)?).expect("the set the field reads by");
     assert_eq!(set.name(), "sidecodeset");
     assert_eq!(set.code_value("Buy"), Some("1"));
@@ -981,7 +981,7 @@ metadata documents remain on the field and round-trip through both bindings.
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::FixRegistry;
+    use yggdryl::{FixField, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
@@ -995,8 +995,8 @@ metadata documents remain on the field and round-trip through both bindings.
     // The spelling an older version used reaches the field as an alias.
     assert_eq!(registry.field("LastShares")?.name(), "lastqty");
     // A field FIX Latest removed says so, and says at which version.
-    assert_eq!(registry.field_by_tag(111)?.as_fix().deprecated(), Some("5.0"));
-    assert_eq!(registry.field_by_tag(55)?.as_fix().deprecated(), None);
+    assert_eq!(FixField::new(registry.field_by_tag(111)?).deprecated(), Some("5.0"));
+    assert_eq!(FixField::new(registry.field_by_tag(55)?).deprecated(), None);
     ```
 
 ### `FIX:nulls`, the spellings that mean nothing was sent
@@ -1105,15 +1105,15 @@ TradeID(1003)  ["origtradeid"]
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FixRegistry, IdType};
+    use yggdryl::{DataType, FixField, FixFieldMut, FixRegistry, IdType};
 
     // A field states the parents of its identifier, each folded as a type is.
     let mut orderid = DataType::utf8().nullable_field("OrderID");
-    orderid.as_fix_mut().set_tag(37)?;
-    orderid.as_fix_mut().set_parents(["ParentOrderID", "origorderid"])?;
+    FixFieldMut::new(&mut orderid).set_tag(37)?;
+    FixFieldMut::new(&mut orderid).set_parents(["ParentOrderID", "origorderid"])?;
     assert_eq!(orderid.get_metadata("FIX:parents"), Some(r#"["parentorderid","origorderid"]"#));
-    assert_eq!(orderid.as_fix().parents().collect::<Vec<_>>(), ["parentorderid", "origorderid"]);
-    assert!(orderid.as_fix_mut().set_parents(["origorderid", "OrigOrderID"]).is_err(), "a type listed twice");
+    assert_eq!(FixField::new(&orderid).parents().collect::<Vec<_>>(), ["parentorderid", "origorderid"]);
+    assert!(FixFieldMut::new(&mut orderid).set_parents(["origorderid", "OrigOrderID"]).is_err(), "a type listed twice");
 
     // The committed dictionary: ClOrdID(11) states the parent OrigClOrdID(41) is.
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -1219,12 +1219,11 @@ A message states what type of its kind it is - a limit order, a tradeable quote,
     use std::sync::Arc;
 
     use yggdryl::graph::Market;
-    use yggdryl::{DataType, FixCodec, FixRegistry, MarketDataType};
+    use yggdryl::{DataType, FixCodec, FixFieldMut, FixRegistry, MarketDataType};
 
     let mut ordtype = DataType::utf8().nullable_field("OrdType");
-    ordtype.as_fix_mut().set_tag(40)?;
-    ordtype
-        .as_fix_mut()
+    FixFieldMut::new(&mut ordtype).set_tag(40)?;
+    FixFieldMut::new(&mut ordtype)
         .set_marketdatatypes(&[("Z", MarketDataType::OrdPegged)])?;
     assert_eq!(ordtype.get_metadata("FIX:marketdatatype"), Some(r#"["Z=ORDPEGGED"]"#));
 
@@ -1386,25 +1385,25 @@ A time of day against an instant is the contradiction two FIX spellings of one f
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixRegistry};
+    use yggdryl::{DataType, FixFieldMut, FixRegistry};
 
     let mut price = DataType::Float64.nullable_field("Price");
-    price.as_fix_mut().set_tag(44)?;
+    FixFieldMut::new(&mut price).set_tag(44)?;
     let mut held = FixRegistry::from_fields([price])?;
 
     // One source types tag 44 as text, which every FIX datatype is on the
     // wire: another precision of the price, folded under it.
     let mut text = DataType::utf8().nullable_field("Price");
-    text.as_fix_mut().set_tag(44)?;
+    FixFieldMut::new(&mut text).set_tag(44)?;
     let merge = held.merge_with(&FixRegistry::from_fields([text])?)?;
     assert_eq!(merge.restated, 1);
     assert!(merge.is_clean());
 
     // Another types it as a flag, and brings a field of its own.
     let mut flag = DataType::Boolean.nullable_field("Price");
-    flag.as_fix_mut().set_tag(44)?;
+    FixFieldMut::new(&mut flag).set_tag(44)?;
     let mut side = DataType::utf8().nullable_field("Side");
-    side.as_fix_mut().set_tag(54)?;
+    FixFieldMut::new(&mut side).set_tag(54)?;
     let other = FixRegistry::from_fields([flag, side])?;
 
     // The held declaration stays: the contradiction is named and passed
@@ -1472,14 +1471,14 @@ A member reading a field that merged into a held field by folded name under anot
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixRegistry};
+    use yggdryl::{DataType, FixField, FixFieldMut, FixRegistry};
 
     let mut field = DataType::utf8().nullable_field("MsgType");
-    field.as_fix_mut().set_tag(35)?;
+    FixFieldMut::new(&mut field).set_tag(35)?;
     let mut registry = FixRegistry::from_fields([field])?;
     let message = registry.register_msgtype("P Report Ack", Some("AllocationReportAck"), None)?;
     assert_eq!(message.as_str(), "P Report Ack");
-    assert_eq!(message.as_field().as_fix().msgtype(), Some("P Report Ack"));
+    assert_eq!(FixField::new(message.as_field()).msgtype(), Some("P Report Ack"));
     assert_eq!(registry.msgtype("allocationreportack")?.as_str(), "P Report Ack");
     ```
 

@@ -1,5 +1,6 @@
 //! The one FIX boundary into typed graph market data.
 
+use std::any::Any;
 use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::iter::FusedIterator;
@@ -14,12 +15,13 @@ use crate::arrow::BatchReader;
 use crate::graph::book::{ENTRY_ID, ENTRY_REF_ID};
 use crate::graph::facts::OperationEventFacts;
 use crate::graph::market::base_crosscode;
+use crate::graph::market_data::MarketMessage;
 use crate::graph::{
-    BookIterator, BookRef, Element, Event, ExecutionKind, Market, MarketData, MdUpdateAction,
-    Operation, OperationEvent, OperationKind, OrderKind, QuoteKind, SnapshotEvent,
+    BookIterator, BookRef, Element, Event, ExecutionKind, Market, MarketData, MarketKind,
+    MdUpdateAction, Operation, OperationEvent, OperationKind, OrderKind, QuoteKind, SnapshotEvent,
 };
+use crate::implementer::warned;
 use crate::isin_registry::IsinTable;
-use crate::logging::warning::warned;
 use crate::{
     DataType, Decimal, Error, Filter, IdKey, IdType, Identifier, Identifiers, MarketDataKind,
     MarketDataType, Result, Scalar, Side, State, TimeUnit,
@@ -790,6 +792,89 @@ impl FixMsg {
     }
 }
 
+/// A FIX message is the market message [`MarketData::Fix`] holds: its
+/// boxed forms are its own following, merge and restatement over another
+/// FIX message, and its split is [`FixMsg::into_market_data`].
+impl MarketMessage for FixMsg {
+    fn into_market_data(self: Box<Self>) -> Result<Vec<MarketData>> {
+        FixMsg::into_market_data(*self)
+    }
+
+    fn into_market_leaf(self: Box<Self>) -> Result<MarketData> {
+        FixMsg::into_market_leaf(*self)
+    }
+
+    fn with_previous(
+        self: Box<Self>,
+        previous: &dyn MarketMessage,
+    ) -> Option<Box<dyn MarketMessage>> {
+        let previous = previous.as_any().downcast_ref::<Self>()?;
+        Some(Box::new(Element::with_previous(*self, previous)?))
+    }
+
+    fn merge_with(self: Box<Self>, other: &dyn MarketMessage) -> Option<Box<dyn MarketMessage>> {
+        let other = other.as_any().downcast_ref::<Self>()?;
+        Some(Box::new(Element::merge_with(*self, other)?))
+    }
+
+    fn restating(self: Box<Self>, live: &dyn MarketMessage) -> Box<dyn MarketMessage> {
+        match live.as_any().downcast_ref::<Self>() {
+            Some(live) => Box::new(Event::restating(*self, live)),
+            None => self,
+        }
+    }
+
+    fn stable_hash(&self) -> u64 {
+        FixMsg::stable_hash(self)
+    }
+
+    fn clone_box(&self) -> Box<dyn MarketMessage> {
+        Box::new(self.clone())
+    }
+
+    fn dyn_eq(&self, other: &dyn MarketMessage) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<Self>()
+            .is_some_and(|other| self == other)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn into_any(self: Box<Self>) -> Box<dyn Any> {
+        self
+    }
+}
+
+impl From<FixMsg> for MarketData {
+    /// The message held whole, as [`MarketData::Fix`].
+    fn from(value: FixMsg) -> Self {
+        Self::Fix(Box::new(value))
+    }
+}
+
+impl TryFrom<MarketData> for FixMsg {
+    type Error = Error;
+
+    /// The FIX message a value holds whole; any other value, or a held
+    /// message of another type, is refused at `$.kind`.
+    fn try_from(value: MarketData) -> Result<Self> {
+        let got = match value {
+            MarketData::Fix(message) => match message.into_any().downcast::<Self>() {
+                Ok(message) => return Ok(*message),
+                Err(_) => "another message type",
+            },
+            other => other.kind().as_str(),
+        };
+        Err(Error::InvalidRecord {
+            path: SmolStr::new_static("$.kind"),
+            reason: format_smolstr!("expected {}, got {got}", MarketKind::Fix.as_str()),
+        })
+    }
+}
+
 /// [`expand_message`] over a borrowed message, every leaf carrying its
 /// unmapped fields.
 fn operations(message: &FixMsg, mut base: OperationEventFacts) -> Vec<MarketData> {
@@ -1019,7 +1104,7 @@ fn batch_entries(batch: &FixMsg, instruments: Option<&IsinTable>) -> Vec<FixMsg>
     let mut answer = Vec::new();
     for (index, occurrence) in rows.iter().enumerate() {
         let Some(values) = occurrence.as_sequence() else {
-            crate::logging::warning::warned!(
+            crate::implementer::warned!(
                 "FIX batch entry excluded: its row is not a record",
                 batch.header().msgtype(),
                 "{name}[{index}] holds {}",
@@ -1081,7 +1166,7 @@ fn batch_entry(
     let crosscode = entry_crosscode(batch, &members, place);
     let mut entry = batch.clone();
     if let Err(error) = entry.remove(FixKey::Name(group)) {
-        crate::logging::warning::warned!(
+        crate::implementer::warned!(
             "FIX batch entry excluded: its batch group could not be taken off",
             batch.header().msgtype(),
             "{group} at {place}: {error}"
@@ -1091,7 +1176,7 @@ fn batch_entry(
     // A member the root cannot hold is passed over, as the lenient write
     // passes it: the entry keeps what reads.
     if let Err(error) = entry.set_each(members.iter().map(Member::write)) {
-        crate::logging::warning::warned!(
+        crate::implementer::warned!(
             "FIX batch entry excluded: its members do not make a message",
             batch.header().msgtype(),
             "{group} at {place}: {error}"
@@ -1383,7 +1468,7 @@ fn excluded_side(trade: &mut FixMsg, group: &str, index: usize, error: &Error) {
 /// reader, anything else as the text.
 fn side_value(root: i32, value: &str) -> Scalar {
     match root {
-        32 | 6 => Scalar::from_decimal_text(&DataType::Decimal, value)
+        32 | 6 => crate::implementer::scalar_from_decimal_text(&DataType::Decimal, value)
             .unwrap_or_else(|_| Scalar::from(value)),
         _ => Scalar::from(value),
     }
@@ -2025,7 +2110,7 @@ fn build_book_operation(
         }
     }
     let position = entry.facts.position.as_deref().and_then(|position| {
-        let parsed = crate::integer::integer_from_text_as::<u32>(position);
+        let parsed = crate::implementer::integer_from_text_as::<u32>(position);
         if parsed.is_none() {
             warned!(
                 "FIX book entry position is no count; defaulted to null",
@@ -2061,7 +2146,7 @@ fn decimal(typed: Option<&Scalar>, rendered: Option<&str>) -> Reading<Decimal> {
             .map(Some)
             .ok_or_else(|| format!("{value:?}")),
         None => rendered.map_or(Ok(None), |text| {
-            Scalar::from_decimal_text(&DataType::Decimal, text)
+            crate::implementer::scalar_from_decimal_text(&DataType::Decimal, text)
                 .ok()
                 .as_ref()
                 .and_then(Decimal::from_scalar)

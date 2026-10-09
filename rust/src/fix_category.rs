@@ -64,7 +64,7 @@ impl FromStr for FixCategory {
             .ok_or_else(|| Error::Parse {
                 target: "FIX category",
                 position: 0,
-                reason: crate::text::expected_got("fields, components, or groups", value),
+                reason: crate::implementer::expected_got("fields, components, or groups", value),
             })
     }
 }

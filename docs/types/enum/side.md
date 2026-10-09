@@ -6,7 +6,7 @@ Which side of the market a trade took: FIX `Side(54)` as an enum of nineteen mem
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `side`, the registered kind `SIDE_KIND` under `DataType::Market`, its marker `SideType`, the `Side` enum |
+| Owns | `side`, the registered kind `SIDE_KIND` under `DataType::Market`, its marker `SideType`, the `Side` enum; `Side::dtype()` and `Side::field(name)` |
 | Validates | A member, the code of one, or a spelling one of three vocabularies names - the four-letter code, a FIX wire code, the specification's name - reaches one member; anything else is refused rather than stored |
 | Lazy | Nothing - the member table and the vocabularies are static |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
@@ -18,20 +18,20 @@ A `Side` is one byte in memory and its code in a column. What `as_str` answers a
 
 ## DataType
 
-`side` is the one spelling, `DataType::side()` the constructor, `Side::ID` the id - a [registered kind](../datatype.md#registered-kinds) under `DataType::Market`; kind `enum`.
+`side` is the one spelling, `Side::dtype()` the datatype (a `const fn`: what every column of the kind declares) and `Side::field(name)` a nullable field of it, `Side::ID` the id - a [registered kind](../datatype.md#registered-kinds) under `DataType::Market`; kind `enum`. `DataType` holds no constructor per kind: the kind's own type answers its datatype, and the bindings' doors are unchanged (`DataType("side")` in Python, `new DataType('side')` in JavaScript).
 
 === "Rust"
 
     ```rust
     use yggdryl::{DataType, DataTypeKind, Side};
 
-    assert!(matches!(DataType::side(), DataType::Market(kind) if kind.id() == Side::ID));
-    assert_eq!(DataType::from_str("side")?, DataType::side());
-    assert_eq!(DataType::side().to_string(), "side");
-    assert_eq!(DataType::side().kind(), DataTypeKind::Enum);
-    assert_eq!(DataType::side().id().as_u8(), 0xc3);
-    assert!(DataType::side().is_enum() && !DataType::side().is_code());
-    assert_eq!(DataType::side().code_width(), None);
+    assert!(matches!(Side::dtype(), DataType::Market(kind) if kind.id() == Side::ID));
+    assert_eq!(DataType::from_str("side")?, Side::dtype());
+    assert_eq!(Side::dtype().to_string(), "side");
+    assert_eq!(Side::dtype().kind(), DataTypeKind::Enum);
+    assert_eq!(Side::dtype().id().as_u8(), 0xc3);
+    assert!(Side::dtype().is_enum() && !Side::dtype().is_code());
+    assert_eq!(Side::dtype().code_width(), None);
     ```
 
 === "Python"
@@ -62,11 +62,11 @@ A `Side` is one byte in memory and its code in a column. What `as_str` answers a
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, SideField};
+    use yggdryl::{Field, Side, SideField};
 
     let side = SideField::unit("side", false);
-    assert_eq!(side.dtype(), &DataType::side());
-    assert_eq!(side.to_field(), Field::new("side", DataType::side(), false));
+    assert_eq!(side.dtype(), &Side::dtype());
+    assert_eq!(side.to_field(), Field::new("side", Side::dtype(), false));
     ```
 
 === "Python"
@@ -99,24 +99,24 @@ The value is the member, whichever vocabulary named it: `BUYS` for FIX's `1`, it
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Scalar, Side};
+    use yggdryl::{Scalar, Side};
 
-    let buy = DataType::side().scalar("BUYS")?;
+    let buy = Side::dtype().scalar("BUYS")?;
     assert_eq!(buy, Scalar::from(Side::Buy));
     assert_eq!(buy.kind(), "side");
     assert_eq!(Side::Buy.code(), 1);
 
     // Three vocabularies and the code reach one member.
-    assert_eq!(DataType::side().scalar("1")?, buy);
-    assert_eq!(DataType::side().scalar("BUY")?, buy);
-    assert_eq!(DataType::side().scalar("Buy")?, buy);
-    assert_eq!(DataType::side().scalar(1_i32)?, buy);
-    assert_eq!(DataType::side().scalar("SellShortExempt")?, Scalar::from(Side::SShortEx));
+    assert_eq!(Side::dtype().scalar("1")?, buy);
+    assert_eq!(Side::dtype().scalar("BUY")?, buy);
+    assert_eq!(Side::dtype().scalar("Buy")?, buy);
+    assert_eq!(Side::dtype().scalar(1_i32)?, buy);
+    assert_eq!(Side::dtype().scalar("SellShortExempt")?, Scalar::from(Side::SShortEx));
 
     // A spelling nothing publishes, or the code of no member, answers nothing
     // rather than a guess.
-    assert!(DataType::side().scalar("Z").is_err());
-    assert!(DataType::side().scalar(18_i32).is_err());
+    assert!(Side::dtype().scalar("Z").is_err());
+    assert!(Side::dtype().scalar(18_i32).is_err());
     ```
 
 === "Python"
@@ -165,9 +165,9 @@ The value is the member, whichever vocabulary named it: `BUYS` for FIX's `1`, it
 
     use arrow_array::{Array, ArrayRef, StringArray, UInt8Array};
     use arrow_schema::DataType as ArrowDataType;
-    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
+    use yggdryl::{ArrowCastOptions, Field, Serie, Side};
 
-    let side = Field::new("side", DataType::side(), false);
+    let side = Field::new("side", Side::dtype(), false);
     let arrow = side.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::UInt8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.side");
@@ -411,7 +411,7 @@ A FIX plugin stands on one side of its session: a Buy-Side plugin originates ord
     ```rust
     use yggdryl::fix::plugin_side;
     use yggdryl::local::LocalFile;
-    use yggdryl::{DataType, FixRegistry, Scalar, Side};
+    use yggdryl::{FixRegistry, Scalar, Side};
 
     let cblock = "com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock";
     assert_eq!(plugin_side(&format!("{cblock}.BuySideFIXCPluginCBlock")), Side::Buy);
@@ -421,7 +421,7 @@ A FIX plugin stands on one side of its session: a Buy-Side plugin originates ord
     assert_eq!(plugin_side("buyside.FIXCPluginCBlock"), Side::Unknown);
     assert_eq!(plugin_side(""), Side::Unknown);
     // The role's own name is a spelling of the side.
-    assert_eq!(DataType::side().scalar("sell-side")?, Scalar::from(Side::Sell));
+    assert_eq!(Side::dtype().scalar("sell-side")?, Scalar::from(Side::Sell));
     assert_eq!(Side::from_spelling("BuySide"), Some(Side::Buy));
 
     // A CBlock read under a dialect records the role on the dialect's entry.

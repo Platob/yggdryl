@@ -10,8 +10,9 @@ use yggdryl::fix::FIXENTRIES_COLUMN;
 use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{
-    DataType, Decimal, Field, FixCodec, FixEntry, FixMsg, FixRegistry, IdKey, IdSource, IdType,
-    Identifier, Identifiers, Scalar, StructType, fix_schema, fix_schema_carrying,
+    DataType, Decimal, Field, FixCodec, FixEntry, FixField, FixFieldMut, FixMsg, FixRegistry,
+    IdKey, IdSource, IdType, Identifier, Identifiers, Scalar, StructType, fix_schema,
+    fix_schema_carrying,
 };
 
 /// One security identifier of `kind` a caller states, validated by its type
@@ -1041,7 +1042,7 @@ fn stated(message: &FixMsg) -> Vec<(i32, Scalar)> {
         .as_field()
         .fields()
         .iter()
-        .filter_map(|child| child.as_fix().tag().ok().flatten())
+        .filter_map(|child| FixField::new(child).tag().ok().flatten())
         .map(|tag| (tag, message.by_tag(tag).expect("an indexed tag")))
         .collect()
 }
@@ -1060,7 +1061,7 @@ fn a_set_value_is_typed_by_the_registry_field_and_appended_when_absent() {
     let child = fields.last().unwrap();
     assert_eq!(child.name(), declared.name(), "the dictionary's spelling");
     assert_eq!(child.dtype(), declared.dtype(), "the dictionary's type");
-    assert_eq!(child.as_fix().tag().unwrap(), Some(1));
+    assert_eq!(FixField::new(child).tag().unwrap(), Some(1));
     assert!(!child.is_nullable(), "a stated value is non-null");
     assert_eq!(message.by_tag(1).unwrap().as_str(), Some("A-1"));
     assert_eq!(
@@ -1204,7 +1205,7 @@ fn a_status_a_dictionary_left_as_text_reads_as_the_number_it_spells() {
     ]
     .map(|(name, tag)| {
         let mut field = DataType::utf8().nullable_field(name);
-        field.as_fix_mut().set_tag(tag).expect("a tag");
+        FixFieldMut::new(&mut field).set_tag(tag).expect("a tag");
         field
     });
     let registry = Arc::new(FixRegistry::from_fields(fields).expect("a dictionary"));
@@ -2472,7 +2473,7 @@ mod identifier_maps {
     //! metadata.
 
     use yggdryl::graph::{Element, Market, Operation};
-    use yggdryl::{FixMsg, IdType, Identifier};
+    use yggdryl::{FixFieldMut, FixMsg, IdType, Identifier};
 
     fn parsed(line: &str) -> FixMsg {
         super::super::fixed_codec(super::super::committed_registry())
@@ -3130,9 +3131,8 @@ mod identifier_maps {
         let registry = |listed: bool| {
             let mut registry = (*super::super::committed_registry()).clone();
             let mut grand = DataType::utf8().nullable_field("GrandParentOrderID");
-            grand.as_fix_mut().set_tag(9100).expect("a tag");
-            grand
-                .as_fix_mut()
+            FixFieldMut::new(&mut grand).set_tag(9100).expect("a tag");
+            FixFieldMut::new(&mut grand)
                 .set_idmap(&[FixIdSource::new(
                     FixIdMapKind::Identifiers,
                     "grandparentorderid".parse().expect("a type"),
@@ -3141,8 +3141,7 @@ mod identifier_maps {
             registry.add_field(grand).expect("a field");
             if listed {
                 let mut orderid = registry.field_by_tag(37).expect("OrderID(37)").clone();
-                orderid
-                    .as_fix_mut()
+                FixFieldMut::new(&mut orderid)
                     .set_parents(["parentorderid", "grandparentorderid", "origorderid"])
                     .expect("three types");
                 registry.update(orderid).expect("the field restated");
@@ -3208,7 +3207,7 @@ mod settled_market {
 
     use super::SoleMessage;
     use yggdryl::graph::{FxRates, Market, MarketData};
-    use yggdryl::{Ccy, Decimal, FixMsg, MarketDataKind, Scalar, fix_schema};
+    use yggdryl::{Ccy, Decimal, FixFieldMut, FixMsg, MarketDataKind, Scalar, fix_schema};
 
     fn decimal(text: &str) -> Decimal {
         text.parse().expect("a decimal")
@@ -3286,8 +3285,7 @@ mod settled_market {
         let mut registry = FixRegistry::clone(&super::reader().0);
         let mut ordtype = registry.field(40).expect("OrdType").clone();
         let _: &FixRegistry = &registry;
-        ordtype
-            .as_fix_mut()
+        FixFieldMut::new(&mut ordtype)
             .set_marketdatatypes(&[("Z", MarketDataType::OrdPegged)])
             .unwrap();
         registry.insert(ordtype).unwrap();
@@ -3313,7 +3311,7 @@ mod settled_market {
         use yggdryl::{FixRegistry, TimeInForce};
         let mut registry = FixRegistry::clone(&super::reader().0);
         let mut tif = registry.field(59).expect("TimeInForce").clone();
-        tif.as_fix_mut()
+        FixFieldMut::new(&mut tif)
             .set_timeinforces(&[("G", TimeInForce::GoodTillCancel)])
             .unwrap();
         registry.insert(tif).unwrap();

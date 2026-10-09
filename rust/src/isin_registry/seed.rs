@@ -27,7 +27,7 @@
 use std::sync::{LazyLock, OnceLock};
 
 use super::{IsinRegistry, IsinTable};
-use crate::{DataType, Field, StructType};
+use crate::{DataType, Field};
 
 /// The seed document, embedded: the crate's copy of
 /// `config/isin/instruments.json`.
@@ -39,7 +39,7 @@ const DOCUMENT: &str = include_str!("seed.json");
 static ROW: LazyLock<Field> = LazyLock::new(|| {
     Field::new(
         "instrument",
-        DataType::Struct(StructType::from_unique_fields(vec![
+        DataType::Struct(crate::implementer::struct_type_from_unique_fields(vec![
             Field::new("isin", DataType::isin(), false),
             Field::new("ticker", DataType::utf8(), true),
             Field::new("miccode", DataType::Mic, true),
@@ -80,8 +80,11 @@ fn rows() -> crate::arrow::Result<crate::arrow::BatchReader> {
         .sequence_rows()
         .ok_or_else(|| crate::Error::InvalidRecord {
             path: smol_str::SmolStr::new_static("$"),
-            reason: crate::text::expected_got("a JSON array of instruments", document.kind()),
+            reason: crate::implementer::expected_got(
+                "a JSON array of instruments",
+                document.kind(),
+            ),
         })?
         .into_owned();
-    crate::arrow::rows::reader(&ROW, rows, None, None, None)
+    crate::implementer::reader(&ROW, rows, None, None, None)
 }

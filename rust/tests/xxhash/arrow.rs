@@ -12,8 +12,8 @@ mod columns {
     use yggdryl::xxhash::arrow::{column_digests, row_digests};
     use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
     use yggdryl::{
-        DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, StructType, TimeUnit,
-        Timezone,
+        DataType, DataTypeId, Digest, DigestAlgorithm, Field, MarketDataKind, MarketDataType,
+        Scalar, Side, StructType, TimeInForce, TimeUnit, Timezone,
     };
 
     fn root(fields: impl IntoIterator<Item = Field>) -> Field {
@@ -345,7 +345,7 @@ mod columns {
                 ]),
             ),
             (
-                Field::new("side", DataType::side(), true),
+                Side::field("side"),
                 Scalar::from_sequence([Scalar::from("BUY"), Scalar::from("SELL"), Scalar::Null]),
             ),
             (
@@ -357,11 +357,11 @@ mod columns {
                 Scalar::from_sequence([Scalar::from("NEW"), Scalar::from("FILLED"), Scalar::Null]),
             ),
             (
-                Field::new("marketdatakind", DataType::marketdatakind(), true),
+                MarketDataKind::field("marketdatakind"),
                 Scalar::from_sequence([Scalar::from("ORDR"), Scalar::from("TRAD"), Scalar::Null]),
             ),
             (
-                Field::new("marketdatatype", DataType::marketdatatype(), true),
+                MarketDataType::field("marketdatatype"),
                 Scalar::from_sequence([
                     Scalar::from("ORDLIMIT"),
                     Scalar::from("TRDBLOCK"),
@@ -369,11 +369,11 @@ mod columns {
                 ]),
             ),
             (
-                Field::new("timeinforce", DataType::timeinforce(), true),
+                TimeInForce::field("timeinforce"),
                 Scalar::from_sequence([Scalar::from("0"), Scalar::from("6"), Scalar::Null]),
             ),
             (
-                Field::new("pluginside", DataType::side(), true),
+                Side::field("pluginside"),
                 Scalar::from_sequence([
                     Scalar::from("BUYS"),
                     Scalar::from("sell-side"),

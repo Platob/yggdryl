@@ -13,7 +13,7 @@ use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::{
     ArrowCastOptions, DataType, DataTypeKind, DigestAlgorithm, Field, MARKETDATAKIND_KIND,
-    MarketDataKind, MarketSerie, Scalar, Serie,
+    MarketDataKind, MarketSerie, MarketType, Scalar, Serie,
 };
 
 fn strict() -> ArrowCastOptions {
@@ -103,7 +103,7 @@ fn the_retired_spelling_unkn_names_no_kind() {
         MarketDataKind::Unknown
     );
     assert!(
-        DataType::marketdatakind()
+        MarketDataKind::dtype()
             .scalar(Scalar::from("UNKN"))
             .is_err()
     );
@@ -313,64 +313,95 @@ fn a_kind_answers_its_code_in_any_case_and_its_folded_word() {
     assert_eq!(MarketDataKind::EXTENSION_NAME, "yggdryl.marketdatakind");
 }
 
+/// A kind states its own datatype and a nullable field of it - inherent items
+/// of the enum, where `DataType` once held a constructor per kind - and both
+/// are the descriptor's own, so a crate declaring a kind gets the same pair.
+#[test]
+fn a_kind_states_its_own_datatype_and_a_nullable_field_of_it() {
+    let dtype = MarketDataKind::dtype();
+    assert_eq!(
+        dtype,
+        DataType::Market(MarketType::new(&MARKETDATAKIND_KIND))
+    );
+    assert_eq!(dtype, MARKETDATAKIND_KIND.dtype());
+    assert_eq!(dtype, DataType::from_str("marketdatakind").unwrap());
+    assert_eq!(dtype.id(), MarketDataKind::ID);
+    assert_eq!(dtype.to_string(), "marketdatakind");
+    assert!(dtype.is_enum());
+
+    let field = MarketDataKind::field("marketdatakind");
+    assert_eq!(field.name(), "marketdatakind");
+    assert!(field.is_nullable(), "a kind's field is nullable");
+    assert_eq!(field.dtype(), &dtype);
+    assert_eq!(field, MARKETDATAKIND_KIND.field("marketdatakind", true));
+    // Any text names it; nullability is the field's, so the required one is
+    // the descriptor's alone.
+    assert_eq!(
+        MarketDataKind::field(String::from("a marketdatakind")).name(),
+        "a marketdatakind"
+    );
+    assert!(
+        !MARKETDATAKIND_KIND
+            .field("marketdatakind", false)
+            .is_nullable()
+    );
+}
+
 #[test]
 fn a_kind_is_a_datatype_of_the_enum_family() {
-    assert_eq!(DataType::marketdatakind().id(), MarketDataKind::ID);
+    assert_eq!(MarketDataKind::dtype().id(), MarketDataKind::ID);
     assert_eq!(MarketDataKind::ID.as_u8(), 0xc2);
     assert_eq!(MarketDataKind::ID.as_str(), "marketdatakind");
     assert_eq!(MarketDataKind::ID.kind(), DataTypeKind::Enum);
     assert!(DataTypeKind::Enum.contains(MarketDataKind::ID));
-    assert!(DataType::marketdatakind().is_enum());
-    assert!(!DataType::marketdatakind().is_code());
-    assert!(!DataType::marketdatakind().is_string());
-    assert_eq!(DataType::marketdatakind().code_width(), None);
-    assert_eq!(DataType::marketdatakind().code_name(), None);
+    assert!(MarketDataKind::dtype().is_enum());
+    assert!(!MarketDataKind::dtype().is_code());
+    assert!(!MarketDataKind::dtype().is_string());
+    assert_eq!(MarketDataKind::dtype().code_width(), None);
+    assert_eq!(MarketDataKind::dtype().code_name(), None);
     assert_eq!(
         DataType::from_str("marketdatakind").unwrap(),
-        DataType::marketdatakind()
+        MarketDataKind::dtype()
     );
     assert_eq!(
         DataType::from_str("MarketDataKind").unwrap(),
-        DataType::marketdatakind()
+        MarketDataKind::dtype()
     );
-    assert_eq!(DataType::marketdatakind().to_string(), "marketdatakind");
-    assert_eq!(DataType::marketdatakind(), MARKETDATAKIND_KIND.dtype());
+    assert_eq!(MarketDataKind::dtype().to_string(), "marketdatakind");
+    assert_eq!(MarketDataKind::dtype(), MARKETDATAKIND_KIND.dtype());
     assert_eq!(
-        DataType::marketdatakind().default_value().unwrap(),
+        MarketDataKind::dtype().default_value().unwrap(),
         Scalar::from(MarketDataKind::Unknown)
     );
     assert!(
-        DataType::marketdatakind()
+        MarketDataKind::dtype()
             .is_default_value(&Scalar::from(MarketDataKind::Unknown))
             .unwrap()
     );
     assert!(
-        !DataType::marketdatakind()
+        !MarketDataKind::dtype()
             .is_default_value(&Scalar::from(MarketDataKind::Order))
             .unwrap()
     );
     // The datatype's own wire is the one spelling, and it round-trips.
-    let json = DataType::marketdatakind().into_json().unwrap();
+    let json = MarketDataKind::dtype().into_json().unwrap();
     assert_eq!(json, r#"{"type":"marketdatakind"}"#);
-    assert_eq!(
-        DataType::from_json(&json).unwrap(),
-        DataType::marketdatakind()
-    );
-    let rendered = serde_json::to_string(&DataType::marketdatakind()).unwrap();
+    assert_eq!(DataType::from_json(&json).unwrap(), MarketDataKind::dtype());
+    let rendered = serde_json::to_string(&MarketDataKind::dtype()).unwrap();
     assert_eq!(rendered, r#"{"type":"marketdatakind"}"#);
     assert_eq!(
         serde_json::from_str::<DataType>(&rendered).unwrap(),
-        DataType::marketdatakind()
+        MarketDataKind::dtype()
     );
     assert_eq!(
         DataType::from_logical_name("marketdatakind").unwrap(),
-        DataType::marketdatakind()
+        MarketDataKind::dtype()
     );
 }
 
 #[test]
 fn the_value_door_reads_a_member_a_code_and_a_spelling() {
-    let field = DataType::marketdatakind().required_field("marketdatakind");
+    let field = MarketDataKind::dtype().required_field("marketdatakind");
     let order = Scalar::from(MarketDataKind::Order);
     assert_eq!(field.scalar(order.clone()).unwrap(), order);
     assert_eq!(field.scalar(Scalar::from(10_i32)).unwrap(), order);
@@ -387,7 +418,7 @@ fn the_value_door_reads_a_member_a_code_and_a_spelling() {
             .is_err()
     );
     assert_eq!(order.as_str(), Some("ORDR"));
-    assert_eq!(order.dtype().unwrap(), DataType::marketdatakind());
+    assert_eq!(order.dtype().unwrap(), MarketDataKind::dtype());
     assert_eq!(order.id(), MarketDataKind::ID);
     assert_eq!(order.kind(), "marketdatakind");
     assert!(order.is_enum());
@@ -408,7 +439,7 @@ fn the_value_door_reads_a_member_a_code_and_a_spelling() {
 
 #[test]
 fn a_column_is_uint8_codes_under_the_marketdatakind_extension() {
-    let field = Field::new("marketdatakind", DataType::marketdatakind(), true);
+    let field = Field::new("marketdatakind", MarketDataKind::dtype(), true);
     let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &ArrowDataType::UInt8);
     assert_eq!(
@@ -470,7 +501,7 @@ fn a_column_is_uint8_codes_under_the_marketdatakind_extension() {
 
 #[test]
 fn integers_and_text_land_as_members_and_a_stranger_is_refused_by_row() {
-    let field = Field::new("marketdatakind", DataType::marketdatakind(), true);
+    let field = Field::new("marketdatakind", MarketDataKind::dtype(), true);
     let landed = Serie::from_arrow_array(
         Some(&field),
         Arc::new(Int64Array::from(vec![Some(10), None, Some(21)])) as ArrayRef,
@@ -503,7 +534,7 @@ fn integers_and_text_land_as_members_and_a_stranger_is_refused_by_row() {
     .unwrap();
     assert_eq!(safe.scalar(1).unwrap(), Scalar::Null);
 
-    let required = Field::new("marketdatakind", DataType::marketdatakind(), false);
+    let required = Field::new("marketdatakind", MarketDataKind::dtype(), false);
     let landed = Serie::from_arrow_array(
         Some(&required),
         Arc::new(StringArray::from(vec!["ORDR", "quotation", "exec"])) as ArrayRef,
@@ -628,8 +659,7 @@ fn a_kind_filters_and_casts_by_its_member_in_an_expression() {
     use yggdryl::expression::{Expression, Filter};
 
     let root = DataType::from(
-        yggdryl::StructType::from_fields([DataType::marketdatakind().nullable_field("kind")])
-            .unwrap(),
+        yggdryl::StructType::from_fields([MarketDataKind::dtype().nullable_field("kind")]).unwrap(),
     )
     .required_field("row");
     let members = [

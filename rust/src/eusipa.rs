@@ -182,7 +182,7 @@ impl Eusipa {
         if digits.len() != 4 || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
             return Err(refusal(format_smolstr!(
                 "expected a four-digit EUSIPA product category, got {:?}",
-                crate::text::elide_to(text, 64)
+                crate::implementer::elide_to(text, 64)
             )));
         }
         Self::new(

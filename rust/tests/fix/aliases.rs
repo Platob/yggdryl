@@ -3,11 +3,11 @@
 
 use std::sync::Arc;
 
-use yggdryl::{DataType, Field, FixRegistry, Scalar};
+use yggdryl::{DataType, Field, FixField, FixFieldMut, FixRegistry, Scalar};
 
 fn tagged(name: &str, tag: i32) -> Field {
     let mut field = DataType::utf8().nullable_field(name);
-    field.as_fix_mut().set_tag(tag).unwrap();
+    FixFieldMut::new(&mut field).set_tag(tag).unwrap();
     field
 }
 
@@ -42,10 +42,14 @@ fn every_combination_of_the_words_reaches_the_field() {
 #[test]
 fn a_held_name_wins_and_the_lookup_writes_nothing() {
     let mut offer = tagged("offerpx", 10_010);
-    offer.as_fix_mut().set_names(["deskoffer"]).unwrap();
+    FixFieldMut::new(&mut offer)
+        .set_names(["deskoffer"])
+        .unwrap();
     let occupied = tagged("askpx", 10_011);
     let mut alias_owner = tagged("deskprice", 10_012);
-    alias_owner.as_fix_mut().set_names(["Ask_Price"]).unwrap();
+    FixFieldMut::new(&mut alias_owner)
+        .set_names(["Ask_Price"])
+        .unwrap();
     let registry = FixRegistry::from_fields([offer, occupied, alias_owner]).unwrap();
     let hash = registry.stable_hash();
 
@@ -63,10 +67,7 @@ fn a_held_name_wins_and_the_lookup_writes_nothing() {
     // fields, so it reaches none.
     assert!(registry.get_field_by_name("offerprice").is_none());
     assert_eq!(
-        registry
-            .field(10_010)
-            .unwrap()
-            .as_fix()
+        FixField::new(registry.field(10_010).unwrap())
             .names()
             .collect::<Vec<_>>(),
         ["deskoffer"],

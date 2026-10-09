@@ -1072,7 +1072,17 @@ impl TextLines {
     }
 }
 
-pub(crate) fn parse_capture(
+/// Read one captured text under the datatype its capture was typed with:
+/// the string leaves as the text, a boolean, an `int64`, a `float64` and the
+/// temporal leaves through their own readers, an offset-free datetime as a
+/// wall clock in `timezone` where one is given, else the column's zone.
+///
+/// # Errors
+///
+/// Returns the refusal sentence - the inferred datatype and the bounded
+/// text - for a value that datatype does not read, and one naming a
+/// datatype no capture is typed with.
+pub fn parse_capture(
     value: &str,
     dtype: &DataType,
     timezone: Option<&Timezone>,

@@ -6,10 +6,10 @@
 
 | Key | Rule |
 | --- | --- |
-| Variants | `Order`, `Quote`, `Execution`, `OrderEvent`, `QuoteEvent`, `ExecutionEvent`, `TradeEvent`, `BookEvent` (boxed), `SnapshotEvent`, and `Fix` - a boxed [`FixMsg`](../fix/message.md) held whole ([below](#a-fix-message-held-whole)) - in `graph::market_data` |
+| Variants | `Order`, `Quote`, `Execution`, `OrderEvent`, `QuoteEvent`, `ExecutionEvent`, `TradeEvent`, `BookEvent` (boxed), `SnapshotEvent`, and `Fix` - a `Box<dyn MarketMessage>`, a [`FixMsg`](../fix/message.md) the one implementation, held whole ([below](#a-fix-message-held-whole)) - in `graph::market_data` |
 | `kind()` | the `MarketKind`, in `graph::kind`: `as_str` = `order`, `quote`, `execution`, `order_event`, `quote_event`, `execution_event`, `trade_event`, `book_event`, `snapshot_event`, `fix`; `read` = same (any case); `is_event` = one of the six dated leaves or a FIX message, echoed by the value's `is_event()` |
 | `marketdatakind()` | the [`MarketDataKind`](../types/enum/marketdatakind.md) the leaf stands under, `MarketKind::marketdatakind`: an order `ORDR` (`10`), a quote `QUOT` (`14`), an execution `EXEC` (`8`), a trade `TRAD` (`21`), a book and a snapshot control `BOOK` (`3`), a FIX message the category its dictionary files it under (`Market::marketdatakind` on the message); the first market column of the row, and what an operation's digest feeds, so the same facts as an order and as a quote are two operations |
-| Conversions | `From<leaf>` builds one from every leaf; `TryFrom<MarketData>` takes it back, else `InvalidRecord` at `$.kind` (names expected/found); `as_order()` ... `as_snapshot_event()` and `as_fix()` borrow a variant; `book()` = the [control](order.md#book-control) of an operation event or snapshot |
+| Conversions | `From<leaf>` builds one from every leaf; `TryFrom<MarketData>` takes it back, else `InvalidRecord` at `$.kind` (names expected/found); `as_order()` ... `as_snapshot_event()` borrow a variant and `as_message::<FixMsg>()` the message held whole as its own type; `book()` = the [control](order.md#book-control) of an operation event or snapshot |
 | Traits | `Element`/`Market` delegate to the leaf held, so a resolved boundary reads it generically |
 | Order, following, merging | `is_after` orders two dated values by instant, none if either undated; `with_previous`/`merge_with` are the leaf's own for one variant; an operation event also follows another kind via shared facts, keeping its own kind (an execution follows its filled order); a merge never crosses variants |
 | Bindings | Python `graph.MarketData(leaf)`, `MarketData.kinds`, `kind`, `marketdatakind` (the `yggdryl.MarketDataKind` member), `is_event`, `as_order_event()` and the rest, `as_fix()`, `into_leaf()`, a `FixMsg` taken and answered like any leaf; JavaScript `new graph.MarketData(leaf)`, `MarketData.kinds()`, `marketdatakind` (the member's name, `'ORDR'`), `isEvent`, `asOrderEvent()`, `asFix()`, `intoLeaf()`; `enums.MARKET_KINDS`/`enums.marketKinds` list the spellings |
@@ -75,7 +75,7 @@
 
 ### A FIX message held whole
 
-`MarketData::from(message)` holds a [`FixMsg`](../fix/message.md) as it is - its fields, its capture and every fact its dictionary reads - rather than the leaves it reports. It answers `Element`, `Event` and `Market` as the message does, its kind is `fix`, its `marketdatakind` the message's own, and it walks and merges as itself: an event walk follows it by its own identity, and a merge meets only another FIX message. Where a leaf is the only thing that can stand, it is split there: the Arrow writer and the [book fold](book.md#book-fold) take the leaves `FixMsg::into_market_data` answers - one per entry of a `W` or `X`, nothing for a trade or a batch, whose parse already split them off - so a row is always a leaf. `FixMsg::into_market_leaf` is the one leaf a message is, refused where it is not exactly one; `TryFrom<MarketData> for FixMsg` takes the message back.
+`MarketData::from(message)` holds a [`FixMsg`](../fix/message.md) as it is - its fields, its capture and every fact its dictionary reads - rather than the leaves it reports. It answers `Element`, `Event` and `Market` as the message does, its kind is `fix`, its `marketdatakind` the message's own, and it walks and merges as itself: an event walk follows it by its own identity, and a merge meets only another FIX message. Where a leaf is the only thing that can stand, it is split there: the Arrow writer and the [book fold](book.md#book-fold) take the leaves `FixMsg::into_market_data` answers - one per entry of a `W` or `X`, nothing for a trade or a batch, whose parse already split them off - so a row is always a leaf. `FixMsg::into_market_leaf` is the one leaf a message is, refused where it is not exactly one; `TryFrom<MarketData> for FixMsg` takes the message back. The message is held as a `MarketMessage`, the trait in `graph::market_data` that a message splitting into market leaves answers: `Event` and `Operation` with `Debug`, `Send` and `Sync`, the two conversions above, the boxed following, merging and restating arms the walk dispatches to, `stable_hash` and the object-safe twins `clone_box`, `dyn_eq`, `as_any` and `into_any` that give `MarketData` its `Clone` and `PartialEq`. `FixMsg` implements it, with the `From` and `TryFrom` above, in `fix/market.rs`, so the graph names no FIX type; `as_message::<T>()` downcasts to the implementation, and `MarketData` stays 912 bytes.
 
 === "Rust"
 
@@ -100,7 +100,7 @@
     assert_eq!(value.marketdatakind(), MarketDataKind::Book);
     assert!(value.is_event());
     assert_eq!(value.get_curruuid(), message.get_curruuid());
-    assert!(value.as_fix().is_some() && value.as_quote_event().is_none());
+    assert!(value.as_message::<FixMsg>().is_some() && value.as_quote_event().is_none());
 
     // Split where it is written: one row per book entry, each a quote.
     let rows = MarketData::arrow_reader([value.clone()], None, None)?

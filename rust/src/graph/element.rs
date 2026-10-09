@@ -359,7 +359,7 @@ pub trait Element {
 /// The facts an element takes from another statement of itself: the cross
 /// code it left out and the sources it did not name; whether any of them
 /// moved.
-pub(super) fn merge_element<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
+pub(crate) fn merge_element<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
     let mut changed = false;
     if this.get_crosscode().is_empty() && !other.get_crosscode().is_empty() {
         this.set_crosscode(other.get_crosscode().to_owned());
@@ -373,7 +373,7 @@ pub(super) fn merge_element<E: Element + ?Sized>(this: &mut E, other: &E) -> boo
 /// The element facts of two event statements, with the recording-selected
 /// reference leading conflicts and list order. An unstated fact on the
 /// reference is still filled by the other statement.
-pub(super) fn merge_event_element<E: Element + ?Sized>(
+pub(crate) fn merge_event_element<E: Element + ?Sized>(
     this: &mut E,
     other: &E,
     other_is_reference: bool,
@@ -483,7 +483,7 @@ fn union_sources<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
 /// two statements are one event and the chain grows by nothing. Its sources
 /// stay its own: where a statement was read from travels along no chain,
 /// so a twin keeps the line it came from and never the live one's.
-pub(super) fn restate_event<E: Event + ?Sized>(this: &mut E, live: &E) {
+pub(crate) fn restate_event<E: Event + ?Sized>(this: &mut E, live: &E) {
     follow_element(this, live);
     this.set_prevuuid(live.get_prevuuid());
     this.set_prevunix(live.get_prevunix());
@@ -495,7 +495,7 @@ pub(super) fn restate_event<E: Event + ?Sized>(this: &mut E, live: &E) {
 /// cross code where this one's differs, forced, because two elements of one
 /// chain share it, the cross codes brought in step, and the names the
 /// predecessor went by; whether any moved.
-pub(super) fn follow_element<E: Element + ?Sized>(this: &mut E, previous: &E) -> bool {
+pub(crate) fn follow_element<E: Element + ?Sized>(this: &mut E, previous: &E) -> bool {
     let mut changed = false;
     if !previous.get_crosscode().is_empty() && this.get_crosscode() != previous.get_crosscode() {
         this.set_crosscode(previous.get_crosscode().to_owned());
@@ -528,7 +528,7 @@ fn feed(state: &mut Xxh3, name: &str, bytes: &[u8]) {
 }
 
 /// Records `next` where it differs from `current`, answering whether it did.
-pub(super) fn moved<T: PartialEq>(current: T, next: T, set: impl FnOnce(T)) -> bool {
+pub(crate) fn moved<T: PartialEq>(current: T, next: T, set: impl FnOnce(T)) -> bool {
     if current == next {
         return false;
     }
@@ -548,7 +548,7 @@ fn coupled(unix: i64, hashcode: u64) -> Result<TxHash> {
 }
 
 /// The earlier of two optional instants, or whichever is stated.
-pub(super) fn earliest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
+pub(crate) fn earliest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
     match (left, right) {
         (Some(left), Some(right)) => Some(left.min(right)),
         (left, right) => left.or(right),
@@ -582,7 +582,7 @@ pub(crate) fn right_is_reference(
 /// Folds the per-event instant of two statements of the same event: the
 /// earliest recording either statement knows; whether it moved. It never
 /// folds between successive events in one lifecycle.
-pub(super) fn fold_event_instants<E: Event + ?Sized>(this: &mut E, other: &E) -> bool {
+pub(crate) fn fold_event_instants<E: Event + ?Sized>(this: &mut E, other: &E) -> bool {
     let recdunix = earliest(this.get_recdunix(), other.get_recdunix());
     moved(this.get_recdunix(), recdunix, |unix| {
         this.set_recdunix(unix)
@@ -590,7 +590,7 @@ pub(super) fn fold_event_instants<E: Event + ?Sized>(this: &mut E, other: &E) ->
 }
 
 /// The later of two optional instants, or whichever is stated.
-pub(super) fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
+pub(crate) fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
     match (left, right) {
         (Some(left), Some(right)) => Some(left.max(right)),
         (left, right) => left.or(right),
@@ -603,7 +603,7 @@ pub(super) fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
 /// later, and what any element takes from following - the cross code, the
 /// names it went by - with the lifecycle carried forward; whether any fact
 /// moved.
-pub(super) fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
+pub(crate) fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
     let mut changed = moved(this.get_prevuuid(), Some(previous.get_curruuid()), |uuid| {
         this.set_prevuuid(uuid)
     });
@@ -637,7 +637,7 @@ pub(super) fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
 /// instant and code, the higher place, the lifecycle folded,
 /// and the reference's predecessor and snapshot where stated, otherwise the
 /// other statement's; whether any moved.
-pub(super) fn merge_timed<E: Event>(this: &mut E, other: &E, other_is_reference: bool) -> bool {
+pub(crate) fn merge_timed<E: Event>(this: &mut E, other: &E, other_is_reference: bool) -> bool {
     let mut changed = fold_event_instants(this, other);
     if other_is_reference {
         changed |= moved(this.get_currunix(), other.get_currunix(), |unix| {
@@ -677,62 +677,6 @@ pub(super) fn merge_timed<E: Event>(this: &mut E, other: &E, other_is_reference:
     changed
 }
 
-/// Facts staged on the stack and written to a digest a chunk at a time.
-///
-/// A fact is four writes, and an element states dozens - its names, its
-/// market, a side's every live entry: staged, a digest costs a write per
-/// chunk instead, and the state reads the same bytes in the same order, so
-/// the code is the one [`feed`] answers.
-/// What is still staged is written when the stage is dropped.
-pub(super) struct Staged<'state> {
-    state: &'state mut Xxh3,
-    held: [u8; 512],
-    len: usize,
-}
-
-impl<'state> Staged<'state> {
-    pub(super) fn new(state: &'state mut Xxh3) -> Self {
-        Self {
-            state,
-            held: [0; 512],
-            len: 0,
-        }
-    }
-
-    /// [`feed`], staged.
-    pub(super) fn feed(&mut self, name: &str, bytes: &[u8]) {
-        self.write(name.as_bytes());
-        self.write(&[0]);
-        self.write(bytes);
-        self.write(&[0]);
-    }
-
-    pub(super) fn write(&mut self, bytes: &[u8]) {
-        if self.len + bytes.len() > self.held.len() {
-            self.flush();
-            if bytes.len() > self.held.len() {
-                self.state.write(bytes);
-                return;
-            }
-        }
-        self.held[self.len..self.len + bytes.len()].copy_from_slice(bytes);
-        self.len += bytes.len();
-    }
-
-    fn flush(&mut self) {
-        if self.len > 0 {
-            self.state.write(&self.held[..self.len]);
-            self.len = 0;
-        }
-    }
-}
-
-impl Drop for Staged<'_> {
-    fn drop(&mut self) {
-        self.flush();
-    }
-}
-
 /// Feeds what [`Event::digest_event`] feeds, less the cross code: its state
 /// and its predecessor's identity, for a holder - a FIX message - that feeds
 /// its own content behind them without duplicating the framing this digest
@@ -755,160 +699,6 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
     );
     if let Some(previous) = this.get_prevuuid() {
         feed(state, "prevuuid", &previous.into_bytes());
-    }
-}
-
-/// How many distinct contents one instant places inline before a run
-/// spills its codes into a map: a message and what its parse split off.
-const INLINE_PLACES: usize = 4;
-
-/// How many contents past the inline ones a run remembers: a run is the
-/// events of one nanosecond, so only a stream stamping thousands of events
-/// with one clock - every undated message under one default sending time -
-/// reaches it, and a content past it takes the next place without being
-/// remembered, a later statement of it taking a place of its own. One
-/// megabyte of held state at most.
-const SPILLED_PLACES: usize = 1 << 16;
-
-/// The place each event of a stream takes among the events of its instant,
-/// in the order the stream hands them over: the one rule [`Event::get_seqnum`]
-/// states, held once per stream by every door that places what it yields.
-///
-/// A run is the events a stream hands over at one `currunix`, one after
-/// another, and the next instant starts a run of its own at zero. A door
-/// places either by order - every event the next place of its run, which is
-/// what a parse hands over - or by content - the first content of a run
-/// place zero, each content after it the next, and a statement of a content
-/// the run already placed that content's place, which is what a walk reads,
-/// so two statements of one event are one identity. Its state is the one
-/// run it is in: the instant, how many it placed, the codes it placed by
-/// content - inline to [`INLINE_PLACES`], so a run of a message and its
-/// splits costs no allocation, and past them to [`SPILLED_PLACES`] in a
-/// map - and the identities its last [`INLINE_PLACES`] placings moved, so a
-/// message split off one, handed over right after it, names the identity
-/// its source was placed under.
-#[derive(Debug, Default)]
-pub(crate) struct InstantSequence {
-    /// The instant the current run stands at, none before the first event.
-    unix: Option<i64>,
-    /// How many places the current run has given.
-    placed: u64,
-    /// The first contents of the run, in place order.
-    inline: [u64; INLINE_PLACES],
-    /// The run's contents past the inline ones, each to its place.
-    spilled: std::collections::HashMap<u64, u64>,
-    /// Each identity the run's last placings moved, beside the one it moved
-    /// to, oldest first: at most [`INLINE_PLACES`], because a message a
-    /// parse split off another is handed over right after it, so held
-    /// inline and never allocated.
-    moved: [(Uuid, Uuid); INLINE_PLACES],
-    /// How many of `moved`, from the first, the current run holds.
-    moves: usize,
-}
-
-impl InstantSequence {
-    /// The place an event at `unix` takes after what this stream handed
-    /// over before it, counted into the run: by content `code` where one is
-    /// given - a content the run placed takes its place again - else by
-    /// order.
-    pub(crate) fn place(&mut self, unix: i64, code: Option<u64>) -> u64 {
-        let seqnum = self.find(unix, code);
-        self.record(unix, code, seqnum);
-        seqnum
-    }
-
-    /// Places `event` by order after what this stream handed over before
-    /// it - the next place of its instant's run - first naming each source a
-    /// placing of this run moved by the identity it moved to: a message a
-    /// parse split off another follows it at its instant, and names it.
-    pub(crate) fn place_naming_sources<E: Event + ?Sized>(&mut self, event: &mut E) {
-        let unix = event.get_currunix();
-        let moved = &self.moved[..self.moves];
-        if self.unix == Some(unix) && !moved.is_empty() {
-            let named = event.get_srcuuids();
-            if named
-                .iter()
-                .any(|source| moved.iter().any(|(from, _)| from == source))
-            {
-                // The newest move from a source is the one this message
-                // names: twins at one instant share one identity before
-                // their places, and each split message follows its own.
-                let renamed = named
-                    .iter()
-                    .map(|source| {
-                        moved
-                            .iter()
-                            .rev()
-                            .find(|(from, _)| from == source)
-                            .map_or(*source, |(_, to)| *to)
-                    })
-                    .collect();
-                event.set_srcuuids(renamed);
-            }
-        }
-        let seqnum = self.find(unix, None);
-        let before = event.get_curruuid();
-        restate(event, seqnum);
-        self.record(unix, None, seqnum);
-        let after = event.get_curruuid();
-        if after != before {
-            if self.moves == INLINE_PLACES {
-                self.moved.copy_within(1.., 0);
-                self.moves -= 1;
-            }
-            self.moved[self.moves] = (before, after);
-            self.moves += 1;
-        }
-    }
-
-    /// The place an event of content `code` takes at `unix`, counting
-    /// nothing: by content, the one its content already took in the run;
-    /// else the next.
-    fn find(&self, unix: i64, code: Option<u64>) -> u64 {
-        if self.unix != Some(unix) {
-            return 0;
-        }
-        let Some(code) = code else {
-            return self.placed;
-        };
-        let inline =
-            usize::try_from(self.placed).map_or(INLINE_PLACES, |placed| placed.min(INLINE_PLACES));
-        if let Some(at) = self.inline[..inline].iter().position(|held| *held == code) {
-            return at as u64;
-        }
-        self.spilled.get(&code).copied().unwrap_or(self.placed)
-    }
-
-    /// Counts an event placed at `seqnum` at `unix` into the run - its
-    /// content `code` where it was placed by content - a new instant
-    /// starting a run of its own.
-    fn record(&mut self, unix: i64, code: Option<u64>, seqnum: u64) {
-        if self.unix != Some(unix) {
-            self.unix = Some(unix);
-            self.placed = 0;
-            self.spilled.clear();
-            self.moves = 0;
-        }
-        if seqnum != self.placed {
-            return;
-        }
-        if let Some(code) = code {
-            match usize::try_from(seqnum) {
-                Ok(index) if index < INLINE_PLACES => self.inline[index] = code,
-                _ if self.spilled.len() < SPILLED_PLACES => {
-                    self.spilled.insert(code, seqnum);
-                }
-                _ => {}
-            }
-        }
-        self.placed = seqnum.saturating_add(1);
-    }
-}
-
-/// Restates `event`'s place where it moves.
-fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
-    if event.get_seqnum() != seqnum {
-        event.set_seqnum(seqnum);
     }
 }
 
@@ -1457,7 +1247,7 @@ pub trait Event: Element {
 }
 
 /// The fact the selected statement states, else the other's, else nothing.
-pub(super) fn stated<T>(this: Option<T>, other: Option<T>, later: bool) -> Option<T> {
+pub(crate) fn stated<T>(this: Option<T>, other: Option<T>, later: bool) -> Option<T> {
     if later {
         other.or(this)
     } else {
@@ -1475,7 +1265,7 @@ pub mod internals {
     /// content, or by order where `by_content` is false.
     #[must_use]
     pub fn instant_places(events: &[(i64, u64)], by_content: bool) -> Vec<u64> {
-        let mut sequence = super::InstantSequence::default();
+        let mut sequence = crate::implementer::InstantSequence::default();
         events
             .iter()
             .map(|&(unix, code)| sequence.place(unix, by_content.then_some(code)))

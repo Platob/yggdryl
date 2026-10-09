@@ -12,7 +12,7 @@ use super::path;
 use std::sync::Arc;
 
 use yggdryl::fix::FixCode;
-use yggdryl::{DataType, Field, FixCodec, FixMsg, FixRegistry, Scalar};
+use yggdryl::{DataType, Field, FixCodec, FixFieldMut, FixMsg, FixRegistry, Scalar};
 
 /// `LastQty(32)`, which `LastShares` also reaches, `Symbol(55)`, and
 /// `ExecBroker(76)`, which `ExecutingBroker` also reaches - all undated.
@@ -23,16 +23,15 @@ use yggdryl::{DataType, Field, FixCodec, FixMsg, FixRegistry, Scalar};
 /// restatement to it lands as a child like any other.
 fn undated_fields() -> Vec<Field> {
     let mut qty = DataType::DECIMAL.nullable_field("lastqty");
-    qty.as_fix_mut().set_tag(32).expect("a tag");
-    qty.as_fix_mut()
+    FixFieldMut::new(&mut qty).set_tag(32).expect("a tag");
+    FixFieldMut::new(&mut qty)
         .set_names(["LastShares"])
         .expect("an alias");
     let mut symbol = DataType::utf8().nullable_field("symbol");
-    symbol.as_fix_mut().set_tag(55).expect("a tag");
+    FixFieldMut::new(&mut symbol).set_tag(55).expect("a tag");
     let mut broker = DataType::utf8().nullable_field("execbroker");
-    broker.as_fix_mut().set_tag(76).expect("a tag");
-    broker
-        .as_fix_mut()
+    FixFieldMut::new(&mut broker).set_tag(76).expect("a tag");
+    FixFieldMut::new(&mut broker)
         .set_names(["ExecutingBroker"])
         .expect("an alias");
     vec![qty, symbol, broker]
@@ -198,11 +197,10 @@ fn a_child_the_registry_does_not_know_is_kept_exactly() {
 /// the crate's, so a registry holding the fields restates by it.
 fn ruled_registry() -> Arc<FixRegistry> {
     let mut rule80a = DataType::utf8().nullable_field("rule80a");
-    rule80a.as_fix_mut().set_tag(47).expect("a tag");
+    FixFieldMut::new(&mut rule80a).set_tag(47).expect("a tag");
     let mut capacity = DataType::utf8().nullable_field("ordercapacity");
-    capacity.as_fix_mut().set_tag(528).expect("a tag");
-    capacity
-        .as_fix_mut()
+    FixFieldMut::new(&mut capacity).set_tag(528).expect("a tag");
+    FixFieldMut::new(&mut capacity)
         .set_codeset("ordercapacitycodeset")
         .expect("the set it reads by");
     // The dictionary holds the members under that name, and states them

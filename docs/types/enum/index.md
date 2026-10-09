@@ -18,7 +18,7 @@ An enum is not a [code](../codes/index.md). A code is an identity over a publish
 | Identity | The extension *name*: `yggdryl.state` over `uint16` is a state, `yggdryl.side` over `uint8` a side, and the same integers under no name are the integers they are |
 | Intake | Any integer column - signed or unsigned, any width, nested as deep as it likes - casts into an enum column, each value read as a code and refused by name where it names no member; a text column is read as spellings |
 | Crossing | Rust holds the member; Python the member of an `enum.IntEnum` built from the core's table; JavaScript the member's name, beside a frozen object mapping every name to its code ([below](#enum-facts-in-the-bindings)) |
-| Rust only | `EnumValue`, the contract every enum answers - `ALL`, `type Repr` (`u8` or `u16`, the width a column stores), `code` (answering a `Repr`), `as_str`, `description`, `from_code`, `read`, `read_code`, and on each leaf its own `NAME` and `EXTENSION_NAME` consts; `Scalar::is_enum`, `enum_code`, `enum_name`; `MarketValue`, the owned narrowing a registered kind's member answers beside it |
+| Rust only | `EnumValue`, the contract every enum answers - `ALL`, `type Repr` (`u8` or `u16`, the width a column stores), `code` (answering a `Repr`), `as_str`, `description`, `from_code`, `read`, `read_code`, and on each leaf its own `NAME` and `EXTENSION_NAME` consts and, on a registered kind, its `dtype()` and nullable `field(name)`; `Scalar::is_enum`, `enum_code`, `enum_name`; `MarketValue`, the owned narrowing a registered kind's member answers beside it |
 
 ## Pages
 

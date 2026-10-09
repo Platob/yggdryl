@@ -15,6 +15,7 @@
 //! carried, and a wire re-emits from it in pre-order: an entry with a value
 //! is one pair, an entry without one is the pairs under it.
 
+use super::FixField;
 use smol_str::SmolStr;
 
 /// One field a message states, beside what is nested under it.
@@ -184,7 +185,7 @@ pub(super) fn wire_text_under(
         }
     }
     if matches!(value, crate::Scalar::DateTime64(_))
-        && field.as_fix().shape() == super::field::FixShape::TzTimeOnly
+        && FixField::new(field).shape() == super::field::FixShape::TzTimeOnly
     {
         let (count, unit, _) = value.as_datetime64()?;
         let nanos = count.checked_mul(nanos_per(unit)?)?;
@@ -197,7 +198,7 @@ pub(super) fn wire_text_under(
 pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
     use crate::Scalar;
     match value {
-        crate::string_scalars!(_) => value.as_str().map(SmolStr::new),
+        crate::implementer::string_scalars!(_) => value.as_str().map(SmolStr::new),
         coded if coded.is_code() => value.as_str().map(SmolStr::new),
         Scalar::Boolean(_) => value
             .as_bool()
@@ -211,7 +212,9 @@ pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
         | Scalar::SortedMap(_)
         | Scalar::Struct(_)
         | Scalar::Null => None,
-        crate::bytes_scalars!(held) => Some(SmolStr::new(String::from_utf8_lossy(held.as_bytes()))),
+        crate::implementer::bytes_scalars!(held) => {
+            Some(SmolStr::new(String::from_utf8_lossy(held.as_bytes())))
+        }
         Scalar::Version(held) => Some(smol_str::format_smolstr!("{held}")),
         Scalar::DateTime64(_) => {
             let (count, unit, _) = value.as_datetime64()?;
@@ -228,8 +231,7 @@ pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
         }
         // Every other number and duration writes its leaf's own canonical
         // text - a decimal the number it is, never the scale it is stored at.
-        other => other
-            .leaf_display()
+        other => crate::implementer::scalar_leaf_display(other)
             .map(|held| smol_str::format_smolstr!("{held}")),
     }
 }
@@ -253,7 +255,7 @@ const fn nanos_per(unit: crate::TimeUnit) -> Option<i64> {
 
 /// One day since the epoch as FIX spells it: `YYYYMMDD`.
 fn fix_date(days: i64) -> SmolStr {
-    let (year, month, day) = crate::timezone::civil_from_days(days);
+    let (year, month, day) = crate::implementer::civil_from_days(days);
     smol_str::format_smolstr!("{year:04}{month:02}{day:02}")
 }
 

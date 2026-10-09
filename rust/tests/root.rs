@@ -105,6 +105,8 @@ mod idkey;
 mod idsource;
 #[path = "root/idtype.rs"]
 mod idtype;
+#[path = "root/implementer.rs"]
+mod implementer;
 #[path = "root/int256.rs"]
 mod int256;
 #[path = "root/integer.rs"]

@@ -46,23 +46,23 @@ ever travels as `FixKey::Id` / `field_by_id`.
 
 ```rust
 use yggdryl::local::LocalFolder;
-use yggdryl::{DataType, FieldPath, FixId, FixKey, FixRegistry};
+use yggdryl::{DataType, FieldPath, FixField, FixId, FixKey, FixRegistry};
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?;
 
 assert_eq!(registry.field(55)?.name(), "symbol");
-assert_eq!(registry.field_by_name("Sym_Bol")?.as_fix().tag()?, Some(55));
+assert_eq!(FixField::new(registry.field_by_name("Sym_Bol")?).tag()?, Some(55));
 assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
 // The counter names the group it opens; a path reaches through the group.
 assert_eq!(registry.field_by_counter(453)?.name(), "parties");
-assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
+assert_eq!(FixField::new(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?).tag()?, Some(448));
 // A name reads four word pairs either way: offer/ask, size/qty, bid/demand, px/price.
-assert_eq!(registry.field_by_name("AskPrice")?.as_fix().tag()?, Some(133));
-assert_eq!(registry.field_by_name("DemandQty")?.as_fix().tag()?, Some(134));
+assert_eq!(FixField::new(registry.field_by_name("AskPrice")?).tag()?, Some(133));
+assert_eq!(FixField::new(registry.field_by_name("DemandQty")?).tag()?, Some(134));
 
 // The identity is the tag and the folded name; a bare integer is never one.
-let id = registry.field(55)?.as_fix().id()?.expect("a tagged field");
+let id = FixField::new(registry.field(55)?).id()?.expect("a tagged field");
 assert_eq!(id, FixId::of(55, "Symbol")?);
 assert_eq!(registry.field(FixKey::Id(id))?.name(), "symbol");
 assert!(registry.get_field(id.digest()).is_none());
@@ -77,29 +77,30 @@ assert_eq!(codes.code_value("Sell"), Some("2"));
 
 ## Put FIX facts on a field
 
-The `FIX:` vocabulary is metadata on an ordinary `Field`, read with `as_fix()`
-and written atomically with `as_fix_mut()`.
+The `FIX:` vocabulary is metadata on an ordinary `Field`, read through
+`FixField::new(&field)` and written atomically through
+`FixFieldMut::new(&mut field)`.
 
 ```rust
-use yggdryl::{DataType, FixId};
+use yggdryl::{DataType, FixField, FixFieldMut, FixId};
 
 let mut field = DataType::decimal128(20, 8)?.nullable_field("OrderQty");
-field.as_fix_mut().set_tag(38)?;
-field.as_fix_mut().set_names(["Qty", "Quantity"])?;
-field.as_fix_mut().set_sources(["Venue", "desk"])?;
+FixFieldMut::new(&mut field).set_tag(38)?;
+FixFieldMut::new(&mut field).set_names(["Qty", "Quantity"])?;
+FixFieldMut::new(&mut field).set_sources(["Venue", "desk"])?;
 
-assert_eq!(field.as_fix().tag()?, Some(38));
+assert_eq!(FixField::new(&field).tag()?, Some(38));
 assert_eq!(field.get_metadata("FIX:names"), Some("[\"Qty\",\"Quantity\"]"));
-assert_eq!(field.as_fix().sources().collect::<Vec<_>>(), ["desk", "venue"]);
+assert_eq!(FixField::new(&field).sources().collect::<Vec<_>>(), ["desk", "venue"]);
 assert_eq!(field.get_metadata("FIX:sources"), Some(r#"["desk","venue"]"#));
 // Derived on every read, never stored; a folded rename keeps it.
-assert_eq!(field.as_fix().id()?, Some(FixId::of(38, "order_qty")?));
+assert_eq!(FixField::new(&field).id()?, Some(FixId::of(38, "order_qty")?));
 assert!(!field.has_metadata("FIX:id"));
 
 // A refusal names the key and leaves the field unchanged.
-let error = field.as_fix_mut().set_tag(0).unwrap_err();
+let error = FixFieldMut::new(&mut field).set_tag(0).unwrap_err();
 assert!(error.to_string().contains("FIX:tag"), "{error}");
-assert_eq!(field.as_fix().tag()?, Some(38));
+assert_eq!(FixField::new(&field).tag()?, Some(38));
 ```
 
 ## Decode one captured line
@@ -212,11 +213,11 @@ identity again.
 use std::sync::Arc;
 
 use yggdryl::graph::Element;
-use yggdryl::{DataType, Field, FixMsg, FixRegistry, Scalar, StructType};
+use yggdryl::{DataType, Field, FixFieldMut, FixMsg, FixRegistry, Scalar, StructType};
 
 let tagged = |name: &str, tag: i32| -> yggdryl::Result<Field> {
     let mut field = DataType::utf8().nullable_field(name);
-    field.as_fix_mut().set_tag(tag)?;
+    FixFieldMut::new(&mut field).set_tag(tag)?;
     Ok(field)
 };
 let (msgtype, clordid, symbol) = (tagged("MsgType", 35)?, tagged("ClOrdID", 11)?, tagged("Symbol", 55)?);
@@ -687,7 +688,7 @@ back whole.
 
 ```rust
 use yggdryl::local::LocalFolder;
-use yggdryl::{DataType, FieldPath, FixCode, FixRegistry, IOBase, StructType};
+use yggdryl::{DataType, FieldPath, FixCode, FixField, FixFieldMut, FixRegistry, IOBase, StructType};
 
 let path = std::env::temp_dir().join(format!("ygg-skill-fix-store-{}", std::process::id()));
 let mut root = LocalFolder::new(&path)?;
@@ -695,26 +696,26 @@ let mut root = LocalFolder::new(&path)?;
 // The counter is a field of the dictionary; no component or message lists it
 // beside the group, whose length is its count.
 let mut count = DataType::Int32.nullable_field("NoPartyIDs");
-count.as_fix_mut().set_tag(453)?;
+FixFieldMut::new(&mut count).set_tag(453)?;
 let mut party_id = DataType::utf8().nullable_field("PartyID");
-party_id.as_fix_mut().set_tag(448)?;
+FixFieldMut::new(&mut party_id).set_tag(448)?;
 let mut registry = FixRegistry::from_fields([count, party_id])?;
 
 // A Struct files as a component, a Serie of one as a group.
 let mut member = registry.field(448)?.clone();
-member.as_fix_mut().set_field_ref("PartyID")?;
+FixFieldMut::new(&mut member).set_field_ref("PartyID")?;
 let party = DataType::from(StructType::from_fields([member])?).required_field("Party");
 registry.insert(party.clone())?;
 let mut parties = DataType::serie(party).nullable_field("Parties");
-parties.as_fix_mut().set_counter(453)?;
-parties.as_fix_mut().set_component("Party")?;
+FixFieldMut::new(&mut parties).set_counter(453)?;
+FixFieldMut::new(&mut parties).set_component("Party")?;
 registry.insert(parties)?;
 
 // The vocabulary first, then the field that reads by it.
 registry.set_codeset("sidecodeset", &[FixCode::new("Buy", "1"), FixCode::new("Sell", "2")])?;
 let mut side = DataType::utf8().nullable_field("Side");
-side.as_fix_mut().set_tag(54)?;
-side.as_fix_mut().set_codeset("sidecodeset")?;
+FixFieldMut::new(&mut side).set_tag(54)?;
+FixFieldMut::new(&mut side).set_codeset("sidecodeset")?;
 registry.insert(side)?;
 
 let report = registry.commit(&mut root)?;
@@ -722,7 +723,7 @@ assert!(!report.written.is_empty() && report.removed.is_empty());
 assert!(path.join("codesets/sidecodeset.json").is_file());
 let reloaded = FixRegistry::from_handle(&root)?;
 assert_eq!(reloaded, registry);
-assert_eq!(reloaded.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
+assert_eq!(FixField::new(reloaded.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?).tag()?, Some(448));
 root.remove(true)?;
 ```
 
@@ -753,7 +754,7 @@ the reader did instead.
 ```rust
 use yggdryl::holder::Holder;
 use yggdryl::local::LocalFile;
-use yggdryl::{FixRegistry, FixSource, Side};
+use yggdryl::{FixField, FixRegistry, FixSource, Side};
 
 let path = std::env::temp_dir().join(format!("ygg-skill-fix-cfb-{}", std::process::id()));
 std::fs::create_dir_all(&path)?;
@@ -768,7 +769,7 @@ std::fs::write(path.join("beta.cfb"), cblock("venue_buy"))?;
 std::fs::write(path.join("broken.cfb"), "<cplugin-configuration><vocabulary>")?;
 
 let (venue, roots) = FixRegistry::from_cfb_file(&LocalFile::new(path.join("alpha.cfb"))?, Some("venue"))?;
-assert_eq!(venue.field(4)?.as_fix().sources().collect::<Vec<_>>(), ["venue"]);
+assert_eq!(FixField::new(venue.field(4)?).sources().collect::<Vec<_>>(), ["venue"]);
 // The catalog records the source once: its file and its plugin's role.
 let entry = venue.get_source("venue").expect("the dialect's entry");
 assert_eq!((entry.file(), entry.pluginside()), (Some("alpha.cfb"), Side::Sell));
@@ -786,7 +787,7 @@ assert_eq!(merge.failed.len(), 1);
 assert!(merge.failed[0].source.as_deref().is_some_and(|url| url.ends_with("broken.cfb")));
 assert!(!merge.is_clean());
 // Ascending URL order, each file stamped with its stem.
-assert_eq!(registry.field(4)?.as_fix().sources().collect::<Vec<_>>(), ["alpha", "beta"]);
+assert_eq!(FixField::new(registry.field(4)?).sources().collect::<Vec<_>>(), ["alpha", "beta"]);
 assert_eq!(registry.sources().map(FixSource::id).collect::<Vec<_>>(), ["alpha", "beta"]);
 
 registry.merge_with(&venue)?;

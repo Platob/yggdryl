@@ -10,8 +10,8 @@ use smol_str::SmolStr;
 
 use super::{FxRates, Market};
 use crate::{
-    Ccy, Cfi, DataType, Decimal, Field, Isin, Mic, Result, Scalar, Side, StructType, TimeUnit,
-    Timezone, Unit,
+    Ccy, Cfi, DataType, Decimal, Field, Isin, MarketDataKind, MarketDataType, Mic, Result, Scalar,
+    Side, TimeUnit, Timezone, Unit,
 };
 use crate::{IdKey, IdType, Identifier, Identifiers};
 
@@ -285,8 +285,8 @@ impl MarketColumn {
     }
 
     /// The one datatype the column is built and read at: the
-    /// [`MarketDataKind`](crate::MarketDataKind) code for the category and the
-    /// [`MarketDataType`](crate::MarketDataType) code for the type, the crate's
+    /// [`MarketDataKind`] code for the category and the
+    /// [`MarketDataType`] code for the type, the crate's
     /// decimal for every price and quantity, each code's own leaf, the
     /// execution clock at nanoseconds UTC, a sorted
     /// `map<utf8, utf8>` for the identifiers and the metadata, a sorted
@@ -295,8 +295,8 @@ impl MarketColumn {
     #[must_use]
     pub fn datatype(self) -> DataType {
         match self {
-            Self::MarketDataKind => DataType::marketdatakind(),
-            Self::MarketDataType => DataType::marketdatatype(),
+            Self::MarketDataKind => MarketDataKind::dtype(),
+            Self::MarketDataType => MarketDataType::dtype(),
             Self::Price
             | Self::StopPx
             | Self::StrikePx
@@ -319,7 +319,7 @@ impl MarketColumn {
             | Self::AskQty => DataType::Decimal,
             Self::Currency | Self::OrigCcy | Self::BidCcy | Self::AskCcy => DataType::Ccy,
             Self::Unit => DataType::Unit,
-            Self::Side => DataType::side(),
+            Self::Side => Side::dtype(),
             Self::SecurityIds => Identifiers::dtype(),
             Self::IsinCode => DataType::Isin,
             Self::CfiCode => DataType::Cfi,
@@ -374,7 +374,7 @@ impl MarketColumn {
     pub fn of_name(name: &str) -> Option<Self> {
         Self::ALL
             .into_iter()
-            .find(|column| crate::folds_equal(column.name(), name))
+            .find(|column| crate::implementer::folds_equal(column.name(), name))
     }
 
     /// The column's cell for `element`: the fact it states, `None` where it
@@ -603,7 +603,7 @@ impl MarketColumn {
 /// The `fxrates` column's datatype: a sorted `map<ccy, decimal>`, its keys
 /// and its values required.
 fn fxrates_datatype() -> DataType {
-    let entries = StructType::from_unique_fields(vec![
+    let entries = crate::implementer::struct_type_from_unique_fields(vec![
         Field::new("key", DataType::Ccy, false),
         Field::new("value", DataType::Decimal, false),
     ]);

@@ -532,7 +532,7 @@ mod fix {
         assert_eq!(held.get_curruuid(), message.get_curruuid());
         assert_eq!(held.get_side(), Side::Buy);
         assert_eq!(held.get_price(), message.get_price());
-        assert_eq!(held.as_fix(), Some(&message));
+        assert_eq!(held.as_message::<FixMsg>(), Some(&message));
         assert_eq!(FixMsg::try_from(held).unwrap(), message);
     }
 
@@ -553,6 +553,76 @@ mod fix {
         assert_eq!(leaf.get_ordqty(), message.get_ordqty());
         assert_eq!(leaf.get_timeinforce(), message.get_timeinforce());
         assert_eq!(leaf.get_currunix(), message.get_currunix());
+    }
+
+    /// The variant holds the message as a trait object, two words wide, so
+    /// it adds nothing to the enum's size: `the_enum_is_the_size_of_its_widest_inline_leaf`
+    /// pins that size, with this variant among the ones it is held against.
+    #[test]
+    fn a_held_message_is_a_two_word_pointer() {
+        use std::mem::size_of;
+        use yggdryl::graph::market_data::MarketMessage;
+
+        assert_eq!(size_of::<Box<dyn MarketMessage>>(), 2 * size_of::<usize>());
+    }
+
+    /// The trait object owes the enum holding it a copy, an equality, a hash
+    /// and the way back to its own type; each is the message's own.
+    #[test]
+    fn a_held_message_clones_compares_hashes_and_downcasts_as_the_message_it_is() {
+        use yggdryl::graph::market_data::MarketMessage;
+
+        let mut parsed = messages(&ORDERS);
+        let second = parsed.remove(1);
+        let first = parsed.remove(0);
+        let held = MarketData::from(first.clone());
+        let other = MarketData::from(second.clone());
+
+        // A copy of the enum is a copy of the message, equal to it.
+        let copy = held.clone();
+        assert_eq!(copy, held);
+        assert_ne!(held, other);
+        assert_eq!(copy.as_message::<FixMsg>(), Some(&first));
+        assert_eq!(other.as_message::<FixMsg>(), Some(&second));
+
+        let (MarketData::Fix(boxed), MarketData::Fix(boxed_other)) = (held, other) else {
+            panic!("a message held whole");
+        };
+        let twin = boxed.clone_box();
+        assert!(boxed.dyn_eq(&*twin));
+        assert!(twin.dyn_eq(&*boxed));
+        assert!(!boxed.dyn_eq(&*boxed_other));
+        assert!(!boxed_other.dyn_eq(&*boxed));
+
+        // The hash is the message's own, so a copy hashes as the original and
+        // two different messages do not.
+        assert_eq!(MarketMessage::stable_hash(&*boxed), first.stable_hash());
+        assert_eq!(boxed.stable_hash(), twin.stable_hash());
+        assert_ne!(boxed.stable_hash(), boxed_other.stable_hash());
+
+        // The way back: borrowed, or owned, to the type it is and to no other.
+        assert_eq!(boxed.as_any().downcast_ref::<FixMsg>(), Some(&first));
+        assert!(boxed.as_any().downcast_ref::<String>().is_none());
+        let owned = boxed
+            .into_any()
+            .downcast::<FixMsg>()
+            .expect("the message itself");
+        assert_eq!(*owned, first);
+        assert!(boxed_other.into_any().downcast::<String>().is_err());
+    }
+
+    /// Only a held message lends a message: every leaf the enum holds lends
+    /// none, and the one it holds whole lends the type it is.
+    #[test]
+    fn only_a_held_message_lends_a_message() {
+        for value in super::one_of_every_leaf() {
+            assert_eq!(
+                value.as_message::<FixMsg>().is_some(),
+                value.kind() == MarketKind::Fix,
+                "{:?}",
+                value.kind()
+            );
+        }
     }
 
     #[test]

@@ -2167,7 +2167,7 @@ pub(crate) fn is_closing_or_separator(symbol: char) -> bool {
 /// symbolic name - so `UTCTimestamp`, `utc_timestamp`, `utc-timestamp` and
 /// `UTC TIMESTAMP` are one spelling everywhere rather than one spelling per
 /// layer.
-pub(crate) fn folded(value: &str) -> impl Iterator<Item = char> + '_ {
+pub fn folded(value: &str) -> impl Iterator<Item = char> + '_ {
     value
         .chars()
         .filter(|character| !matches!(character, '_' | '-' | ' '))
@@ -2189,7 +2189,7 @@ const fn is_dropped(byte: u8) -> bool {
 /// byte, so those walk the bytes directly. `char::to_lowercase` answers an
 /// iterator because one character can fold to several, which is real but rare
 /// enough that paying for it on every comparison would be the wrong trade.
-pub(crate) fn folds_equal(left: &str, right: &str) -> bool {
+pub fn folds_equal(left: &str, right: &str) -> bool {
     if left.is_ascii() && right.is_ascii() {
         let mut left = left.bytes().filter(|byte| !is_dropped(*byte));
         let mut right = right.bytes().filter(|byte| !is_dropped(*byte));
@@ -2218,7 +2218,7 @@ pub(crate) fn folds_equal(left: &str, right: &str) -> bool {
 /// any other is fed character by character, because one character can fold
 /// to several. The registry's own name key lowercases ASCII alone and is no
 /// substitute: `ÉTAT` and `état` are one fold and two of its keys.
-pub(crate) fn fold_digest(value: &str) -> u64 {
+pub fn fold_digest(value: &str) -> u64 {
     let mut state = crate::xxhash::Xxh64::new();
     if value.is_ascii() {
         let mut chunk = [0_u8; 64];
@@ -2241,7 +2241,9 @@ pub(crate) fn fold_digest(value: &str) -> u64 {
     state.as_u64()
 }
 
-pub(crate) fn normalized(value: &str) -> String {
+/// One spelling's [`folded`] form as an owned string: a keyword or a name
+/// folded once and then compared or looked up whole.
+pub fn normalized(value: &str) -> String {
     // Sized to the input once: a fold drops separators and lowercases the
     // rest, so the folded name is the input's length or near it.
     let mut name = String::with_capacity(value.len());

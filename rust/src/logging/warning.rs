@@ -30,10 +30,15 @@ static WARNINGS: Repeats = Repeats::new();
 /// How many warnings arrived for a key the full table could not count.
 static OVERFLOW: AtomicU64 = AtomicU64::new(0);
 
-/// The key one warning is deduplicated under.
+/// The key one warning is deduplicated under: the logger name its site
+/// carries - so `yggdryl_fix::market` and `yggdryl::fix::market` are one
+/// site, as their records are one logger - then what went wrong and its
+/// subject.
 fn key(site: &str, what: &str, subject: &str) -> u64 {
     let mut state = Xxh3::new();
-    for part in [site, what, subject] {
+    super::facade::write_logger_name(site, &mut state);
+    state.write(&[0]);
+    for part in [what, subject] {
         state.write(part.as_bytes());
         state.write(&[0]);
     }
@@ -47,7 +52,7 @@ fn key(site: &str, what: &str, subject: &str) -> u64 {
 ///
 /// `what` and `subject` are the key and must not hold the value or the row,
 /// or every row would be its own warning.
-pub(crate) fn warn(
+pub fn warn(
     site: &'static str,
     file: &'static str,
     line: u32,
@@ -106,9 +111,15 @@ fn said(site: &'static str, file: &'static str, line: u32, message: std::fmt::Ar
 
 /// [`warn`] at the calling module: `warned!(what, subject, "format", args..)`,
 /// the format built only the first time the key is seen.
+///
+/// Exported for the crates this core is split into, which warn through it:
+/// its expansion names [`warn`] through [`crate::implementer`], so it
+/// reaches nothing crate-private from the crate that invokes it.
+#[macro_export]
+#[doc(hidden)]
 macro_rules! warned {
     ($what:expr, $subject:expr, $($format:tt)+) => {
-        $crate::logging::warning::warn(
+        $crate::implementer::warn(
             module_path!(),
             file!(),
             line!(),
@@ -118,7 +129,6 @@ macro_rules! warned {
         )
     };
 }
-pub(crate) use warned;
 
 #[cfg(feature = "internals")]
 #[doc(hidden)]
@@ -131,7 +141,8 @@ pub mod internals {
     }
 
     /// How many times the warning `what` about `subject` was raised at
-    /// `site` - a module path, such as `yggdryl::graph::book` - `0` for
+    /// `site` - a module path, such as `yggdryl::graph::book`, under
+    /// whichever of the workspace's crates holds the module - `0` for
     /// one never raised.
     #[must_use]
     pub fn count(site: &str, what: &str, subject: &str) -> u64 {

@@ -83,8 +83,8 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::graph::iterator::order;
 use crate::graph::{Element, Event, EventIterator, Market};
+use crate::implementer::warned;
 use crate::isin_registry::{EconomicMemo, IsinTable, warn_full};
-use crate::logging::warning::warned;
 use crate::{Error, IsinRegistry, Result, Scalar, Side, State, Uuid};
 
 use super::msg::{FixMsg, Viewed};
@@ -253,7 +253,7 @@ fn delivery_key(message: &FixMsg) -> DeliveryKey {
     let replay = header.possdupflag() == Some(true)
         || message
             .get_by_tag(97)
-            .is_some_and(|value| crate::boolean::bool_of(&value) == Some(true));
+            .is_some_and(|value| crate::implementer::bool_of(&value) == Some(true));
     let sending_time = if header.stated_sendingtime() {
         header.sendingtime()
     } else {
@@ -324,7 +324,7 @@ struct SessionEventObservations {
 /// Latest recording first; the event instant breaks absent/equal recording
 /// ties exactly as the graph's reference selection does.
 fn reference_order(left: &FixMsg, right: &FixMsg) -> Ordering {
-    let right_leads = crate::graph::element::right_is_reference(
+    let right_leads = crate::implementer::right_is_reference(
         left.get_recdunix(),
         left.get_currunix(),
         right.get_recdunix(),
@@ -333,7 +333,7 @@ fn reference_order(left: &FixMsg, right: &FixMsg) -> Ordering {
     if right_leads {
         return Ordering::Greater;
     }
-    let left_leads = crate::graph::element::right_is_reference(
+    let left_leads = crate::implementer::right_is_reference(
         right.get_recdunix(),
         right.get_currunix(),
         left.get_recdunix(),

@@ -3,6 +3,7 @@
 
 use super::committed_registry;
 use super::fixed_codec;
+use yggdryl::FixField;
 
 mod categories {
     use std::sync::Arc;
@@ -67,6 +68,7 @@ mod categories {
 }
 
 mod table {
+    use yggdryl::FixField;
     use yggdryl::graph::{ElementColumn, EventColumn, MarketColumn, OperationColumn};
 
     /// Every graph element and event column has a crate definition, and
@@ -101,8 +103,7 @@ mod table {
                 Some(display),
                 "{name} displays as the column does"
             );
-            let tag = field
-                .as_fix()
+            let tag = FixField::new(field)
                 .tag()
                 .expect("a tag reading")
                 .expect("a stated tag");
@@ -142,7 +143,7 @@ mod table {
                         &dtype,
                         "{name} is read at the column's datatype"
                     );
-                    let tag = field.as_fix().tag().unwrap().unwrap();
+                    let tag = FixField::new(field).tag().unwrap().unwrap();
                     assert_eq!(
                         registry.get_field_by_tag(tag).is_none()
                             && registry.get_field_by_counter(tag).is_none(),
@@ -156,7 +157,7 @@ mod table {
                 [] => {
                     assert!(
                         registry.get_field_by_name(name).is_some_and(|field| {
-                            !yggdryl::is_crate_tag(field.as_fix().tag().unwrap().unwrap())
+                            !yggdryl::is_crate_tag(FixField::new(field).tag().unwrap().unwrap())
                         }),
                         "{name} is a dictionary field"
                     )
@@ -192,11 +193,9 @@ mod table {
         // reaches the dictionary's field, not the derived column.
         for (spelled, tag) in [("askpx", 133), ("bidqty", 134), ("askqty", 135)] {
             assert_eq!(
-                registry.get_field_by_name(spelled).and_then(|field| field
-                    .as_fix()
-                    .tag()
-                    .ok()
-                    .flatten()),
+                registry
+                    .get_field_by_name(spelled)
+                    .and_then(|field| FixField::new(field).tag().ok().flatten()),
                 Some(tag),
                 "{spelled}"
             );
@@ -715,7 +714,7 @@ fn the_currency_pair_is_an_instrument_field_after_the_isin() {
     assert!(pair.is_nullable());
     assert_eq!(yggdryl::FOREXCODE_TAG_NAME, (65_049, "forexcode"));
     assert_eq!(
-        pair.as_fix().tag().expect("a tag reading"),
+        FixField::new(pair).tag().expect("a tag reading"),
         Some(yggdryl::FOREXCODE_TAG_NAME.0)
     );
 }
@@ -740,7 +739,7 @@ fn strikepx_is_a_derived_market_column_beside_the_dictionarys_strikeprice() {
         .expect("the crate's strike column");
     assert_eq!(yggdryl::STRIKEPX_TAG_NAME, (65_036, "strikepx"));
     assert_eq!(
-        strike.as_fix().tag().expect("a tag reading"),
+        FixField::new(strike).tag().expect("a tag reading"),
         Some(yggdryl::STRIKEPX_TAG_NAME.0)
     );
     assert!(yggdryl::is_derived_tag(yggdryl::STRIKEPX_TAG_NAME.0));
@@ -777,7 +776,7 @@ fn strikepx_is_a_derived_market_column_beside_the_dictionarys_strikeprice() {
     assert_eq!(
         registry
             .get_field_by_name("strikepx")
-            .map(|field| field.as_fix().tag().expect("a tag reading")),
+            .map(|field| FixField::new(field).tag().expect("a tag reading")),
         Some(Some(202))
     );
     let codec = fixed_codec(Arc::clone(&registry));
@@ -897,7 +896,7 @@ fn origccy_is_a_held_market_column_after_the_currency() {
         .position(|field| field.name() == "origccy")
         .expect("the crate's origin column");
     let origin = &held[at];
-    assert_eq!(origin.as_fix().tag().unwrap(), Some(65_018));
+    assert_eq!(FixField::new(origin).tag().unwrap(), Some(65_018));
     assert_eq!(held[at - 1].name(), "marketdatatype");
     assert_eq!(held[at + 1].name(), "hiddenqty");
     assert_eq!(yggdryl::HIDDENQTY_TAG_NAME, (65_019, "hiddenqty"));
@@ -972,7 +971,7 @@ fn origccy_is_a_held_market_column_after_the_currency() {
 /// no FIX tag is read into - the codec stamps it from its source.
 #[test]
 fn the_plugin_side_is_a_required_crate_field_after_the_plugin_id_reading_the_intrinsic_set() {
-    use yggdryl::{DataType, Scalar, Side};
+    use yggdryl::{Scalar, Side};
 
     assert_eq!(yggdryl::MSGPLUGINSIDE_TAG_NAME, (65_043, "msgpluginside"));
     assert_eq!(yggdryl::MSGPLUGINID_TAG_NAME, (65_042, "msgpluginid"));
@@ -991,11 +990,11 @@ fn the_plugin_side_is_a_required_crate_field_after_the_plugin_id_reading_the_int
     assert_eq!(held[at - 1].name(), "msgpluginid");
     assert_eq!(held[at + 1].name(), "msgoriginator");
     let field = &held[at];
-    assert_eq!(field.dtype(), &DataType::side());
+    assert_eq!(field.dtype(), &Side::dtype());
     assert!(!field.is_nullable(), "every row states it");
     assert_eq!(field.display(), Some("Message Plugin Side"));
-    assert_eq!(field.as_fix().codeset(), Some("msgpluginsidecodeset"));
-    assert_eq!(field.as_fix().tag().unwrap(), Some(65_043));
+    assert_eq!(FixField::new(field).codeset(), Some("msgpluginsidecodeset"));
+    assert_eq!(FixField::new(field).tag().unwrap(), Some(65_043));
     assert!(
         field
             .description()
@@ -1018,7 +1017,7 @@ fn the_plugin_side_is_a_required_crate_field_after_the_plugin_id_reading_the_int
     assert_eq!(columns[column - 1], "msgpluginid");
     assert_eq!(columns[column + 1], "msgoriginator");
     assert!(!schema.fields()[column].is_nullable());
-    assert_eq!(schema.fields()[column].dtype(), &DataType::side());
+    assert_eq!(schema.fields()[column].dtype(), &Side::dtype());
     let tags = yggdryl::fix_schema_tags();
     let tag = tags.iter().position(|tag| *tag == 65_043).expect("the tag");
     assert_eq!(tags[tag - 1], 65_042);

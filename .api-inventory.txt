@@ -298,7 +298,6 @@ pub trait MarketValue: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Ha
   const KIND: &'static MarketDescriptor
   fn into_scalar(self) -> Scalar
   fn from_scalar(value: &Scalar) -> Option<Self>  (owned; None for a scalar of any other kind)
-  fn dtype() -> DataType  (provided: KIND.dtype())
 pub fn claim(kind: &'static MarketDescriptor, by: &'static str) -> Result<()>  (the byte, the name and the extension name, each once for the life of the process; Error::Conflict naming the first claimant, Error::InvalidDataType for a byte outside the Enum range, a family's own number, the retired 0xc6, a byte a core leaf holds - State's 0xc1 - a claim by anyone but the core stating anything but the reserved (value_rank, dtype_rank, shape), no member, members out of code order or a Code8 member above 255, a name not in its folded spelling or one the datatype grammar already reads, or an extension name the core recognizes)
 pub fn kind_of(id: DataTypeId) -> Option<&'static MarketDescriptor>  (one read of a table by byte, what the value stream and the Arrow, serde and grammar doors ask at intake; a cell reader takes the kind off its field's datatype and asks nothing)
 pub fn kind_named(name: &str) -> Option<&'static MarketDescriptor>
@@ -315,6 +314,113 @@ pub struct Register<K, V>  (a keyed claim-once register over one RwLock around a
   pub fn values(&self) -> Vec<V>  (every claimed value, in key order)
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool
+
+### yggdryl::implementer  [rust/src/implementer.rs]  (the one public door the workspace's own crates reach the core's crate-private items through - the market crate, the FIX crate and, from the media slice, the media crates; no API for a caller outside the workspace, `pub mod` at the crate root, every item documented with what it forwards and for whom. Sections: both crates, market, FIX, and what the media folders share with them. Each item takes one route: a `pub use` of an item raised to `pub` inside a module the crate root does not publish; an `#[inline]` forwarder for an item of a published module (a crate-private associated item a free function taking its receiver first); a definition moved here, `InstantSequence` and `Staged`; an exported `#[doc(hidden)]` macro whose expansion names `$crate::implementer::..`. `Proof::Proven` never crosses: `land_unproven_batch` reads every leaf its layout does not prove)
+  (Both crates: what the market crate and the FIX crate each reach)
+pub fn bool_of(value: &Scalar) -> Option<bool>  (`boolean::bool_of`, for the market and FIX crates: a boolean as itself, a string leaf read through the one boolean table, anything else `None`)
+pub fn folded_spelling(spelling: &str) -> SmolStr  (`code::folded_spelling`, for the market and FIX crates: one spelling folded the way every name in the crate folds)
+pub fn is_null_like(text: &str) -> bool  (`code::is_null_like`, for the market and FIX crates: whether `text` is a spelling that states no value (`null`, `none`, `n/a`, the empty text))
+pub fn right_is_reference(left_recdunix: Option<i64>, left_currunix: i64, right_recdunix: Option<i64>, right_currunix: i64) -> bool  (`graph::element::right_is_reference`, for the market and FIX crates: whether the right of two statements of one event is the reference, by their recording clocks, then their instants)
+pub use parser::folds_equal  (The crate's one fold, for the market and FIX crates: whether two spellings are one name)
+pub use path::{Path, Segment}  (The allocation-free value path every recursive walk reports a failure under, for the market and FIX crates)
+pub use logging::warning::warn  (The deduplicated data warning, for the market and FIX crates: [`warn`] is what the exported `warned!` expands to)
+pub use warned  (`warned!(what, subject, "format", args..)`: one deduplicated warning at the calling module, for the market and FIX crates)
+pub fn isin_from_proven(text: &str) -> Isin  (`Isin::from_proven`, for the market and FIX crates: a number a landed `isin` column holds, adopted as it stands)
+pub fn mic_from_market(text: &str) -> Option<Mic>  (`Mic::from_market`, for the market and FIX crates: the market `text` names, an ISO 10383 MIC as it is, else the one a Reuters exchange mnemonic resolves to)
+pub fn scalar_try_build_sequence(len: usize, build: impl FnOnce(&mut [Scalar]) -> Result<()>) -> Result<Scalar>  (`Scalar::try_build_sequence`, for the market and FIX crates: a known-width sequence built in place, the whole run at once)
+pub fn struct_type_from_unique_fields(fields: Vec<Field>) -> StructType  (`StructType::from_unique_fields`, for the market and FIX crates: the struct over children each valid and named once by construction, checked by nothing but a debug assertion)
+pub struct InstantSequence  (The place each event of a stream takes among the events of its instant, in the order the stream hands them over: the one rule [`Event::get_seqnum`] states, held once per stream by every door that places what it yields - the market crate's walk and the FIX crate's parse doors)
+  pub fn place(&mut self, unix: i64, code: Option<u64>) -> u64  (The place an event at `unix` takes after what this stream handed over before it, counted into the run: by content `code` where one is given - a content the run placed takes its place again - else by order)
+  pub fn place_naming_sources<E: Event + ?Sized>(&mut self, event: &mut E)  (Places `event` by order after what this stream handed over before it - the next place of its instant's run - first naming each source a placing of this run moved by the identity it moved to: a message a parse split off another follows it at its instant, and names it)
+  (Market: what the market crate alone reaches)
+pub use arrow::rows::{DEFAULT_BATCH_ROW_SIZE, reader}  (The row-to-batch reader's default rows per batch and its reader over native rows, for the market crate)
+pub const ROW_OVERHEAD: usize  (`arrow::size::ROW_OVERHEAD`, for the market crate: the bytes every row costs before its payload, as the memory estimator charges it)
+pub const BBG_WIDTH: usize  (`bbg::BBG_WIDTH`, for the market crate: the most bytes a Bloomberg identifier may be)
+pub const CCY_WIDTH: usize  (`ccy::CCY_WIDTH`, for the market crate: the most bytes a currency code may be)
+pub const DTI_WIDTH: usize  (`dti::DTI_WIDTH`, for the market crate: the exact width of a digital token identifier)
+pub const ELF_WIDTH: usize  (`elf::ELF_WIDTH`, for the market crate: the exact width of an entity legal form code)
+pub const FISN_WIDTH: usize  (`fisn::FISN_WIDTH`, for the market crate: the most bytes a financial instrument short name may be)
+pub const LEI_WIDTH: usize  (`lei::LEI_WIDTH`, for the market crate: the exact width of a legal entity identifier)
+pub const RIC_WIDTH: usize  (`ric::RIC_WIDTH`, for the market crate: the most bytes a Reuters instrument code may be)
+pub fn similarity(left: &str, right: &str) -> f64  (`fisn::similarity`, for the market crate: how alike two short names are, `1` where both are empty)
+pub fn below_threshold(left: usize, right: usize, threshold: f64) -> bool  (`fisn::below_threshold`, for the market crate: whether two texts of `left` and `right` bytes cannot be `threshold` similar, by their lengths alone)
+pub fn canonicalize_uuids(values: &mut Vec<Uuid>)  (`graph::element::canonicalize_uuids`, for the market crate: an owned UUID list sorted and deduplicated in its own buffer)
+pub fn crosshash(crosscode: &str) -> u64  (`graph::element::crosshash`, for the market crate: the XXH3-64 digest of one cross code's bytes)
+pub fn merge_element<E: Element + ?Sized>(this: &mut E, other: &E) -> bool  (`graph::element::merge_element`, for the market crate: the facts an element takes from another statement of itself; whether any moved)
+pub fn merge_event_element<E: Element + ?Sized>(this: &mut E, other: &E, other_is_reference: bool) -> bool  (`graph::element::merge_event_element`, for the market crate: the element facts of two event statements, the reference leading; whether any moved)
+pub fn restate_event<E: Event + ?Sized>(this: &mut E, live: &E)  (`graph::element::restate_event`, for the market crate: the facts an event takes from restating `live`, another statement of the same event)
+pub fn follow_element<E: Element + ?Sized>(this: &mut E, previous: &E) -> bool  (`graph::element::follow_element`, for the market crate: the facts an element takes from following `previous`; whether any moved)
+pub fn moved<T: PartialEq>(current: T, next: T, set: impl FnOnce(T)) -> bool  (`graph::element::moved`, for the market crate: records `next` through `set` where it differs from `current`, answering whether it did)
+pub fn earliest(left: Option<i64>, right: Option<i64>) -> Option<i64>  (`graph::element::earliest`, for the market crate: the earlier of two optional instants, or whichever is stated)
+pub fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64>  (`graph::element::latest`, for the market crate: the later of two optional instants, or whichever is stated)
+pub fn fold_event_instants<E: Event + ?Sized>(this: &mut E, other: &E) -> bool  (`graph::element::fold_event_instants`, for the market crate: the earliest recording two statements of one event know; whether it moved)
+pub fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool  (`graph::element::follow_timed`, for the market crate: the timed facts an event takes from following `previous`; whether any moved)
+pub fn merge_timed<E: Event>(this: &mut E, other: &E, other_is_reference: bool) -> bool  (`graph::element::merge_timed`, for the market crate: the timed facts an event takes from another statement of itself; whether any moved)
+pub fn stated<T>(this: Option<T>, other: Option<T>, later: bool) -> Option<T>  (`graph::element::stated`, for the market crate: the fact the selected statement states, else the other's, else nothing)
+pub struct Staged<'state>  (Facts staged on the stack and written to a digest a chunk at a time, for the market crate's operation, book and market digests)
+  pub fn new(state: &'state mut Xxh3) -> Self  (A stage over `state`, nothing staged yet)
+  pub fn feed(&mut self, name: &str, bytes: &[u8])  (One named fact, staged: the name, the bytes, each closed by a byte no name or value holds, so two facts never read as one)
+  pub fn write(&mut self, bytes: &[u8])  (Raw bytes, staged: a run longer than the stage is written through)
+pub use iomedia::arrow_serie  (A stream of batches as the serie it is, for the market crate's registry store)
+pub fn locate<H: IOBase + ?Sized>(handle: &H) -> Result<Option<Box<dyn crate::media::LocatedTable>>>  (`media::format::locate`, for the market crate's registry store: the table a container handle addresses, if any claimed format locates one)
+pub fn record_parts(folder: &(impl IOBase + ?Sized), encoding: MimeType) -> Result<Listing>  (`media::partition::record_parts`, for the market crate's registry store: the leaves beneath `folder` that hold `encoding`)
+pub use text::arrow::parse_capture  (One captured text read under the datatype its capture was typed with, for the market crate's book service)
+pub use enum_leaf  (The enum leaf builder, for the market crate's kinds: `enum_leaf!` writes a kind's enum, its descriptor and its typed value)
+pub use enums::patterns::Patterns  (The spelling patterns an `enum_leaf!` kind reads a member's words by, for the macro's expansion in the market crate)
+pub use define_field_types  (The field marker builder, for the market crate's kinds: `define_field_types!` writes a kind's marker and field alias)
+pub fn adopt_market_code(kind: &'static MarketDescriptor, code: u16) -> Scalar  (`MarketDescriptor::adopt_code`, for the market crate's kinds: a member's own code adopted as the value it is, unread - what an `enum_leaf!` kind's typed member crosses into a scalar through)
+pub fn cfi_from_proven(text: &str) -> Cfi  (`Cfi::from_proven`, for the market crate's registry: a code a landed `cfi` column holds, adopted as it stands)
+pub fn mic_from_proven(text: &str) -> Mic  (`Mic::from_proven`, for the market crate's registry: a code a landed `mic` column holds, adopted as it stands)
+  (FIX: what the FIX crate alone reaches)
+pub use arrow::rows::{Closing, canonical_closing_reader}  (The row-to-batch reader over rows the producer proved canonical and cuts itself, and the row it reads beside its cut, for the FIX crate's batch reader)
+pub fn datetime64_from_fix_text(text: &str, naive: Timezone) -> Result<DateTime64>  (`DateTime64::from_fix_text`, for the FIX crate: a datetime as FIX spells one, a zoneless reading a wall clock in `naive`)
+pub fn datetime64_from_fix_clock(text: &str, naive: Timezone) -> Result<DateTime64>  (`DateTime64::from_fix_clock`, for the FIX crate: a `TZTimeOnly` as FIX spells one, a clock and no date on the epoch day)
+pub fn time32_from_fix_text(text: &str) -> Result<Time32>  (`Time32::from_fix_text`, for the FIX crate: a time of day as FIX spells one, at 32 bits)
+pub fn time64_from_fix_text(text: &str) -> Result<Time64>  (`Time64::from_fix_text`, for the FIX crate: a time of day as FIX spells one, at 64 bits)
+pub fn read_enum_spelling(dtype: &DataType, spelling: &str) -> Result<Scalar>  (`enums::read_enum_spelling`, for the FIX crate: the member of the enum leaf `dtype` one spelling names, as the scalar it is)
+pub fn feed_event_facts<E: Event + ?Sized>(state: &mut Xxh3, this: &E)  (`graph::element::feed_event_facts`, for the FIX crate's message digest: what an event digest feeds less the cross code, its state and its predecessor's identity)
+pub fn whole_u64(value: &Scalar) -> Option<u64>  (`graph::element_column::whole_u64`, for the FIX crate: the `uint64` one cell states through the datatype's own value door)
+pub fn digest_u64(value: &Scalar) -> Option<u64>  (`graph::element_column::digest_u64`, for the FIX crate: the digest one cell states, an `int64` cell's bits included)
+pub use mime_type::line::{Located, SOH_MARKERS, document_behind_prefix, inspect, json_span, payload_at, trim_ascii}  (The shallow line scan the FIX codec frames a log line by: the escaped separators, the scan and its message type, the document behind a prefix, the located frame, the trim, the payload and the JSON span)
+pub use parser::{fold_digest, folded, normalized}  (The crate's one fold - the folded characters, their digest and their owned text - for the FIX crate's dictionary)
+pub fn scalar_try_sequence(len: usize, at: impl FnMut(usize) -> Result<Scalar>) -> Result<Scalar>  (`Scalar::try_sequence`, for the FIX crate: a known-width sequence built in its final shared storage, one value per index)
+pub fn scalar_try_fill_sequence(len: usize, fill: impl FnMut(usize, &mut Scalar) -> Result<()>) -> Result<Scalar>  (`Scalar::try_fill_sequence`, for the FIX crate: a known-width sequence built by writing each slot where it is stored)
+pub fn scalar_leaf_display(value: &Scalar) -> Option<&dyn fmt::Display>  (`Scalar::leaf_display`, for the FIX crate: the width leaf's own [`fmt::Display`], for a variant that holds one)
+pub fn scalar_from_decimal_text(dtype: &DataType, text: &str) -> Result<Scalar>  (`Scalar::from_decimal_text`, for the FIX crate: `text` read as a decimal at the scale `dtype` declares)
+pub use serie::arrow::Resolved  (The boxed field every level of one root lands under, resolved once, for the FIX crate's batch reader)
+pub fn land_unproven_batch(root: &Resolved, batch: RecordBatch) -> crate::arrow::Result<Serie>  (`serie::land_batch` with nothing taken on trust, for the FIX crate's batch reader: one batch landed as the record column of `root`, every leaf whose layout is not its datatype's whole contract read once)
+pub fn str_from_value(value: &Scalar) -> Option<Result<Str>>  (`string::str_from_value`, for the FIX crate: the canonical text a value spells, `None` for a kind that spells none)
+pub const fn civil_from_days(days: i64) -> (i32, u32, u32)  (`timezone::civil_from_days`, for the FIX crate: the civil date a count of days since the epoch falls on, its year saturated)
+pub fn percent_decode<'a>(value: &'a str, target: &'static str) -> Result<Cow<'a, str>>  (`uri::percent_decode`, for the FIX crate: one component's percent escapes decoded into the text they stand for, borrowed where there are none)
+pub fn declared_charset(head: &[u8]) -> Result<Option<Charset>>  (`xml::declared_charset`, for the FIX crate: the charset an XML declaration names, if it names one)
+pub fn write_named_bytes<'a>(sink: &mut impl Hasher, cells: impl ExactSizeIterator<Item = (&'a str, &'a Scalar)>, depth: usize)  (`xxhash::write_named_bytes`, for the FIX crate: the canonical record framing of an already sorted, borrowed named row)
+pub const CFI_UNCLASSIFIED: &str  (`Cfi::UNCLASSIFIED`, for the FIX crate: the code that classifies nothing, every position unknown)
+pub fn metadata_shares_storage_with(metadata: &Metadata, other: &Metadata) -> bool  (`Metadata::shares_storage_with`, for the FIX crate: whether two metadata values share one backing map)
+pub fn metadata_storage_address(metadata: &Metadata) -> usize  (`Metadata::storage_address`, for the FIX crate: the address of the backing map, what two values sharing storage share)
+pub fn struct_type_from_checked_fields(fields: Vec<Field>) -> Result<StructType>  (`StructType::from_checked_fields`, for the FIX crate: the struct over children each already valid, only their names checked)
+pub fn struct_type_shares_storage_with(fields: &StructType, other: &StructType) -> bool  (`StructType::shares_storage_with`, for the FIX crate: whether two structs share one children storage)
+pub fn struct_type_storage_address(fields: &StructType) -> usize  (`StructType::storage_address`, for the FIX crate: the address of the children's storage, zero for no children)
+pub fn text_entries_from_bytes_direct_located(body: &TextBytes) -> (Option<TextEntries>, Located)  (`TextEntries::from_bytes_direct_located`, for the FIX codec: a line's entries beside what the scan located, in one scan)
+pub fn field_new_with_metadata(name: impl Into<SmolStr>, dtype: DataType, nullable: bool, metadata: Metadata) -> Field  (`Field::new_with_metadata`, for the FIX crate's dictionary: a field around a metadata snapshot that is already valid)
+pub fn state_from_wire_code(code: &str) -> Option<State>  (`state::state_from_wire_code`, for the FIX crate's status reader: the state one `OrdStatus(39)` or `ExecType(150)` wire code names)
+pub use protocol_field_types  (The protocol-view builder, for the FIX crate's `FixField` and `FixFieldMut`: `protocol_field_types!` declares one scheme's two views)
+  (Shared with the media crates: what the market or FIX crate reaches that a media folder reaches too)
+pub fn integer_from_text_as<T: TryFrom<i128> + TryFrom<u128>>(text: &str) -> Option<T>  (`integer::integer_from_text_as`, for the market, FIX and media crates: an integer read out of its canonical spelling at one native width, a magnitude `T` cannot hold `None`)
+pub fn normalize_path(path: &str) -> Result<String>  (`http::server::normalize_path`, for the market crate's book service and the media crates: the canonical spelling of a mount prefix or a route path)
+pub fn format_timestamp(count: i64, unit: TimeUnit, zone: &Timezone) -> Option<SmolStr>  (`temporal::format_timestamp`, for the market crate's book service and the media crates: a zoned instant spelled as its local reading plus its offset)
+pub fn field_from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Field>  (`arrow::field_from_arrow_schema`, for the FIX and media crates: the record root an Arrow schema forms, its dictionary-ID sidecar taken off)
+pub const BOOLEAN_SPELLINGS: &str  (`boolean::BOOLEAN_SPELLINGS`, for the FIX and media crates: what every refusal of a boolean spelling names)
+pub fn bool_from_text(text: &str) -> Option<bool>  (`boolean::bool_from_text`, for the FIX and media crates: a boolean read out of text through the one table every flag in the crate reads)
+pub use text::display::{ERROR_TEXT_LIMIT, Elided, ElidedDisplay, elide_display, elide_to, expected_got}  (The bounded interpolation every error message crosses - the byte budget, the text and display elisions, and the expected-got sentence - for the market, FIX and media crates)
+pub use arrow::rows::result_reader  (The row-to-batch reader over a fallible stream of rows, for the market and media crates)
+pub use hashing::stable::stable_hash_of  (The stable XXH3-64 of a structural hash, for the FIX and media crates)
+pub use parallel::{Ordered, ordered}  (The one ordered map over persistent stream workers, for the FIX and media crates)
+pub use text::typed::with_field  (A natural text value interpreted under one field and validated, for the FIX and media crates)
+pub use bytes_dtypes  (The six byte leaves as one pattern over `DataType`, for the FIX and media crates)
+pub use {bytes_scalars, string_scalars}  (The eighteen string leaves and the six byte leaves as patterns over `Scalar`, for the FIX and media crates)
+pub fn serie_is_string_storage(serie: &Serie) -> bool  (`Serie::is_string_storage`, for the FIX and media crates: whether a serie is one of the text storage layouts, whichever string leaf it declares)
+pub fn serie_is_byte_storage(serie: &Serie) -> bool  (`Serie::is_byte_storage`, for the FIX and media crates: whether a serie is one of the byte storage layouts)
+pub fn serie_value_bytes(serie: &Serie, index: usize) -> Option<&[u8]>  (`Serie::value_bytes`, for the FIX and media crates: the bytes one text or byte cell holds, borrowed where they lie)
 
 ### yggdryl::root::digest  [rust/src/digest.rs]
 pub enum DigestAlgorithm
@@ -550,7 +656,12 @@ pub fn field(&self, schema: &Field) -> Result<Field>
 impl FixRegistry
   pub fn from_cfb_file(handle: &dyn IOBase, dialect: Option<&str>) -> Result<(Self, Vec<Field>)>  (every field, group, component and message root the file produces is stamped a member of `dialect` in `FIX:sources` and the dialect's entry - its id and the handle's file name - held in the sources catalog, nothing standing in for an absent one and no entry held then; the root element's version and session are read past; the document decoded once in the charset its byte-order mark or declared `encoding` states, else UTF-8 - bytes that charset cannot read transcribed, an unknown charset read as UTF-8, each with a warning; `float` typed float64 and every other type word through the schema grammar, a word nothing reads typing the tag utf8; a tag the vocabulary leaves unnamed named by the one spelling its normalization bindings agree on and no other tag claims, else by its own decimal; an attribute that will not split dropped, one that will not unescape kept as spelled, a repeated one read once; everything else the reader cannot keep dropped or kept another way with one warn-level `log` record, `invalid cfb expression at byte N: line L, column C: expected X, got Y in "<element>"; <what the reader did>`, prefixed `[dialect] ` when one is named; a spelling - an alt, a normalization tag-name, an rg-name, a counter's spelling - filed under its catalog name, lower case with every run of characters outside [a-z0-9_.-] one `_` and `_` trimmed at both ends (`OTC Trade Flags` is otc_trade_flags), the spelling kept as display and one nothing of which folds leaving the tag named by its decimal; a map entry whose key or value is blank, `none` or `null` skipped as stating no code, named in one warning per code set listing up to 16 entries then `and N more`, and a map entry whose name another code claims dropped alone; a group or component a grammar declares structurally alike to one the catalog holds - the same members in order, each its tag and the field it reads, a nested group its counter over the same structure; never the member names, a `required`, an `rg-name` spelling, a description or the sources - read as that definition under its held name whatever the grammar named it, the held definition's members relaxed to the more permissive nullability where the two differ and every member the message read before the relaxation reading it again, so a name a message declares in several shapes is split `{name}_{message}`, then `{name}_{message}_2`, `_3`, in declaration order, only for a shape alike to nothing held; a second grammar-binding of one wire type folded into the first under merge_with's member rules, each member that still disagrees dropped with a warning; a message the catalog will not hold taking back the groups and components its walk wrote; only a document that is not well-formed XML or leaves an element open is refused)
 
-### yggdryl::fix::field  [rust/src/fix/field.rs]
+### yggdryl::fix::field  [rust/src/fix/field.rs]  (the FIX protocol view - `FIX:` keys over a field, FixField and FixFieldMut - minted here by the exported protocol_field_types! with public constructors, re-exported at yggdryl::fix and the crate root; Scheme::FIX stays in the core, whose stack-key read of a known scheme is allocation-free, so Field and Metadata carry no accessor for it: `FixField::new(&field)` is the read door and `FixFieldMut::new(&mut field)` the write door, the former `Field::as_fix` pair, and `metadata.protocol(&Scheme::FIX)` the bare snapshot of a Metadata)
+pub struct FixField<'field>(ProtocolField<'field>);  (a field borrowed as its FIX protocol; Deref to ProtocolField, AsRef<Field>, Clone, Debug, Display, Eq, Ord, Hash, IntoIterator)
+  pub fn new(field: &'field Field) -> Self  (borrows a field as its FIX protocol)
+pub struct FixFieldMut<'field>(ProtocolFieldMut<'field>);  (a field mutably borrowed as its FIX protocol; Deref and DerefMut to ProtocolFieldMut, AsRef<Field>, Debug, Display; no path to Field's own mutators)
+  pub fn new(field: &'field mut Field) -> Self  (borrows a field mutably as its FIX protocol)
+  pub fn as_protocol(&self) -> FixField<'_>  (the read-only view of the same field)
 impl<'field> FixField<'field>
   pub fn sources(&self) -> Words<'field>  (the ids of the sources that contributed this field, folded and sorted, each naming an entry of FixRegistry::sources; empty for a field the specification alone defines, and for a stored text that is not the array the setter writes; lazy, nothing allocated)
   pub fn has_source(&self, source: &str) -> bool  (under the crate fold)
@@ -719,6 +830,9 @@ pub struct FixId(i32)  (re-exported at the crate root beside FixFieldIter, FixKe
   impl<'a> From<&'a String> for FixKey<'a>
   pub fn from_text(text: &'a str) -> Self  (the key a typed text names: a tag where it spells one as the dictionary's own tag reader reads it - ASCII digits alone, `1` to `2147483647`, a leading zero kept, so `035` is tag `35` - and a name otherwise, `+35`, `0` and ` 35` among them; total, like `From`, so one text has one reading)
   impl fmt::Display for FixKey<'_>
+pub mod state  (State's FIX readings as free functions: from_status, STATUS_TAGS and from_msgtype, in yggdryl::fix::state)
+pub use field::{FixField, FixFieldMut, FixSpellings}  (the FIX protocol view, minted in fix/field.rs, re-exported here and at the crate root)
+pub(crate) const LOGICAL_NAMES: &[(&str, DataType)]  (the thirty-two FIX Latest datatype names over the closest core datatype, in normalized spelling: the table the core's vocabulary seed claims on the logical-name register until the FIX crate claims it itself; the listing DataType::logical_names answers is the same constant either way)
 
 ### yggdryl::fix::codec  [rust/src/fix/codec.rs]
 pub const SOH: u8 = 0x01;
@@ -837,7 +951,7 @@ pub const CROSSCODE_TAG_NAME: (i32, &str) = (65_003, "crosscode");  (utf8: the i
 pub const METADATA_TAG_NAME: (i32, &str) = (65_037, "metadata");  (nullable sorted `map<utf8, utf8>` group, self-countered: what a message stated that is no field and no identifier map holds - a bridge's namespaced keys, `AMON.*`, `firm.*`, and in a fixed row every key no dictionary resolved, its raw text or, repeated, nested or stated with no value, its JSON - each under the key as it was spelled, folded; a key an identifier map holds with its value - a bridge's `TECH.CLIENTID`, its `PARENTORDERID` - rides `fixentries` under `0:<key>` as it arrived instead; a row read back restores the unresolved keys as the message's own entries)
 pub const FIXMSG_TAG_NAME: (i32, &str) = (65_053, "fixmsg");  (the fixed row `fix_schema` builds as a store dumps it: `components/fixmsg.json`, every column a reference to the field or group that types it; written by `commit`, passed over on read)
 pub const SRCUUIDS_TAG_NAME: (i32, &str) = (65_006, "srcuuids");  (nullable `serie<uuid>` of required `srcuuid` items, display `Source UUIDs`: the identities of the elements the message was read from - the text line it was parsed out of, stated by the line doors as the line's `curruuid` before the message settles, none for raw bytes; provenance, never its chain - no walk moves it - outside the currhashcode and never on the wire; a column of the fixed row, listed by `fix_crate_fields` and registered by no registry)
-pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");  (nullable `state`, the `uint16` code of a `State` member read by the intrinsic `statecodeset`, written on every row a message writes, display `State`: the state the message reached - the first of `State::FIX_STATUS_TAGS` stated, else what its message type asks for, `UNKNOWN` where neither states one - the furthest its chain knows once the lifecycle followed it; a row stating one is the row's word, which the derivation leaves)
+pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");  (nullable `state`, the `uint16` code of a `State` member read by the intrinsic `statecodeset`, written on every row a message writes, display `State`: the state the message reached - the first of `fix::state::STATUS_TAGS` stated, else what its message type asks for, `UNKNOWN` where neither states one - the furthest its chain knows once the lifecycle followed it; a row stating one is the row's word, which the derivation leaves)
 pub const EXPRUNIX_TAG_NAME: (i32, &str) = (65_010, "exprunix");  (nullable clock, display `Expiry Time`: when the message stops being good - `ExpireTime(126)`, else `ValidUntilTime(62)`, else the end of the day `ExpireDate(432)` names; `MaturityDate(541)` is the instrument's, no deadline - the chain's deadline where it states none, a newer explicit one replacing it even where earlier; a row stating one is the row's word)
 pub const MARKETDATAKIND_TAG_NAME: (i32, &str) = (65_016, "marketdatakind");  (nullable `marketdatakind`, display `Market Data Kind`: the business category of the message type as a `MarketDataKind` member - the dictionary's `FIX:msgcat` for the type, `UKNW` where it files none - read by the intrinsic `marketdatakindcodeset`, the name every market row states it by; what `Market::marketdatakind` answers; a row stating one is the row's word)
 pub const MARKETDATATYPE_TAG_NAME: (i32, &str) = (65_017, "marketdatatype");  (nullable `marketdatatype`, display `Market Data Type`: the type of its kind the message is as a `MarketDataType` member - `OrdType(40)`, `QuoteType(537)`, `TrdType(828)` or `MDEntryType(269)`, the one its kind names first, or any field a registry maps through `FIX:marketdatatype` - read by the intrinsic `marketdatatypecodeset`)
@@ -979,6 +1093,9 @@ impl FixMsg
   pub fn market_data(&self) -> Result<Vec<MarketData>>  (borrowed conversion, one leaf per message, cloning the one base event: ORDR, QUOT and an actual EXEC become one finalized `OrderEvent`, `QuoteEvent` or `ExecutionEvent`, an execution reading `FILLED` whatever its report's state, an execution report of no fill its order's or its quote's leaf - a venue's acknowledgement, cancel, reject, expiry or replace a step of the entry a book holds - and an acknowledgement of an execution (`BN`, `Q`) no leaf; a trade is no leaf - its fills are the executions its parse splits off - nor is a batch, whose entries its parse splits off, both in silence, while every other category but W/X answers no leaf beside a warning; nothing a message states is an error - `Ok` for every message: an entry that cannot stand - no `MDEntryType(269)` of bid, offer or trade, no incremental `MDUpdateAction(279)`, an anonymous incremental update, a new or snapshot entry with no exact `MDEntryPx(270)` - is excluded and a fact that cannot be read takes its default, each with a warning; W/X expands the one NoMDEntries(268) group in source order into operations carrying a `BookRef` - action, scope, position, `entry_px`, `entry_size` - and `mdentryid`/`mdentryrefid`/`orderid` identifiers, an empty W - or one stating no group at all - becoming one scoped `SnapshotEvent`, an empty X no operations and a W or X stating several groups no leaf; typed 272/273 date X operations at their exact entry nanosecond while W stays atomic at message currunix and retains the entry instant as creation/execution; every leaf carries in its metadata what its message states that no typed column reads and no identifier map of the leaf holds - the bridge's namespaced keys, then every other field by name, a group, a component or a map as one key holding JSON (`miscfees`), an expanded entry's own members or, for an execution split off a trade, its side's, bare and leading - never the envelope the message code leaves out, a typed tag, an idmap source, the expanded group, a `Parties(453)` or `RootParties(1116)` occurrence its `partyids` hold under its source and role, the `Account(1)` they hold as `account`, or a regulatory trade identifier its `identifiers` hold (a second party of one role stays, in `parties`); a book entry has its own `partyids` from its own `Parties`, leading the message's, and an empty W snapshot's control holds no maps and keeps its parties and account; every scalar of the metadata whose key ends with an identifier its message's type declares under `FIX:identifiers` (`MsgType::identifier_values`; an entry's or a side's own member checked against its component's) is lifted into the set its type belongs to (`Operation::identifier_set`) under its own key where that set holds it free, with the same value or with one ranking below it (`Identifiers::insert`), else it stays; the map and what it lifts feed the leaf's digest, never the message code)
   pub fn into_market_data(self) -> Result<Vec<MarketData>>  (consuming conversion: moves a direct message's held root event without cloning and finalizes its leaf's identity, while W/X owns one event per NoMDEntries occurrence or the empty-W control; the leaves `market_data` answers, an error for nothing the message states; every leaf carries its message's unmapped fields as `market_data` does)
   pub fn into_market_leaf(self) -> Result<MarketData>  (the consuming conversion only where it produces exactly one value; direct messages convert inline without an intermediate Vec; otherwise `InvalidRecord` at `$.NoMDEntries(268)`)
+  impl MarketMessage for FixMsg  (a FIX message is the message MarketData::Fix holds: into_market_data and into_market_leaf are the two inherent conversions boxed; the boxed following, merging and restating arms downcast the other side and answer nothing across message types; stable_hash, clone_box, dyn_eq, as_any and into_any the object-safe twins)
+  impl From<FixMsg> for MarketData  (holds the message whole, boxed, as MarketData::Fix)
+  impl TryFrom<MarketData> for FixMsg  (the `Fix` variant; another variant is `InvalidRecord` at `$.kind`)
 pub struct FixMarketIterator<I> where I: Iterator, I::Item: Into<Result<FixMsg>>  (re-exported from `yggdryl::fix`; a lazy projection of sorted FIX messages into book inputs, retaining at most one message's expanded book entries; each leaf takes the `seqnum` place its message holds, the parse's or the lifecycle's, so a chain's steps at one instant keep the walk's order; a message its intake refused for what it states is passed over with a warning, an operation dated before one already yielded is yielded with a warning, a book excluding it, and only a source failure is yielded - after every operation before it, once - and fuses the iterator)
   pub fn new(source: I) -> Self  (over messages already sorted by event time; each leaf carries its message's unmapped fields)
   impl<I> Iterator<Item = Result<MarketData>> for FixMarketIterator<I> where I: Iterator, I::Item: Into<Result<FixMsg>>
@@ -989,6 +1106,11 @@ impl FixCodec
   pub fn market_arrow_reader<I>(&self, messages: I) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (market_data as MarketData::field rows under the codec's row and byte bounds; every row read before a source failure, then that failure)
   pub fn book_serie<I>(&self, messages: I, snapshot_millis: u64, filter: Option<&Filter>) -> Result<StreamChunkedSerie> where I: IntoIterator, I::Item: Into<Result<FixMsg>>, I::IntoIter: Send + 'static  (book_arrow_reader answered as a StreamChunkedSerie of MarketData::field rows, one identity plan)
   pub fn market_serie<I>(&self, messages: I) -> Result<StreamChunkedSerie> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (market_arrow_reader likewise)
+
+### yggdryl::fix::state  [rust/src/fix/state.rs]  (the FIX readings of State, free functions of the FIX module and no methods of State: each status field a message answers a request by under its own code set, and the state a message asks for by being the message it is; called `crate::fix::state::from_status`, `yggdryl::fix::state::from_status` outside; `OrdStatus(39)` and `ExecType(150)` read the wire-code table State::from_spelling shares, through implementer::state_from_wire_code)
+pub fn from_status(tag: i32, code: &str) -> Option<State>  (one status field's code under its own code set: 39, 150, 1036, 939, 297, 87, 665, 940, 1375, 531; the code trimmed; `None` for a tag no status reads, a code its set does not define and a quote status that is a market warning - 12, 13, 19 and 20; 531 reads every response but a rejection as Canceled)
+pub const STATUS_TAGS: [i32; 10]  (the order a message's state is read off its status fields, the first stated winning)
+pub fn from_msgtype(msgtype: &str) -> Option<State>  (what a message asks for by being the message it is: new orders PendingNew, cancels PendingCancel, replaces PendingReplace, a quote request Pending, a quote Active, a reject Rejected)
 
 ### yggdryl::fix::entry  [rust/src/fix/entry.rs]
 pub struct FixEntry  (one field a message states, beside what is nested under it; re-exported at the crate root)
@@ -1348,7 +1470,7 @@ pub mod view;
   pub use kind::MarketKind;
   pub use market::{FxRates, Market, Metadata, Operation, empty_fxrates, empty_metadata};
   pub use market_column::MarketColumn;
-  pub use market_data::MarketData;
+  pub use market_data::{MarketData, MarketMessage};
   pub use operation::{BookRef, Execution, ExecutionEvent, ExecutionKind, MdUpdateAction, Order, OrderEvent, OrderKind, OperationElement, OperationEvent, OperationKind, Quote, QuoteEvent, QuoteKind};
   pub use operation_column::OperationColumn;
   pub use serve::{BookQuery, BookService, BookServiceOptions, BookTable};  (behind the `http` feature)
@@ -1686,18 +1808,29 @@ pub enum MarketKind { Order, Quote, Execution, OrderEvent, QuoteEvent, Execution
   pub const fn is_event(self) -> bool  (one of the six dated leaves)
 
 ### yggdryl::graph::market_data  [rust/src/graph/market_data.rs]
-pub enum MarketData { Order(Order), Quote(Quote), Execution(Execution), OrderEvent(OrderEvent), QuoteEvent(QuoteEvent), ExecutionEvent(ExecutionEvent), TradeEvent(TradeEvent), BookEvent(Box<BookEvent>), SnapshotEvent(SnapshotEvent), Fix(Box<FixMsg>) }  (one value over every leaf, resolved once at the boundary that built it; Clone, Debug, PartialEq)
+pub enum MarketData { Order(Order), Quote(Quote), Execution(Execution), OrderEvent(OrderEvent), QuoteEvent(QuoteEvent), ExecutionEvent(ExecutionEvent), TradeEvent(TradeEvent), BookEvent(Box<BookEvent>), SnapshotEvent(SnapshotEvent), Fix(Box<dyn MarketMessage>) }  (one value over every leaf and a message held whole, resolved once at the boundary that built it; Clone, Debug, PartialEq through the trait's object-safe twins; 912 bytes)
   pub fn kind(&self) -> MarketKind
   pub fn marketdatakind(&self) -> MarketDataKind  (the leaf's kind's category: what the row's `marketdatakind` column states)
   pub fn is_event(&self) -> bool
   pub fn book(&self) -> Option<&BookRef>  (the control of an operation event or a snapshot control)
-  pub fn as_fix(&self) -> Option<&FixMsg>  (a borrow of a FIX message held whole)
+  pub fn as_message<T: MarketMessage>(&self) -> Option<&T>  (a borrow of the message held whole as its own type - `value.as_message::<FixMsg>()` - the downcast through MarketMessage::as_any; `None` for any other variant or another message type; the Python and Node `as_fix`/`asFix` redirect through it)
   pub fn as_order(&self) -> Option<&Order>  (a borrow of that variant; `as_quote`, `as_execution`, `as_order_event`, `as_quote_event`, `as_execution_event`, `as_trade_event`, `as_book_event`, `as_snapshot_event` the same)
   impl Element, Market for MarketData  (delegating to the leaf; `is_after` by instant where both are dated and false otherwise; `with_previous` and `merge_with` the leaf's own for the same variant; `with_previous` also chains an operation event after an operation event of another kind through their facts, its own kind kept; `merge_with` `None` across variants)
   impl From<leaf> for MarketData  (every leaf; a `BookEvent` boxed)
-  impl From<FixMsg> for MarketData  (holds the message whole, boxed)
-  impl TryFrom<MarketData> for FixMsg  (the `Fix` variant; another variant is `InvalidRecord` at `$.kind`)
   impl TryFrom<MarketData> for leaf  (every leaf; another variant is `InvalidRecord` at `$.kind`, expected against actual kind)
+pub trait MarketMessage: Event + Operation + fmt::Debug + Send + Sync + 'static  (a message held whole that splits into market leaves, what `MarketData::Fix` holds - a FIX message the one implementation, in fix/market.rs: it answers every fact through the graph traits it extends, follows, merges and restates as itself through the boxed forms the walk dispatches to, and a book folds the leaves it splits into; the last five methods are what a trait object owes the enum holding it, the `MediumOptions` precedent; the walk's own seam over Event and Operation is a crate-private supertrait)
+  fn into_market_data(self: Box<Self>) -> Result<Vec<MarketData>>  (the market data leaves it splits into: one per operation it states, none for a message with no market reading)
+  fn into_market_leaf(self: Box<Self>) -> Result<MarketData>  (the one leaf it is; an error where it is not exactly one)
+  fn with_previous(self: Box<Self>, previous: &dyn MarketMessage) -> Option<Box<dyn MarketMessage>>  (Element::with_previous, boxed: this message as the one after `previous`, or nothing where it cannot follow it, following changes nothing, or `previous` is a message of another type)
+  fn merge_with(self: Box<Self>, other: &dyn MarketMessage) -> Option<Box<dyn MarketMessage>>  (Element::merge_with, boxed: nothing where `other` is another message, a message of another type, or the fold changes nothing)
+  fn restating(self: Box<Self>, live: &dyn MarketMessage) -> Box<dyn MarketMessage>  (Event::restating, boxed: unchanged where `live` is a message of another type)
+  fn stable_hash(&self) -> u64  (the deterministic hash of the message, as its type states it)
+  fn clone_box(&self) -> Box<dyn MarketMessage>
+  fn dyn_eq(&self, other: &dyn MarketMessage) -> bool  (the same type holding an equal message)
+  fn as_any(&self) -> &dyn Any
+  fn into_any(self: Box<Self>) -> Box<dyn Any>
+  impl Clone for Box<dyn MarketMessage>  (through clone_box)
+  impl PartialEq for dyn MarketMessage  (through dyn_eq)
   impl From<MarketData> for Result<MarketData>  (the infallible stream item)
 
 ### yggdryl::graph::iterator  [rust/src/graph/iterator.rs]
@@ -4334,7 +4467,6 @@ pub struct Metadata(Arc<MetadataMap>);
   pub fn as_sql(&self) -> ProtocolMetadata<'_>
   pub fn as_glue(&self) -> ProtocolMetadata<'_>
   pub fn as_iceberg(&self) -> ProtocolMetadata<'_>
-  pub fn as_fix(&self) -> ProtocolMetadata<'_>
   pub fn as_field_properties(&self) -> ProtocolMetadata<'_>
   pub fn as_digest(&self) -> ProtocolMetadata<'_>
   pub fn as_identity(&self) -> ProtocolMetadata<'_>
@@ -5573,7 +5705,7 @@ pub struct Differences<'schema>
 
 ### yggdryl::datatype  [rust/src/datatype.rs]
 pub enum DataType
-  DataType::Market(MarketType)  (the one variant every registered kind sits under - the four market enums, each a MarketDescriptor claimed through yggdryl::market; equal by the kind's byte, ordered by its datatype rank, hashed as its shape position; a kind's constructor `DataType::side()` answers it; the seventeen codes are variants of their own)
+  DataType::Market(MarketType)  (the one variant every registered kind sits under - the four market enums, each a MarketDescriptor claimed through yggdryl::market; equal by the kind's byte, ordered by its datatype rank, hashed as its shape position; a kind's own `dtype()` answers it (`Side::dtype()`); the seventeen codes are variants of their own)
   DataType::Decimal, DataType::BigDecimal  (the parameter-free fixed decimal leaves over `Decimal128(38, 18)` and `Decimal256(76, 18)` storage under the extension names `yggdryl.decimal` and `yggdryl.bigdecimal`; bare storage imports as the parameterized width and casts onto the leaf by identity; `decimal` crosses Avro, Iceberg, Spark, Polars and pandas as their decimal(38, 18), `bigdecimal` is refused there)
   pub fn scalar(&self, value: impl Into<crate::Scalar>) -> Result<crate::Scalar>
   pub fn stable_hash(&self) -> u64
@@ -5679,8 +5811,6 @@ pub enum DataType
   pub fn as_glue_mut(&mut self) -> protocol::GlueFieldMut<'_>
   pub fn as_iceberg(&self) -> protocol::IcebergField<'_>
   pub fn as_iceberg_mut(&mut self) -> protocol::IcebergFieldMut<'_>
-  pub fn as_fix(&self) -> protocol::FixField<'_>
-  pub fn as_fix_mut(&mut self) -> protocol::FixFieldMut<'_>
   pub fn as_field_properties(&self) -> protocol::FieldPropertiesField<'_>
   pub fn as_field_properties_mut(&mut self) -> protocol::FieldPropertiesFieldMut<'_>
   pub fn as_digest(&self) -> protocol::DigestField<'_>
@@ -5827,7 +5957,7 @@ pub trait EnumRepr: ArrowNativeType + Copy + Default + Into<u16> + Into<i64> + T
   type Primitive: ArrowPrimitiveType<Native = Self>  (the Arrow primitive a column of this width stores its codes as)
   const ARROW: arrow_schema::DataType  (`UInt8` or `UInt16`)
   const BYTES: usize  (the bytes one stored code takes)
-  macro_rules! enum_leaf  (crate-private: one Enum-family leaf from its member table - repr, variant, code, stored name, description - with ALL, code, as_str, description, from_code, from_name, read, read_code, Display and Serialize as the name, Deserialize from a code or a spelling, Value, EnumValue, From<E> for Scalar and for its repr, TryFrom<repr>; each leaf writes its own from_spelling)
+  macro_rules! enum_leaf  (#[macro_export] #[doc(hidden)], re-exported by implementer: one Enum-family leaf from its member table - repr, variant, code, stored name, description - with ALL, code, as_str, description, from_code, from_name, read, read_code, Display and Serialize as the name, Deserialize from a code or a spelling, Value, EnumValue, From<E> for Scalar and for its repr, TryFrom<repr>; each leaf writes its own from_spelling)
   pub const fn is_enum(&self) -> bool  (on DataType: DataTypeKind::Enum.contains(self.id()) - state, marketdatakind, side, marketdatatype, timeinforce)
   pub enum EnumType  (#[non_exhaustive]; Dictionary(Arc<DictionaryType>))
   pub fn key(&self) -> &DataType
@@ -6023,7 +6153,8 @@ pub fn from_regex(pattern: &str, autotype: bool) -> Result<Self>
 ### yggdryl::parser::field  [rust/src/parser.rs]
 pub fn from_str(value: &str) -> Result<Self>
 
-### yggdryl::protocol  [rust/src/protocol.rs]
+### yggdryl::protocol  [rust/src/protocol.rs]  (the borrowed protocol views of the protocols the core owns - the well-known list drives them with crate-private constructors - and protocol_field_types!, the builder a crate mints its own protocol's views with)
+macro_rules! protocol_field_types  (`protocol_field_types!($vis, $scheme, $view, $view_mut, $label)`, #[macro_export] #[doc(hidden)]: the two named views of one protocol - a field borrowed as its protocol and mutably borrowed as it - with Deref to ProtocolField / ProtocolFieldMut, AsRef<Field>, Debug, Display, Eq, Ord, Hash, IntoIterator and `as_protocol`; `$vis` the constructors' visibility - the core's 23 views pass `pub(crate)`, `fix/field.rs` passes `pub` for FixField and FixFieldMut; `$scheme` a `Scheme`; the expansion names public doors only: Field::protocol, Field::protocol_mut and ProtocolFieldMut::as_field)
 impl<'field> HttpField<'field>
   pub fn accept(&self) -> Option<&'field str>
   pub fn accept_encoding(&self) -> Option<&'field str>
@@ -6155,7 +6286,7 @@ pub struct ProtocolField<'field>
   pub fn into_metadata(self) -> Result<Metadata>
   pub fn merge_with(&self, other: &ProtocolField<'_>) -> Result<Metadata>
   pub struct ProtocolFieldMut<'field>
-  pub const fn as_field(&self) -> &Field
+  pub const fn as_field(&self) -> &Field  (the borrowed field; the one read the exported `protocol_field_types!` builder takes of it, so a view minted in another crate compiles against public doors alone)
   pub fn as_protocol(&self) -> ProtocolField<'_>
   pub const fn scheme(&self) -> &Scheme
   pub fn prefix(&self) -> &str
@@ -6204,9 +6335,6 @@ pub struct ProtocolField<'field>
   pub struct IcebergField<'field>(ProtocolField<'field>);
   pub struct IcebergFieldMut<'field>(ProtocolFieldMut<'field>);
   pub fn as_protocol(&self) -> IcebergField<'_>
-  pub struct FixField<'field>(ProtocolField<'field>);
-  pub struct FixFieldMut<'field>(ProtocolFieldMut<'field>);
-  pub fn as_protocol(&self) -> FixField<'_>
   pub struct FieldPropertiesField<'field>(ProtocolField<'field>);
   pub struct FieldPropertiesFieldMut<'field>(ProtocolFieldMut<'field>);
   pub fn as_protocol(&self) -> FieldPropertiesField<'_>
@@ -7513,10 +7641,10 @@ pub fn set_host(host: Option<Arc<dyn Host>>)  (attaches host, replacing any othe
 pub fn has_host() -> bool
 pub fn invalidate()  (drops every cached threshold and reads the facade's ceiling again: what a host calls whenever its own levels change)
 
-### yggdryl::logging::facade  [rust/src/logging/facade.rs]  (the tree as the backend of the `log` facade every crate in the build logs through)
+### yggdryl::logging::facade  [rust/src/logging/facade.rs]  (the tree as the backend of the `log` facade every crate in the build logs through; a logger is named by its module path under `yggdryl` whatever crate holds the module, through one private table of the workspace's crates: `yggdryl` and `yggdryl_market` log under `yggdryl`, `yggdryl_<folder>` under `yggdryl.<folder>` - `yggdryl_fix::build` is `yggdryl.fix.build`, as `yggdryl::fix::build` was - and `yggdryl_cli`, a binding and every dependency are foreign, held to the foreign floor)
 pub fn install() -> Result<()>  (a record's target `yggdryl::iceberg::table` is the logger `yggdryl.iceberg.table`, made and remembered for at most 4096 distinct targets - past that a new target makes no logger, so the tree stays bounded, and its records go, under their own name, to the nearest logger the tree has: its own once made with get_logger, else its nearest existing ancestor, else the root; a static module path never reaches the bound; the facade's ceiling (log::max_level) follows the most verbose level any logger handles, so a record nothing handles is refused before its message is built; twice is one installation; Error::Conflict when another log backend is installed; basic_config installs)
 pub fn is_installed() -> bool
-pub fn set_foreign_level(level: Level)  (admits a facade record whose target is outside the yggdryl crate only at level and above, whatever its logger's level; NOTSET, the default, admits what the tree enables; the Python binding and the Node addon state WARNING, so a dependency of the build reaches logging only at warning and above)
+pub fn set_foreign_level(level: Level)  (admits a facade record whose target is outside the workspace's crates only at level and above, whatever its logger's level; NOTSET, the default, admits what the tree enables; the Python binding and the Node addon state WARNING, so a dependency of the build reaches logging only at warning and above)
 pub fn foreign_level() -> Level
 
 ### yggdryl::logging::terminal  [rust/src/logging/terminal.rs]  (what a terminal shows of a record: the colour rule StreamHandler::stderr and stdout - the Node StreamHandler's too - the Python TerminalHandler and the command line share; the module is crate-private, the rule re-exported at yggdryl::logging)
@@ -7555,7 +7683,8 @@ impl Record<'_>
   pub fn read_code(code: i64) -> Result<Self>  (`from_code` as a refusal naming the code)
   pub fn from_spelling(spelling: &str) -> Option<Self>  (the stored code, a `Side(54)` wire code unfolded, or the specification's name folded - the name a member was stored under before its code (`BUY`, `SSHORT`), read and never written, and the two roles a FIX plugin plays, `BuySide` and `SellSide`, which are the sides they name; a stored integer code is never text)
   impl Value, EnumValue<Repr = u8>, MarketValue for Side; From<Side> for Scalar; From<Side> for u8; TryFrom<u8> for Side  (`Scalar::Market` of SIDE_KIND; `Value::from_scalar` lends the member out of `ALL`, `MarketValue::from_scalar` copies it)
-  pub const fn side() -> Self  (on DataType)
+  pub const fn dtype() -> DataType  (the kind's datatype, `DataType::Market` of `SIDE_KIND`: written by `enum_leaf!`'s market arm for each registered kind, usable in a const; the four constructors on DataType it replaces are gone)
+  pub fn field(name: impl Into<SmolStr>) -> Field  (a nullable field of the kind, named `name`: `SIDE_KIND.field(name, true)`)
   pub const ID: DataTypeId = DataTypeId::market(0xc3);  (the identifier the kind claims, a usable pattern; `NAME` and `EXTENSION_NAME` beside it)
   pub const NAME: &'static str = "side";
   pub const EXTENSION_NAME: &'static str = "yggdryl.side";
@@ -7582,9 +7711,6 @@ impl Record<'_>
   pub fn read(spelling: &str) -> Result<Self>  (`from_spelling` as a refusal naming the spelling)
   pub fn read_code(code: i64) -> Result<Self>  (`from_code` as a refusal naming the code)
   pub fn from_spelling(spelling: &str) -> Option<Self>  (the stored name, then a FIX `OrdStatus(39)`/`ExecType(150)` wire code unfolded, then a folded name: the specification's, a scheduler's word or a bridge's short name)
-  pub fn from_fix_status(tag: i32, code: &str) -> Option<Self>  (one status field's code under its own code set: 39, 150, 1036, 939, 297, 87, 665, 940, 1375, 531)
-  pub const FIX_STATUS_TAGS: [i32; 10]  (the order a message's state is read off its status fields, the first stated winning)
-  pub fn from_fix_msgtype(msgtype: &str) -> Option<Self>  (what a message asks for by being the message it is: new orders PendingNew, cancels PendingCancel, replaces PendingReplace, a quote request Pending, a quote Active, a reject Rejected)
   impl Value, EnumValue<Repr = u16> for State; From<State> for Scalar; From<State> for u16; TryFrom<u16> for State
   (extension `yggdryl.state` over Arrow UInt16; a foreign storage under the name imports as that storage)
   pub type StateField = FieldOf<StateType>;
@@ -7606,7 +7732,8 @@ impl Record<'_>
   pub const fn is_batch(self) -> bool  (`OrderBatch`, `QuoteBatch`, `ExecutionBatch`, `TradeBatch`: a message stating many entries, which a FIX parse splits into one message of `item` per entry)
   pub const fn item(self) -> Self  (the kind one entry of a batch is - `Order`, `Quotation`, `Execution`, `Trade` - and this kind itself for any other)
   impl Value, EnumValue<Repr = u8>, MarketValue for MarketDataKind; From<MarketDataKind> for Scalar; From<MarketDataKind> for u8; TryFrom<u8> for MarketDataKind  (`Scalar::Market` of MARKETDATAKIND_KIND; `Value::from_scalar` lends the member out of `ALL`, `MarketValue::from_scalar` copies it)
-  pub const fn marketdatakind() -> Self  (on DataType)
+  pub const fn dtype() -> DataType  (the kind's datatype, `DataType::Market` of `MARKETDATAKIND_KIND`: written by `enum_leaf!`'s market arm for each registered kind, usable in a const; the four constructors on DataType it replaces are gone)
+  pub fn field(name: impl Into<SmolStr>) -> Field  (a nullable field of the kind, named `name`: `MARKETDATAKIND_KIND.field(name, true)`)
   pub const ID: DataTypeId = DataTypeId::market(0xc2);  (the identifier the kind claims, a usable pattern; `NAME` and `EXTENSION_NAME` beside it)
   pub const NAME: &'static str = "marketdatakind";
   pub const EXTENSION_NAME: &'static str = "yggdryl.marketdatakind";
@@ -7630,7 +7757,8 @@ impl Record<'_>
   pub const MARKETDATATYPE_FIX_TAGS: [i32; 8]  (`OrdType(40)`, `QuoteType(537)`, `TrdType(828)`, `MDEntryType(269)`, `TradeReportType(856)`, `QuoteRequestType(303)`, `MassCancelRequestType(530)`, `SubscriptionRequestType(263)`, in that order)
   pub const MARKETDATATYPE_MSGTYPE_RULES: &[(&str, &[i32])]  (the message types typed by their own field before their kind's: `AE`/`AR` `[856, 828, 40]`, `R` `[303, 537, 40]`, `AG` `[303, 537]`, `q`/`r` `[530]`, `V` `[263]`)
   impl Value, EnumValue<Repr = u16>, MarketValue for MarketDataType; From<MarketDataType> for Scalar; From<MarketDataType> for u16; TryFrom<u16> for MarketDataType  (`Scalar::Market` of MARKETDATATYPE_KIND; `Value::from_scalar` lends the member out of `ALL`, `MarketValue::from_scalar` copies it)
-  pub const fn marketdatatype() -> Self  (on DataType)
+  pub const fn dtype() -> DataType  (the kind's datatype, `DataType::Market` of `MARKETDATATYPE_KIND`: written by `enum_leaf!`'s market arm for each registered kind, usable in a const; the four constructors on DataType it replaces are gone)
+  pub fn field(name: impl Into<SmolStr>) -> Field  (a nullable field of the kind, named `name`: `MARKETDATATYPE_KIND.field(name, true)`)
   pub const ID: DataTypeId = DataTypeId::market(0xc4);  (the identifier the kind claims, a usable pattern; `NAME` and `EXTENSION_NAME` beside it)
   pub const NAME: &'static str = "marketdatatype";
   pub const EXTENSION_NAME: &'static str = "yggdryl.marketdatatype";
@@ -7651,7 +7779,8 @@ impl Record<'_>
   pub const fn fix_code(self) -> Option<&'static str>  (the wire value a member stands for; `None` for `Unknown` and `Other`)
   impl Value, EnumValue<Repr = u8>, MarketValue for TimeInForce; From<TimeInForce> for Scalar; From<TimeInForce> for u8; TryFrom<u8> for TimeInForce  (`Scalar::Market` of TIMEINFORCE_KIND; `Value::from_scalar` lends the member out of `ALL`, `MarketValue::from_scalar` copies it)
   (extension `yggdryl.timeinforce` over Arrow UInt8, crate-private; a foreign storage under the name imports as that storage)
-  pub const fn timeinforce() -> Self  (on DataType)
+  pub const fn dtype() -> DataType  (the kind's datatype, `DataType::Market` of `TIMEINFORCE_KIND`: written by `enum_leaf!`'s market arm for each registered kind, usable in a const; the four constructors on DataType it replaces are gone)
+  pub fn field(name: impl Into<SmolStr>) -> Field  (a nullable field of the kind, named `name`: `TIMEINFORCE_KIND.field(name, true)`)
   pub const ID: DataTypeId = DataTypeId::market(0xc5);  (the identifier the kind claims, a usable pattern; `NAME` and `EXTENSION_NAME` beside it)
   pub const NAME: &'static str = "timeinforce";
   pub const EXTENSION_NAME: &'static str = "yggdryl.timeinforce";
@@ -7933,7 +8062,7 @@ pub struct FieldRecord<'a>
 ### yggdryl::typed::shared  [rust/src/typed.rs]  (the prebuilt fields a parameter-free datatype shares, one slot per DataTypeId)
 pub fn shared_field(&self) -> Option<&'static Field>  (on DataType and on Scalar; None for a datatype that carries parameters, because no two of those are the same field)
 
-### yggdryl::vocabulary  [rust/src/vocabulary.rs]
+### yggdryl::vocabulary  [rust/src/vocabulary.rs]  (the core's own logical names - its codes and `state` - and the register's seed, which claims beside them the thirty-two FIX Latest names of `fix/mod.rs`'s LOGICAL_NAMES table until the FIX crate claims them itself; the listing is the same constant either way, `logical_names()` sorts)
 pub fn logical_names() -> Vec<(&'static str, DataType)>  (on DataType: every logical name in name order with what it resolves to - the core's own - the seventeen codes' names among them - every market kind's under its own name, `exchange` for mic, and every name a crate claimed - read off the claim-once register)
   pub fn register_logical_name(name: &'static str, dtype: DataType, by: &'static str) -> Result<()>  (a folded name claimed for a crate, once, read by from_logical_name and the grammar; Error::Conflict naming the first claimant, Error::InvalidDataType for a name not in its folded spelling, a word the grammar or a market kind answers, or a dtype that does not validate)
   pub fn from_logical_name(name: &str) -> Result<Self>

@@ -1559,7 +1559,10 @@ macro_rules! code_scalars {
 /// `$text`; the number a fixed or sized leaf states is not bound.
 ///
 /// [`Scalar::as_string`] is the same list in value position, and
-/// [`Scalar::string_parameters`] the leaf.
+/// [`Scalar::string_parameters`] the leaf. Exported for the crates this core
+/// is split into, which match on it.
+#[macro_export]
+#[doc(hidden)]
 macro_rules! string_scalars {
     ($text:pat) => {
         $crate::Scalar::Utf8String($text)
@@ -1585,6 +1588,9 @@ macro_rules! string_scalars {
 
 /// The six byte leaves as one pattern, each binding its payload to
 /// `$payload`; the number a fixed or sized leaf states is not bound.
+/// Exported for the crates this core is split into, which match on it.
+#[macro_export]
+#[doc(hidden)]
 macro_rules! bytes_scalars {
     ($payload:pat) => {
         $crate::Scalar::Binary($payload)

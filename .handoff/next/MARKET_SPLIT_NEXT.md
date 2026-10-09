@@ -62,12 +62,12 @@ live AWS resource touched.
 | Fact | Value |
 | --- | --- |
 | Program branch | `ccr-0fe6f9d0-ruymat` |
-| HEAD | the commit holding this file, P2: "Hold the origin field and its cache on the medium; compose the pushdown once" (D34, D35), on `d100439d3` ("Record the S3 design") |
+| HEAD | the commit holding this file, S3: "Settle the remaining seams before the crates leave" (D5, D6, D9, D10), on `49bcab3e3` ("Record the D36, D37 and D38 designs") |
 | Draft PR | #209, draft |
 | Base | `origin/main` at `2ae975674`; no merge of `origin/main` was needed this session (nothing landed on `main` since) |
-| Slices done | P0 `3d8bf84d9` (D22), P1 `08ae4c6b7` (D23), S0 `6d71a36ee` (the pins), S1 `eeb4ec14d` (the market extension point), S1's handoff `719299cf6`, S2 `f9f665198` (the media extension point), S2's handoff `2d800d51b`, S2b `c015226b6` (the XMLA medium registered in place, D33) and `2048b4681` (its CI's red census race fixed in the test), the CI structure `1f909739b` and its handoff `b656e765b`, the S3 design `d100439d3`, P2 (this commit: the medium holds its origin and its cache, the serie composes the pushdown, D34 and D35) - each pushed alone, its CI read green before the next |
+| Slices done | P0 `3d8bf84d9` (D22), P1 `08ae4c6b7` (D23), S0 `6d71a36ee` (the pins), S1 `eeb4ec14d` (the market extension point), S1's handoff `719299cf6`, S2 `f9f665198` (the media extension point), S2's handoff `2d800d51b`, S2b `c015226b6` (the XMLA medium registered in place, D33) and `2048b4681` (its CI's red census race fixed in the test), the CI structure `1f909739b` and its handoff `b656e765b`, the S3 design `d100439d3`, P2 `f7c3c1b58` (the medium holds its origin and its cache, the serie composes the pushdown, D34 and D35), the D36-D38 record `49bcab3e3`, S3 (this commit: the remaining seams in place, D5, D6, D9, D10) - each pushed alone, its CI read green before the next but P2's, whose run 37923405641 the record push cancelled: the S3 run proves P2 and S3 together |
 | CI structure | `1f909739b`, "Build the core first and run only the CI jobs a change reaches": run 37904365402 success, 33 jobs green and the empty `Leaf` matrix skipped as planned; 10m41s wall against 18m09s before (the old workflow's last run, 37902279246, 18m57s); the critical path `Changes` 12s, `Python binding wheel` 5m12s, `Documentation examples (Python)` 4m57s, `CI result` 9s; the core path `Core build (all features)` 1m40s then its slowest shard, `rest`, 5m37s; the exchanges 30s to 1m18s, compiling nothing; the gate proved 20 rows into the ledger; docs run 37904365351 success |
-| Next | S3, the remaining seams in place (D5, D6, D9, D10) |
+| Next | P4 (D38), then P5 (D37), P3 (D36) and S4, as "## Next" orders them |
 
 What S1 built is the "S1: what was built" section of DESIGN.md. What S2
 built is its "S2: design" (D26-D32), "The review's amendments (S2)" and "S2:
@@ -101,49 +101,55 @@ takes, the five residual copies and `RecordOptions::apply_stream` gone;
 `cache_ttl` (milliseconds, `0` realtime, outside the options' identity),
 every write door updating or dropping it; Python's `cache_ttl` property;
 Node gains no door.
+What S3 built is DESIGN.md's "S3: what was built": each market kind's own
+`dtype()`/`field(name)` (the four `DataType::<kind>()` deleted),
+`fix/state.rs` with State's FIX doors, `fix::LOGICAL_NAMES`, the logging
+facade's per-crate table and the `warned!` key by logger name,
+`MarketMessage` behind `MarketData::Fix` with `as_message::<T>()`,
+`protocol_field_types!` exported and `FixField::new(&field)` the one
+spelling, and `implementer.rs` - 114 names by route, `#[doc(hidden)]` -
+every market and FIX reach of a crate-private core item spelled through it.
 
 ## Checks
 
-Every command below ran on the tree committed as P2, from
-`/home/user/yggdryl`, with `CARGO_INCREMENTAL=0` and the debug info off: the
-smoke rows after the review's fixes, then one background chain
-(`logs/chain_p2.sh` under the scratchpad) that cleaned the workspace's own
-artifacts between lanes, then a confirmation chain (`logs/chain_p2b.sh`)
-over the unchanged tree for the format, the build checks and the Node
-package audit.
+Every command below ran on the tree committed as S3, from
+`/home/user/yggdryl`, with `CARGO_INCREMENTAL=0` and the debug info off: the phase suites, then
+`logs/chain_s3.sh` under the scratchpad, then `logs/chain_s3b.sh` over the
+review's last edits (two doc links, the unused `pub(crate) use warned`, two
+test assertions).
 
-| Check | Command | Result |
-| --- | --- | --- |
-| it builds | `cargo check -p yggdryl --all-targets --keep-going --message-format=short`; `cargo check --workspace --all-targets --all-features --keep-going --message-format=short` | clean, 0 diagnostics |
-| the smoke, all-features lane | `cargo test -p yggdryl --all-features --test <t>` for media, root, ipc, parquet, avro, csv, xmla, excel, text, iobase_calls, iceberg, expression, http, warehouse, allocations, media_register | 205, 1871, 52, 88, 142, 102, 761, 332, 236, 67, 528, 244, 503, 139, 184, 14 passed; 0 failed |
-| the S2 pins | `cargo test -p yggdryl --test media s2_pins` | green in both lanes, byte-identical (`CacheTtl` hashes nothing) |
-| the cost rows | `--test iobase_calls`; `--test allocations` | 67 and 184 passed; no cost pin moved or re-pinned; the media-serie construction row unmoved (`pstream_bytes=1 media_type=2 is_container=2`) |
-| the whole run | `cargo test -p yggdryl --all-targets --all-features --no-fail-fast` | 63 targets, 9298 passed, 0 failed, 3 ignored |
-| the whole run, default features | `cargo test -p yggdryl --all-targets --no-fail-fast` | 63 targets, 6580 passed, 0 failed |
-| the CLI | `cargo test -p yggdryl-cli --all-targets --no-fail-fast` | 6 targets, 35 passed, 0 failed, 6 ignored |
-| rustdoc examples | `cargo test -p yggdryl --doc` | 628 passed |
-| clippy | `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings`; `cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings` | exit 0 both |
-| the API pages | `RUSTDOCFLAGS="-D warnings" cargo doc -p yggdryl --no-deps --all-features` | exit 0 |
-| formatting | `cargo fmt --all -- --check` | clean |
-| Python | `VIRTUAL_ENV=python/.venv python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, `-m pytest python/tests --deselect python/tests/test_spark_interop.py`, `-m mypy --strict ...` | the extension installed; 2784 passed, 4 skipped; mypy "no issues found in 70 source files" |
-| Node | `npm run --prefix node build:debug`; `cargo build --locked -p yggdryl-cli`; `npm test --prefix node`; `npx tsc --noEmit`; `npm run --prefix node test:package:debug`; `git diff --exit-code -- node/index.js node/index.d.ts` | 1122 tests, 1120 passed, the 2 failing ones the sandbox `TextDecoder` pair below; tsc exit 0; the package audit passed; the generated loader and declarations unchanged |
-| the docs manifests | `node scripts/build_docs_fix.js --check`; `node scripts/build_docs_playground.js --check` | both current |
-| the page examples | `python scripts/check_docs_examples.py --lang rust`, `--lang python`, `--lang javascript` | Rust 940 passed; Python 837 run, 3 skipped, 0 failed; JavaScript 789 run, 2 skipped, 0 failed |
-| the site | `python -m mkdocs build --strict --config-file mkdocs.yml` | clean |
-| the inventories | `python scripts/check_api_inventory.py`; `python scripts/generate_internals.py --check` | current (180 source files and 587 `pub` names not described yet); `yggdryl::internals` current |
-| no test code under `src/` | `grep -rn '#\[cfg(test)\]\|#\[test\]\|mod tests' rust/src python/src node/src cli/src` | empty |
-| the review | the `code-review` skill at high effort over the whole diff, and the lane manager's pass over the brief's checklist | fourteen points: eleven fixed before the commit (the headerless projection, `clear` over a container, the encoding check, `size()` under a TTL, the counts kept under a TTL, `add` beside `update`, one `keeps`, the Python docstrings, one `container_origin`, `cache_ttl` taking `__index__` and `None`), three kept with their reason; DESIGN.md "P2 results" lists them |
-| CI | the run on `ccr-0fe6f9d0-ruymat` for PR #209 | read after the push; the lane's report states it, and the next handoff records it |
+| check | result |
+| --- | --- |
+| `cargo check --workspace --all-targets --all-features --keep-going --message-format=short` (the worktree before the merge, then the merged tree) | 2 errors and 3 warnings in the worktree (two `FixField::new(&document)` borrows, three unused imports), then clean |
+| phase suites, all features: `--test root` filtered to the kinds, `state`, `vocabulary`, `datatype`, `implementer`, `protocol`, `market`; `--test graph`; `--test fix`; `--test market_register`; `--test logging`; `--test allocations` and `--test iobase_calls` filtered | 424 of 426 (two of the test worker's assumptions, corrected: 34 of 34 `implementer`), 439, 1026 (the dictionary hash and the crate dump among them, unedited), 7, 88 then 89, 16, 5 |
+| `refs.py` over the merged tree | 0 market or FIX references to a crate-private core path; 26 FIX references over 15 crate-private market names |
+| `cargo test -p yggdryl --all-targets --all-features --no-fail-fast` | 63 targets, 9357 passed, 0 failed, 3 ignored |
+| `cargo test -p yggdryl --all-targets --no-fail-fast` (default features) | 63 targets, 6637 passed, 1 failed - the `implementer` test asserting Iceberg's refusal, which no claimed format makes without the feature; the assertion dropped and the target re-run in `chain_s3b` |
+| `cargo test -p yggdryl-cli --all-targets --no-fail-fast` | 6 targets, 35 passed, 0 failed, 6 ignored |
+| `cargo test -p yggdryl --doc` | 628 passed |
+| `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings`; `cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings` | the first clean; the second refused the then-unused `pub(crate) use warned` (deleted) |
+| `RUSTDOCFLAGS="-D warnings" cargo doc -p yggdryl --no-deps --all-features` | four redundant explicit link targets the sweep's imports made (`fix/mod.rs`, `graph/market_column.rs`), fixed |
+| `cargo fmt --all -- --check` | clean |
+| `maturin develop`, `pytest python/tests --deselect python/tests/test_spark_interop.py`, `mypy --strict` | installed; 2784 passed, 4 skipped; no issues in 70 files |
+| `npm run --prefix node test:package:debug`, `cargo build -p yggdryl-cli`, `npm test --prefix node`, `tsc --noEmit`, `git diff -- node/index.js node/index.d.ts` | the package audit passed; 1122 tests, 1120 passed, the two sandbox `TextDecoder` tests failing as at every slice; tsc clean; the generated files unchanged |
+| `node scripts/build_docs_fix.js --check`, `build_docs_playground.js --check` | current |
+| `mkdocs build --strict` | clean |
+| `check_api_inventory.py`; `generate_internals.py --check` | current (180 source files and 570 `pub` names not described yet); `internals` current |
+| `check_docs_examples.py --lang python` / `javascript` / `rust` | 837 run, 3 skipped, 0 failed; 789 run, 2 skipped, 0 failed; 940 passed |
+| `grep -rn '#\[cfg(test)\]\|#\[test\]\|mod tests' rust/src python/src node/src cli/src` | empty |
+| `chain_s3b`: fmt, clippy in both lanes, `cargo doc` at `-D warnings`, `--test root --test logging` in both lanes and `--test s3` | fmt clean; clippy clean in both lanes; `cargo doc` clean; default features `--test root` 1727 and `--test logging` 82 passed; all features `--test root` 1911, `--test logging` 89, `--test s3` 264 passed; 0 failed |
+| the review: the `code-review` skill at high effort over the whole diff | five findings: three fixed, two kept with their reason ("S3 results" above) |
+| local-only checks (charset tables and interop, ISIN seed, country and MIC tables), benches | not run: nothing the slice touches makes them stale |
 
-Not run, as the slice made nothing of theirs stale: the charset table and
-interop checks, the ISIN seed check, the country and MIC table checks, every
-`cargo bench` and `npm run bench:*`, the Python boundary benchmarks, the
-scale run and the free-threaded lane. The two Node charset tests that compare
-the package to the runtime's `TextDecoder` (`node/tests/charset.test.js`:
-`decoding agrees with TextDecoder over the same names`, `iso-8859-1 is not a
-spelling of windows-1252 here`) fail in this sandbox alone, whose Node 22.22
-decodes the C1 range of `windows-1252` as ISO 8859-1 does; they failed at P0,
-P1, S0, S1, S2, S2b and P2 the same way and CI's Node proves them.
+Not run, as the slice made nothing of theirs stale: every `cargo bench` and
+`npm run bench:*`, the Python boundary benchmarks, the scale run and the
+free-threaded lane. The two Node charset tests that compare the package to
+the runtime's `TextDecoder` (`node/tests/charset.test.js`: `decoding agrees
+with TextDecoder over the same names`, `iso-8859-1 is not a spelling of
+windows-1252 here`) fail in this sandbox alone, whose Node 22.22 decodes the
+C1 range of `windows-1252` as ISO 8859-1 does; they failed at every slice
+the same way and CI's Node proves them. The CI run of this push is read to
+its `CI result` and recorded by the next handoff.
 
 ## Blockers
 
@@ -153,8 +159,8 @@ None.
 
 The slices, in the order they land, each one commit on the program branch:
 
-1. **S3** (in flight: its worktree `wip/s3` merging and settling) - the
-   remaining seams in place (D5, D6, D9, D10).
+1. **S3** - done (this commit): the remaining seams in place (D5, D6, D9,
+   D10); DESIGN.md "S3: what was built".
 2. **P4** (D38) - `transunix` and `sendunix` at every door; the dump, the
    dictionary hash, the snapshot's keys and `fix.json` regenerated once each.
    Design: "## P4: design" in DESIGN.md; contract `scratchpad/p4_contract.md`;
@@ -205,12 +211,13 @@ rows decided or changed this session:
 | D30 | `Catalog`/`Namespace`/`Table::Registered`; `CatalogFactory`; `Locator`; `Site::Store` under `s3`; the `From` impls stay, answering `Registered` | `warehouse/`, `holder/locator.rs` | S2 |
 | D31 | `Error::External`; `From<ParquetError>` deleted; `IOMedia::as_any` + `ParquetFooter`; the statistics as free functions | `error.rs`, `parquet/mod.rs` | S2 |
 | D32 | `filter_phases` published; logging and D17 unchanged | `expression/mod.rs` | S2 |
-| D5, D6, D9, D10 (refined for S3) | the inherent `dtype()`/`field(name)` in `enum_leaf!`'s market arm and the four `DataType::<kind>()` blocks deleted; `implementer.rs` with 115 items by route R/F/A/M/X and the eleven `pub(super)` raises, proven by the re-point script and `refs.py`; `MarketMessage` behind `MarketData::Fix`, `protocol_field_types!` exported as the builder, `FixField::new(&field)` the one spelling; `fix/state.rs` free functions, `Scheme::FIX` and `STATE_CODES` core, a logger named by its module path whatever crate holds it | DESIGN.md "## S3: design"; `s3_map/design_inputs.md` | S3 |
+| D5, D6, D9, D10 (refined for S3) | the inherent `dtype()`/`field(name)` in `enum_leaf!`'s market arm and the four `DataType::<kind>()` blocks deleted; `implementer.rs` with 115 items by route R/F/A/M/X and the eleven `pub(super)` raises, proven by the re-point script and `refs.py`; `MarketMessage` behind `MarketData::Fix`, `protocol_field_types!` exported as the builder, `FixField::new(&field)` the one spelling; `fix/state.rs` free functions, `Scheme::FIX` and `STATE_CODES` core, a logger named by its module path whatever crate holds it | DESIGN.md "## S3: design"; `s3_map/design_inputs.md` | S3, built S3 |
 | D34 | the medium holds its origin (`IOMedia::read_origin_field`), `read_arrow_field` one rule (declared else origin, narrowed by the select), one projection rule (declared ∩ the columns the select and the early filter read), one composer in `media_serie.rs` that `read_record_serie` also calls - the serie the one wrapper composing pushdown - `source_field` and the five residual copies gone, S8 amended | the user's sixth instruction; DESIGN.md D34, "P2 results" | S2b, built P2 |
 | D35 | `MediaCache` on every medium wrapper under `cache_ttl` - milliseconds, 0 realtime, a shared options section outside the hash feed as `file_threads` is - served while the handle is open or the entry younger than the TTL, every write door updating it with what it knows or invalidating it | the user's seventh instruction; DESIGN.md D35, "P2 results" | S2b, built P2 |
 | D36 | `yggdryl-s3` through a storage-backend extension point: `StorageBackend` claimed per scheme on the register (`claim_backend`, `backend_for`, `backends`), asked by `Holder::from_url` after lowering, its answer described; `Holder::Registered(Box<dyn RegisteredHandle>)`; the verbs the wildcards specialized on S3 (`upload_from`, `discard`, `as_leaf`, `as_container`, `set_known_size`) as `IOBase` defaults and `into_byte_stream` over `owned_stream_bytes`; `Site::Opened` with an opener; `aws/` and `auth/` stay core under `aws`; `yggdryl-iceberg[s3tables]` depends on `yggdryl-s3`; CI leaf `s3` with the three exchanges | the backend map, `s3_backend_map/design_inputs.md` | P3 in place, S6d the move |
 | D33 | `yggdryl-xmla`, an eighth crate through the media point, `soap/` with it; registered in place in S2b - the core's own media are three, `RecordOptions::Xmla`, `Media::Xmla`, `Media::xmla`, `Serie::Xmla` and `XmlaSerie` deleted, `Xmla<Holder>` a `MediaWrapper` - and moved in S6c; the Python `Xmla` class stays in the one native module, the CLI's `xmla serve` depends on the crate | the user's instruction; DESIGN.md D33; crates.io 404 | S2b, built S6c |
-| D38 | `currunix` -> `transunix` (the transaction instant, required, the identity and order axis), `recdunix` -> `sendunix` (the technical wire clock, optional, the merge reference), and the element's own `curruuid` -> `uuid`, `currhashcode` -> `hashcode` (`prevuuid`, `crossuuid`, `crosshashcode`, `srcuuids` keep their prefix); precedences, values, derivations, positions and tags unchanged - the carrier's clock first, else `SendingTime(52)`; crate fields 65_001, 65_002, 65_007 and 65_009 re-spelled, so the dump, the dictionary hash (once, with its sentence), the snapshot's keys and `fix.json` move and the census does not | the instants map | P4 |
+| D39 | a leaving medium keeps its rank: `media::codec::RESERVED_RANKS` (`parquet` 1, `avro` 2, `xmla` 4, `excel` 6) admitted by `claim` under the codec's own name, every other medium at or above `EXTERNAL_RANK`, so the `s2_pins` hashes and the order pins are byte-identical through S6; `implementer` grows once per move by S3's routes, Avro and Parquet carry their own hidden `implementer` for what Iceberg reaches; the Iceberg field view built by `protocol_field_types!` in `yggdryl-iceberg` (`IcebergField::new`), `as_iceberg` gone; core tests building a leaving crate's objects move to that crate's tests; `install()` at every init; order avro, parquet, excel, xmla, then iceberg after `yggdryl-s3` | the five media maps | S6 |
+| D38 | `currunix` -> `transunix` (the transaction instant, required, the identity and order axis), `recdunix` -> `sendunix` (the technical wire clock, optional, the merge reference), and the element's own `curruuid` -> `uuid`, `currhashcode` -> `hashcode` (`prevuuid`, `crossuuid`, `crosshashcode`, `srcuuids` keep their prefix); precedences, values, derivations, positions and tags unchanged - the carrier's clock first, else `SendingTime(52)`; crate fields 65_001, 65_004, 65_007 and 65_009 re-spelled, so the dump, the dictionary hash (once, with its sentence), the snapshot's keys and `fix.json` move and the census does not | the instants map | P4 |
 | D37 | `MarketMessage` a concrete public struct in `graph/message.rs` - boxed facts, `StatedFacts`, the entries as an `Arc<Field>` root and a `Scalar` row, `children`, `Metadata`, `Vec<Anomaly>`, `InstrumentStatement` - the four traits implemented once on it; `MarketData::Message`, `MarketKind::Message` (`message`); `FixMsg` the codec's handle over a message (`into_message`, `from_message`), an idmap-mapped tag never an entry, a native message rendered by the inverse idmap else its crate tags; S3's trait, `as_message::<T>()` and `Box<dyn MarketMessage>` deleted | the message map, `message_map/design_inputs.md` | P5 |
 
 ## Questions for the user

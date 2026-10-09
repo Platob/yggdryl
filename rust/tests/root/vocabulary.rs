@@ -147,7 +147,7 @@ mod rows {
 mod logical {
     use yggdryl::DataType;
     use yggdryl::Timezone;
-    use yggdryl::{TimeUnit, UnionMode};
+    use yggdryl::{MarketDataKind, MarketDataType, Side, TimeInForce, TimeUnit, UnionMode};
 
     #[test]
     fn message_codes_are_text_owned_by_the_fix_registry() {
@@ -186,11 +186,11 @@ mod logical {
             ("bbg", DataType::Bbg),
             ("ric", DataType::Ric),
             ("figi", DataType::Figi),
-            ("side", DataType::side()),
+            ("side", Side::dtype()),
             ("state", DataType::State),
-            ("marketdatakind", DataType::marketdatakind()),
-            ("marketdatatype", DataType::marketdatatype()),
-            ("timeinforce", DataType::timeinforce()),
+            ("marketdatakind", MarketDataKind::dtype()),
+            ("marketdatatype", MarketDataType::dtype()),
+            ("timeinforce", TimeInForce::dtype()),
             ("unit", DataType::Unit),
             ("forex", DataType::Forex),
             ("lei", DataType::Lei),

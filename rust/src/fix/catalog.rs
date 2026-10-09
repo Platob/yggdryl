@@ -8,8 +8,8 @@ use smol_str::{SmolStr, format_smolstr};
 use super::group_plan::GroupPlan;
 use super::registry::name_digest;
 use super::store::{DefinitionKey, compact, reference};
-use super::{FixDrop, FixId, FixRegistry, MsgType};
-use crate::folds_equal;
+use super::{FixDrop, FixField, FixFieldMut, FixId, FixRegistry, MsgType};
+use crate::implementer::folds_equal;
 use crate::{DataType, Error, Field, FixCategory, Result, StructType};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -51,7 +51,7 @@ impl DefinitionField {
     /// marker, not the category, decides whether it compiles as one.
     fn from_field(category: FixCategory, field: Field) -> Result<Self> {
         match category {
-            FixCategory::Components if field.as_fix().msgtype().is_some() => {
+            FixCategory::Components if FixField::new(&field).msgtype().is_some() => {
                 Ok(Self::Message(MsgType::from_field(field)?))
             }
             FixCategory::Groups => {
@@ -123,7 +123,7 @@ impl Catalog {
     fn position(&self, category: FixCategory, name: &str) -> Option<usize> {
         let position = *self.names.get(&Self::key(category, name))?;
         let entry = self.entries.get(position)?;
-        crate::folds_equal(entry.field.name(), name).then_some(position)
+        crate::implementer::folds_equal(entry.field.name(), name).then_some(position)
     }
 
     pub fn iter(&self, category: FixCategory) -> impl Iterator<Item = &Field> {
@@ -146,7 +146,7 @@ impl Catalog {
             .enumerate()
             .filter(|(_, entry)| entry.category == FixCategory::Groups)
         {
-            if let Some(tag) = entry.field.as_fix().counter().ok().flatten() {
+            if let Some(tag) = FixField::new(&entry.field).counter().ok().flatten() {
                 self.counters
                     .entry(tag)
                     .and_modify(|held| *held = None)
@@ -181,7 +181,7 @@ impl Catalog {
             let names_code = |name: &str| {
                 self.code_names
                     .get(code)
-                    .is_some_and(|named| crate::folds_equal(named, name))
+                    .is_some_and(|named| crate::implementer::folds_equal(named, name))
             };
             match codes.entry(SmolStr::new(code)) {
                 std::collections::hash_map::Entry::Vacant(slot) => {
@@ -224,8 +224,9 @@ impl Catalog {
                 .field
                 .message()
                 .map(super::msgtype::MsgType::as_str);
-            let contradicts =
-                code.is_some_and(|code| code != spelling && crate::folds_equal(code, spelling));
+            let contradicts = code.is_some_and(|code| {
+                code != spelling && crate::implementer::folds_equal(code, spelling)
+            });
             if code.is_some() && !contradicts {
                 return Some(position);
             }
@@ -233,7 +234,7 @@ impl Catalog {
         let alias = self
             .message_aliases
             .get(&name_digest(spelling, 0x4d53_475f_414c_4941))?;
-        if !crate::folds_equal(&alias.spelling, spelling) {
+        if !crate::implementer::folds_equal(&alias.spelling, spelling) {
             return None;
         }
         let code = alias.code.as_ref()?;
@@ -265,7 +266,7 @@ impl Catalog {
                 self.message_aliases
                     .entry(digest)
                     .and_modify(|held| {
-                        if !crate::folds_equal(&held.spelling, spelling)
+                        if !crate::implementer::folds_equal(&held.spelling, spelling)
                             || held.code.as_deref() != Some(code.value())
                         {
                             held.code = None;
@@ -314,8 +315,7 @@ impl Catalog {
     /// stale until settled.
     pub(super) fn push(&mut self, category: FixCategory, field: Field) -> Result<Option<Field>> {
         if category == FixCategory::Groups {
-            field
-                .as_fix()
+            FixField::new(&field)
                 .counter()?
                 .ok_or_else(|| Error::absent("FIX:counter", field.name()))?;
         }
@@ -332,7 +332,10 @@ impl Catalog {
                 return Err(Error::conflict(
                     "the existing canonical FIX definition spelling",
                     "a different canonical spelling",
-                    crate::text::expected_got(self.entries[position].field.name(), field.name()),
+                    crate::implementer::expected_got(
+                        self.entries[position].field.name(),
+                        field.name(),
+                    ),
                 ));
             }
             let field = DefinitionField::from_field(category, field)?;
@@ -354,8 +357,10 @@ impl Catalog {
     fn remember_facts(&mut self, position: usize) {
         let field = self.entries[position].field.as_field();
         if let Some(facts) = super::registry::FieldFacts::of(field) {
-            self.facts
-                .insert(field.as_metadata().storage_address(), (position, facts));
+            self.facts.insert(
+                crate::implementer::metadata_storage_address(field.as_metadata()),
+                (position, facts),
+            );
         }
     }
 
@@ -369,10 +374,13 @@ impl Catalog {
     /// What `field`'s metadata states, where the field is one of these
     /// definitions or shares its metadata with one.
     pub(super) fn facts_of(&self, field: &Field) -> Option<super::registry::FieldFacts> {
-        let (position, facts) = *self.facts.get(&field.as_metadata().storage_address())?;
+        let (position, facts) = *self
+            .facts
+            .get(&crate::implementer::metadata_storage_address(
+                field.as_metadata(),
+            ))?;
         let held = self.entries.get(position)?.field.as_field();
-        held.as_metadata()
-            .shares_storage_with(field.as_metadata())
+        crate::implementer::metadata_shares_storage_with(held.as_metadata(), field.as_metadata())
             .then_some(facts)
     }
 
@@ -416,7 +424,7 @@ impl Catalog {
 fn invalid(field: &Field, expected: impl std::fmt::Display) -> Error {
     Error::InvalidRecord {
         path: field.name().into(),
-        reason: crate::text::expected_got(expected, field.dtype()),
+        reason: crate::implementer::expected_got(expected, field.dtype()),
     }
 }
 
@@ -465,8 +473,7 @@ pub(super) fn column_shape(field: &Field) -> Result<()> {
 /// and is told so; the crate's columns answer no wire tag at all, and a serie
 /// is what `srcuuids` is.
 fn is_column_serie(field: &Field) -> bool {
-    let crate_tag = field
-        .as_fix()
+    let crate_tag = FixField::new(field)
         .tag()
         .ok()
         .flatten()
@@ -579,13 +586,13 @@ fn merge_root(stored: &Field, incoming: &Field) -> Result<Field> {
     // A definition's tag is the registry's derivation for its name, not a
     // statement the incoming side gets to make; the occurrence inside a
     // group has none, and an incoming one carrying it is stating nothing.
-    match stored.as_fix().tag()? {
-        Some(tag) => merged.as_fix_mut().set_tag(tag)?,
+    match FixField::new(stored).tag()? {
+        Some(tag) => FixFieldMut::new(&mut merged).set_tag(tag)?,
         None => {
             merged.remove_metadata(super::field::TAG_KEY);
         }
     }
-    merged.as_fix_mut().merge_with(&stored.as_fix())?;
+    FixFieldMut::new(&mut merged).merge_with(&FixField::new(stored))?;
     Ok(merged)
 }
 
@@ -593,7 +600,7 @@ fn set_merged_dtype(field: &mut Field, dtype: DataType) -> Result<()> {
     field.set_dtype(dtype)?;
     // The incoming declaration wins, but member order is the merged
     // component's. Resolve it against that final shape once at intake.
-    field.as_fix_mut().normalize_identifiers()
+    FixFieldMut::new(field).normalize_identifiers()
 }
 
 /// The compact documents a fold writes over, in the shape the resolver reads.
@@ -714,7 +721,7 @@ impl Documents {
     /// second of.
     fn remove(&mut self, key: &DefinitionKey) -> Option<Field> {
         let document = self.raw.remove(key)?;
-        let tag = document.as_fix().tag().ok().flatten().map(|tag| {
+        let tag = FixField::new(&document).tag().ok().flatten().map(|tag| {
             self.tags.remove(&tag);
             (tag, Some(key.clone()))
         });
@@ -805,8 +812,7 @@ impl Documents {
         if !held.contains(&key) {
             held.push(key.clone());
         }
-        let tag = document
-            .as_fix()
+        let tag = FixField::new(&document)
             .tag()
             .ok()
             .flatten()
@@ -898,8 +904,8 @@ pub(super) fn catalog_name(spelling: &str) -> Option<SmolStr> {
 /// built it: a hand-built catalog equals the catalog a store reads back.
 pub(super) fn canonical_occurrences(mut field: Field, root: bool) -> Result<Field> {
     if !root
-        && field.as_fix().field_ref().is_none()
-        && (field.as_fix().group().is_some() || field.as_fix().component().is_some())
+        && FixField::new(&field).field_ref().is_none()
+        && (FixField::new(&field).group().is_some() || FixField::new(&field).component().is_some())
     {
         field.remove_metadata(super::field::TAG_KEY);
     }
@@ -926,7 +932,7 @@ pub(super) fn canonical_occurrences(mut field: Field, root: bool) -> Result<Fiel
     if let Some(dtype) = dtype {
         field.set_dtype(dtype)?;
     }
-    field.as_fix_mut().normalize_identifiers()?;
+    FixFieldMut::new(&mut field).normalize_identifiers()?;
     Ok(field)
 }
 
@@ -996,7 +1002,7 @@ fn write_structure<'a>(
             reason: "expected an acyclic FIX reference graph nested at most 64 levels".into(),
         });
     }
-    let view = field.as_fix();
+    let view = FixField::new(field);
     // A definition names its component or its counter on its own root and is
     // still the definition: only a member is a reference.
     if !root && let Some((category, name)) = reference(field) {
@@ -1006,10 +1012,13 @@ fn write_structure<'a>(
                 None => write!(out, "?:"),
             }
             .expect("a String takes every write");
-            out.extend(crate::parser::folded(name));
+            out.extend(crate::implementer::folded(name));
             return Ok(());
         }
-        let key = (category, crate::parser::folded(name).collect::<String>());
+        let key = (
+            category,
+            crate::implementer::folded(name).collect::<String>(),
+        );
         if let Some(rendered) = memo.get(&key) {
             out.push_str(rendered);
             return Ok(());
@@ -1100,13 +1109,12 @@ fn fold_alike_at(held: &Field, incoming: &Field, root: bool) -> Result<Field> {
     if !root {
         merged.set_nullable(held.is_nullable() || incoming.is_nullable());
     }
-    let sources: Vec<&str> = held
-        .as_fix()
+    let sources: Vec<&str> = FixField::new(held)
         .sources()
-        .chain(incoming.as_fix().sources())
+        .chain(FixField::new(incoming).sources())
         .collect();
     if !sources.is_empty() {
-        merged.as_fix_mut().set_sources(sources)?;
+        FixFieldMut::new(&mut merged).set_sources(sources)?;
     }
     let dtype = match (held.dtype(), incoming.dtype()) {
         (DataType::Struct(ours), DataType::Struct(theirs)) => {
@@ -1168,7 +1176,7 @@ impl FixRegistry {
         // dictionary holds it, and the index is over the set's members.
         let codes = self
             .get_field_by_tag(35)
-            .and_then(|field| field.as_fix().codeset())
+            .and_then(|field| FixField::new(field).codeset())
             .and_then(|name| self.get_codeset(name))
             .map(|set| set.document().to_owned());
         self.catalog.index_message_aliases(codes.as_deref());
@@ -1211,7 +1219,7 @@ impl FixRegistry {
             return self.insert(field);
         }
         if category == FixCategory::Groups
-            && let Some(name) = field.as_fix().component().map(str::to_owned)
+            && let Some(name) = FixField::new(&field).component().map(str::to_owned)
         {
             let component = self.definition(FixCategory::Components, &name)?;
             if let Some(item) = occurrence_of(&field) {
@@ -1226,7 +1234,7 @@ impl FixRegistry {
                     ));
                 }
                 let mut item = item.clone();
-                item.as_fix_mut().set_component(&name)?;
+                FixFieldMut::new(&mut item).set_component(&name)?;
                 let dtype = group_dtype(&field, item)?;
                 field.set_dtype(dtype)?;
             }
@@ -1241,8 +1249,8 @@ impl FixRegistry {
         // derived against.
         let held = self
             .get_definition(category, field.name())
-            .and_then(|stored| stored.as_fix().tag().ok().flatten());
-        let own = match field.as_fix().tag()? {
+            .and_then(|stored| FixField::new(stored).tag().ok().flatten());
+        let own = match FixField::new(&field).tag()? {
             // A tag outside the block is nobody's to hold. It is kept as
             // stated so `validate_definition` below refuses it by name rather
             // than this quietly deriving something else over it.
@@ -1259,7 +1267,7 @@ impl FixRegistry {
             Some(tag) => tag,
             None => self.derived_definition_tag(field.name())?,
         };
-        field.as_fix_mut().set_tag(tag)?;
+        FixFieldMut::new(&mut field).set_tag(tag)?;
         self.validate_definition(category, &field)?;
         if let Some(stored) = self.get_definition(category, field.name()) {
             if stored.name().eq_ignore_ascii_case(field.name()) {
@@ -1313,7 +1321,9 @@ impl FixRegistry {
     /// Replaces an existing definition and returns its previous value.
     pub fn update_definition(&mut self, category: FixCategory, field: Field) -> Result<Field> {
         let stored = self.definition(category, field.name())?;
-        if category == FixCategory::Fields && stored.as_fix().id()? != field.as_fix().id()? {
+        if category == FixCategory::Fields
+            && FixField::new(stored).id()? != FixField::new(&field).id()?
+        {
             return Err(Error::conflict(
                 "the existing FIX identity",
                 "a different FIX identity",
@@ -1358,20 +1368,20 @@ impl FixRegistry {
     /// appended members without holding a copy of anything.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixRegistry, StructType};
+    /// use yggdryl::{DataType, FixFieldMut, FixRegistry, StructType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut party_id = DataType::utf8().nullable_field("PartyID");
-    /// party_id.as_fix_mut().set_tag(448)?;
+    /// FixFieldMut::new(&mut party_id).set_tag(448)?;
     /// let mut registry = FixRegistry::from_fields([party_id.clone()])?;
-    /// party_id.as_fix_mut().set_field_ref("PartyID")?;
+    /// FixFieldMut::new(&mut party_id).set_field_ref("PartyID")?;
     /// let party = DataType::from(StructType::from_fields([party_id])?).required_field("Party");
     /// registry.insert(party)?;
     /// // A message restates the component through a reference to it.
     /// let mut party = registry.field_by_name("Party")?.clone();
-    /// party.as_fix_mut().set_component("Party")?;
+    /// FixFieldMut::new(&mut party).set_component("Party")?;
     /// let mut order = DataType::from(StructType::from_fields([party])?).required_field("Order");
-    /// order.as_fix_mut().set_msgtype("D")?;
+    /// FixFieldMut::new(&mut order).set_msgtype("D")?;
     /// registry.insert(order)?;
     ///
     /// // Extending the component is one call, and the message sees the member.
@@ -1617,12 +1627,15 @@ impl FixRegistry {
         incoming: &Field,
         drops: &mut Option<&mut Vec<FixDrop>>,
     ) -> Result<Field> {
-        let (Some(held), Some(other)) =
-            (stored.as_fix().component(), incoming.as_fix().component())
-        else {
+        let (Some(held), Some(other)) = (
+            FixField::new(stored).component(),
+            FixField::new(incoming).component(),
+        ) else {
             return Ok(incoming.clone());
         };
-        if folds_equal(held, other) || stored.as_fix().counter()? != incoming.as_fix().counter()? {
+        if folds_equal(held, other)
+            || FixField::new(stored).counter()? != FixField::new(incoming).counter()?
+        {
             return Ok(incoming.clone());
         }
         let held = held.to_owned();
@@ -1860,7 +1873,7 @@ impl FixRegistry {
             return Ok(false);
         };
         let group = group.clone();
-        if group.as_fix().counter()? != target.as_fix().counter()? {
+        if FixField::new(&group).counter()? != FixField::new(&target).counter()? {
             return Ok(false);
         }
         let (Some(held), Some(item)) = (occurrence_of(&group), occurrence_of(&target)) else {
@@ -2012,7 +2025,7 @@ impl FixRegistry {
         }
         Ok(Some(Error::InvalidRecord {
             path: format_smolstr!("{owner}.{}", held.name()),
-            reason: crate::text::expected_got(
+            reason: crate::implementer::expected_got(
                 format_args!("{} stored for it", describe(held, held_target.as_ref())),
                 describe(child, child_target.as_ref()),
             ),
@@ -2114,7 +2127,7 @@ impl FixRegistry {
             .any(|category| {
                 self.catalog
                     .iter(category)
-                    .any(|held| held.as_fix().tag().ok().flatten() == Some(tag))
+                    .any(|held| FixField::new(held).tag().ok().flatten() == Some(tag))
             })
     }
 
@@ -2153,14 +2166,14 @@ impl FixRegistry {
             documents.tags.get(&tag).is_some_and(|held| held != key)
                 || self.get_field_by_tag(tag).is_some()
         };
-        let Some(tag) = incoming.as_fix().tag()? else {
+        let Some(tag) = FixField::new(&incoming).tag()? else {
             return Ok(incoming);
         };
         if !FixId::is_definition_tag(tag) || !taken(tag) {
             return Ok(incoming);
         }
         let tag = derived_tag(incoming.name(), taken)?;
-        incoming.as_fix_mut().set_tag(tag)?;
+        FixFieldMut::new(&mut incoming).set_tag(tag)?;
         Ok(incoming)
     }
 
@@ -2169,14 +2182,14 @@ impl FixRegistry {
         // not publish malformed protocol metadata. Groups reuse this reading.
         // The alternate names are read infallibly everywhere else, so this is
         // where a text the read would walk as nothing is refused.
-        field.as_fix().validate_names()?;
-        field.as_fix().validate_sources()?;
-        field.as_fix().validate_parents()?;
+        FixField::new(field).validate_names()?;
+        FixField::new(field).validate_sources()?;
+        FixField::new(field).validate_parents()?;
         // So is an identifier-map document; a role names a `Parties`
         // occurrence, whose `PartyID(448)` is the one member it reads.
-        for source in field.as_fix().idmap() {
+        for source in FixField::new(field).idmap() {
             if source?.role().is_some()
-                && field.as_fix().tag()? != Some(super::identity::PARTYID_TAG)
+                && FixField::new(field).tag()? != Some(super::identity::PARTYID_TAG)
             {
                 return Err(Error::InvalidMetadataValue {
                     key: "FIX:idmap".into(),
@@ -2187,19 +2200,18 @@ impl FixRegistry {
                 });
             }
         }
-        let counter = field.as_fix().counter()?;
+        let counter = FixField::new(field).counter()?;
         let map_group = category == FixCategory::Groups
             && matches!(field.dtype(), DataType::Map(_) | DataType::SortedMap(_));
         if map_group {
-            let tag = field
-                .as_fix()
+            let tag = FixField::new(field)
                 .tag()?
                 .ok_or_else(|| Error::absent("FIX:tag", field.name()))?;
             let counter = counter.ok_or_else(|| Error::absent("FIX:counter", field.name()))?;
             if !super::is_crate_tag(tag) || counter != tag {
                 return Err(Error::InvalidRecord {
                     path: field.name().into(),
-                    reason: crate::text::expected_got(
+                    reason: crate::implementer::expected_got(
                         "equal fix:tag and fix:counter in the crate's reserved range",
                         format_args!("FIX:tag={tag}, fix:counter={counter}"),
                     ),
@@ -2227,7 +2239,7 @@ impl FixRegistry {
                 ));
             }
             if let Some(group) = self.catalog.iter(FixCategory::Groups).find(|group| {
-                group.as_fix().counter().ok().flatten() == Some(tag)
+                FixField::new(group).counter().ok().flatten() == Some(tag)
                     && !folds_equal(group.name(), field.name())
             }) {
                 return Err(Error::conflict(
@@ -2255,8 +2267,7 @@ impl FixRegistry {
                     ),
                 ));
             }
-            if let Some(group) = field
-                .as_fix()
+            if let Some(group) = FixField::new(field)
                 .tag()?
                 .and_then(|tag| self.get_group_by_tag(tag))
                 .filter(|group| matches!(group.dtype(), DataType::Map(_) | DataType::SortedMap(_)))
@@ -2270,7 +2281,7 @@ impl FixRegistry {
         }
         if category != FixCategory::Fields {
             validate_name(field)?;
-            if let Some(tag) = field.as_fix().tag()? {
+            if let Some(tag) = FixField::new(field).tag()? {
                 // A definition nobody published a tag for is identified by a
                 // derived one, which is what the block above `CRATE_TAG_MAX`
                 // is for. This crate's own definitions are the exception: a
@@ -2281,7 +2292,7 @@ impl FixRegistry {
                 if !map_group && !FixId::is_definition_tag(tag) && !super::is_crate_tag(tag) {
                     return Err(Error::InvalidRecord {
                         path: field.name().into(),
-                        reason: crate::text::expected_got(
+                        reason: crate::implementer::expected_got(
                             "a named FIX definition's derived tag, or one of this crate's own",
                             format_args!(
                                 "tag {tag} outside [{}, {}) and [{}, {}]",
@@ -2304,10 +2315,9 @@ impl FixRegistry {
                     return Err(invalid(counter, "an int32 repeating-group counter"));
                 }
             }
-            if let Some(component) = field.as_fix().component()
+            if let Some(component) = FixField::new(field).component()
                 && let Some(item) = occurrence_of(field)
-                && !item
-                    .as_fix()
+                && !FixField::new(item)
                     .component()
                     .is_some_and(|name| folds_equal(name, component))
             {
@@ -2325,7 +2335,7 @@ impl FixRegistry {
         if depth > 64 {
             return Err(invalid(field, "FIX references nested at most 64 levels"));
         }
-        let view = field.as_fix();
+        let view = FixField::new(field);
         view.compiled_identifier_positions()?;
         // A code set is a reference like any other: the name is one a store
         // can file, and the dictionary has to hold the set it names, or the
@@ -2367,7 +2377,7 @@ impl FixRegistry {
             // duplicate constraint or a contended spelling renames it - so
             // its own identity is the message's business; the tag it carries
             // is the target's, and that is what a reference restates.
-            if category == FixCategory::Fields && view.tag()? != target.as_fix().tag()? {
+            if category == FixCategory::Fields && view.tag()? != FixField::new(target).tag()? {
                 return Err(Error::conflict(
                     "the referenced FIX field's tag",
                     "a different tag",
@@ -2412,23 +2422,22 @@ impl FixRegistry {
             // member standing beside it.
             let mut counters = Vec::new();
             for child in field.fields() {
-                let counter = match child.as_fix().group() {
-                    Some(name) => self
-                        .definition(FixCategory::Groups, name)?
-                        .as_fix()
-                        .counter()?,
-                    None => child.as_fix().counter()?,
+                let counter = match FixField::new(child).group() {
+                    Some(name) => {
+                        FixField::new(self.definition(FixCategory::Groups, name)?).counter()?
+                    }
+                    None => FixField::new(child).counter()?,
                 };
                 counters.extend(counter);
             }
             for child in field.fields() {
                 if !child.dtype().is_nested()
-                    && let Some(tag) = child.as_fix().tag()?
+                    && let Some(tag) = FixField::new(child).tag()?
                     && counters.contains(&tag)
                 {
                     return Err(Error::InvalidRecord {
                         path: format_smolstr!("{}.{}", field.name(), child.name()),
-                        reason: crate::text::expected_got(
+                        reason: crate::implementer::expected_got(
                             "no NumInGroup counter beside the group it counts, whose length is its count",
                             format_args!("{} ({tag})", child.name()),
                         ),
@@ -2452,9 +2461,7 @@ impl FixRegistry {
         for entry in self.catalog.all() {
             self.validate_definition(entry.category, &entry.field)?;
             let name = entry.field.name();
-            let tag = entry
-                .field
-                .as_fix()
+            let tag = FixField::new(&entry.field)
                 .tag()?
                 .ok_or_else(|| Error::absent(super::field::TAG_KEY, name))?;
             if let Some(held) = derived.insert(tag, name)
@@ -2613,11 +2620,11 @@ impl FixRegistry {
             for (category, document) in kept {
                 let mark = dropped.len();
                 match members_read(document.clone(), dropped, &mut |_, member| {
-                    let group = member.as_fix().group().and_then(|group| {
+                    let group = FixField::new(member).group().and_then(|group| {
                         renamed.iter().find(|(held, _)| folds_equal(held, group))
                     });
                     if let Some((_, named)) = group {
-                        member.as_fix_mut().set_group(named)?;
+                        FixFieldMut::new(member).set_group(named)?;
                     }
                     Ok(None)
                 }) {
@@ -2665,7 +2672,7 @@ impl FixRegistry {
         // after it folds only the pairs the fold made.
         let before = if kept.iter().any(|(category, document)| {
             matches!(category, FixCategory::Components | FixCategory::Groups)
-                && document.as_fix().msgtype().is_none()
+                && FixField::new(document).msgtype().is_none()
         }) {
             structures_of(documents)
         } else {
@@ -2741,13 +2748,13 @@ impl FixRegistry {
                 document.dtype(),
                 DataType::Serie(_) | DataType::LargeSerie(_)
             )
-            && let Some(counter) = document.as_fix().counter()?
+            && let Some(counter) = FixField::new(&document).counter()?
         {
             let held = self.get_field_by_tag(counter);
             if held.is_none_or(|field| field.dtype() != &DataType::Int32) {
                 let error = Error::InvalidRecord {
                     path: document.name().into(),
-                    reason: crate::text::expected_got(
+                    reason: crate::implementer::expected_got(
                         "an int32 repeating-group counter this dictionary holds",
                         format_args!(
                             "tag {counter} as {}",
@@ -2766,10 +2773,11 @@ impl FixRegistry {
         };
         // One group on one counter drawn from two components is one group:
         // the fold reconciles the component, so only the rest has to agree.
-        let probe = match stored.as_fix().component() {
+        let probe = match FixField::new(stored).component() {
             Some(component)
                 if category == FixCategory::Groups
-                    && stored.as_fix().counter()? == document.as_fix().counter()? =>
+                    && FixField::new(stored).counter()?
+                        == FixField::new(&document).counter()? =>
             {
                 with_component(&document, component)?
             }
@@ -2784,15 +2792,17 @@ impl FixRegistry {
         // its message - so a venue's `dealers` on its own counter stands
         // beside the held `dealers` rather than being passed over with every
         // member reading it.
-        let (stored_counter, counter) = (stored.as_fix().counter()?, document.as_fix().counter()?);
+        let (stored_counter, counter) = (
+            FixField::new(stored).counter()?,
+            FixField::new(&document).counter()?,
+        );
         let renamed = match category {
             FixCategory::Groups => counter
                 .filter(|counter| stored_counter.is_some_and(|held| held != *counter))
                 .map(|counter| format!("{}_{counter}", document.name())),
-            _ => document
-                .as_fix()
+            _ => FixField::new(&document)
                 .msgtype()
-                .filter(|wire| stored.as_fix().msgtype() != Some(*wire))
+                .filter(|wire| FixField::new(stored).msgtype() != Some(*wire))
                 .map(super::msgtype::derived_name)
                 .filter(|name| !folds_equal(name, document.name())),
         };
@@ -2826,10 +2836,10 @@ impl FixRegistry {
         // The name taken may hold this group from another source already,
         // drawn from another component: one group on one counter, whose
         // component the fold reconciles, as under the first name.
-        let probe = match held.as_fix().component() {
+        let probe = match FixField::new(held).component() {
             Some(component)
                 if category == FixCategory::Groups
-                    && held.as_fix().counter()? == document.as_fix().counter()? =>
+                    && FixField::new(held).counter()? == FixField::new(&document).counter()? =>
             {
                 with_component(&document, component)?
             }
@@ -2873,16 +2883,16 @@ fn group_counter(documents: &Documents, member: &Field) -> Option<i32> {
         return None;
     };
     let (_, group) = documents.get(FixCategory::Groups, name)?;
-    group.as_fix().counter().ok().flatten()
+    FixField::new(group).counter().ok().flatten()
 }
 
 /// `group` drawing its occurrences from the component `name`.
 fn with_component(group: &Field, name: &str) -> Result<Field> {
     let mut group = group.clone();
-    group.as_fix_mut().set_component(name)?;
+    FixFieldMut::new(&mut group).set_component(name)?;
     if let Some(item) = occurrence_of(&group) {
         let mut item = item.clone();
-        item.as_fix_mut().set_component(name)?;
+        FixFieldMut::new(&mut item).set_component(name)?;
         let dtype = group_dtype(&group, item)?;
         group.set_dtype(dtype)?;
     }
@@ -2904,7 +2914,7 @@ fn derived_tag(name: &str, taken: impl Fn(i32) -> bool) -> Result<i32> {
     }
     Err(Error::InvalidRecord {
         path: name.into(),
-        reason: crate::text::expected_got(
+        reason: crate::implementer::expected_got(
             "a free derived definition tag",
             format_args!("all {span} slots taken"),
         ),
@@ -2960,7 +2970,7 @@ fn structures_of(documents: &Documents) -> HashMap<DefinitionKey, SmolStr> {
     let lookup = |category, name: &str| documents.get(category, name).map(|(_, document)| document);
     for (key, document) in &documents.raw {
         if !matches!(key.0, FixCategory::Components | FixCategory::Groups)
-            || document.as_fix().msgtype().is_some()
+            || FixField::new(document).msgtype().is_some()
         {
             continue;
         }
@@ -3034,7 +3044,7 @@ fn fold_alike_definitions(
             for (category, incoming, landed) in folded {
                 if *landed
                     || !matches!(category, FixCategory::Components | FixCategory::Groups)
-                    || incoming.as_fix().msgtype().is_some()
+                    || FixField::new(incoming).msgtype().is_some()
                 {
                     continue;
                 }
@@ -3178,7 +3188,7 @@ fn rename_references_in(
     // member is a reference.
     let to = if root {
         (category == FixCategory::Components)
-            .then(|| field.as_fix().component().and_then(target))
+            .then(|| FixField::new(field).component().and_then(target))
             .flatten()
     } else {
         match reference(field) {
@@ -3188,8 +3198,8 @@ fn rename_references_in(
     };
     if let Some(to) = to {
         match category {
-            FixCategory::Groups => field.as_fix_mut().set_group(&to)?,
-            _ => field.as_fix_mut().set_component(&to)?,
+            FixCategory::Groups => FixFieldMut::new(field).set_group(&to)?,
+            _ => FixFieldMut::new(field).set_component(&to)?,
         }
         changed = true;
     }
@@ -3234,7 +3244,7 @@ fn remapped(
     member: &mut Field,
     remap: &HashMap<FixId, Option<(i32, SmolStr)>>,
 ) -> Result<Option<Error>> {
-    let view = member.as_fix();
+    let view = FixField::new(member);
     let (Some(name), Some(tag)) = (view.field_ref(), view.tag()?) else {
         return Ok(None);
     };
@@ -3250,8 +3260,8 @@ fn remapped(
             if folds_equal(member.name(), name) {
                 member.set_name(named.as_str());
             }
-            member.as_fix_mut().set_field_ref(named)?;
-            member.as_fix_mut().set_tag(*held)?;
+            FixFieldMut::new(member).set_field_ref(named)?;
+            FixFieldMut::new(member).set_tag(*held)?;
             Ok(None)
         }
         Some(None) => Ok(Some(Error::InvalidRecord {
@@ -3300,7 +3310,7 @@ fn counter_remapped(
     group: &mut Field,
     remap: &HashMap<FixId, Option<(i32, SmolStr)>>,
 ) -> Result<Option<Error>> {
-    let Some(tag) = group.as_fix().counter()? else {
+    let Some(tag) = FixField::new(group).counter()? else {
         return Ok(None);
     };
     let Some(counter) = other.get_field_by_tag(tag) else {
@@ -3310,7 +3320,7 @@ fn counter_remapped(
         None => Ok(None),
         Some(Some((held, _))) => {
             if *held != tag {
-                group.as_fix_mut().set_counter(*held)?;
+                FixFieldMut::new(group).set_counter(*held)?;
             }
             Ok(None)
         }

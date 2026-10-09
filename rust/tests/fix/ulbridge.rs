@@ -20,7 +20,7 @@ mod dataset {
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::text::{TextLine, TextOptions, read_text_lines};
-    use yggdryl::{FixCodec, FixMsg, FixRegistry, IOMedia, Scalar, Timezone, Url};
+    use yggdryl::{FixCodec, FixField, FixMsg, FixRegistry, IOMedia, Scalar, Timezone, Url};
 
     use super::{SoleMessage, path};
 
@@ -1269,7 +1269,7 @@ mod dataset {
             .iter()
             .enumerate()
             .filter_map(|(at, field)| {
-                let fix = field.as_fix();
+                let fix = FixField::new(field);
                 fix.counter()
                     .expect("a valid group counter")
                     .or(fix.tag().expect("a valid FIX tag"))

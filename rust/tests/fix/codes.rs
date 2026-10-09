@@ -14,15 +14,15 @@ use super::path;
 
 use yggdryl::holder::Holder;
 use yggdryl::local::LocalFolder;
-use yggdryl::{DataType, Error, Field, FixCategory, FixCode, FixRegistry};
+use yggdryl::{DataType, Error, Field, FixCategory, FixCode, FixField, FixFieldMut, FixRegistry};
 
 /// One field reading by one named set, and the set beside it.
 fn dictionary(name: &str, tag: i32, codes: &[FixCode]) -> (FixRegistry, Field) {
     let mut registry = FixRegistry::new();
     registry.set_codeset(name, codes).unwrap();
     let mut field = DataType::utf8().nullable_field(format!("field{tag}"));
-    field.as_fix_mut().set_tag(tag).unwrap();
-    field.as_fix_mut().set_codeset(name).unwrap();
+    FixFieldMut::new(&mut field).set_tag(tag).unwrap();
+    FixFieldMut::new(&mut field).set_codeset(name).unwrap();
     registry.insert(field.clone()).unwrap();
     (registry, field)
 }
@@ -30,7 +30,7 @@ fn dictionary(name: &str, tag: i32, codes: &[FixCode]) -> (FixRegistry, Field) {
 #[cfg(feature = "internals")]
 mod internal {
     use yggdryl::internals::fix_codes::create_codeset;
-    use yggdryl::{DataType, FixCode, FixRegistry};
+    use yggdryl::{DataType, FixCode, FixFieldMut, FixRegistry};
 
     /// A store files the document it reads without re-rendering it, so a set
     /// stating one spelling on two codes - which no caller's `set_codeset`
@@ -43,8 +43,10 @@ mod internal {
             let mut registry = FixRegistry::new();
             create_codeset(&mut registry, "ordstatuscodeset", document.to_owned()).unwrap();
             let mut field = DataType::utf8().nullable_field("ordstatus");
-            field.as_fix_mut().set_tag(39).unwrap();
-            field.as_fix_mut().set_codeset("ordstatuscodeset").unwrap();
+            FixFieldMut::new(&mut field).set_tag(39).unwrap();
+            FixFieldMut::new(&mut field)
+                .set_codeset("ordstatuscodeset")
+                .unwrap();
             registry.insert(field).unwrap();
             registry
         };
@@ -219,8 +221,10 @@ fn an_alias_two_held_codes_share_names_neither_after_a_merge() {
 fn a_field_may_not_read_by_a_set_the_dictionary_does_not_hold() {
     let mut registry = FixRegistry::new();
     let mut field = DataType::utf8().nullable_field("side");
-    field.as_fix_mut().set_tag(54).unwrap();
-    field.as_fix_mut().set_codeset("sidecodeset").unwrap();
+    FixFieldMut::new(&mut field).set_tag(54).unwrap();
+    FixFieldMut::new(&mut field)
+        .set_codeset("sidecodeset")
+        .unwrap();
     let refused = registry.insert(field.clone()).unwrap_err();
     assert!(
         matches!(&refused, Error::Absent { expected, path }
@@ -244,8 +248,10 @@ fn a_field_may_not_read_by_a_set_the_dictionary_does_not_hold() {
 fn one_set_is_named_once_however_many_fields_read_by_it() {
     let (mut registry, _) = dictionary("unitcodeset", 996, &[FixCode::new("Bbl", "Bbl")]);
     let mut other = DataType::utf8().nullable_field("legunitofmeasure");
-    other.as_fix_mut().set_tag(999).unwrap();
-    other.as_fix_mut().set_codeset("unitcodeset").unwrap();
+    FixFieldMut::new(&mut other).set_tag(999).unwrap();
+    FixFieldMut::new(&mut other)
+        .set_codeset("unitcodeset")
+        .unwrap();
     registry.insert(other).unwrap();
 
     // The set named here, beside the crate's MsgCat, state, market data
@@ -279,7 +285,7 @@ fn a_set_a_field_reads_by_is_not_one_a_removal_may_take_away() {
     // `update` folds rather than replaces, so the reference it dropped
     // would come back; the definition door is the one that replaces a
     // field whole.
-    field.as_fix_mut().remove_codeset();
+    FixFieldMut::new(&mut field).remove_codeset();
     registry
         .update_definition(FixCategory::Fields, field)
         .unwrap();
@@ -339,7 +345,7 @@ fn a_field_keeps_the_set_it_reads_by_when_another_dictionary_names_another() {
     // dictionary's set declared is in that vocabulary rather than in one
     // no field reads by: a merge widens a set and never narrows one.
     let field = held.field_by_tag(54).unwrap();
-    assert_eq!(field.as_fix().codeset(), Some("heldcodeset"));
+    assert_eq!(FixField::new(field).codeset(), Some("heldcodeset"));
     let set = held.codeset_of(field).expect("the set");
     assert_eq!(set.code_value("Buy"), Some("1"));
     assert_eq!(set.code_value("Sell"), Some("2"));
@@ -454,7 +460,7 @@ fn the_plugin_side_set_is_the_crates_own_and_refuses_every_change() {
     let field = registry
         .field_by_name("msgpluginside")
         .expect("the crate field");
-    assert_eq!(field.as_fix().codeset(), Some("msgpluginsidecodeset"));
+    assert_eq!(FixField::new(field).codeset(), Some("msgpluginsidecodeset"));
 
     let refusals = [
         registry

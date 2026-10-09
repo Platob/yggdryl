@@ -8,8 +8,8 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 use yggdryl::{
-    Field as CoreField, FixId as CoreFixId, ProtocolField as CoreProtocolField,
-    Scheme as CoreScheme, expression::Projection,
+    Field as CoreField, FixField, FixFieldMut, FixId as CoreFixId,
+    ProtocolField as CoreProtocolField, Scheme as CoreScheme, expression::Projection,
 };
 
 use crate::{
@@ -2076,10 +2076,7 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn sources(&self, env: Env) -> Result<Vec<String>> {
         self.require_fix(env, "sources")?;
-        Ok(self
-            .field
-            .inner
-            .as_fix()
+        Ok(FixField::new(&self.field.inner)
             .sources()
             .map(ToOwned::to_owned)
             .collect())
@@ -2089,9 +2086,7 @@ impl JsProtocolField {
     #[napi(setter)]
     pub fn set_sources(&mut self, env: Env, values: Vec<String>) -> Result<()> {
         self.require_fix(env, "sources")?;
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_sources(values)
             .map_err(napi_error)
     }
@@ -2102,9 +2097,7 @@ impl JsProtocolField {
     #[napi]
     pub fn add_source(&mut self, env: Env, id: String) -> Result<()> {
         self.require_fix(env, "sources")?;
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .add_source(&id)
             .map_err(napi_error)
     }
@@ -2114,7 +2107,7 @@ impl JsProtocolField {
     #[napi]
     pub fn has_source(&self, env: Env, id: String) -> Result<bool> {
         self.require_fix(env, "sources")?;
-        Ok(self.field.inner.as_fix().has_source(&id))
+        Ok(FixField::new(&self.field.inner).has_source(&id))
     }
 
     /// This field's identity, on the `fix` view.
@@ -2128,9 +2121,7 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn id(&self, env: Env) -> Result<Option<i32>> {
         self.require_fix(env, "id")?;
-        self.field
-            .inner
-            .as_fix()
+        FixField::new(&self.field.inner)
             .id()
             .map(|id| id.map(CoreFixId::digest))
             .map_err(napi_error)
@@ -2144,7 +2135,7 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn tag(&self, env: Env) -> Result<Option<i32>> {
         self.require_fix(env, "tag")?;
-        self.field.inner.as_fix().tag().map_err(napi_error)
+        FixField::new(&self.field.inner).tag().map_err(napi_error)
     }
 
     /// Record the canonical FIX tag, rejecting anything but an exact positive
@@ -2153,9 +2144,7 @@ impl JsProtocolField {
     pub fn set_tag(&mut self, env: Env, value: f64) -> Result<()> {
         self.require_fix(env, "tag")?;
         let tag = exact_i32(value, "tag")?;
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_tag(tag)
             .map_err(napi_error)
     }
@@ -2164,16 +2153,16 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn counter(&self, env: Env) -> Result<Option<i32>> {
         self.require_fix(env, "counter")?;
-        self.field.inner.as_fix().counter().map_err(napi_error)
+        FixField::new(&self.field.inner)
+            .counter()
+            .map_err(napi_error)
     }
 
     /// Set a repeating group's exact positive 32-bit counter tag.
     #[napi(setter)]
     pub fn set_counter(&mut self, env: Env, value: f64) -> Result<()> {
         self.require_fix(env, "counter")?;
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_counter(exact_i32(value, "counter")?)
             .map_err(napi_error)
     }
@@ -2182,16 +2171,16 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn component(&self, env: Env) -> Result<Option<String>> {
         self.require_fix(env, "component")?;
-        Ok(self.field.inner.as_fix().component().map(ToOwned::to_owned))
+        Ok(FixField::new(&self.field.inner)
+            .component()
+            .map(ToOwned::to_owned))
     }
 
     /// Set this occurrence's component definition.
     #[napi(setter)]
     pub fn set_component(&mut self, env: Env, value: String) -> Result<()> {
         self.require_fix(env, "component")?;
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_component(&value)
             .map_err(napi_error)
     }
@@ -2200,16 +2189,16 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn group(&self, env: Env) -> Result<Option<String>> {
         self.require_fix(env, "group")?;
-        Ok(self.field.inner.as_fix().group().map(ToOwned::to_owned))
+        Ok(FixField::new(&self.field.inner)
+            .group()
+            .map(ToOwned::to_owned))
     }
 
     /// Set this occurrence's group definition.
     #[napi(setter)]
     pub fn set_group(&mut self, env: Env, value: String) -> Result<()> {
         self.require_fix(env, "group")?;
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_group(&value)
             .map_err(napi_error)
     }
@@ -2218,16 +2207,16 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn field_ref(&self, env: Env) -> Result<Option<String>> {
         self.require_fix(env, "field_ref")?;
-        Ok(self.field.inner.as_fix().field_ref().map(ToOwned::to_owned))
+        Ok(FixField::new(&self.field.inner)
+            .field_ref()
+            .map(ToOwned::to_owned))
     }
 
     /// Set this occurrence's scalar field definition.
     #[napi(setter)]
     pub fn set_field_ref(&mut self, env: Env, value: String) -> Result<()> {
         self.require_fix(env, "field_ref")?;
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_field_ref(&value)
             .map_err(napi_error)
     }
@@ -2236,16 +2225,16 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn msgtype(&self, env: Env) -> Result<Option<String>> {
         self.require_fix(env, "msgtype")?;
-        Ok(self.field.inner.as_fix().msgtype().map(ToOwned::to_owned))
+        Ok(FixField::new(&self.field.inner)
+            .msgtype()
+            .map(ToOwned::to_owned))
     }
 
     /// Set this occurrence's complete wire message code.
     #[napi(setter)]
     pub fn set_msgtype(&mut self, env: Env, value: String) -> Result<()> {
         self.require_fix(env, "msgtype")?;
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_msgtype(&value)
             .map_err(napi_error)
     }
@@ -2254,7 +2243,9 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn msgcat(&self, env: Env) -> Result<Option<String>> {
         self.require_fix(env, "msgcat")?;
-        Ok(self.field.inner.as_fix().msgcat().map(ToOwned::to_owned))
+        Ok(FixField::new(&self.field.inner)
+            .msgcat()
+            .map(ToOwned::to_owned))
     }
 
     /// Set the FIX business category, or clear it with `null`.
@@ -2262,13 +2253,11 @@ impl JsProtocolField {
     pub fn set_msgcat(&mut self, env: Env, value: Option<String>) -> Result<()> {
         self.require_fix(env, "msgcat")?;
         if let Some(value) = value {
-            self.field
-                .inner
-                .as_fix_mut()
+            FixFieldMut::new(&mut self.field.inner)
                 .set_msgcat(&value)
                 .map_err(napi_error)
         } else {
-            self.field.inner.as_fix_mut().remove_msgcat();
+            FixFieldMut::new(&mut self.field.inner).remove_msgcat();
             Ok(())
         }
     }
@@ -2283,7 +2272,9 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn codeset(&self, env: Env) -> Result<Option<String>> {
         self.require_fix(env, "codeset")?;
-        Ok(self.field.inner.as_fix().codeset().map(ToOwned::to_owned))
+        Ok(FixField::new(&self.field.inner)
+            .codeset()
+            .map(ToOwned::to_owned))
     }
 
     /// Record the set this field reads by; `null` or an empty name removes
@@ -2293,9 +2284,7 @@ impl JsProtocolField {
     #[napi(setter)]
     pub fn set_codeset(&mut self, env: Env, value: Option<String>) -> Result<()> {
         self.require_fix(env, "codeset")?;
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_codeset(value.as_deref().unwrap_or_default())
             .map_err(napi_error)
     }
@@ -2307,7 +2296,7 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn tags(&self, env: Env) -> Result<Vec<i32>> {
         self.require_fix(env, "tags")?;
-        self.field.inner.as_fix().tags().map_err(napi_error)
+        FixField::new(&self.field.inner).tags().map_err(napi_error)
     }
 
     /// Record the alternate tags, each an exact positive `i32`; an empty array
@@ -2319,9 +2308,7 @@ impl JsProtocolField {
             .into_iter()
             .map(|value| exact_i32(value, "tags"))
             .collect::<Result<Vec<i32>>>()?;
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_tags(&tags)
             .map_err(napi_error)
     }
@@ -2332,10 +2319,7 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn names(&self, env: Env) -> Result<Vec<String>> {
         self.require_fix(env, "names")?;
-        Ok(self
-            .field
-            .inner
-            .as_fix()
+        Ok(FixField::new(&self.field.inner)
             .names()
             .map(ToOwned::to_owned)
             .collect())
@@ -2347,9 +2331,7 @@ impl JsProtocolField {
     #[napi(setter)]
     pub fn set_names(&mut self, env: Env, values: Vec<String>) -> Result<()> {
         self.require_fix(env, "names")?;
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_names(values)
             .map_err(napi_error)
     }
@@ -2362,10 +2344,7 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn parents(&self, env: Env) -> Result<Vec<String>> {
         self.require_fix(env, "parents")?;
-        Ok(self
-            .field
-            .inner
-            .as_fix()
+        Ok(FixField::new(&self.field.inner)
             .parents()
             .map(ToOwned::to_owned)
             .collect())
@@ -2377,9 +2356,7 @@ impl JsProtocolField {
     #[napi(setter)]
     pub fn set_parents(&mut self, env: Env, values: Vec<String>) -> Result<()> {
         self.require_fix(env, "parents")?;
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_parents(values)
             .map_err(napi_error)
     }
@@ -2390,10 +2367,7 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn identifiers(&self, env: Env) -> Result<Vec<String>> {
         self.require_fix(env, "identifiers")?;
-        Ok(self
-            .field
-            .inner
-            .as_fix()
+        Ok(FixField::new(&self.field.inner)
             .identifiers()
             .map(ToOwned::to_owned)
             .collect())
@@ -2405,9 +2379,7 @@ impl JsProtocolField {
     #[napi(setter)]
     pub fn set_identifiers(&mut self, env: Env, values: Vec<String>) -> Result<()> {
         self.require_fix(env, "identifiers")?;
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_identifiers(values)
             .map_err(napi_error)
     }
@@ -2420,10 +2392,7 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn nulls(&self, env: Env) -> Result<Vec<String>> {
         self.require_fix(env, "nulls")?;
-        Ok(self
-            .field
-            .inner
-            .as_fix()
+        Ok(FixField::new(&self.field.inner)
             .nulls()
             .map(ToOwned::to_owned)
             .collect())
@@ -2433,9 +2402,7 @@ impl JsProtocolField {
     #[napi(setter)]
     pub fn set_nulls(&mut self, env: Env, values: Vec<String>) -> Result<()> {
         self.require_fix(env, "nulls")?;
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_nulls(values)
             .map_err(napi_error)
     }
@@ -2445,9 +2412,7 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn directions(&self, env: Env) -> Result<Vec<FixDirection>> {
         self.require_fix(env, "directions")?;
-        self.field
-            .inner
-            .as_fix()
+        FixField::new(&self.field.inner)
             .directions()
             .map(|entry| {
                 let rule = yggdryl::FixDirection::from(entry.map_err(napi_error)?);
@@ -2468,9 +2433,7 @@ impl JsProtocolField {
             .into_iter()
             .map(|rule| yggdryl::FixDirection::new(rule.code, rule.patterns))
             .collect();
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_directions(&rules)
             .map_err(napi_error)
     }
@@ -2480,9 +2443,7 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn idmap(&self, env: Env) -> Result<Vec<FixIdSource>> {
         self.require_fix(env, "idmap")?;
-        self.field
-            .inner
-            .as_fix()
+        FixField::new(&self.field.inner)
             .idmap()
             .map(|source| Ok(FixIdSource::from_core(&source.map_err(napi_error)?)))
             .collect()
@@ -2508,9 +2469,7 @@ impl JsProtocolField {
             }
             sources.push(source);
         }
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_idmap(&sources)
             .map_err(napi_error)
     }
@@ -2521,10 +2480,7 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn marketdatatypes(&self, env: Env) -> Result<Vec<FixMarketDataType>> {
         self.require_fix(env, "marketdatatypes")?;
-        Ok(self
-            .field
-            .inner
-            .as_fix()
+        Ok(FixField::new(&self.field.inner)
             .marketdatatypes()
             .map(|(wire, member)| FixMarketDataType {
                 wire: wire.to_owned(),
@@ -2550,9 +2506,7 @@ impl JsProtocolField {
                 })?;
             types.push((value.wire.as_str(), member));
         }
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_marketdatatypes(&types)
             .map_err(napi_error)
     }
@@ -2563,10 +2517,7 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn timeinforces(&self, env: Env) -> Result<Vec<FixTimeInForce>> {
         self.require_fix(env, "timeinforces")?;
-        Ok(self
-            .field
-            .inner
-            .as_fix()
+        Ok(FixField::new(&self.field.inner)
             .timeinforces()
             .map(|(wire, member)| FixTimeInForce {
                 wire: wire.to_owned(),
@@ -2589,9 +2540,7 @@ impl JsProtocolField {
                 })?;
             members.push((value.wire.as_str(), member));
         }
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_timeinforces(&members)
             .map_err(napi_error)
     }
@@ -2600,10 +2549,7 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn description(&self, env: Env) -> Result<Option<String>> {
         self.require_fix(env, "description")?;
-        Ok(self
-            .field
-            .inner
-            .as_fix()
+        Ok(FixField::new(&self.field.inner)
             .description()
             .map(ToOwned::to_owned))
     }
@@ -2612,9 +2558,7 @@ impl JsProtocolField {
     #[napi(setter)]
     pub fn set_description(&mut self, env: Env, value: String) -> Result<()> {
         self.require_fix(env, "description")?;
-        self.field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.field.inner)
             .set_description(value)
             .map_err(napi_error)
     }

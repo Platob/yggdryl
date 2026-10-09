@@ -5,6 +5,11 @@
 //! wildcard arms, so a new variant compiles clean while behaving wrongly. A
 //! green build proves nothing; these are the invariants a wildcard cannot
 //! satisfy by accident.
+//!
+//! What FIX states about a state - each status field read under its own code
+//! set, and the state a message type asks for - is `rust/src/fix/state.rs`'s,
+//! pinned by `rust/tests/fix/state.rs`; the wire codes `OrdStatus(39)` and
+//! `ExecType(150)` share stay here, because `State::from_spelling` reads them.
 
 use std::sync::Arc;
 
@@ -310,62 +315,6 @@ fn a_state_answers_every_vocabulary_that_names_it() {
     }
 }
 
-#[test]
-fn every_fix_status_field_answers_by_its_own_code_set() {
-    for (tag, code, expected) in [
-        (39, "0", Some(State::New)),
-        (39, "A", Some(State::PendingNew)),
-        (150, "F", Some(State::Trade)),
-        (150, "M", Some(State::Locked)),
-        (1036, "0", Some(State::Received)),
-        (1036, "1", Some(State::Acknowledged)),
-        (1036, "2", Some(State::DontKnow)),
-        (939, "0", Some(State::Accepted)),
-        (939, "8", Some(State::PendingVerification)),
-        (939, "10", Some(State::Verified)),
-        (939, "11", Some(State::Disputed)),
-        (297, "16", Some(State::Active)),
-        (297, "6", Some(State::Removed)),
-        (297, "9", Some(State::NotFound)),
-        // A market warning states no state.
-        (297, "12", None),
-        (297, "13", None),
-        (87, "0", Some(State::Allocated)),
-        (87, "6", Some(State::PendingAllocation)),
-        (87, "7", Some(State::Reversed)),
-        (87, "11", Some(State::PendingApproval)),
-        (87, "13", Some(State::PendingApproval)),
-        (87, "14", Some(State::PendingReversal)),
-        (665, "2", Some(State::Mismatched)),
-        (665, "4", Some(State::Confirmed)),
-        (940, "3", Some(State::Affirmed)),
-        (1375, "2", Some(State::Complete)),
-        (531, "0", Some(State::Rejected)),
-        (531, "7", Some(State::Canceled)),
-        (531, "C", Some(State::Canceled)),
-        // A code a set does not define, and a tag no status is read off.
-        (1036, "9", None),
-        (54, "1", None),
-    ] {
-        assert_eq!(State::from_fix_status(tag, code), expected, "{tag}={code}");
-    }
-    assert_eq!(State::FIX_STATUS_TAGS[0], 39, "OrdStatus is read first");
-    for (msgtype, expected) in [
-        ("D", Some(State::PendingNew)),
-        ("E", Some(State::PendingNew)),
-        ("F", Some(State::PendingCancel)),
-        ("G", Some(State::PendingReplace)),
-        ("R", Some(State::Pending)),
-        ("S", Some(State::Active)),
-        ("3", Some(State::Rejected)),
-        ("j", Some(State::Rejected)),
-        ("8", None),
-        ("0", None),
-    ] {
-        assert_eq!(State::from_fix_msgtype(msgtype), expected, "35={msgtype}");
-    }
-}
-
 /// A trade report awaiting its verification, an allocation awaiting its
 /// making and a give-up awaiting its approval were each acknowledged first,
 /// so they rank past their acknowledgement and below every answer to them:
@@ -438,29 +387,6 @@ fn a_state_awaiting_its_next_step_ranks_past_its_acknowledgement_and_below_its_a
     assert_eq!(State::from_code(8013), Some(State::Approved));
     assert_eq!(State::from_spelling("approved"), Some(State::Approved));
     assert_eq!(State::from_spelling("APPROVED"), Some(State::Approved));
-    // FIX states an approved give-up as `AllocStatus` accepted, so no
-    // status code answers it.
-    for code in 0..=20 {
-        let code = code.to_string();
-        assert_ne!(
-            State::from_fix_status(87, &code),
-            Some(State::Approved),
-            "87={code}"
-        );
-    }
-}
-
-/// A `QuoteCancel(Z)` asks for its quote's cancel as an order cancel request
-/// does: it moves the quote's chain to a pending cancel, which its
-/// acknowledgement then ends.
-#[test]
-fn a_quote_cancel_asks_for_a_cancel() {
-    assert_eq!(State::from_fix_msgtype("Z"), Some(State::PendingCancel));
-    assert_eq!(
-        State::from_fix_msgtype("Z"),
-        State::from_fix_msgtype("F"),
-        "a quote cancel asks for what an order cancel request asks for"
-    );
 }
 
 #[test]

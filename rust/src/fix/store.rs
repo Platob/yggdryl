@@ -21,10 +21,10 @@ use std::collections::{BTreeMap, HashMap};
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::FixRegistry;
 use super::source::FixSource;
-use crate::folds_equal;
+use super::{FixField, FixFieldMut, FixRegistry};
 use crate::holder::Holder;
+use crate::implementer::folds_equal;
 use crate::text::Formatting;
 use crate::{
     DataType, DigestAlgorithm, Error, Field, FixCategory, IOBase, Result, Scalar, StructType, Url,
@@ -129,7 +129,7 @@ pub(super) fn located(error: Error, entry: &dyn IOBase) -> Error {
 fn codeset_document(document: &Scalar) -> Result<(String, String)> {
     let record = document.as_struct().ok_or_else(|| Error::InvalidRecord {
         path: CODESETS.into(),
-        reason: crate::text::expected_got("a JSON code set object", document.kind()),
+        reason: crate::implementer::expected_got("a JSON code set object", document.kind()),
     })?;
     let name = record
         .get(CODESET_NAME)
@@ -165,7 +165,7 @@ fn codeset_document(document: &Scalar) -> Result<(String, String)> {
 fn sources_document(document: &Scalar) -> Result<Vec<FixSource>> {
     let entries = document.as_sequence().ok_or_else(|| Error::InvalidRecord {
         path: SOURCES.into(),
-        reason: crate::text::expected_got("a JSON array of source entries", document.kind()),
+        reason: crate::implementer::expected_got("a JSON array of source entries", document.kind()),
     })?;
     let mut sources: Vec<FixSource> = Vec::with_capacity(entries.len());
     for entry in entries {
@@ -195,7 +195,7 @@ pub(super) fn definition_key(category: FixCategory, field: &Field) -> Definition
 
 /// The definition a field restates, when it carries a reference marker.
 pub(super) fn reference(field: &Field) -> Option<(FixCategory, &str)> {
-    let view = field.as_fix();
+    let view = FixField::new(field);
     view.field_ref()
         .map(|name| (FixCategory::Fields, name))
         .or_else(|| view.group().map(|name| (FixCategory::Groups, name)))
@@ -249,7 +249,7 @@ impl Resolver<'_> {
         let Some((category, name)) = reference(field) else {
             return self.children(field.clone(), depth);
         };
-        let view = field.as_fix();
+        let view = FixField::new(field);
         if [view.field_ref(), view.group(), view.component()]
             .into_iter()
             .flatten()
@@ -288,9 +288,9 @@ impl Resolver<'_> {
                 .get_key_value(&exact)
                 .map(|(key, _)| key)
                 .or_else(|| {
-                    self.raw
-                        .keys()
-                        .find(|key| key.0 == category && crate::folds_equal(&key.1, name))
+                    self.raw.keys().find(|key| {
+                        key.0 == category && crate::implementer::folds_equal(&key.1, name)
+                    })
                 })
                 .cloned();
             match key {
@@ -363,7 +363,7 @@ impl Resolver<'_> {
         if let Some(dtype) = dtype {
             field.set_dtype(dtype)?;
         }
-        field.as_fix_mut().normalize_identifiers()?;
+        FixFieldMut::new(&mut field).normalize_identifiers()?;
         Ok((field, height))
     }
 }
@@ -383,16 +383,16 @@ pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
         placeholder.set_nullable(field.is_nullable());
         match category {
             FixCategory::Fields => {
-                placeholder.as_fix_mut().set_field_ref(&name)?;
+                FixFieldMut::new(&mut placeholder).set_field_ref(&name)?;
                 // The tag beside the name: a reader resolves the
                 // reference by the field's identity, the pair, and
                 // never by a spelling alone.
-                if let Some(tag) = field.as_fix().tag()? {
-                    placeholder.as_fix_mut().set_tag(tag)?;
+                if let Some(tag) = FixField::new(&field).tag()? {
+                    FixFieldMut::new(&mut placeholder).set_tag(tag)?;
                 }
             }
-            FixCategory::Groups => placeholder.as_fix_mut().set_group(&name)?,
-            FixCategory::Components => placeholder.as_fix_mut().set_component(&name)?,
+            FixCategory::Groups => FixFieldMut::new(&mut placeholder).set_group(&name)?,
+            FixCategory::Components => FixFieldMut::new(&mut placeholder).set_component(&name)?,
         }
         return Ok(placeholder);
     }
@@ -436,8 +436,7 @@ pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
 /// left in: a dump states the whole row, and the crate's own definition is
 /// still the one that types it.
 fn is_crate_field(field: &Field) -> bool {
-    field
-        .as_fix()
+    FixField::new(field)
         .tag()
         .ok()
         .flatten()
@@ -511,10 +510,10 @@ impl FixRegistry {
     /// reconstructs the same resolved catalog. No filesystem I/O is performed.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixRegistry, StructType};
+    /// use yggdryl::{DataType, FixFieldMut, FixRegistry, StructType};
     /// let mut registry = FixRegistry::new();
     /// let mut message = DataType::from(StructType::from_fields([])?).required_field("Order");
-    /// message.as_fix_mut().set_msgtype("D")?;
+    /// FixFieldMut::new(&mut message).set_msgtype("D")?;
     /// registry.insert(message)?;
     /// let restored = FixRegistry::from_json(&registry.into_json()?)?;
     /// assert_eq!(restored, registry);
@@ -625,7 +624,7 @@ impl FixRegistry {
     fn from_snapshot(document: &Scalar) -> Result<Self> {
         let record = document.as_struct().ok_or_else(|| Error::InvalidRecord {
             path: "fix registry".into(),
-            reason: crate::text::expected_got("a JSON registry object", document.kind()),
+            reason: crate::implementer::expected_got("a JSON registry object", document.kind()),
         })?;
         for key in record.keys() {
             if key != CODESETS
@@ -879,9 +878,9 @@ impl FixRegistry {
                 // `insert_definition` derives it. A document that states one
                 // keeps it: the dictionary owns the identity, not the reader.
                 let mut field = field.clone();
-                if field.as_fix().tag()?.is_none() {
+                if FixField::new(&field).tag()?.is_none() {
                     let tag = self.derived_definition_tag(field.name())?;
-                    field.as_fix_mut().set_tag(tag)?;
+                    FixFieldMut::new(&mut field).set_tag(tag)?;
                 }
                 self.forget_answers();
                 self.catalog.insert(category, field)?;
@@ -921,7 +920,7 @@ impl FixRegistry {
                 if shard_of(tag) != shard {
                     return Err(Error::InvalidRecord {
                         path: field.name().into(),
-                        reason: crate::text::expected_got(
+                        reason: crate::implementer::expected_got(
                             format_args!(
                                 "a tag of shard {shard}, from {} to {}",
                                 shard * SHARD_WIDTH,

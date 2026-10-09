@@ -42,7 +42,8 @@ pub(super) const CFICODE_TAG: i32 = 461;
 pub(super) fn merged_statement(lead: &Scalar, other: &Scalar) -> Option<Scalar> {
     let text = |held: &Scalar| held.as_str().map(|held| held.trim().to_ascii_uppercase());
     let (lead_text, other_text) = (text(lead)?, text(other)?);
-    let stated = |code: &str| Cfi::is_classified(code) || code == Cfi::UNCLASSIFIED;
+    let stated =
+        |code: &str| Cfi::is_classified(code) || code == crate::implementer::CFI_UNCLASSIFIED;
     if !stated(&lead_text) || !stated(&other_text) {
         return None;
     }

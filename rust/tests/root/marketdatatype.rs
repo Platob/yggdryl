@@ -7,7 +7,8 @@
 use arrow_array::Array;
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::{
-    ArrowCastOptions, DataType, DataTypeKind, Field, MarketDataKind, MarketDataType, Scalar, Serie,
+    ArrowCastOptions, DataType, DataTypeKind, Field, MARKETDATATYPE_KIND, MarketDataKind,
+    MarketDataType, MarketType, Scalar, Serie,
 };
 
 #[test]
@@ -146,7 +147,7 @@ fn the_retired_spelling_unkn_names_no_type() {
         MarketDataType::Unknown
     );
     assert!(
-        DataType::marketdatatype()
+        MarketDataType::dtype()
             .scalar(Scalar::from("UNKN"))
             .is_err()
     );
@@ -234,28 +235,62 @@ fn a_message_type_names_its_own_typing_field_before_its_kind() {
     );
 }
 
+/// A kind states its own datatype and a nullable field of it - inherent items
+/// of the enum, where `DataType` once held a constructor per kind - and both
+/// are the descriptor's own, so a crate declaring a kind gets the same pair.
+#[test]
+fn the_marketdatatype_states_its_own_datatype_and_a_nullable_field_of_it() {
+    let dtype = MarketDataType::dtype();
+    assert_eq!(
+        dtype,
+        DataType::Market(MarketType::new(&MARKETDATATYPE_KIND))
+    );
+    assert_eq!(dtype, MARKETDATATYPE_KIND.dtype());
+    assert_eq!(dtype, DataType::from_str("marketdatatype").unwrap());
+    assert_eq!(dtype.id(), MarketDataType::ID);
+    assert_eq!(dtype.to_string(), "marketdatatype");
+    assert!(dtype.is_enum());
+
+    let field = MarketDataType::field("marketdatatype");
+    assert_eq!(field.name(), "marketdatatype");
+    assert!(field.is_nullable(), "a kind's field is nullable");
+    assert_eq!(field.dtype(), &dtype);
+    assert_eq!(field, MARKETDATATYPE_KIND.field("marketdatatype", true));
+    // Any text names it; nullability is the field's, so the required one is
+    // the descriptor's alone.
+    assert_eq!(
+        MarketDataType::field(String::from("a marketdatatype")).name(),
+        "a marketdatatype"
+    );
+    assert!(
+        !MARKETDATATYPE_KIND
+            .field("marketdatatype", false)
+            .is_nullable()
+    );
+}
+
 #[test]
 fn the_datatype_is_an_enum_over_uint16_codes() {
-    assert_eq!(DataType::marketdatatype().id(), MarketDataType::ID);
+    assert_eq!(MarketDataType::dtype().id(), MarketDataType::ID);
     assert_eq!(MarketDataType::ID.kind(), DataTypeKind::Enum);
-    assert!(DataType::marketdatatype().is_enum());
+    assert!(MarketDataType::dtype().is_enum());
     assert_eq!(
         DataType::from_str("marketdatatype").unwrap(),
-        DataType::marketdatatype()
+        MarketDataType::dtype()
     );
-    assert_eq!(DataType::marketdatatype().to_string(), "marketdatatype");
+    assert_eq!(MarketDataType::dtype().to_string(), "marketdatatype");
     assert_eq!(
-        DataType::marketdatatype().default_value().unwrap(),
+        MarketDataType::dtype().default_value().unwrap(),
         Scalar::from(MarketDataType::Unknown)
     );
     assert_eq!(
-        DataType::marketdatatype()
+        MarketDataType::dtype()
             .scalar(Scalar::from("ORDLIMIT"))
             .unwrap(),
         Scalar::from(MarketDataType::OrdLimit)
     );
     assert_eq!(
-        DataType::marketdatatype()
+        MarketDataType::dtype()
             .scalar(Scalar::from(102_i32))
             .unwrap(),
         Scalar::from(MarketDataType::OrdLimit)
@@ -266,7 +301,7 @@ fn the_datatype_is_an_enum_over_uint16_codes() {
         Scalar::from(MarketDataType::TrdBlock)
     );
 
-    let field = Field::new("marketdatatype", DataType::marketdatatype(), true);
+    let field = Field::new("marketdatatype", MarketDataType::dtype(), true);
     let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &ArrowDataType::UInt16);
     assert_eq!(

@@ -15,11 +15,10 @@ use super::entry::{FixEntry, emit_bytes, emit_text, wire_text, wire_text_under};
 use super::identity::{self, FixCapture, FixHeader, FixLifted, Typed};
 use super::memo::{PartySlot, PartyWord};
 use super::registry::FixMap;
-use super::{FixId, FixIdMapKind, FixKey, FixRegistry};
+use super::{FixField, FixId, FixIdMapKind, FixKey, FixRegistry};
 use crate::graph::facts::OperationEventFacts;
 use crate::graph::{Element, Event, FxRates, Market, Metadata, Operation};
 use crate::isin_registry::{EconomicMemo, IsinTable};
-use crate::xxhash;
 use crate::{
     Ccy, Cfi, Country, Decimal, Forex, IdKey, IdSource, IdType, Identifier, Identifiers,
     MarketDataKind, Mic, Side, State, StructType, TimeInForce, Unit, Uuid,
@@ -177,7 +176,7 @@ fn facts_of_tag(registry: &FixRegistry, tag: i32) -> u32 {
         FINANCIAL_INSTRUMENT_SHORT_NAME_TAG => fact::SECURITYIDS,
         2749 | 60 | 768 | 769 | 770 | 1750..=1770 => fact::EXECUTION,
         35 | 117 => fact::STATUS,
-        tag if State::FIX_STATUS_TAGS.contains(&tag) || tag == 150 => fact::STATUS,
+        tag if crate::fix::state::STATUS_TAGS.contains(&tag) || tag == 150 => fact::STATUS,
         tag if crate::MARKETDATATYPE_FIX_TAGS.contains(&tag)
             || registry
                 .marketdatatype_sources()
@@ -371,7 +370,7 @@ impl Underlying<'_> {
             return;
         }
         match &self.found {
-            None => self.found = Some(crate::Isin::from_proven(value)),
+            None => self.found = Some(crate::implementer::isin_from_proven(value)),
             Some(held) if held.as_str() == value => {}
             Some(_) => self.basket = true,
         }
@@ -727,7 +726,7 @@ fn admit_identifier(
     field: &str,
     dropped: &mut Vec<super::FixAnomaly>,
 ) {
-    if crate::code::is_null_like(value) {
+    if crate::implementer::is_null_like(value) {
         return;
     }
     let id = match kind.and_then(|kind| Identifier::new(IdKey::new(src, kind), value)) {
@@ -851,9 +850,9 @@ const WHOLE_TAGS: [i32; 3] = [
 /// `int64` cell's bits included - the place through the value door alone.
 fn unread_whole(tag: i32, value: &Scalar) -> bool {
     if tag == super::SEQNUM_TAG_NAME.0 {
-        crate::graph::element_column::whole_u64(value).is_none()
+        crate::implementer::whole_u64(value).is_none()
     } else {
-        crate::graph::element_column::digest_u64(value).is_none()
+        crate::implementer::digest_u64(value).is_none()
     }
 }
 
@@ -927,14 +926,14 @@ fn marketdatakind_of(value: &Scalar) -> Option<MarketDataKind> {
 /// use std::sync::Arc;
 ///
 /// use yggdryl::graph::{Element, Event};
-/// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructType};
+/// use yggdryl::{DataType, FixFieldMut, FixMsg, FixRegistry, Scalar, StructType};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut symbol = DataType::utf8().required_field("Symbol");
-/// symbol.as_fix_mut().set_tag(55)?;
-/// symbol.as_fix_mut().set_names(["Ticker"])?;
+/// FixFieldMut::new(&mut symbol).set_tag(55)?;
+/// FixFieldMut::new(&mut symbol).set_names(["Ticker"])?;
 /// let mut qty = DataType::Int64.required_field("OrderQty");
-/// qty.as_fix_mut().set_tag(38)?;
+/// FixFieldMut::new(&mut qty).set_tag(38)?;
 /// let registry = Arc::new(FixRegistry::from_fields([symbol.clone(), qty.clone()])?);
 ///
 /// let root = DataType::from(StructType::from_fields([symbol, qty, DataType::utf8().nullable_field("9999")])?)
@@ -1166,16 +1165,15 @@ pub(super) fn stage_writes(
             .as_ref()
             .is_some_and(|replaced| replaced.name() != members[index].name());
         let appended = replaced.is_none();
-        let held = replaced.as_ref().map(Field::as_fix);
-        let written = members[index].as_fix();
+        let held = replaced.as_ref().map(FixField::new);
+        let written = FixField::new(&members[index]);
         // A tag is resolved here as the column plan resolves one, so the
         // index a write leaves is the index a construction would have built:
         // a child named after a tag the dictionary does not explain answers
         // for that tag, and a reader that walks the index rather than the
         // names finds it.
         let resolved = |field: &Field| {
-            field
-                .as_fix()
+            FixField::new(field)
                 .tag()
                 .ok()
                 .flatten()
@@ -1193,8 +1191,8 @@ pub(super) fn stage_writes(
     }
     // A write replaces the child it reached or appends a field no child is
     // named as, so the members stay named once.
-    let dtype = DataType::from(StructType::from_unique_fields(members));
-    let field = Field::new_with_metadata(
+    let dtype = DataType::from(crate::implementer::struct_type_from_unique_fields(members));
+    let field = crate::implementer::field_new_with_metadata(
         root.name(),
         dtype,
         root.is_nullable(),
@@ -1334,7 +1332,7 @@ impl FixMsg {
     /// Uses one allocation for the shared XXH3 state, independent of message size.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        crate::hashing::stable_hash_of(self)
+        crate::implementer::stable_hash_of(self)
     }
 
     /// Builds a message against the process-wide registry.
@@ -1529,7 +1527,7 @@ impl FixMsg {
                     if WHOLE_TAGS.contains(&tag) && unread_whole(tag, value) {
                         return Err(crate::Error::InvalidRecord {
                             path: format_smolstr!("$.{}", child.name()),
-                            reason: crate::text::expected_got(
+                            reason: crate::implementer::expected_got(
                                 format_args!("the uint64 `{}` states", child.name()),
                                 format_args!("{value:?}"),
                             ),
@@ -1637,9 +1635,9 @@ impl FixMsg {
         }
         // The members are the planned root's children less the lifted
         // ones, named once as that root named them.
-        let field = Field::new_with_metadata(
+        let field = crate::implementer::field_new_with_metadata(
             field.name(),
-            DataType::from(StructType::from_unique_fields(members)),
+            DataType::from(crate::implementer::struct_type_from_unique_fields(members)),
             field.is_nullable(),
             field.as_metadata().clone(),
         );
@@ -1841,9 +1839,9 @@ impl FixMsg {
                 .filter(|(_, is_content)| **is_content)
                 .map(|(child, _)| child.clone())
                 .collect();
-            self.field = Field::new_with_metadata(
+            self.field = crate::implementer::field_new_with_metadata(
                 field.name(),
-                DataType::from(StructType::from_unique_fields(members)),
+                DataType::from(crate::implementer::struct_type_from_unique_fields(members)),
                 field.is_nullable(),
                 field.as_metadata().clone(),
             );
@@ -2149,7 +2147,7 @@ impl FixMsg {
     /// latest recording as the reference row and the earliest precise facts.
     pub(super) fn merge_session_event(self, other: &Self) -> Result<Self> {
         debug_assert!(self.is_same_session_event(other));
-        let other_leads = crate::graph::element::right_is_reference(
+        let other_leads = crate::implementer::right_is_reference(
             self.get_recdunix(),
             self.get_currunix(),
             other.get_recdunix(),
@@ -2205,7 +2203,7 @@ impl FixMsg {
     /// and a later one stating something else is kept as an anomaly beside
     /// the merged message, as a refusal the parse recorded is.
     fn fold_provenance(&mut self, other: &Self) {
-        let other_earlier = crate::graph::element::right_is_reference(
+        let other_earlier = crate::implementer::right_is_reference(
             other.get_recdunix(),
             other.get_currunix(),
             self.get_recdunix(),
@@ -2278,7 +2276,7 @@ impl FixMsg {
                 held.is_null()
                     || held.as_i64() == Some(0)
                     || held.as_str().is_some_and(|value| {
-                        matches!(value, "0" | "N") || crate::folds_equal(value, "New")
+                        matches!(value, "0" | "N") || crate::implementer::folds_equal(value, "New")
                     })
             });
             return new_report && self.explicit_execution_type() != Some(false);
@@ -2326,7 +2324,7 @@ impl FixMsg {
                 let kind = held.get(kind)?;
                 let execution = kind.as_i64() == Some(1)
                     || kind.as_str().is_some_and(|kind| {
-                        kind == "1" || crate::folds_equal(kind, "ExecutionTime")
+                        kind == "1" || crate::implementer::folds_equal(kind, "ExecutionTime")
                     });
                 execution
                     .then(|| self.execution_instant(held.get(timestamp).cloned()))
@@ -2385,13 +2383,13 @@ impl FixMsg {
             self.state_securityids(over(fact::SECURITYIDS));
         }
         if reached(fact::STATE) {
-            let state = State::FIX_STATUS_TAGS
+            let state = crate::fix::state::STATUS_TAGS
                 .into_iter()
                 .find_map(|tag| {
                     self.stated_word(tag)
-                        .and_then(|held| State::from_fix_status(tag, &held))
+                        .and_then(|held| crate::fix::state::from_status(tag, &held))
                 })
-                .or_else(|| State::from_fix_msgtype(self.header.msgtype()))
+                .or_else(|| crate::fix::state::from_msgtype(self.header.msgtype()))
                 .unwrap_or_else(State::unknown);
             if over(fact::STATE) || *self.event.get_state() == State::unknown() {
                 self.event.set_state(state);
@@ -3000,7 +2998,7 @@ impl FixMsg {
     fn stated_miccode(&self) -> Option<Mic> {
         let market = |tag: i32| {
             self.stated_word(tag).and_then(|held| {
-                let read = Mic::from_market(&held);
+                let read = crate::implementer::mic_from_market(&held);
                 if read.is_none() {
                     self.unread(
                         "FIX market passed over: the stated market names no MIC",
@@ -3101,7 +3099,7 @@ impl FixMsg {
             || format_smolstr!("{tag}"),
             |field| format_smolstr!("{}({tag})", field.name()),
         );
-        crate::logging::warning::warned!(
+        crate::implementer::warned!(
             what,
             &field,
             "{stated:?} on a {} message",
@@ -3804,7 +3802,7 @@ impl FixMsg {
     /// and makes a category mutation move the generic event identity.
     fn currhashcode(&self) -> u64 {
         let mut state = crate::xxhash::Xxh3::new();
-        crate::graph::element::feed_event_facts(&mut state, &*self.event);
+        crate::implementer::feed_event_facts(&mut state, &*self.event);
         // Inline: text, msgtype, marketdatakind and the lifted facts are 26 cells,
         // leaving six metadata keys before a message spills to the heap.
         let mut cells: SmallVec<[(SmolStr, Scalar); 32]> = SmallVec::new();
@@ -3835,7 +3833,7 @@ impl FixMsg {
             Scalar::from(self.marketdatakind().code()),
         ));
         cells.sort_by(|left, right| left.0.cmp(&right.0));
-        xxhash::write_named_bytes(
+        crate::implementer::write_named_bytes(
             &mut state,
             cells.iter().map(|(name, value)| (name.as_str(), value)),
             0,
@@ -4221,7 +4219,7 @@ impl FixMsg {
     pub(super) fn carried_cell(&self, name: &str) -> Scalar {
         self.carried
             .iter()
-            .find(|(held, _)| crate::folds_equal(held, name))
+            .find(|(held, _)| crate::implementer::folds_equal(held, name))
             .map_or(Scalar::Null, |(_, value)| value.clone())
     }
 
@@ -4351,13 +4349,13 @@ impl FixMsg {
     /// use std::sync::Arc;
     ///
     /// use yggdryl::graph::{Market, Operation};
-    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructType};
+    /// use yggdryl::{DataType, FixFieldMut, FixMsg, FixRegistry, Scalar, StructType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut clordid = DataType::utf8().nullable_field("clordid");
-    /// clordid.as_fix_mut().set_tag(11)?;
+    /// FixFieldMut::new(&mut clordid).set_tag(11)?;
     /// let mut symbol = DataType::utf8().nullable_field("symbol");
-    /// symbol.as_fix_mut().set_tag(55)?;
+    /// FixFieldMut::new(&mut symbol).set_tag(55)?;
     /// let registry = Arc::new(FixRegistry::from_fields([clordid, symbol])?);
     ///
     /// let root = DataType::from(StructType::from_fields([DataType::utf8().required_field("symbol")])?)
@@ -4479,7 +4477,7 @@ impl FixMsg {
             match self.staged(&key, value, &|_, _| Ok(())) {
                 Ok(Staged::Typed(tag, value)) => typed.push((tag, value)),
                 Ok(Staged::Row(write)) => stage(&mut writes, write),
-                Err(error) => crate::logging::warning::warned!(
+                Err(error) => crate::implementer::warned!(
                     "FIX value dropped: the field its key reaches refuses it",
                     &match key {
                         FixKey::Tag(tag) => format_smolstr!("{tag}"),
@@ -4535,7 +4533,7 @@ impl FixMsg {
             .chain(
                 writes
                     .iter()
-                    .filter_map(|write| write.field.as_fix().tag().ok().flatten()),
+                    .filter_map(|write| FixField::new(&write.field).tag().ok().flatten()),
             )
             .collect();
         // Only what a rule could be about is restated: a write of a tag no
@@ -4572,7 +4570,7 @@ impl FixMsg {
     fn land_unsettled(&mut self, typed: Vec<(i32, Scalar)>, writes: Vec<Write>) -> Result<()> {
         if self.detected_fx != 0 {
             for write in &writes {
-                if let Ok(Some(tag)) = write.field.as_fix().tag() {
+                if let Ok(Some(tag)) = FixField::new(&write.field).tag() {
                     self.detected_fx &= !super::forex::detected_bit(tag);
                 }
             }
@@ -4593,7 +4591,7 @@ impl FixMsg {
         // a sibling, and a tag nothing else states is never copied.
         let mut written: SmallVec<[(i32, Scalar); 4]> = writes
             .iter()
-            .filter_map(|write| Some((write.field.as_fix().tag().ok()??, &write.value)))
+            .filter_map(|write| Some((FixField::new(&write.field).tag().ok()??, &write.value)))
             .filter(|(tag, _)| self.has_siblings(*tag))
             .map(|(tag, value)| (tag, value.clone()))
             .collect();
@@ -4710,7 +4708,7 @@ impl FixMsg {
     ) -> Result<Staged> {
         let (at, mut field) = self.target(key)?;
         check(key, &field)?;
-        let tag = field.as_fix().tag()?;
+        let tag = FixField::new(&field).tag()?;
         // The capture's own column is nobody's to write here: a message
         // holds no fact for it, and landing one in the row would make the
         // object a line was read from a pair this message re-emits. Whoever
@@ -4774,11 +4772,11 @@ impl FixMsg {
     /// ```
     /// use std::sync::Arc;
     ///
-    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructType};
+    /// use yggdryl::{DataType, FixFieldMut, FixMsg, FixRegistry, Scalar, StructType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut symbol = DataType::utf8().nullable_field("symbol");
-    /// symbol.as_fix_mut().set_tag(55)?;
+    /// FixFieldMut::new(&mut symbol).set_tag(55)?;
     /// let registry = Arc::new(FixRegistry::from_fields([symbol.clone()])?);
     /// let root = DataType::from(StructType::from_fields([symbol, DataType::utf8().nullable_field("9999")])?)
     ///     .required_field("D");
@@ -4825,7 +4823,7 @@ impl FixMsg {
         if at >= members.len() || at >= values.len() {
             return Ok(None);
         }
-        let tag = members[at].as_fix().tag().ok().flatten();
+        let tag = FixField::new(&members[at]).tag().ok().flatten();
         let reached = super::schema::tag_and_counter(&self.registry, &members[at])
             .1
             .or(tag);
@@ -4917,8 +4915,7 @@ impl FixMsg {
             }
             FixKey::Name(name) => match self.known_by_name(name) {
                 Some(known) => {
-                    let by_tag = known
-                        .as_fix()
+                    let by_tag = FixField::new(known)
                         .tag()
                         .ok()
                         .flatten()
@@ -4994,7 +4991,7 @@ impl FixMsg {
     /// The root over other children: its name, nullability and metadata,
     /// the Struct `dtype` under them.
     fn rerooted(&self, dtype: DataType) -> Field {
-        Field::new_with_metadata(
+        crate::implementer::field_new_with_metadata(
             self.field.name(),
             dtype,
             self.field.is_nullable(),
@@ -6150,7 +6147,7 @@ struct Level<'a> {
 /// The canonical text one scalar spells, which is what a leaf's metadata
 /// holds; nothing for a value that spells none.
 fn spelled(value: &Scalar) -> Option<SmolStr> {
-    crate::string::str_from_value(value)?
+    crate::implementer::str_from_value(value)?
         .ok()
         .map(SmolStr::from)
 }
@@ -6199,7 +6196,7 @@ fn named_index(parent: &Field, name: &str) -> Option<usize> {
         if held.len() < floor && held.is_ascii() {
             continue;
         }
-        if crate::folds_equal(held, name) {
+        if crate::implementer::folds_equal(held, name) {
             ambiguous |= folded.is_some();
             folded = Some(index);
         }

@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use super::FixField;
 use crate::{DataType, Error, Field, Result, Scalar, StructType};
 
 const MAX_DEPTH: usize = 64;
@@ -46,10 +47,10 @@ impl GroupPlan {
             // A nested group arrives as its counter, never under its own
             // tag, so the counter is its wire tag - the delimiter where it
             // opens the occurrence - and reaches it through `groups` alone.
-            let counter = column.as_fix().counter()?;
+            let counter = FixField::new(column).counter()?;
             if let Some(tag) = counter {
                 delimiter.get_or_insert(tag);
-            } else if let Some(tag) = column.as_fix().tag()? {
+            } else if let Some(tag) = FixField::new(column).tag()? {
                 delimiter.get_or_insert(tag);
                 tags.entry(tag)
                     .and_modify(|held| *held = None)
@@ -76,7 +77,7 @@ impl GroupPlan {
         // holds the tag as its own and no second member names it.
         let mut alternates: HashMap<i32, Option<usize>> = HashMap::new();
         for (index, column) in columns.iter().enumerate() {
-            for tag in column.as_fix().tags()? {
+            for tag in FixField::new(column).tags()? {
                 if !tags.contains_key(&tag) {
                     alternates
                         .entry(tag)

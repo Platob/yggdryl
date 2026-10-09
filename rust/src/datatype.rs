@@ -957,6 +957,9 @@ macro_rules! string_dtypes {
 /// The six byte leaves as one pattern over [`DataType`].
 ///
 /// [`DataType::bytes_parameters`] is the same list in value position.
+/// Exported for the crates this core is split into, which match on it.
+#[macro_export]
+#[doc(hidden)]
 macro_rules! bytes_dtypes {
     () => {
         $crate::DataType::Binary
@@ -968,7 +971,6 @@ macro_rules! bytes_dtypes {
     };
 }
 
-pub(crate) use bytes_dtypes;
 pub(crate) use string_dtypes;
 
 impl PartialOrd for DataType {

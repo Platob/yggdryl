@@ -15,11 +15,12 @@ use std::sync::LazyLock;
 
 use smol_str::format_smolstr;
 
-use crate::bbg::BBG_WIDTH;
 use crate::identifier::{IDENTIFIER_VALUE_WIDTH, IDENTIFIER_WORD_WIDTH, id_vocabulary};
-use crate::ric::RIC_WIDTH;
+use crate::implementer::BBG_WIDTH;
+use crate::implementer::RIC_WIDTH;
+use crate::implementer::{DTI_WIDTH, ELF_WIDTH, FISN_WIDTH, LEI_WIDTH};
 use crate::{Ccy, Cfi, Country, Cusip, DataType, Error, Figi, Forex, Isin, Result, Ric, Sedol};
-use crate::{DTI_WIDTH, Dti, ELF_WIDTH, Elf, FISN_WIDTH, Fisn, LEI_WIDTH, Lei};
+use crate::{Dti, Elf, Fisn, Lei};
 
 id_vocabulary! {
     /// The type of name an identifier is: `isin`, `clordid`,
@@ -738,7 +739,7 @@ impl IdType {
         if kind.is_known() && !kind.is_security() {
             return Err(Error::InvalidRecord {
                 path: format_smolstr!("{kind}"),
-                reason: crate::text::expected_got(
+                reason: crate::implementer::expected_got(
                     "a security identifier type",
                     format_args!("{kind}, which names another kind of identifier"),
                 ),
@@ -990,7 +991,7 @@ impl IdType {
     ) -> Result<&'value str> {
         let refusal = |actual: &dyn std::fmt::Display| Error::InvalidRecord {
             path: format_smolstr!("{self}"),
-            reason: crate::text::expected_got(format_args!("a {self} value"), actual),
+            reason: crate::implementer::expected_got(format_args!("a {self} value"), actual),
         };
         if matches!(self, Self::Forex) {
             let pair = Forex::new(value)?;

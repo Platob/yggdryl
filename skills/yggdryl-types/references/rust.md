@@ -457,7 +457,7 @@ and never written.
 
 ```rust
 use yggdryl::fix::plugin_side;
-use yggdryl::{DataType, MarketDataKind, Scalar, Side, State, TimeInForce};
+use yggdryl::{MarketDataKind, Scalar, Side, State, TimeInForce};
 
 // A side reads its stored name, FIX's wire code or the specification's name.
 assert_eq!(Side::from_spelling("1"), Some(Side::Buy));
@@ -465,14 +465,14 @@ assert_eq!(Side::from_spelling("Sell short"), Some(Side::SShort));
 assert_eq!((Side::Buy.code(), Side::Buy.as_str()), (1, "BUYS"));
 assert_eq!(Side::from_spelling("BUY"), Some(Side::Buy), "an earlier stored name is read, never written");
 assert_eq!(Side::default(), Side::Unknown);
-assert_eq!(DataType::side().scalar("SELL")?, Scalar::from(Side::Sell));
-assert_eq!(DataType::side().kind().as_str(), "enum");
+assert_eq!(Side::dtype().scalar("SELL")?, Scalar::from(Side::Sell));
+assert_eq!(Side::dtype().kind().as_str(), "enum");
 
 // FIX's MsgCat code set: the category every market data row is filed under.
 assert_eq!(MarketDataKind::from_spelling("quotation"), Some(MarketDataKind::Quotation));
 assert_eq!((MarketDataKind::Trade.code(), MarketDataKind::Trade.as_str()), (21, "TRAD"));
 assert_eq!(MarketDataKind::from_spelling("10"), None, "a stored code is an integer, never text");
-assert!(DataType::marketdatakind().is_enum());
+assert!(MarketDataKind::dtype().is_enum());
 
 // Lifecycle states sort by code; `UPDATED` is a NEW stated over a live new-like one.
 assert_eq!(State::Updated.code(), 3004);
@@ -482,12 +482,12 @@ assert!(State::Updated.is_new_like() && State::Updated.is_live());
 assert_eq!(TimeInForce::from_spelling("0"), Some(TimeInForce::Day));
 assert_eq!(TimeInForce::from_fix("Z"), TimeInForce::Other, "a venue's own value");
 assert_eq!((TimeInForce::GoodTillCancel.code(), TimeInForce::GoodTillCancel.fix_code()), (2, Some("1")));
-assert_eq!(DataType::timeinforce().scalar("IOC")?, Scalar::from(TimeInForce::ImmediateOrCancel));
+assert_eq!(TimeInForce::dtype().scalar("IOC")?, Scalar::from(TimeInForce::ImmediateOrCancel));
 
 // A FIX plugin's role is a side, read off a CBlock's plugin class; the
 // role's own name is one of the side's spellings.
 assert_eq!(plugin_side("x.SellSideFIXCPluginCBlock"), Side::Sell);
-assert_eq!(DataType::side().scalar("buy-side")?, Scalar::from(Side::Buy));
+assert_eq!(Side::dtype().scalar("buy-side")?, Scalar::from(Side::Buy));
 ```
 
 ## Nested values: serie, map, union, dictionary

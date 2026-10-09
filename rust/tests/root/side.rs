@@ -8,7 +8,7 @@ use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::{
     ArrowCastOptions, DataType, DataTypeId, DataTypeKind, DigestAlgorithm, EnumValue, Field,
-    MarketSerie, Scalar, Serie, Side, StringEnum, StructType, Value,
+    MarketSerie, MarketType, SIDE_KIND, Scalar, Serie, Side, StringEnum, StructType, Value,
 };
 
 fn strict() -> ArrowCastOptions {
@@ -104,9 +104,9 @@ fn the_retired_spelling_unkn_names_no_side() {
         serde_json::from_str::<Side>("\"UKNW\"").unwrap(),
         Side::Unknown
     );
-    assert!(DataType::side().scalar(Scalar::from("UNKN")).is_err());
+    assert!(Side::dtype().scalar(Scalar::from("UNKN")).is_err());
     assert_eq!(
-        DataType::side().scalar(Scalar::from("UKNW")).unwrap(),
+        Side::dtype().scalar(Scalar::from("UKNW")).unwrap(),
         Scalar::from(Side::Unknown)
     );
 }
@@ -270,10 +270,7 @@ fn both_sides_at_once_is_its_own_member_with_no_wire_code() {
         Scalar::decode_value_bytes(&value.into_value_bytes()).unwrap(),
         value
     );
-    assert_eq!(
-        DataType::side().scalar(Scalar::from(99_i32)).unwrap(),
-        value
-    );
+    assert_eq!(Side::dtype().scalar(Scalar::from(99_i32)).unwrap(), value);
 }
 
 #[test]
@@ -315,19 +312,10 @@ fn a_side_serializes_as_its_stored_name_and_reads_back_by_code_or_spelling() {
 
     // And a scalar carries the side, not the text and not the integer.
     let scalar = Scalar::from(Side::Buy);
-    assert_eq!(scalar, DataType::side().scalar(Scalar::from("1")).unwrap());
-    assert_eq!(
-        scalar,
-        DataType::side().scalar(Scalar::from(1_i32)).unwrap()
-    );
-    assert_eq!(
-        scalar,
-        DataType::side().scalar(Scalar::from(1_i64)).unwrap()
-    );
-    assert_eq!(
-        scalar,
-        DataType::side().scalar(Scalar::from("Buy")).unwrap()
-    );
+    assert_eq!(scalar, Side::dtype().scalar(Scalar::from("1")).unwrap());
+    assert_eq!(scalar, Side::dtype().scalar(Scalar::from(1_i32)).unwrap());
+    assert_eq!(scalar, Side::dtype().scalar(Scalar::from(1_i64)).unwrap());
+    assert_eq!(scalar, Side::dtype().scalar(Scalar::from("Buy")).unwrap());
     assert_eq!(scalar.as_str(), Some("BUYS"));
     assert_eq!(scalar.enum_code(), Some(1));
     assert_eq!(scalar.enum_name(), Some("BUYS"));
@@ -342,10 +330,10 @@ fn a_side_serializes_as_its_stored_name_and_reads_back_by_code_or_spelling() {
     assert_eq!(serde_json::from_str::<Scalar>(&wire).unwrap(), scalar);
     // A code of another enum leaf and a spelling that names no side are
     // refused by the value door, naming the datatype.
-    assert!(DataType::side().scalar(Scalar::from(18_i32)).is_err());
-    assert!(DataType::side().scalar(Scalar::from("Z")).is_err());
+    assert!(Side::dtype().scalar(Scalar::from(18_i32)).is_err());
+    assert!(Side::dtype().scalar(Scalar::from("Z")).is_err());
     assert!(
-        DataType::side()
+        Side::dtype()
             .scalar(Scalar::State(yggdryl::State::New))
             .is_err()
     );
@@ -355,27 +343,27 @@ fn a_side_serializes_as_its_stored_name_and_reads_back_by_code_or_spelling() {
         DataType::utf8().scalar(scalar.clone()).unwrap(),
         Scalar::from("BUYS")
     );
-    assert!(DataType::side().ascii_packed(b"BUYS").is_err());
+    assert!(Side::dtype().ascii_packed(b"BUYS").is_err());
 }
 
 #[test]
 fn a_side_is_a_datatype_of_the_enum_family() {
-    assert_eq!(DataType::side().id(), Side::ID);
+    assert_eq!(Side::dtype().id(), Side::ID);
     assert_eq!(Side::ID.as_u8(), 0xc3);
     assert_eq!(DataTypeId::from_u8(0x75), None, "the code byte is retired");
     assert_eq!(Side::ID.as_str(), "side");
     assert_eq!(Side::ID.kind(), DataTypeKind::Enum);
     assert!(DataTypeKind::Enum.contains(Side::ID));
-    assert!(DataType::side().is_enum());
-    assert!(!DataType::side().is_code());
-    assert!(!DataType::side().is_string());
-    assert_eq!(DataType::side().code_width(), None);
-    assert_eq!(DataType::side().code_name(), None);
-    assert_eq!(DataType::side().fixed_byte_width(), None);
-    assert_eq!(DataType::from_str("side").unwrap(), DataType::side());
-    assert_eq!(DataType::side().to_string(), "side");
+    assert!(Side::dtype().is_enum());
+    assert!(!Side::dtype().is_code());
+    assert!(!Side::dtype().is_string());
+    assert_eq!(Side::dtype().code_width(), None);
+    assert_eq!(Side::dtype().code_name(), None);
+    assert_eq!(Side::dtype().fixed_byte_width(), None);
+    assert_eq!(DataType::from_str("side").unwrap(), Side::dtype());
+    assert_eq!(Side::dtype().to_string(), "side");
     assert_eq!(
-        DataType::side().default_value().unwrap(),
+        Side::dtype().default_value().unwrap(),
         Scalar::from(Side::Unknown)
     );
     assert!(
@@ -385,9 +373,33 @@ fn a_side_is_a_datatype_of_the_enum_family() {
     assert!(StringEnum::PREBUILT.iter().any(|(name, _)| *name == "side"));
 }
 
+/// A kind states its own datatype and a nullable field of it - inherent items
+/// of the enum, where `DataType` once held a constructor per kind - and both
+/// are the descriptor's own, so a crate declaring a kind gets the same pair.
+#[test]
+fn a_side_states_its_own_datatype_and_a_nullable_field_of_it() {
+    let dtype = Side::dtype();
+    assert_eq!(dtype, DataType::Market(MarketType::new(&SIDE_KIND)));
+    assert_eq!(dtype, SIDE_KIND.dtype());
+    assert_eq!(dtype, DataType::from_str("side").unwrap());
+    assert_eq!(dtype.id(), Side::ID);
+    assert_eq!(dtype.to_string(), "side");
+    assert!(dtype.is_enum());
+
+    let field = Side::field("side");
+    assert_eq!(field.name(), "side");
+    assert!(field.is_nullable(), "a kind's field is nullable");
+    assert_eq!(field.dtype(), &dtype);
+    assert_eq!(field, SIDE_KIND.field("side", true));
+    // Any text names it; nullability is the field's, so the required one is
+    // the descriptor's alone.
+    assert_eq!(Side::field(String::from("a side")).name(), "a side");
+    assert!(!SIDE_KIND.field("side", false).is_nullable());
+}
+
 #[test]
 fn a_column_is_uint8_codes_under_the_side_extension() {
-    let field = Field::new("side", DataType::side(), true);
+    let field = Field::new("side", Side::dtype(), true);
     let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &ArrowDataType::UInt8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.side");
@@ -430,7 +442,7 @@ fn a_column_is_uint8_codes_under_the_side_extension() {
 
 #[test]
 fn text_and_integers_land_as_sides_and_a_stranger_is_refused_by_row() {
-    let field = Field::new("side", DataType::side(), false);
+    let field = Field::new("side", Side::dtype(), false);
     // A `utf8` column of the stored name, a wire code and the specification's
     // name lands as the codes they name.
     let landed = Serie::from_arrow_array(
@@ -457,7 +469,7 @@ fn text_and_integers_land_as_sides_and_a_stranger_is_refused_by_row() {
         [Some("BUYS"), Some("BUYS"), Some("SELL"), Some("SSHT")]
     );
 
-    let nullable = Field::new("side", DataType::side(), true);
+    let nullable = Field::new("side", Side::dtype(), true);
     let landed = Serie::from_arrow_array(
         Some(&nullable),
         Arc::new(Int64Array::from(vec![Some(2), None, Some(17)])) as ArrayRef,
@@ -546,7 +558,7 @@ fn a_side_filters_and_casts_by_its_member_in_an_expression() {
     use yggdryl::expression::{Expression, Filter};
 
     let root =
-        DataType::from(StructType::from_fields([DataType::side().nullable_field("side")]).unwrap())
+        DataType::from(StructType::from_fields([Side::dtype().nullable_field("side")]).unwrap())
             .required_field("row");
     let sides = [Side::Buy, Side::Sell, Side::SShort, Side::Cross];
     let column = Serie::from_scalars(
@@ -596,18 +608,18 @@ fn the_canonical_default_is_the_side_stated_as_none() {
     // code zero as every enum leaf's, so a named row leaving out a required
     // side defaults at the value door rather than failing on the empty text.
     assert_eq!(
-        DataType::side().default_value().unwrap(),
+        Side::dtype().default_value().unwrap(),
         Scalar::from(Side::Unknown)
     );
     assert!(
-        DataType::side()
+        Side::dtype()
             .is_default_value(&Scalar::from(Side::Unknown))
             .unwrap()
     );
     let root = DataType::from(
         StructType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::side().required_field("side"),
+            Side::dtype().required_field("side"),
         ])
         .unwrap(),
     )
@@ -628,7 +640,7 @@ fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     assert!(Side::ALL.contains(&Side::Unknown));
     assert!(Side::from_spelling("NONE").is_none());
 
-    let field = Field::new("side", DataType::side(), true);
+    let field = Field::new("side", Side::dtype(), true);
     let row = Field::new(
         "row",
         DataType::from(StructType::from_fields([field.clone()]).unwrap()),
@@ -644,7 +656,7 @@ fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     let required = Field::new(
         "row",
         DataType::from(
-            StructType::from_fields([Field::new("side", DataType::side(), false)]).unwrap(),
+            StructType::from_fields([Field::new("side", Side::dtype(), false)]).unwrap(),
         ),
         false,
     );

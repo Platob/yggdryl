@@ -5,7 +5,11 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{DataType, Error, Field, Result, Scalar};
 
 /// Interpret a natural text value under one field, then validate it.
-pub(crate) fn with_field(value: Scalar, field: &Field) -> Result<Scalar> {
+///
+/// # Errors
+///
+/// Returns the field's own refusal of the value, located under it.
+pub fn with_field(value: Scalar, field: &Field) -> Result<Scalar> {
     // [`Field::scalar`] is the single schema conversion implementation, and it
     // reads every spelling a document leaves behind; only the base64 a
     // document spells bytes with is substituted before it.

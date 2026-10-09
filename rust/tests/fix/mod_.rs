@@ -16,6 +16,7 @@ use super::fixed_codec;
 use super::format_target;
 use super::sole_message;
 use super::tag_index;
+use yggdryl::{FixField, FixFieldMut};
 
 /// `FixKey::from_text` reads a typed key the way the dictionary's own tag
 /// reader reads a tag, and anything it does not read is a name, so a signed
@@ -56,12 +57,12 @@ fn merge_with_refuses_a_sources_text_the_setter_never_writes_on_either_side() {
 
     fn tagged(name: &str, tag: i32) -> Field {
         let mut field = DataType::utf8().nullable_field(name);
-        field.as_fix_mut().set_tag(tag).unwrap();
+        FixFieldMut::new(&mut field).set_tag(tag).unwrap();
         field
     }
 
     let mut sound = tagged("TradeID", 5001);
-    sound.as_fix_mut().set_sources(["venue"]).unwrap();
+    FixFieldMut::new(&mut sound).set_sources(["venue"]).unwrap();
     for (key, stored, expected) in [
         ("FIX:sources", "venue", "a JSON array of source ids"),
         ("FIX:sources", r#"["b","a"]"#, "the source ids sorted"),
@@ -71,7 +72,9 @@ fn merge_with_refuses_a_sources_text_the_setter_never_writes_on_either_side() {
         let mut edited = tagged("TradeID", 5001);
         edited.insert_metadata(key, stored).unwrap();
         let mut held = sound.clone();
-        let error = held.as_fix_mut().merge_with(&edited.as_fix()).unwrap_err();
+        let error = FixFieldMut::new(&mut held)
+            .merge_with(&FixField::new(&edited))
+            .unwrap_err();
         assert!(
             matches!(&error, Error::InvalidMetadataValue { key: named, .. } if named == key),
             "{key} {stored}: {error}"
@@ -82,7 +85,9 @@ fn merge_with_refuses_a_sources_text_the_setter_never_writes_on_either_side() {
         );
         assert_eq!(held, sound, "{key} {stored}");
         let mut held = edited.clone();
-        let error = held.as_fix_mut().merge_with(&sound.as_fix()).unwrap_err();
+        let error = FixFieldMut::new(&mut held)
+            .merge_with(&FixField::new(&sound))
+            .unwrap_err();
         assert!(
             matches!(&error, Error::InvalidMetadataValue { key: named, .. } if named == key),
             "{key} {stored}: {error}"
@@ -107,8 +112,8 @@ mod internal {
     use yggdryl::local::LocalFolder;
 
     use yggdryl::{
-        DataType, Error, Field, FixCategory, FixCode, FixCodec, FixEntry, FixId, FixKey, FixMsg,
-        FixRegistry, MimeType, Scalar, StructType, Version,
+        DataType, Error, Field, FixCategory, FixCode, FixCodec, FixEntry, FixField, FixFieldMut,
+        FixId, FixKey, FixMsg, FixRegistry, MimeType, Scalar, StructType, Version,
     };
 
     /// One path, resolved once, as every FIX navigator now takes it.
@@ -129,7 +134,7 @@ mod internal {
     /// A nullable text field carrying one canonical tag.
     fn tagged(name: &str, tag: i32) -> Field {
         let mut field = DataType::utf8().nullable_field(name);
-        field.as_fix_mut().set_tag(tag).unwrap();
+        FixFieldMut::new(&mut field).set_tag(tag).unwrap();
         field
     }
 
@@ -137,7 +142,7 @@ mod internal {
     /// membership that says whose it is.
     fn member(name: &str, dialect: &str, tag: i32) -> Field {
         let mut field = tagged(name, tag);
-        field.as_fix_mut().set_sources([dialect]).unwrap();
+        FixFieldMut::new(&mut field).set_sources([dialect]).unwrap();
         field
     }
 
@@ -149,10 +154,9 @@ mod internal {
     /// A field carrying every `FIX:` property.
     fn full(name: &str, tag: i32, tags: &[i32], aliases: &[&str]) -> Field {
         let mut field = tagged(name, tag);
-        field.as_fix_mut().set_tags(tags).unwrap();
-        field.as_fix_mut().set_names(aliases).unwrap();
-        field
-            .as_fix_mut()
+        FixFieldMut::new(&mut field).set_tags(tags).unwrap();
+        FixFieldMut::new(&mut field).set_names(aliases).unwrap();
+        FixFieldMut::new(&mut field)
             .set_description(format!("{name} described"))
             .unwrap();
         field
@@ -160,7 +164,7 @@ mod internal {
 
     fn counter(name: &str, tag: i32) -> Field {
         let mut field = DataType::Int32.nullable_field(name);
-        field.as_fix_mut().set_tag(tag).unwrap();
+        FixFieldMut::new(&mut field).set_tag(tag).unwrap();
         field
     }
 
@@ -170,7 +174,7 @@ mod internal {
             .unwrap()
             .required_field("MemberComponent");
         let mut field = DataType::serie(item).nullable_field(name);
-        field.as_fix_mut().set_counter(tag).unwrap();
+        FixFieldMut::new(&mut field).set_counter(tag).unwrap();
         field
     }
 
@@ -195,7 +199,7 @@ mod internal {
     fn msgtypes(registry: &FixRegistry) -> usize {
         registry
             .definitions(FixCategory::Components)
-            .filter(|field| field.as_fix().msgtype().is_some())
+            .filter(|field| FixField::new(field).msgtype().is_some())
             .count()
     }
 
@@ -222,8 +226,7 @@ mod internal {
             // A derived column is a FIX field's own statement under another
             // name, which no registry holds.
             .filter(|field| {
-                !field
-                    .as_fix()
+                !FixField::new(field)
                     .tag()
                     .ok()
                     .flatten()
@@ -295,8 +298,8 @@ mod internal {
         // One namespace: a venue's field is reached by its name exactly as the
         // specification's is, and what the membership says is who spoke it.
         assert_eq!(registry.get_field_by_name("venuesym"), Some(&vendor));
-        assert!(vendor.as_fix().has_source("cme"));
-        assert!(!standard.as_fix().has_source("cme"));
+        assert!(FixField::new(&vendor).has_source("cme"));
+        assert!(!FixField::new(&standard).has_source("cme"));
         assert!(registry.get_field_by_name("cme").is_none());
         assert_eq!(registry.dialects(), ["cme"]);
     }
@@ -304,10 +307,7 @@ mod internal {
     #[test]
     fn three_spellings_of_one_name_under_one_tag_are_one_identity() {
         let registry = FixRegistry::from_fields([tagged("MsgType", 35)]).unwrap();
-        let held = registry
-            .field_by_tag(35)
-            .unwrap()
-            .as_fix()
+        let held = FixField::new(registry.field_by_tag(35).unwrap())
             .id()
             .unwrap()
             .expect("a tagged field has an identity");
@@ -601,8 +601,7 @@ mod internal {
         let mut field = tagged("TradeID", 5001);
         // Folded by ASCII case, deduplicated under the fold, and sorted, so two
         // registries built from the same dictionaries in any order hash alike.
-        field
-            .as_fix_mut()
+        FixFieldMut::new(&mut field)
             .set_sources(["Globex", "CME", "cme", "globex"])
             .unwrap();
         assert_eq!(
@@ -610,19 +609,21 @@ mod internal {
             Some(r#"["cme","globex"]"#)
         );
         assert_eq!(
-            field.as_fix().sources().collect::<Vec<_>>(),
+            FixField::new(&field).sources().collect::<Vec<_>>(),
             ["cme", "globex"]
         );
-        assert!(field.as_fix().has_source("CME") && field.as_fix().has_source("globex"));
-        assert!(!field.as_fix().has_source("cm"));
+        assert!(
+            FixField::new(&field).has_source("CME") && FixField::new(&field).has_source("globex")
+        );
+        assert!(!FixField::new(&field).has_source("cm"));
 
         // Adding is idempotent under the fold, and keeps the list sorted.
-        field.as_fix_mut().add_source("GLOBEX").unwrap();
+        FixFieldMut::new(&mut field).add_source("GLOBEX").unwrap();
         assert_eq!(
             field.get_metadata("FIX:sources"),
             Some(r#"["cme","globex"]"#)
         );
-        field.as_fix_mut().add_source("Blp").unwrap();
+        FixFieldMut::new(&mut field).add_source("Blp").unwrap();
         assert_eq!(
             field.get_metadata("FIX:sources"),
             Some(r#"["blp","cme","globex"]"#)
@@ -638,32 +639,35 @@ mod internal {
             vec!["cm\\e"],
             vec!["cm\u{1}e"],
         ] {
-            let error = field.as_fix_mut().set_sources(refused.clone()).unwrap_err();
+            let error = FixFieldMut::new(&mut field)
+                .set_sources(refused.clone())
+                .unwrap_err();
             assert!(
                 matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "FIX:sources"),
                 "{refused:?}: {error}"
             );
             assert_eq!(field, before, "{refused:?}");
         }
-        assert!(field.as_fix_mut().add_source("").is_err());
+        assert!(FixFieldMut::new(&mut field).add_source("").is_err());
         assert_eq!(field, before);
 
         // A comma is an ordinary character of an id: the array is what
         // separates the ids, so nothing an id holds has to be kept out.
-        field.as_fix_mut().add_source("ms,bloomberg").unwrap();
+        FixFieldMut::new(&mut field)
+            .add_source("ms,bloomberg")
+            .unwrap();
         assert_eq!(
             field.get_metadata("FIX:sources"),
             Some(r#"["blp","cme","globex","ms,bloomberg"]"#)
         );
-        assert!(field.as_fix().has_source("MS,Bloomberg"));
+        assert!(FixField::new(&field).has_source("MS,Bloomberg"));
 
         // Empty input removes the property rather than storing "".
-        field
-            .as_fix_mut()
+        FixFieldMut::new(&mut field)
             .set_sources::<[&str; 0], &str>([])
             .unwrap();
         assert!(!field.has_metadata("FIX:sources"));
-        assert_eq!(field.as_fix().sources().count(), 0);
+        assert_eq!(FixField::new(&field).sources().count(), 0);
     }
 
     #[test]
@@ -690,28 +694,13 @@ mod internal {
         // The dialects arrive beside the fields: membership unions onto the
         // stored field, and a field only one side held keeps saying whose it is.
         assert_eq!(
-            dictionary
-                .field_by_tag(55)
-                .unwrap()
-                .as_fix()
+            FixField::new(dictionary.field_by_tag(55).unwrap())
                 .sources()
                 .collect::<Vec<_>>(),
             ["globex"]
         );
-        assert!(
-            dictionary
-                .field_by_tag(5_055)
-                .unwrap()
-                .as_fix()
-                .has_source("cme")
-        );
-        assert!(
-            dictionary
-                .field_by_tag(5_060)
-                .unwrap()
-                .as_fix()
-                .has_source("globex")
-        );
+        assert!(FixField::new(dictionary.field_by_tag(5_055).unwrap()).has_source("cme"));
+        assert!(FixField::new(dictionary.field_by_tag(5_060).unwrap()).has_source("globex"));
         assert_eq!(dictionary.dialects(), ["cme", "globex"]);
 
         // A declaration the dictionary already makes otherwise is passed over
@@ -751,13 +740,7 @@ mod internal {
             dictionary.field_by_tag(43).unwrap(),
             before.field_by_tag(43).unwrap()
         );
-        assert!(
-            dictionary
-                .field_by_tag(5_070)
-                .unwrap()
-                .as_fix()
-                .has_source("blp")
-        );
+        assert!(FixField::new(dictionary.field_by_tag(5_070).unwrap()).has_source("blp"));
         assert_eq!(dictionary.dialects(), ["blp", "cme", "globex"]);
     }
 
@@ -825,7 +808,7 @@ mod internal {
         let registry = FixRegistry::from_handle(&folder).unwrap();
         let classes: HashSet<u8> = registry
             .iter()
-            .map(|field| control_byte(field.as_fix().id().unwrap().unwrap()))
+            .map(|field| control_byte(FixField::new(field).id().unwrap().unwrap()))
             .collect();
         assert!(
             classes.len() >= 16,
@@ -838,38 +821,39 @@ mod internal {
     #[test]
     fn properties_round_trip_including_empty_and_single_element_lists() {
         let mut field = DataType::Int64.required_field("OrderQty");
-        let view = field.as_fix();
+        let view = FixField::new(&field);
         assert_eq!(view.tag().unwrap(), None);
         assert_eq!(view.tags().unwrap(), Vec::<i32>::new());
         assert_eq!(view.names().count(), 0);
         assert_eq!(view.description(), None);
 
-        field.as_fix_mut().set_tag(38).unwrap();
-        field.as_fix_mut().set_tags(&[152]).unwrap();
-        field.as_fix_mut().set_names(["Qty"]).unwrap();
-        field
-            .as_fix_mut()
+        FixFieldMut::new(&mut field).set_tag(38).unwrap();
+        FixFieldMut::new(&mut field).set_tags(&[152]).unwrap();
+        FixFieldMut::new(&mut field).set_names(["Qty"]).unwrap();
+        FixFieldMut::new(&mut field)
             .set_description("Quantity ordered.")
             .unwrap();
-        assert_eq!(field.as_fix().tag().unwrap(), Some(38));
-        assert_eq!(field.as_fix().tags().unwrap(), [152]);
-        assert_eq!(field.as_fix().names().collect::<Vec<_>>(), ["Qty"]);
-        assert_eq!(field.as_fix().description(), Some("Quantity ordered."));
+        assert_eq!(FixField::new(&field).tag().unwrap(), Some(38));
+        assert_eq!(FixField::new(&field).tags().unwrap(), [152]);
+        assert_eq!(FixField::new(&field).names().collect::<Vec<_>>(), ["Qty"]);
+        assert_eq!(
+            FixField::new(&field).description(),
+            Some("Quantity ordered.")
+        );
         // Each list is the compact JSON array it is.
         assert_eq!(field.get_metadata("FIX:tag"), Some("38"));
         assert_eq!(field.get_metadata("FIX:tags"), Some("[152]"));
         assert_eq!(field.get_metadata("FIX:names"), Some("[\"Qty\"]"));
 
         // Order is priority and is kept.
-        field.as_fix_mut().set_tags(&[3, 1, 2]).unwrap();
-        field
-            .as_fix_mut()
+        FixFieldMut::new(&mut field).set_tags(&[3, 1, 2]).unwrap();
+        FixFieldMut::new(&mut field)
             .set_names(["Quantity", "Qty", "OrderQuantity"])
             .unwrap();
-        assert_eq!(field.as_fix().tags().unwrap(), [3, 1, 2]);
+        assert_eq!(FixField::new(&field).tags().unwrap(), [3, 1, 2]);
         assert_eq!(field.get_metadata("FIX:tags"), Some("[3,1,2]"));
         assert_eq!(
-            field.as_fix().names().collect::<Vec<_>>(),
+            FixField::new(&field).names().collect::<Vec<_>>(),
             ["Quantity", "Qty", "OrderQuantity"]
         );
         assert_eq!(
@@ -878,33 +862,47 @@ mod internal {
         );
 
         // An empty list removes the property rather than storing "[]".
-        field.as_fix_mut().set_tags(&[]).unwrap();
-        field.as_fix_mut().set_names(Vec::<&str>::new()).unwrap();
+        FixFieldMut::new(&mut field).set_tags(&[]).unwrap();
+        FixFieldMut::new(&mut field)
+            .set_names(Vec::<&str>::new())
+            .unwrap();
         assert!(!field.has_metadata("FIX:tags"));
         assert!(!field.has_metadata("FIX:names"));
-        assert_eq!(field.as_fix().tags().unwrap(), Vec::<i32>::new());
-        assert_eq!(field.as_fix().names().count(), 0);
+        assert_eq!(FixField::new(&field).tags().unwrap(), Vec::<i32>::new());
+        assert_eq!(FixField::new(&field).names().count(), 0);
 
         // The value outlives the view it was read through.
-        let description = field.as_fix().description();
+        let description = FixField::new(&field).description();
         assert_eq!(description, Some("Quantity ordered."));
     }
 
     #[test]
     fn a_property_write_rejects_bad_elements_and_leaves_the_field_unchanged() {
         let mut field = tagged("Symbol", 55);
-        field.as_fix_mut().set_names(["Ticker"]).unwrap();
+        FixFieldMut::new(&mut field).set_names(["Ticker"]).unwrap();
         let before = field.clone();
 
         let refusals = [
-            field.as_fix_mut().set_tag(-1).unwrap_err(),
-            field.as_fix_mut().set_tags(&[1, -2]).unwrap_err(),
-            field.as_fix_mut().set_tags(&[1, 2, 1]).unwrap_err(),
-            field.as_fix_mut().set_names(["Sym", ""]).unwrap_err(),
-            field.as_fix_mut().set_names(["Sym\"bol"]).unwrap_err(),
-            field.as_fix_mut().set_names(["Sym\\bol"]).unwrap_err(),
-            field.as_fix_mut().set_names(["Sym\tbol"]).unwrap_err(),
-            field.as_fix_mut().set_names(["Sym", "SYM"]).unwrap_err(),
+            FixFieldMut::new(&mut field).set_tag(-1).unwrap_err(),
+            FixFieldMut::new(&mut field).set_tags(&[1, -2]).unwrap_err(),
+            FixFieldMut::new(&mut field)
+                .set_tags(&[1, 2, 1])
+                .unwrap_err(),
+            FixFieldMut::new(&mut field)
+                .set_names(["Sym", ""])
+                .unwrap_err(),
+            FixFieldMut::new(&mut field)
+                .set_names(["Sym\"bol"])
+                .unwrap_err(),
+            FixFieldMut::new(&mut field)
+                .set_names(["Sym\\bol"])
+                .unwrap_err(),
+            FixFieldMut::new(&mut field)
+                .set_names(["Sym\tbol"])
+                .unwrap_err(),
+            FixFieldMut::new(&mut field)
+                .set_names(["Sym", "SYM"])
+                .unwrap_err(),
         ];
         for (index, error) in refusals.iter().enumerate() {
             assert!(
@@ -921,43 +919,47 @@ mod internal {
         let mut field = DataType::utf8().nullable_field("TradeID");
 
         // Absent means the specification alone, and no identity without a tag.
-        assert_eq!(field.as_fix().sources().count(), 0);
-        assert_eq!(field.as_fix().id().unwrap(), None);
+        assert_eq!(FixField::new(&field).sources().count(), 0);
+        assert_eq!(FixField::new(&field).id().unwrap(), None);
         assert!(!field.has_metadata("FIX:sources"));
 
-        field.as_fix_mut().set_sources(["CME"]).unwrap();
-        assert_eq!(field.as_fix().sources().collect::<Vec<_>>(), ["cme"]);
+        FixFieldMut::new(&mut field).set_sources(["CME"]).unwrap();
+        assert_eq!(FixField::new(&field).sources().collect::<Vec<_>>(), ["cme"]);
         assert_eq!(field.get_metadata("FIX:sources"), Some(r#"["cme"]"#));
-        assert_eq!(field.as_fix().id().unwrap(), None, "still no tag");
+        assert_eq!(FixField::new(&field).id().unwrap(), None, "still no tag");
 
-        field.as_fix_mut().set_tag(5001).unwrap();
-        let id = field.as_fix().id().unwrap().unwrap();
+        FixFieldMut::new(&mut field).set_tag(5001).unwrap();
+        let id = FixField::new(&field).id().unwrap().unwrap();
         assert_eq!(id, id_of(5001, "TradeID"));
         assert_eq!(id.to_string(), id.digest().to_string());
 
         // Membership is provenance and never identity: the same tag under the
         // same name is one field whatever dictionaries spoke it, and taking the
         // membership away moves nothing.
-        assert_eq!(tagged("TradeID", 5001).as_fix().id().unwrap(), Some(id));
         assert_eq!(
-            member("TradeID", "xnas", 5001).as_fix().id().unwrap(),
+            FixField::new(&tagged("TradeID", 5001)).id().unwrap(),
             Some(id)
         );
-        field
-            .as_fix_mut()
+        assert_eq!(
+            FixField::new(&member("TradeID", "xnas", 5001))
+                .id()
+                .unwrap(),
+            Some(id)
+        );
+        FixFieldMut::new(&mut field)
             .set_sources::<[&str; 0], &str>([])
             .unwrap();
         assert!(!field.has_metadata("FIX:sources"));
-        assert_eq!(field.as_fix().id().unwrap(), Some(id));
+        assert_eq!(FixField::new(&field).id().unwrap(), Some(id));
 
         // The name is the other half: a rename is a new identity, derived on
         // every read rather than stored stale.
         field.set_name("Trade_ID");
-        assert_eq!(field.as_fix().id().unwrap(), Some(id), "the fold");
+        assert_eq!(FixField::new(&field).id().unwrap(), Some(id), "the fold");
         field.set_name("TradeReportID");
-        assert_ne!(field.as_fix().id().unwrap(), Some(id));
+        assert_ne!(FixField::new(&field).id().unwrap(), Some(id));
         assert_eq!(
-            field.as_fix().id().unwrap(),
+            FixField::new(&field).id().unwrap(),
             Some(id_of(5001, "TradeReportID"))
         );
     }
@@ -1086,38 +1088,37 @@ mod internal {
         // Membership means "this dictionary speaks it", the specification's own
         // tags included: a venue file naming tag 35 stamps itself on tag 35.
         let spoken = member("MsgType", "cme", 35);
-        assert!(spoken.as_fix().has_source("cme"));
-        assert_eq!(spoken.as_fix().id().unwrap(), Some(id_of(35, "MsgType")));
+        assert!(FixField::new(&spoken).has_source("cme"));
+        assert_eq!(
+            FixField::new(&spoken).id().unwrap(),
+            Some(id_of(35, "MsgType"))
+        );
 
         // Metadata takes any positive tag, whatever the
         // field's membership: the identity is the tag and the name, and the
         // dictionary is not consulted.
         let mut vendor = member("TradeID", "cme", 5001);
-        vendor.as_fix_mut().set_tag(35).unwrap();
-        vendor
-            .as_fix_mut()
+        FixFieldMut::new(&mut vendor).set_tag(35).unwrap();
+        FixFieldMut::new(&mut vendor)
             .set_tags(&[5002, 40_000, 40_001])
             .unwrap();
-        assert_eq!(vendor.as_fix().tag().unwrap(), Some(35));
-        assert_eq!(vendor.as_fix().tags().unwrap(), [5002, 40_000, 40_001]);
-        assert!(vendor.as_fix().has_source("cme"));
+        assert_eq!(FixField::new(&vendor).tag().unwrap(), Some(35));
+        assert_eq!(
+            FixField::new(&vendor).tags().unwrap(),
+            [5002, 40_000, 40_001]
+        );
+        assert!(FixField::new(&vendor).has_source("cme"));
         for tag in [1, 35, 4_999, 5_000, 39_999, 40_000, i32::MAX] {
             assert!(FixId::of(tag, "TradeID").is_ok(), "{tag}");
         }
         let mut counted = member("NoPartyIDs", "cme", 453);
-        counted.as_fix_mut().set_counter(35).unwrap();
-        assert_eq!(counted.as_fix().counter().unwrap(), Some(35));
+        FixFieldMut::new(&mut counted).set_counter(35).unwrap();
+        assert_eq!(FixField::new(&counted).counter().unwrap(), Some(35));
 
         // A registry holds a member on a specification tag, membership and all.
         let registry = FixRegistry::from_fields([spoken.clone()]).unwrap();
         assert_eq!(registry.get_field_by_tag(35), Some(&spoken));
-        assert!(
-            registry
-                .field_by_tag(35)
-                .unwrap()
-                .as_fix()
-                .has_source("cme")
-        );
+        assert!(FixField::new(registry.field_by_tag(35).unwrap()).has_source("cme"));
     }
 
     #[test]
@@ -1142,14 +1143,16 @@ mod internal {
             "Ticker"
         );
         assert_eq!(
-            registry.field_by_tag(55).unwrap().as_fix().names().count(),
+            FixField::new(registry.field_by_tag(55).unwrap())
+                .names()
+                .count(),
             0,
             "the holder is lent nothing it would have to take from another field"
         );
         assert_eq!(
             registry
                 .iter()
-                .filter(|field| field.as_fix().names().any(|alias| alias == "Ticker"))
+                .filter(|field| FixField::new(field).names().any(|alias| alias == "Ticker"))
                 .map(Field::name)
                 .collect::<Vec<_>>(),
             ["Price"],
@@ -1160,8 +1163,7 @@ mod internal {
         // the spelling made `Price` refuse its own update, because `check_free`
         // then found its alias held by `Symbol`.
         let mut price = registry.field_by_tag(44).unwrap().clone();
-        price
-            .as_fix_mut()
+        FixFieldMut::new(&mut price)
             .set_description("the traded price")
             .unwrap();
         registry.update(price).unwrap();
@@ -1173,10 +1175,7 @@ mod internal {
         // read before an alias; `Price` keeps the claim it arrived with.
         assert_eq!(registry.field_by_name("Ticker").unwrap().name(), "Ticker");
         assert_eq!(
-            registry
-                .field_by_tag(44)
-                .unwrap()
-                .as_fix()
+            FixField::new(registry.field_by_tag(44).unwrap())
                 .names()
                 .collect::<Vec<_>>(),
             ["Ticker"]
@@ -1189,10 +1188,7 @@ mod internal {
         assert!(lenient.add_field(tagged("Ticker", 55)).unwrap());
         assert_eq!(lenient.field_by_name("Ticker").unwrap().name(), "Ticker");
         assert_eq!(
-            lenient
-                .field_by_tag(44)
-                .unwrap()
-                .as_fix()
+            FixField::new(lenient.field_by_tag(44).unwrap())
                 .names()
                 .collect::<Vec<_>>(),
             ["Ticker"]
@@ -1202,8 +1198,8 @@ mod internal {
     #[test]
     fn two_fields_may_hold_one_tag_under_two_names() {
         let mut spec = tagged("Symbol", 5055);
-        spec.as_fix_mut().set_names(["Ticker"]).unwrap();
-        spec.as_fix_mut().set_tags(&[9055]).unwrap();
+        FixFieldMut::new(&mut spec).set_names(["Ticker"]).unwrap();
+        FixFieldMut::new(&mut spec).set_tags(&[9055]).unwrap();
         let venue = member("VenueSymbol", "cme", 5055);
 
         let registry = FixRegistry::from_fields([spec.clone(), venue.clone()]).unwrap();
@@ -1215,9 +1211,9 @@ mod internal {
         let venue_id = id_of(5055, "VenueSymbol");
         let held = registry.field_by_id(spec_id).unwrap();
         assert_eq!(held, &spec);
-        assert_eq!(held.as_fix().names().collect::<Vec<_>>(), ["Ticker"]);
-        assert_eq!(held.as_fix().tags().unwrap(), [9055]);
-        assert_eq!(held.as_fix().sources().count(), 0);
+        assert_eq!(FixField::new(held).names().collect::<Vec<_>>(), ["Ticker"]);
+        assert_eq!(FixField::new(held).tags().unwrap(), [9055]);
+        assert_eq!(FixField::new(held).sources().count(), 0);
         assert_eq!(registry.field_by_id(venue_id).unwrap(), &venue);
         assert!(
             registry.get_field_by_id(id_of(9055, "Symbol")).is_none(),
@@ -1246,7 +1242,7 @@ mod internal {
 
         // A conflict is still a conflict, and it names both fields.
         let mut twice = member("VenueSym", "cme", 5099);
-        twice.as_fix_mut().set_names(["TICKER"]).unwrap();
+        FixFieldMut::new(&mut twice).set_names(["TICKER"]).unwrap();
         let mut probed = registry.clone();
         let error = probed.insert(twice).unwrap_err();
         assert!(
@@ -1301,8 +1297,8 @@ mod internal {
         // Row 1: the same tag under the same folded name is the same field, and
         // the merge unions its tags, aliases and membership.
         let mut same = member("SYMBOL", "cme", 55);
-        same.as_fix_mut().set_tags(&[66]).unwrap();
-        same.as_fix_mut().set_names(["Sym"]).unwrap();
+        FixFieldMut::new(&mut same).set_tags(&[66]).unwrap();
+        FixFieldMut::new(&mut same).set_names(["Sym"]).unwrap();
         assert_eq!(
             fold(&mut registry, same),
             (0, 1 + seeded_merges),
@@ -1311,14 +1307,14 @@ mod internal {
         assert_eq!(registry.len(), 2 + seeded_fields(), "{verb}");
         let symbol = registry.field_by_tag(55).unwrap();
         assert_eq!(symbol.name(), "Symbol", "{verb}");
-        assert_eq!(symbol.as_fix().tags().unwrap(), [66, 65], "{verb}");
+        assert_eq!(FixField::new(symbol).tags().unwrap(), [66, 65], "{verb}");
         assert_eq!(
-            symbol.as_fix().names().collect::<Vec<_>>(),
+            FixField::new(symbol).names().collect::<Vec<_>>(),
             ["Sym", "Ticker"],
             "{verb}"
         );
         assert_eq!(
-            symbol.as_fix().sources().collect::<Vec<_>>(),
+            FixField::new(symbol).sources().collect::<Vec<_>>(),
             ["cme"],
             "{verb}"
         );
@@ -1336,16 +1332,16 @@ mod internal {
         let symbol = registry.field_by_tag(55).unwrap();
         assert_eq!(symbol.name(), "Symbol", "{verb}: the bare tag");
         assert_eq!(
-            symbol.as_fix().names().collect::<Vec<_>>(),
+            FixField::new(symbol).names().collect::<Vec<_>>(),
             ["Sym", "Ticker"],
             "{verb}"
         );
-        assert!(!symbol.as_fix().has_source("xnas"), "{verb}");
+        assert!(!FixField::new(symbol).has_source("xnas"), "{verb}");
         let newcomer = registry.field_by_id(id_of(55, "VenueSymbol")).unwrap();
         assert_eq!(newcomer.name(), "VenueSymbol", "{verb}");
-        assert!(newcomer.as_fix().names().next().is_none(), "{verb}");
+        assert!(FixField::new(newcomer).names().next().is_none(), "{verb}");
         assert_eq!(
-            newcomer.as_fix().sources().collect::<Vec<_>>(),
+            FixField::new(newcomer).sources().collect::<Vec<_>>(),
             ["xnas"],
             "{verb}"
         );
@@ -1365,7 +1361,9 @@ mod internal {
         // the tag as an alternate and the incoming spellings as aliases. No
         // second field.
         let mut spelled = member("symbol", "blp", 9055);
-        spelled.as_fix_mut().set_names(["BlpSym"]).unwrap();
+        FixFieldMut::new(&mut spelled)
+            .set_names(["BlpSym"])
+            .unwrap();
         assert_eq!(
             fold(&mut registry, spelled),
             (0, 1 + seeded_merges),
@@ -1378,14 +1376,18 @@ mod internal {
             "Symbol",
             "{verb}: the alternate reaches the holder"
         );
-        assert_eq!(symbol.as_fix().tags().unwrap(), [66, 65, 9055], "{verb}");
         assert_eq!(
-            symbol.as_fix().names().collect::<Vec<_>>(),
+            FixField::new(symbol).tags().unwrap(),
+            [66, 65, 9055],
+            "{verb}"
+        );
+        assert_eq!(
+            FixField::new(symbol).names().collect::<Vec<_>>(),
             ["Sym", "Ticker", "BlpSym"],
             "{verb}"
         );
         assert_eq!(
-            symbol.as_fix().sources().collect::<Vec<_>>(),
+            FixField::new(symbol).sources().collect::<Vec<_>>(),
             ["blp", "cme"],
             "{verb}"
         );
@@ -1407,7 +1409,9 @@ mod internal {
         );
         assert_eq!(registry.field_by_tag(31).unwrap().name(), "Price", "{verb}");
         assert_eq!(
-            registry.field_by_tag(55).unwrap().as_fix().tags().unwrap(),
+            FixField::new(registry.field_by_tag(55).unwrap())
+                .tags()
+                .unwrap(),
             [66, 65, 9055],
             "{verb}: a tag another field answers is nobody's alternate"
         );
@@ -1449,7 +1453,7 @@ mod internal {
         let message = |name: &str, code: &str| {
             let mut field =
                 DataType::from(StructType::from_fields([]).unwrap()).required_field(name);
-            field.as_fix_mut().set_msgtype(code).unwrap();
+            FixFieldMut::new(&mut field).set_msgtype(code).unwrap();
             field
         };
         registry
@@ -1523,8 +1527,8 @@ mod internal {
             let mut field = tagged("Symbol", 55);
             field.insert_metadata(key, stored).unwrap();
             let error = match key {
-                "FIX:tag" => field.as_fix().tag().unwrap_err(),
-                _ => field.as_fix().tags().unwrap_err(),
+                "FIX:tag" => FixField::new(&field).tag().unwrap_err(),
+                _ => FixField::new(&field).tags().unwrap_err(),
             };
             match &error {
                 Error::InvalidMetadataValue { key: named, reason } => {
@@ -1555,7 +1559,7 @@ mod internal {
         ] {
             let mut field = tagged("Symbol", 55);
             field.insert_metadata("FIX:names", stored).unwrap();
-            assert_eq!(field.as_fix().names().count(), 0, "{stored:?}");
+            assert_eq!(FixField::new(&field).names().count(), 0, "{stored:?}");
         }
         // A well-formed array reads whatever produced it.
         let mut field = tagged("Symbol", 55);
@@ -1563,7 +1567,7 @@ mod internal {
             .insert_metadata("FIX:names", "[\"Ticker\",\"Sym\"]")
             .unwrap();
         assert_eq!(
-            field.as_fix().names().collect::<Vec<_>>(),
+            FixField::new(&field).names().collect::<Vec<_>>(),
             ["Ticker", "Sym"]
         );
     }
@@ -1593,16 +1597,18 @@ mod internal {
                 "{stored:?}: {error}"
             );
             let mut incoming = tagged("Symbol", 55);
-            incoming.as_fix_mut().set_names(["Sym"]).unwrap();
-            let error = incoming
-                .as_fix_mut()
-                .merge_with(&field.as_fix())
+            FixFieldMut::new(&mut incoming).set_names(["Sym"]).unwrap();
+            let error = FixFieldMut::new(&mut incoming)
+                .merge_with(&FixField::new(&field))
                 .unwrap_err();
             assert!(
                 matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "FIX:names"),
                 "{stored:?}: {error}"
             );
-            assert_eq!(incoming.as_fix().names().collect::<Vec<_>>(), ["Sym"]);
+            assert_eq!(
+                FixField::new(&incoming).names().collect::<Vec<_>>(),
+                ["Sym"]
+            );
         }
     }
 
@@ -1725,10 +1731,7 @@ mod internal {
             registry.field_by_tag(55).unwrap()
         );
         assert!(
-            beside
-                .field_by_name("SymbolSfx")
-                .unwrap()
-                .as_fix()
+            FixField::new(beside.field_by_name("SymbolSfx").unwrap())
                 .names()
                 .next()
                 .is_none()
@@ -1768,7 +1771,7 @@ mod internal {
         let replacement = full("SYMBOL", 55, &[66], &["Sym"]);
         let prior = registry.insert(replacement.clone()).unwrap().unwrap();
         assert_eq!(prior.name(), "Symbol");
-        assert_eq!(prior.as_fix().tags().unwrap(), [65]);
+        assert_eq!(FixField::new(&prior).tags().unwrap(), [65]);
         assert_eq!(
             registry.field_by_tag(55).unwrap(),
             &replacement.with_name("Symbol")
@@ -1807,10 +1810,9 @@ mod internal {
         let mut registry = FixRegistry::from_fields([stored]).unwrap();
 
         let mut incoming = DataType::utf8().required_field("SYMBOL");
-        incoming.as_fix_mut().set_tag(55).unwrap();
-        incoming.as_fix_mut().set_tags(&[67, 66]).unwrap();
-        incoming
-            .as_fix_mut()
+        FixFieldMut::new(&mut incoming).set_tag(55).unwrap();
+        FixFieldMut::new(&mut incoming).set_tags(&[67, 66]).unwrap();
+        FixFieldMut::new(&mut incoming)
             .set_names(["Instrument", "sym"])
             .unwrap();
         incoming
@@ -1827,11 +1829,14 @@ mod internal {
         // The stored field keeps what only it declared.
         assert_eq!(merged.get_metadata("owner"), Some("stored"));
         assert_eq!(merged.get_metadata("source"), Some("incoming"));
-        assert_eq!(merged.as_fix().description(), Some("Symbol described"));
-        // Lists concatenate, incoming first, deduplicated with case folded.
-        assert_eq!(merged.as_fix().tags().unwrap(), [67, 66, 65]);
         assert_eq!(
-            merged.as_fix().names().collect::<Vec<_>>(),
+            FixField::new(merged).description(),
+            Some("Symbol described")
+        );
+        // Lists concatenate, incoming first, deduplicated with case folded.
+        assert_eq!(FixField::new(merged).tags().unwrap(), [67, 66, 65]);
+        assert_eq!(
+            FixField::new(merged).names().collect::<Vec<_>>(),
             ["Instrument", "sym", "Ticker"]
         );
         // Every key, old and new, resolves to the merged field.
@@ -1855,7 +1860,9 @@ mod internal {
         let before = registry.clone();
         registry.update(tagged("symbol", 55)).unwrap();
         assert_eq!(
-            registry.field_by_tag(55).unwrap().as_fix().tags().unwrap(),
+            FixField::new(registry.field_by_tag(55).unwrap())
+                .tags()
+                .unwrap(),
             [67, 66, 65]
         );
         assert_eq!(registry.field_by_tag(55).unwrap().name(), "Symbol");
@@ -1942,7 +1949,7 @@ mod internal {
         // on 5055 is the same folded name under another tag: the same field
         // spelled with another number, so it folds into the holder too.
         let mut priced = tagged("PRICE", 44);
-        priced.as_fix_mut().set_names(["Px"]).unwrap();
+        FixFieldMut::new(&mut priced).set_names(["Px"]).unwrap();
         let (added, merged) = registry
             .add_fields([
                 full("Symbol", 55, &[66], &["Sym"]),
@@ -1957,12 +1964,12 @@ mod internal {
         // The merge kept what only the stored field declared and added the rest:
         // the venue's tag as an alternate, and its membership.
         let symbol = registry.field_by_tag(55).unwrap();
-        assert_eq!(symbol.as_fix().tags().unwrap(), [66, 65, 5_055]);
+        assert_eq!(FixField::new(symbol).tags().unwrap(), [66, 65, 5_055]);
         assert_eq!(
-            symbol.as_fix().names().collect::<Vec<_>>(),
+            FixField::new(symbol).names().collect::<Vec<_>>(),
             ["Sym", "Ticker"]
         );
-        assert_eq!(symbol.as_fix().sources().collect::<Vec<_>>(), ["cme"]);
+        assert_eq!(FixField::new(symbol).sources().collect::<Vec<_>>(), ["cme"]);
         assert_eq!(registry.field_by_tag(5_055).unwrap().name(), "Symbol");
         assert!(registry.get_field_by_id(id_of(5_055, "Symbol")).is_none());
         // Incoming metadata folds into the stored canonical spelling.
@@ -1982,7 +1989,7 @@ mod internal {
             assert_eq!(registry.len(), 4 + seeded_fields());
             // The bare tag answers the first holder, exactly as it was held.
             assert_eq!(registry.field_by_tag(58).unwrap(), &text);
-            assert!(text.as_fix().names().next().is_none());
+            assert!(FixField::new(&text).names().next().is_none());
             // The arrival exactly as it was stated: no `FIX:names` either.
             assert_eq!(
                 registry.field_by_id(id_of(58, "VenueText")).unwrap(),
@@ -2165,9 +2172,9 @@ mod internal {
     #[test]
     fn a_path_reaches_a_component_member_and_a_repeating_group_member() {
         let mut party_id = DataType::utf8().nullable_field("PartyID");
-        party_id.as_fix_mut().set_tag(448).unwrap();
+        FixFieldMut::new(&mut party_id).set_tag(448).unwrap();
         let mut role = DataType::Int32.nullable_field("PartyRole");
-        role.as_fix_mut().set_tag(452).unwrap();
+        FixFieldMut::new(&mut role).set_tag(452).unwrap();
         let mut group = DataType::serie(
             StructType::from_fields([party_id.clone(), role])
                 .map(DataType::from)
@@ -2175,7 +2182,7 @@ mod internal {
                 .required_field("Party"),
         )
         .nullable_field("Parties");
-        group.as_fix_mut().set_counter(453).unwrap();
+        FixFieldMut::new(&mut group).set_counter(453).unwrap();
         let instrument = StructType::from_fields([tagged("Symbol", 55), tagged("SecurityID", 48)])
             .map(DataType::from)
             .unwrap()
@@ -2189,10 +2196,7 @@ mod internal {
             .insert_definition(FixCategory::Components, instrument)
             .unwrap();
         assert_eq!(
-            registry
-                .definition(FixCategory::Groups, "Parties")
-                .unwrap()
-                .as_fix()
+            FixField::new(registry.definition(FixCategory::Groups, "Parties").unwrap())
                 .counter()
                 .unwrap(),
             Some(453)
@@ -2268,12 +2272,13 @@ mod internal {
             .expect("a readable frame");
         let member = fpath("Parties[0].PartyID");
         assert_eq!(
-            registry
-                .field_by_path(&member)
-                .expect("the member the schema declares")
-                .as_fix()
-                .tag()
-                .unwrap(),
+            FixField::new(
+                registry
+                    .field_by_path(&member)
+                    .expect("the member the schema declares")
+            )
+            .tag()
+            .unwrap(),
             Some(448)
         );
         assert_eq!(
@@ -2342,7 +2347,7 @@ mod internal {
         let mut cursor = None;
         while let Some(field) = registry.next_field_after(cursor) {
             walked.push(field.name());
-            cursor = field.as_fix().id().unwrap();
+            cursor = FixField::new(field).id().unwrap();
         }
         assert_eq!(
             walked,
@@ -2361,7 +2366,7 @@ mod internal {
         );
         // An alternate tag is an index entry, never a cursor stop.
         let mut aliased = tagged("MsgType", 35);
-        aliased.as_fix_mut().set_tags(&[2]).unwrap();
+        FixFieldMut::new(&mut aliased).set_tags(&[2]).unwrap();
         let with_alternate = FixRegistry::from_fields([aliased, tagged("Account", 1)]).unwrap();
         assert_eq!(
             with_alternate
@@ -2447,7 +2452,7 @@ mod internal {
         let mut cursor = None;
         while let Some(field) = registry.next_field_after(cursor) {
             walked.push(field.name());
-            cursor = field.as_fix().id().unwrap();
+            cursor = FixField::new(field).id().unwrap();
         }
         assert_eq!(walked, then_crated_scalars(&scalars));
         assert_eq!(
@@ -2526,7 +2531,7 @@ mod internal {
             DataType::serie(occurrence.required_field("item")),
         ] {
             let mut field = dtype.nullable_field("InvalidWireField");
-            field.as_fix_mut().set_tag(453).unwrap();
+            FixFieldMut::new(&mut field).set_tag(453).unwrap();
             let error = registry.insert(field).unwrap_err();
             assert!(error.to_string().contains("100000"), "{error}");
             assert_eq!(registry, original);
@@ -2542,7 +2547,7 @@ mod internal {
             .unwrap(),
         ] {
             let mut field = dtype.nullable_field("InvalidWireField");
-            field.as_fix_mut().set_tag(453).unwrap();
+            FixFieldMut::new(&mut field).set_tag(453).unwrap();
             let error = registry.insert(field).unwrap_err();
             assert!(error.to_string().contains("scalar"), "{error}");
             assert_eq!(registry, original);
@@ -2550,7 +2555,7 @@ mod internal {
         let mut encoded = DataType::dictionary(DataType::Int32, DataType::utf8())
             .unwrap()
             .nullable_field("Coded");
-        encoded.as_fix_mut().set_tag(60).unwrap();
+        FixFieldMut::new(&mut encoded).set_tag(60).unwrap();
         registry.insert(encoded).unwrap();
         assert_eq!(registry.len(), 2 + seeded_fields());
     }
@@ -2578,7 +2583,7 @@ mod internal {
         let mut registry = FixRegistry::from_fields([tagged("OccupiedScalar", 475_337)]).unwrap();
         let dtype = DataType::from(StructType::from_fields([] as [Field; 0]).unwrap());
         let mut occupied = dtype.clone().nullable_field("OccupiedComponent");
-        occupied.as_fix_mut().set_tag(475_338).unwrap();
+        FixFieldMut::new(&mut occupied).set_tag(475_338).unwrap();
         registry
             .insert_definition(FixCategory::Components, occupied)
             .unwrap();
@@ -2587,12 +2592,13 @@ mod internal {
             .insert_definition(FixCategory::Components, dtype.nullable_field("acorn"))
             .unwrap();
         assert_eq!(
-            registry
-                .definition(FixCategory::Components, "acorn")
-                .unwrap()
-                .as_fix()
-                .tag()
-                .unwrap(),
+            FixField::new(
+                registry
+                    .definition(FixCategory::Components, "acorn")
+                    .unwrap()
+            )
+            .tag()
+            .unwrap(),
             Some(475_339)
         );
         assert_eq!(
@@ -2600,12 +2606,13 @@ mod internal {
             "OccupiedScalar"
         );
         assert_eq!(
-            registry
-                .definition(FixCategory::Components, "OccupiedComponent")
-                .unwrap()
-                .as_fix()
-                .tag()
-                .unwrap(),
+            FixField::new(
+                registry
+                    .definition(FixCategory::Components, "OccupiedComponent")
+                    .unwrap()
+            )
+            .tag()
+            .unwrap(),
             Some(475_338)
         );
     }
@@ -2616,10 +2623,7 @@ mod internal {
         registry
             .insert_definition(FixCategory::Groups, named_group("Parties", 453))
             .unwrap();
-        let first = registry
-            .definition(FixCategory::Groups, "Parties")
-            .unwrap()
-            .as_fix()
+        let first = FixField::new(registry.definition(FixCategory::Groups, "Parties").unwrap())
             .tag()
             .unwrap()
             .expect("a derived tag");
@@ -2634,13 +2638,14 @@ mod internal {
         registry
             .insert_definition(FixCategory::Groups, clone)
             .unwrap();
-        let second = registry
-            .definition(FixCategory::Groups, "Counterparties")
-            .unwrap()
-            .as_fix()
-            .tag()
-            .unwrap()
-            .expect("a derived tag");
+        let second = FixField::new(
+            registry
+                .definition(FixCategory::Groups, "Counterparties")
+                .unwrap(),
+        )
+        .tag()
+        .unwrap()
+        .expect("a derived tag");
         assert_ne!(first, second);
         assert!(FixId::is_definition_tag(second), "{second}");
 
@@ -2653,10 +2658,7 @@ mod internal {
             .insert_definition(FixCategory::Groups, again)
             .unwrap();
         assert_eq!(
-            registry
-                .definition(FixCategory::Groups, "Parties")
-                .unwrap()
-                .as_fix()
+            FixField::new(registry.definition(FixCategory::Groups, "Parties").unwrap())
                 .tag()
                 .unwrap(),
             Some(first)
@@ -2664,7 +2666,7 @@ mod internal {
 
         // A tag outside the block is refused whatever states it.
         let mut outside = named_group("Brokers", 453);
-        outside.as_fix_mut().set_tag(42).unwrap();
+        FixFieldMut::new(&mut outside).set_tag(42).unwrap();
         let refused = registry
             .insert_definition(FixCategory::Groups, outside)
             .unwrap_err();
@@ -2674,7 +2676,7 @@ mod internal {
     #[test]
     fn a_named_group_and_its_counter_keep_separate_identities() {
         let mut shadow = tagged("Shadow", 5);
-        shadow.as_fix_mut().set_tags(&[453]).unwrap();
+        FixFieldMut::new(&mut shadow).set_tags(&[453]).unwrap();
         let mut registry = FixRegistry::from_fields([shadow, counter("NoPartyIDs", 453)]).unwrap();
         registry
             .insert_definition(FixCategory::Groups, named_group("Parties", 453))
@@ -2687,10 +2689,10 @@ mod internal {
         let group = registry.definition(FixCategory::Groups, "PARTIES").unwrap();
         // The group's own identity is derived into the definition block; the
         // counter it heads stays the published tag 453, and the two never meet.
-        let derived = group.as_fix().tag().unwrap().expect("a derived tag");
+        let derived = FixField::new(group).tag().unwrap().expect("a derived tag");
         assert!(FixId::is_definition_tag(derived), "{derived}");
         assert_ne!(derived, 453);
-        assert_eq!(group.as_fix().counter().unwrap(), Some(453));
+        assert_eq!(FixField::new(group).counter().unwrap(), Some(453));
         assert_eq!(group_by_tag(&registry, 453).unwrap(), group);
         assert_eq!(registry.field_by_tag(5).unwrap().name(), "Shadow");
     }
@@ -2701,7 +2703,7 @@ mod internal {
             FixRegistry::from_fields([counter("NoPartyIDs", 453), tagged("Symbol", 55)]).unwrap();
         let original = registry.clone();
         let mut tagged_group = named_group("Parties", 453);
-        tagged_group.as_fix_mut().set_tag(453).unwrap();
+        FixFieldMut::new(&mut tagged_group).set_tag(453).unwrap();
         for group in [
             tagged_group,
             named_group("AbsentCounter", 454),
@@ -2754,7 +2756,7 @@ mod internal {
         let mut walked = Vec::new();
         while let Some(field) = registry.next_field_after(cursor) {
             walked.push(field.name());
-            cursor = field.as_fix().id().unwrap();
+            cursor = FixField::new(field).id().unwrap();
         }
         assert_eq!(walked, then_crated_scalars(&scalars));
         assert_eq!(
@@ -2850,22 +2852,22 @@ mod internal {
     /// A registry, a root and a value the message tests share.
     fn order() -> (Arc<FixRegistry>, Field, Scalar) {
         let mut party_id = DataType::utf8().nullable_field("PartyID");
-        party_id.as_fix_mut().set_tag(448).unwrap();
+        FixFieldMut::new(&mut party_id).set_tag(448).unwrap();
         let mut role = DataType::Int32.nullable_field("PartyRole");
-        role.as_fix_mut().set_tag(452).unwrap();
+        FixFieldMut::new(&mut role).set_tag(452).unwrap();
         let item = StructType::from_fields([party_id, role])
             .map(DataType::from)
             .unwrap()
             .required_field("Party");
         let mut group = DataType::serie(item).nullable_field("Parties");
-        group.as_fix_mut().set_counter(453).unwrap();
+        FixFieldMut::new(&mut group).set_counter(453).unwrap();
         let instrument = StructType::from_fields([tagged("Symbol", 55)])
             .map(DataType::from)
             .unwrap()
             .nullable_field("Instrument");
         let mut qty = DataType::Int64.required_field("OrderQty");
-        qty.as_fix_mut().set_tag(38).unwrap();
-        qty.as_fix_mut().set_names(["Quantity"]).unwrap();
+        FixFieldMut::new(&mut qty).set_tag(38).unwrap();
+        FixFieldMut::new(&mut qty).set_names(["Quantity"]).unwrap();
         let count = counter("NoPartyIDs", 453);
         let mut registry =
             FixRegistry::from_fields([count, qty.clone(), tagged("Symbol", 55)]).unwrap();
@@ -3089,9 +3091,13 @@ mod internal {
         // and so answers the bare tag; the specification's is reached by its
         // own name or identity. Tag 35 is held once.
         let mut venue_trade = member("TradeID", "cme", 5001);
-        venue_trade.as_fix_mut().set_names(["TID"]).unwrap();
+        FixFieldMut::new(&mut venue_trade)
+            .set_names(["TID"])
+            .unwrap();
         let mut spec_trade = tagged("SecondaryTradeID", 5001);
-        spec_trade.as_fix_mut().set_names(["STID"]).unwrap();
+        FixFieldMut::new(&mut spec_trade)
+            .set_names(["STID"])
+            .unwrap();
         let msg_type = tagged("MsgType", 35);
         let registry = Arc::new(
             FixRegistry::from_fields([venue_trade.clone(), spec_trade.clone(), msg_type.clone()])
@@ -3111,7 +3117,7 @@ mod internal {
         ])
         .unwrap();
         let msg = FixMsg::with_registry(Arc::clone(&registry), root, value).unwrap();
-        assert_eq!(msg.as_field().as_fix().sources().count(), 0);
+        assert_eq!(FixField::new(msg.as_field()).sources().count(), 0);
 
         // The bare tag: its first holder, which is the child this root carries.
         assert_eq!(msg.by_tag(5001).unwrap(), Scalar::from("T-1"));
@@ -3160,7 +3166,7 @@ mod internal {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(plain.as_field().as_fix().sources().count(), 0);
+        assert_eq!(FixField::new(plain.as_field()).sources().count(), 0);
         assert_eq!(plain.by_tag(5001).unwrap(), Scalar::from("S-1"));
         assert_eq!(plain.by_name("stid").unwrap(), Scalar::from("S-1"));
         assert_eq!(plain.by_id(spec_id).unwrap(), Scalar::from("S-1"));
@@ -3177,7 +3183,7 @@ mod internal {
             .map(DataType::from)
             .unwrap()
             .required_field("row");
-        root.as_fix_mut().set_sources(["cme"]).unwrap();
+        FixFieldMut::new(&mut root).set_sources(["cme"]).unwrap();
         root.insert_metadata("FIX:sources", r#"["2cme","c me"]"#)
             .unwrap();
         let message = FixMsg::with_registry(
@@ -3188,7 +3194,9 @@ mod internal {
         .unwrap();
         assert_eq!(message.by_tag(35).unwrap(), Scalar::from("8"));
         assert_eq!(
-            message.as_field().as_fix().sources().collect::<Vec<_>>(),
+            FixField::new(message.as_field())
+                .sources()
+                .collect::<Vec<_>>(),
             ["2cme", "c me"],
             "read back as stored"
         );
@@ -3440,11 +3448,13 @@ mod internal {
     #[test]
     fn a_field_states_the_spellings_that_mean_nothing_was_sent() {
         let mut field = DataType::Float64.nullable_field("StopPx");
-        field.as_fix_mut().set_tag(99).unwrap();
-        field.as_fix_mut().set_nulls(["N/A", "NONE", ""]).unwrap();
+        FixFieldMut::new(&mut field).set_tag(99).unwrap();
+        FixFieldMut::new(&mut field)
+            .set_nulls(["N/A", "NONE", ""])
+            .unwrap();
         assert_eq!(field.get_metadata("FIX:nulls"), Some("N/A,NONE,"));
         assert_eq!(
-            field.as_fix().nulls().collect::<Vec<_>>(),
+            FixField::new(&field).nulls().collect::<Vec<_>>(),
             ["N/A", "NONE"],
             "an empty spelling is stored and walked past, as every list here does",
         );
@@ -3452,10 +3462,10 @@ mod internal {
         // Matched case-insensitively against the trimmed text, exactly as the
         // capture-wide list matches.
         for held in ["N/A", "n/a", " none ", "NONE"] {
-            assert!(field.as_fix().is_null_value(held), "{held}");
+            assert!(FixField::new(&field).is_null_value(held), "{held}");
         }
         for held in ["12.5", "NA", "N/A/"] {
-            assert!(!field.as_fix().is_null_value(held), "{held}");
+            assert!(!FixField::new(&field).is_null_value(held), "{held}");
         }
 
         // The row types it as null, and the entries are the row read as a tree,
@@ -3475,18 +3485,22 @@ mod internal {
     #[test]
     fn a_null_spelling_is_refused_when_it_carries_the_separator_or_repeats() {
         let mut field = DataType::utf8().nullable_field("Account");
-        field.as_fix_mut().set_tag(1).unwrap();
+        FixFieldMut::new(&mut field).set_tag(1).unwrap();
 
-        let error = field.as_fix_mut().set_nulls(["a,b"]).unwrap_err();
+        let error = FixFieldMut::new(&mut field).set_nulls(["a,b"]).unwrap_err();
         assert!(error.to_string().contains("without ','"), "{error}");
-        let error = field.as_fix_mut().set_nulls(["NONE", "none"]).unwrap_err();
+        let error = FixFieldMut::new(&mut field)
+            .set_nulls(["NONE", "none"])
+            .unwrap_err();
         assert!(error.to_string().contains("twice"), "{error}");
         // A refusal leaves the field exactly as it was.
         assert_eq!(field.get_metadata("FIX:nulls"), None);
 
         // Empty input removes the property.
-        field.as_fix_mut().set_nulls(["NONE"]).unwrap();
-        field.as_fix_mut().set_nulls::<[&str; 0], &str>([]).unwrap();
+        FixFieldMut::new(&mut field).set_nulls(["NONE"]).unwrap();
+        FixFieldMut::new(&mut field)
+            .set_nulls::<[&str; 0], &str>([])
+            .unwrap();
         assert_eq!(field.get_metadata("FIX:nulls"), None);
     }
 
@@ -3510,8 +3524,10 @@ mod internal {
             )
             .unwrap();
         let mut field = DataType::utf8().nullable_field("Side");
-        field.as_fix_mut().set_tag(54).unwrap();
-        field.as_fix_mut().set_codeset("sidecodeset").unwrap();
+        FixFieldMut::new(&mut field).set_tag(54).unwrap();
+        FixFieldMut::new(&mut field)
+            .set_codeset("sidecodeset")
+            .unwrap();
         registry.insert(field.clone()).unwrap();
         (registry, field)
     }
@@ -3536,8 +3552,10 @@ mod internal {
             )
             .unwrap();
         let mut field = DataType::utf8().nullable_field("CommType");
-        field.as_fix_mut().set_tag(13).unwrap();
-        field.as_fix_mut().set_codeset("commtypecodeset").unwrap();
+        FixFieldMut::new(&mut field).set_tag(13).unwrap();
+        FixFieldMut::new(&mut field)
+            .set_codeset("commtypecodeset")
+            .unwrap();
         registry.insert(field.clone()).unwrap();
         (registry, field)
     }
@@ -3774,7 +3792,7 @@ mod internal {
         ] {
             let mut wrapper = DataType::utf8().nullable_field("Side");
             wrapper.set_metadata([(property, wrapped)]).unwrap();
-            let view = wrapper.as_fix();
+            let view = FixField::new(&wrapper);
             let error = match property {
                 "FIX:directions" => view.directions().next().unwrap().unwrap_err(),
                 _ => view.idmap().next().unwrap().unwrap_err(),
@@ -3856,28 +3874,34 @@ mod internal {
     fn a_field_merge_folds_every_key_by_its_own_rule() {
         // Stored: the older, lower-priority source.
         let mut stored = DataType::utf8().nullable_field("LastQty");
-        stored.as_fix_mut().set_tag(32).unwrap();
-        stored.as_fix_mut().set_tags(&[65, 66]).unwrap();
-        stored.as_fix_mut().set_names(["lastshares"]).unwrap();
-        stored
-            .as_fix_mut()
+        FixFieldMut::new(&mut stored).set_tag(32).unwrap();
+        FixFieldMut::new(&mut stored).set_tags(&[65, 66]).unwrap();
+        FixFieldMut::new(&mut stored)
+            .set_names(["lastshares"])
+            .unwrap();
+        FixFieldMut::new(&mut stored)
             .set_description("the stored wording")
             .unwrap();
-        stored.as_fix_mut().set_codeset("storedcodeset").unwrap();
+        FixFieldMut::new(&mut stored)
+            .set_codeset("storedcodeset")
+            .unwrap();
 
         // Incoming: the newer, higher-priority source.
         let mut incoming = DataType::utf8().nullable_field("LastQty");
-        incoming.as_fix_mut().set_tag(32).unwrap();
-        incoming.as_fix_mut().set_tags(&[67, 66]).unwrap();
-        incoming.as_fix_mut().set_names(["qty"]).unwrap();
-        incoming
-            .as_fix_mut()
+        FixFieldMut::new(&mut incoming).set_tag(32).unwrap();
+        FixFieldMut::new(&mut incoming).set_tags(&[67, 66]).unwrap();
+        FixFieldMut::new(&mut incoming).set_names(["qty"]).unwrap();
+        FixFieldMut::new(&mut incoming)
             .set_description("the incoming wording")
             .unwrap();
-        incoming.as_fix_mut().set_codeset("lastqtycodeset").unwrap();
+        FixFieldMut::new(&mut incoming)
+            .set_codeset("lastqtycodeset")
+            .unwrap();
 
-        incoming.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
-        let merged = incoming.as_fix();
+        FixFieldMut::new(&mut incoming)
+            .merge_with(&FixField::new(&stored))
+            .unwrap();
+        let merged = FixField::new(&incoming);
 
         // Identity is not merged, it is agreed.
         assert_eq!(merged.tag().unwrap(), Some(32));
@@ -3929,21 +3953,27 @@ mod internal {
     #[test]
     fn a_merge_keeps_a_stored_description_the_incoming_does_not_state() {
         let mut stored = DataType::utf8().nullable_field("Symbol");
-        stored.as_fix_mut().set_tag(55).unwrap();
-        stored
-            .as_fix_mut()
+        FixFieldMut::new(&mut stored).set_tag(55).unwrap();
+        FixFieldMut::new(&mut stored)
             .set_description("a very long stored wording nobody wants compared")
             .unwrap();
 
         let mut incoming = DataType::utf8().nullable_field("Symbol");
-        incoming.as_fix_mut().set_tag(55).unwrap();
-        incoming.as_fix_mut().set_names(["Ticker"]).unwrap();
+        FixFieldMut::new(&mut incoming).set_tag(55).unwrap();
+        FixFieldMut::new(&mut incoming)
+            .set_names(["Ticker"])
+            .unwrap();
 
         // The FIX half folds the `FIX:` keys and nothing else, so on its own it
         // leaves a description alone in both directions: it is not FIX's key.
-        incoming.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
-        assert_eq!(incoming.as_fix().description(), None);
-        assert_eq!(incoming.as_fix().names().collect::<Vec<_>>(), ["Ticker"]);
+        FixFieldMut::new(&mut incoming)
+            .merge_with(&FixField::new(&stored))
+            .unwrap();
+        assert_eq!(FixField::new(&incoming).description(), None);
+        assert_eq!(
+            FixField::new(&incoming).names().collect::<Vec<_>>(),
+            ["Ticker"]
+        );
 
         // The whole merge is two halves, and the generic one carries it: a
         // description the incoming definition does not state is kept from what
@@ -3956,7 +3986,7 @@ mod internal {
             held.description(),
             Some("a very long stored wording nobody wants compared")
         );
-        assert_eq!(held.as_fix().names().collect::<Vec<_>>(), ["Ticker"]);
+        assert_eq!(FixField::new(held).names().collect::<Vec<_>>(), ["Ticker"]);
 
         // And one the incoming definition does state wins, because the caller's
         // ordering is the precedence.
@@ -3974,15 +4004,16 @@ mod internal {
     #[test]
     fn a_merge_of_disagreeing_identities_is_refused_and_changes_nothing() {
         let mut incoming = DataType::utf8().nullable_field("Symbol");
-        incoming.as_fix_mut().set_tag(55).unwrap();
-        incoming.as_fix_mut().set_names(["Ticker"]).unwrap();
+        FixFieldMut::new(&mut incoming).set_tag(55).unwrap();
+        FixFieldMut::new(&mut incoming)
+            .set_names(["Ticker"])
+            .unwrap();
         let before = incoming.clone();
 
         let mut other = DataType::utf8().nullable_field("Symbol");
-        other.as_fix_mut().set_tag(56).unwrap();
-        let error = incoming
-            .as_fix_mut()
-            .merge_with(&other.as_fix())
+        FixFieldMut::new(&mut other).set_tag(56).unwrap();
+        let error = FixFieldMut::new(&mut incoming)
+            .merge_with(&FixField::new(&other))
             .unwrap_err();
         assert!(error.is_conflict(), "{error}");
         let message = error.to_string();
@@ -3996,16 +4027,20 @@ mod internal {
         // merges, and the merge records who spoke it.
         let vendor = member("Symbol", "cme", 5055);
         let mut mine = DataType::utf8().nullable_field("Symbol");
-        mine.as_fix_mut().set_tag(5055).unwrap();
-        mine.as_fix_mut().merge_with(&vendor.as_fix()).unwrap();
-        assert_eq!(mine.as_fix().sources().collect::<Vec<_>>(), ["cme"]);
-        assert_eq!(mine.as_fix().tag().unwrap(), Some(5055));
+        FixFieldMut::new(&mut mine).set_tag(5055).unwrap();
+        FixFieldMut::new(&mut mine)
+            .merge_with(&FixField::new(&vendor))
+            .unwrap();
+        assert_eq!(FixField::new(&mine).sources().collect::<Vec<_>>(), ["cme"]);
+        assert_eq!(FixField::new(&mine).tag().unwrap(), Some(5055));
         // And the union is a union: two dictionaries each stamping itself leave
         // both names, sorted, whichever side held which.
         let mut theirs = member("Symbol", "xnas", 5055);
-        theirs.as_fix_mut().merge_with(&mine.as_fix()).unwrap();
+        FixFieldMut::new(&mut theirs)
+            .merge_with(&FixField::new(&mine))
+            .unwrap();
         assert_eq!(
-            theirs.as_fix().sources().collect::<Vec<_>>(),
+            FixField::new(&theirs).sources().collect::<Vec<_>>(),
             ["cme", "xnas"]
         );
     }
@@ -4013,20 +4048,30 @@ mod internal {
     #[test]
     fn a_merge_adding_nothing_leaves_the_field_byte_identical() {
         let mut field = DataType::utf8().nullable_field("LastQty");
-        field.as_fix_mut().set_tag(32).unwrap();
-        field.as_fix_mut().set_tags(&[65]).unwrap();
-        field.as_fix_mut().set_description("wording").unwrap();
-        field.as_fix_mut().set_names(["lastshares"]).unwrap();
-        field.as_fix_mut().set_codeset("lastqtycodeset").unwrap();
+        FixFieldMut::new(&mut field).set_tag(32).unwrap();
+        FixFieldMut::new(&mut field).set_tags(&[65]).unwrap();
+        FixFieldMut::new(&mut field)
+            .set_description("wording")
+            .unwrap();
+        FixFieldMut::new(&mut field)
+            .set_names(["lastshares"])
+            .unwrap();
+        FixFieldMut::new(&mut field)
+            .set_codeset("lastqtycodeset")
+            .unwrap();
 
         let before = field.clone();
         let other = field.clone();
-        field.as_fix_mut().merge_with(&other.as_fix()).unwrap();
+        FixFieldMut::new(&mut field)
+            .merge_with(&FixField::new(&other))
+            .unwrap();
         assert_eq!(field, before);
         // Merging a bare field into a full one is also a no-op.
         let mut bare = DataType::utf8().nullable_field("LastQty");
-        bare.as_fix_mut().set_tag(32).unwrap();
-        field.as_fix_mut().merge_with(&bare.as_fix()).unwrap();
+        FixFieldMut::new(&mut bare).set_tag(32).unwrap();
+        FixFieldMut::new(&mut field)
+            .merge_with(&FixField::new(&bare))
+            .unwrap();
         assert_eq!(field, before);
     }
 
@@ -4100,8 +4145,8 @@ mod internal {
                     .into_iter()
                     .find(|(_, name)| *name == field.name())
                     .unwrap_or_else(|| panic!("{} is no crate group", field.name()));
-                assert_eq!(field.as_fix().tag().unwrap(), Some(tag), "{name}");
-                assert_eq!(field.as_fix().counter().unwrap(), Some(tag), "{name}");
+                assert_eq!(FixField::new(field).tag().unwrap(), Some(tag), "{name}");
+                assert_eq!(FixField::new(field).counter().unwrap(), Some(tag), "{name}");
                 assert!(map.keys_sorted());
                 assert!(!map.entries().is_nullable());
                 assert!(!map.entries().fields()[0].is_nullable());
@@ -4132,7 +4177,7 @@ mod internal {
             );
             assert_eq!(registry.get_field_by_name(item.name()), Some(component));
             let counter = registry
-                .field_by_tag(field.as_fix().counter().unwrap().unwrap())
+                .field_by_tag(FixField::new(field).counter().unwrap().unwrap())
                 .unwrap();
             assert_eq!(counter.dtype(), &DataType::Int32);
         }
@@ -4152,7 +4197,7 @@ mod internal {
     fn a_group_path_reaches_members_and_skips_its_occurrence_component() {
         let registry = committed();
         let member = registry.field_by_path(&fpath("Parties.PartyID")).unwrap();
-        assert_eq!(member.as_fix().tag().unwrap(), Some(448));
+        assert_eq!(FixField::new(member).tag().unwrap(), Some(448));
         assert_eq!(member.name(), "partyid");
         assert_eq!(registry.field_by_tag(453).unwrap().name(), "nopartyids");
         assert_eq!(
@@ -4232,7 +4277,7 @@ mod internal {
             assert_eq!(held, dtype, "{spelling}");
 
             let mut field = held.nullable_field("dated");
-            field.as_fix_mut().set_tag(tag).unwrap();
+            FixFieldMut::new(&mut field).set_tag(tag).unwrap();
             let registry = Arc::new(FixRegistry::from_fields([field]).unwrap());
             let message = yggdryl::FixCodec::new(registry)
                 .parse_pairs([(tag.to_string().as_bytes(), wire.as_bytes())])
@@ -4328,7 +4373,7 @@ mod internal {
             &DataType::map_of(DataType::utf8(), DataType::utf8(), true).unwrap()
         );
         assert!(held.is_nullable());
-        assert_eq!(held.as_fix().counter().unwrap(), None);
+        assert_eq!(FixField::new(held).counter().unwrap(), None);
         assert!(root.index_of("nofixentries").is_none());
     }
 
@@ -4624,7 +4669,7 @@ mod capture {
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
-    use yggdryl::{FixCodec, FixRegistry, IOMedia, Scalar, Url};
+    use yggdryl::{FixCodec, FixField, FixRegistry, IOMedia, Scalar, Url};
 
     /// The committed dictionary.
     fn registry() -> Arc<FixRegistry> {
@@ -5238,8 +5283,7 @@ mod capture {
             .iter()
             .enumerate()
             .filter_map(|(at, field)| {
-                field
-                    .as_fix()
+                FixField::new(field)
                     .counter()
                     .expect("valid FIX metadata")
                     .filter(|counter| {

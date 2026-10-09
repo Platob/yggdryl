@@ -326,7 +326,7 @@ impl MarketFacts {
     fn reprefix(&mut self) {
         if let std::borrow::Cow::Owned(stored) = self.stored_crosscode(&self.crosscode) {
             self.crosscode = stored;
-            self.crosshashcode = super::element::crosshash(&self.crosscode);
+            self.crosshashcode = crate::implementer::crosshash(&self.crosscode);
             self.crossuuid = self.cross_uuid();
         }
     }
@@ -429,7 +429,7 @@ impl Element for MarketFacts {
     }
 
     fn set_srcuuids(&mut self, mut sources: Vec<Uuid>) {
-        super::element::canonicalize_uuids(&mut sources);
+        crate::implementer::canonicalize_uuids(&mut sources);
         self.srcuuids = sources;
     }
 
@@ -450,7 +450,7 @@ impl Element for MarketFacts {
         if previous.curruuid == self.curruuid {
             return None;
         }
-        let mut changed = super::element::follow_element(&mut self, previous);
+        let mut changed = crate::implementer::follow_element(&mut self, previous);
         changed |= super::market::follow_market(&mut self, previous);
         if !changed {
             return None;
@@ -1545,7 +1545,7 @@ impl Element for MarketEventFacts {
         self.market.crosshashcode = if self.market.crosscode.is_empty() {
             0
         } else {
-            super::element::crosshash(&self.market.crosscode)
+            crate::implementer::crosshash(&self.market.crosscode)
         };
         self.refresh_uuids();
     }
@@ -1573,7 +1573,7 @@ impl Element for MarketEventFacts {
     }
 
     fn set_srcuuids(&mut self, mut sources: Vec<Uuid>) {
-        super::element::canonicalize_uuids(&mut sources);
+        crate::implementer::canonicalize_uuids(&mut sources);
         self.market.srcuuids = sources;
     }
 
@@ -1883,7 +1883,7 @@ impl Element for OperationFacts {
         if previous.market.curruuid == self.market.curruuid {
             return None;
         }
-        let mut changed = super::element::follow_element(&mut self, previous);
+        let mut changed = crate::implementer::follow_element(&mut self, previous);
         changed |= super::market::follow_market(&mut self, previous);
         changed |= super::market::follow_operation(&mut self, previous);
         if !changed {

@@ -14,7 +14,7 @@ use std::path::Path;
 
 use yggdryl::text::Formatting;
 use yggdryl::text::TextOptions;
-use yggdryl::{Field, FixRegistry, Result};
+use yggdryl::{Field, FixField, FixRegistry, Result};
 
 use crate::style;
 
@@ -85,7 +85,7 @@ fn show(field: &Field) {
     let rows: Vec<Vec<String>> = held
         .iter()
         .map(|column| {
-            let view = column.as_fix();
+            let view = FixField::new(column);
             vec![
                 column.name().to_owned(),
                 column.dtype().to_string(),

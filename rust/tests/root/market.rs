@@ -8,7 +8,10 @@
 
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::market::{kind_for_extension, kind_named, kind_of, kinds};
-use yggdryl::{DataType, DataTypeId, DataTypeKind, Field, MarketStorage, Scalar, Serie};
+use yggdryl::{
+    DataType, DataTypeId, DataTypeKind, Field, MarketDataKind, MarketDataType, MarketStorage,
+    Scalar, Serie, Side, TimeInForce,
+};
 
 #[test]
 fn the_core_claims_its_own_four_enum_kinds_in_byte_order() {
@@ -110,6 +113,39 @@ fn a_name_a_byte_and_a_tag_no_claim_answers_are_refused_naming_the_registration(
     );
 }
 
+/// The datatype and the field a kind states of itself are what the register
+/// holds for it: the four enum kinds each answer through their own associated
+/// items, and `DataType` holds no constructor of any of them.
+#[test]
+fn each_enum_kind_states_the_datatype_and_field_the_register_holds_for_it() {
+    for (name, dtype, field) in [
+        (
+            "marketdatakind",
+            MarketDataKind::dtype(),
+            MarketDataKind::field("value"),
+        ),
+        ("side", Side::dtype(), Side::field("value")),
+        (
+            "marketdatatype",
+            MarketDataType::dtype(),
+            MarketDataType::field("value"),
+        ),
+        (
+            "timeinforce",
+            TimeInForce::dtype(),
+            TimeInForce::field("value"),
+        ),
+    ] {
+        let claimed = kind_named(name).unwrap();
+        assert_eq!(dtype, claimed.dtype(), "{name}");
+        assert_eq!(dtype, DataType::from_str(name).unwrap(), "{name}");
+        assert_eq!(dtype.id(), claimed.id, "{name}");
+        assert_eq!(field, claimed.field("value", true), "{name}");
+        assert!(field.is_nullable(), "{name}");
+        assert_eq!(field.dtype(), &dtype, "{name}");
+    }
+}
+
 #[test]
 fn a_market_type_compares_as_its_kind_states() {
     let side = DataType::from_str("side").unwrap();
@@ -124,7 +160,7 @@ fn a_market_type_compares_as_its_kind_states() {
     assert_eq!(kind.kind().value_rank, 29);
     assert_eq!(side.clone().nullable_field("value").dtype(), &side);
     // A kind stated twice is one kind: the byte is the identity.
-    assert_eq!(DataType::side(), side);
+    assert_eq!(Side::dtype(), side);
     assert_ne!(DataType::from_str("timeinforce").unwrap(), side);
     assert!(
         side < DataType::from_str("marketdatatype").unwrap(),

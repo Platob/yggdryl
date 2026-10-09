@@ -28,9 +28,9 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use smol_str::SmolStr;
 
-use super::FixId;
 use super::field::FixShape;
 use super::registry::FixMap;
+use super::{FixField, FixId};
 use crate::xxhash::Xxh64;
 use crate::{Field, IdKey, IdSource, IdType, Metadata};
 
@@ -304,7 +304,7 @@ impl Memo {
         let facts = match known {
             Some(facts) => facts,
             None => {
-                let view = source.as_fix();
+                let view = FixField::new(source);
                 let facts = Arc::new(Facts {
                     nulls: view.nulls().map(SmolStr::new).collect(),
                     shape: view.shape(),

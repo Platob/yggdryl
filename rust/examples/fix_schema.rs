@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use arrow_schema::{DataType, Field};
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixRegistry, fix_schema};
+use yggdryl::{FixField, FixRegistry, fix_schema};
 
 fn main() -> yggdryl::Result<()> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -27,8 +27,7 @@ fn main() -> yggdryl::Result<()> {
     for (column, field) in schema.fields().iter().zip(arrow.fields()) {
         // The tag is the column's own; a column no tag names - the arrival
         // record - is this crate's and says so with a dash.
-        let tag = column
-            .as_fix()
+        let tag = FixField::new(column)
             .tag()
             .ok()
             .flatten()

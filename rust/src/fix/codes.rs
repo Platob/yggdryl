@@ -77,8 +77,8 @@ use std::sync::Arc;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::document::{Cursor, Refusal, Scan, Words, Writer, decode_text};
-use super::{FixDrop, FixRegistry};
-use crate::folds_equal;
+use super::{FixDrop, FixField, FixRegistry};
+use crate::implementer::folds_equal;
 use crate::{Error, Field, Result, Scalar};
 
 /// What the document is called for every refusal it raises.
@@ -905,14 +905,13 @@ impl FixCodes<'_> {
 /// refusal is about.
 fn codeset_drop(other: &FixRegistry, name: &str, error: &Error) -> FixDrop {
     let reader = other.scalars().find(|field| {
-        field
-            .as_fix()
+        FixField::new(field)
             .codeset()
             .is_some_and(|set| folds_equal(set, name))
     });
     let read_by = reader.map_or_else(String::new, |field| {
         let spelled = field.display().unwrap_or_else(|| field.name());
-        match field.as_fix().tag().ok().flatten() {
+        match FixField::new(field).tag().ok().flatten() {
             Some(tag) => format!(", which {spelled:?} ({tag}) reads by,"),
             None => format!(", which {spelled:?} reads by,"),
         }
@@ -1106,7 +1105,7 @@ pub(super) fn translate<'field>(stored: &'field str, text: &str) -> Option<&'fie
 /// ahead of the code being asked for and nothing is allocated.
 ///
 /// ```
-/// use yggdryl::{DataType, FixCode, FixRegistry};
+/// use yggdryl::{DataType, FixCode, FixFieldMut, FixRegistry};
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut registry = FixRegistry::new();
 /// registry.set_codeset(
@@ -1114,8 +1113,8 @@ pub(super) fn translate<'field>(stored: &'field str, text: &str) -> Option<&'fie
 ///     &[FixCode::new("Buy", "1"), FixCode::new("Sell", "2")],
 /// )?;
 /// let mut side = DataType::utf8().nullable_field("side");
-/// side.as_fix_mut().set_tag(54)?;
-/// side.as_fix_mut().set_codeset("sidecodeset")?;
+/// FixFieldMut::new(&mut side).set_tag(54)?;
+/// FixFieldMut::new(&mut side).set_codeset("sidecodeset")?;
 /// registry.insert(side)?;
 ///
 /// let set = registry.codeset_of(registry.field_by_tag(54)?).expect("the set");
@@ -1210,7 +1209,7 @@ impl FixRegistry {
         if let Some((held, document)) = self.codesets.get_key_value(name) {
             return Some(FixCodeSet::new(held.as_str(), document));
         }
-        let folded = crate::normalized(name);
+        let folded = crate::implementer::normalized(name);
         self.codesets
             .get_key_value(folded.as_str())
             .map(|(held, document)| FixCodeSet::new(held.as_str(), document))
@@ -1236,7 +1235,7 @@ impl FixRegistry {
     /// refuses one at every door a field arrives through.
     #[must_use]
     pub fn codeset_of(&self, field: &Field) -> Option<FixCodeSet<'_>> {
-        self.get_codeset(field.as_fix().codeset()?)
+        self.get_codeset(FixField::new(field).codeset()?)
     }
 
     /// The document of the set `field` reads by, when this dictionary holds
@@ -1523,13 +1522,13 @@ impl FixRegistry {
     /// supplies.
     #[must_use]
     pub fn derived_codeset_name(field: &Field) -> SmolStr {
-        format_smolstr!("{}codeset", crate::normalized(field.name()))
+        format_smolstr!("{}codeset", crate::implementer::normalized(field.name()))
     }
 
     /// The folded key `name` is filed under, refusing a name no store files.
     fn codeset_key(&self, name: &str) -> Result<SmolStr> {
         super::catalog::validate_definition_name(name)?;
-        Ok(SmolStr::new(crate::normalized(name)))
+        Ok(SmolStr::new(crate::implementer::normalized(name)))
     }
 
     /// Refuses taking away a set a held field still reads by.
@@ -1538,8 +1537,7 @@ impl FixRegistry {
             .scalars()
             .chain(self.catalog.all().map(|entry| entry.field.as_field()))
             .find(|field| {
-                field
-                    .as_fix()
+                FixField::new(field)
                     .codeset()
                     .is_some_and(|name| folds_equal(name, key))
             });

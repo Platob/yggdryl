@@ -283,19 +283,22 @@ mod identifiers {
     use super::SoleMessage;
     use yggdryl::graph::Operation;
     use yggdryl::{
-        DataType, Error, Field, FixMsg, FixRegistry, IdType, Scalar, StructType, fix_schema,
+        DataType, Error, Field, FixField, FixFieldMut, FixMsg, FixRegistry, IdType, Scalar,
+        StructType, fix_schema,
     };
 
     fn tagged(name: &str, tag: i32) -> Field {
         let mut field = DataType::utf8().nullable_field(name);
-        field.as_fix_mut().set_tag(tag).unwrap();
+        FixFieldMut::new(&mut field).set_tag(tag).unwrap();
         field
     }
 
     fn component() -> Field {
         let mut order = tagged("clordid", 11);
-        order.as_fix_mut().set_names(["ClientOrder"]).unwrap();
-        order.as_fix_mut().set_tags(&[9001]).unwrap();
+        FixFieldMut::new(&mut order)
+            .set_names(["ClientOrder"])
+            .unwrap();
+        FixFieldMut::new(&mut order).set_tags(&[9001]).unwrap();
         let nested = DataType::serie(
             StructType::from_fields([tagged("execid", 17)])
                 .map(DataType::from)
@@ -313,9 +316,11 @@ mod identifiers {
     fn identifier_intake_resolves_members_once_and_stores_component_order() {
         let mut field = component();
         for spellings in [["OrderID", "ClientOrder"], ["37", "11"], ["37", "9001"]] {
-            field.as_fix_mut().set_identifiers(spellings).unwrap();
+            FixFieldMut::new(&mut field)
+                .set_identifiers(spellings)
+                .unwrap();
             assert_eq!(
-                field.as_fix().identifiers().collect::<Vec<_>>(),
+                FixField::new(&field).identifiers().collect::<Vec<_>>(),
                 ["clordid", "orderid"]
             );
             assert_eq!(
@@ -323,15 +328,19 @@ mod identifiers {
                 Some("clordid,orderid")
             );
         }
-        field.as_fix_mut().set_identifiers([] as [&str; 0]).unwrap();
+        FixFieldMut::new(&mut field)
+            .set_identifiers([] as [&str; 0])
+            .unwrap();
         assert!(field.get_metadata("FIX:identifiers").is_none());
-        assert_eq!(field.as_fix().identifiers().count(), 0);
+        assert_eq!(FixField::new(&field).identifiers().count(), 0);
     }
 
     #[test]
     fn identifier_refusals_are_located_atomic_and_do_not_accept_paths() {
         let mut field = component();
-        field.as_fix_mut().set_identifiers(["11"]).unwrap();
+        FixFieldMut::new(&mut field)
+            .set_identifiers(["11"])
+            .unwrap();
         let before = field.clone();
         for bad in [
             vec![""],
@@ -342,7 +351,9 @@ mod identifiers {
             vec!["11", "ClientOrder"],
             vec!["ClOrdID", "cl_ord_id"],
         ] {
-            let error = field.as_fix_mut().set_identifiers(&bad).unwrap_err();
+            let error = FixFieldMut::new(&mut field)
+                .set_identifiers(&bad)
+                .unwrap_err();
             assert!(
                 matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "FIX:identifiers"),
                 "{error}"
@@ -354,34 +365,52 @@ mod identifiers {
             assert_eq!(field, before, "{bad:?}");
         }
         let mut ambiguous = tagged("another", 100);
-        ambiguous.as_fix_mut().set_names(["ClientOrder"]).unwrap();
+        FixFieldMut::new(&mut ambiguous)
+            .set_names(["ClientOrder"])
+            .unwrap();
         field
             .set_dtype(DataType::from(
                 StructType::from_fields(field.fields().iter().cloned().chain([ambiguous])).unwrap(),
             ))
             .unwrap();
         let before = field.clone();
-        assert!(field.as_fix_mut().set_identifiers(["ClientOrder"]).is_err());
+        assert!(
+            FixFieldMut::new(&mut field)
+                .set_identifiers(["ClientOrder"])
+                .is_err()
+        );
         assert_eq!(field, before);
         let mut scalar = tagged("scalar", 11);
-        assert!(scalar.as_fix_mut().set_identifiers(["11"]).is_err());
+        assert!(
+            FixFieldMut::new(&mut scalar)
+                .set_identifiers(["11"])
+                .is_err()
+        );
     }
 
     #[test]
     fn incoming_identifiers_replace_the_whole_declaration_on_merge() {
         let mut stored = component();
-        stored.as_fix_mut().set_identifiers(["11", "37"]).unwrap();
+        FixFieldMut::new(&mut stored)
+            .set_identifiers(["11", "37"])
+            .unwrap();
         let mut incoming = component();
-        incoming.as_fix_mut().set_identifiers(["37"]).unwrap();
-        incoming.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
+        FixFieldMut::new(&mut incoming)
+            .set_identifiers(["37"])
+            .unwrap();
+        FixFieldMut::new(&mut incoming)
+            .merge_with(&FixField::new(&stored))
+            .unwrap();
         assert_eq!(
-            incoming.as_fix().identifiers().collect::<Vec<_>>(),
+            FixField::new(&incoming).identifiers().collect::<Vec<_>>(),
             ["orderid"]
         );
         let mut absent = component();
-        absent.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
+        FixFieldMut::new(&mut absent)
+            .merge_with(&FixField::new(&stored))
+            .unwrap();
         assert_eq!(
-            absent.as_fix().identifiers().collect::<Vec<_>>(),
+            FixField::new(&absent).identifiers().collect::<Vec<_>>(),
             ["clordid", "orderid"]
         );
     }
@@ -396,29 +425,33 @@ mod identifiers {
             if references {
                 for child in &mut members {
                     let name = child.name().to_owned();
-                    child.as_fix_mut().set_field_ref(&name).unwrap();
+                    FixFieldMut::new(child).set_field_ref(&name).unwrap();
                 }
             }
             let mut stored = StructType::from_fields(members.clone())
                 .map(DataType::from)
                 .unwrap()
                 .required_field("order");
-            stored.as_fix_mut().set_identifiers(["11"]).unwrap();
+            FixFieldMut::new(&mut stored)
+                .set_identifiers(["11"])
+                .unwrap();
             registry.insert(stored).unwrap();
             members.reverse();
             let mut incoming = StructType::from_fields(members)
                 .map(DataType::from)
                 .unwrap()
                 .required_field("order");
-            incoming.as_fix_mut().set_identifiers(["11", "37"]).unwrap();
+            FixFieldMut::new(&mut incoming)
+                .set_identifiers(["11", "37"])
+                .unwrap();
             assert_eq!(
-                incoming.as_fix().identifiers().collect::<Vec<_>>(),
+                FixField::new(&incoming).identifiers().collect::<Vec<_>>(),
                 ["orderid", "clordid"]
             );
             registry.add_field(incoming).unwrap();
             let merged = registry.field_by_name("order").unwrap();
             assert_eq!(
-                merged.as_fix().identifiers().collect::<Vec<_>>(),
+                FixField::new(merged).identifiers().collect::<Vec<_>>(),
                 ["clordid", "orderid"],
                 "references={references}"
             );
@@ -428,11 +461,10 @@ mod identifiers {
     #[test]
     fn compiled_selection_borrows_tagged_reordered_values_and_skips_nulls_and_groups() {
         let mut definition = component();
-        definition
-            .as_fix_mut()
+        FixFieldMut::new(&mut definition)
             .set_identifiers(["37", "11"])
             .unwrap();
-        definition.as_fix_mut().set_msgtype("D").unwrap();
+        FixFieldMut::new(&mut definition).set_msgtype("D").unwrap();
         let mut registry = FixRegistry::new();
         registry.insert(definition).unwrap();
         let registry = Arc::new(registry);
@@ -472,11 +504,10 @@ mod identifiers {
                 .map(DataType::from)
                 .unwrap()
                 .required_field("order");
-        definition
-            .as_fix_mut()
+        FixFieldMut::new(&mut definition)
             .set_identifiers(["clordid", "venueid"])
             .unwrap();
-        definition.as_fix_mut().set_msgtype("D").unwrap();
+        FixFieldMut::new(&mut definition).set_msgtype("D").unwrap();
         let mut registry = FixRegistry::new();
         registry.insert(definition).unwrap();
         let registry = Arc::new(registry);
@@ -543,11 +574,10 @@ mod identifiers {
             .map(DataType::from)
             .unwrap()
             .required_field("order");
-        definition
-            .as_fix_mut()
+        FixFieldMut::new(&mut definition)
             .set_identifiers(["clordid"])
             .unwrap();
-        definition.as_fix_mut().set_msgtype("D").unwrap();
+        FixFieldMut::new(&mut definition).set_msgtype("D").unwrap();
         let mut registry = FixRegistry::new();
         registry.insert(definition).unwrap();
         let registry = Arc::new(registry);
@@ -582,7 +612,7 @@ mod identifiers {
             "unknown",
         ] {
             let mut field = component();
-            field.as_fix_mut().set_msgtype("D").unwrap();
+            FixFieldMut::new(&mut field).set_msgtype("D").unwrap();
             field
                 .update_metadata([("FIX:identifiers", text.to_owned())])
                 .unwrap();
@@ -598,7 +628,7 @@ mod identifiers {
             let definition = |field: Field| {
                 if group {
                     let mut group = DataType::serie(field).nullable_field("orders");
-                    group.as_fix_mut().set_counter(9001).unwrap();
+                    FixFieldMut::new(&mut group).set_counter(9001).unwrap();
                     group
                 } else {
                     field
@@ -617,7 +647,7 @@ mod identifiers {
                     .unwrap();
                 let raw = definition(raw);
                 let mut counter = DataType::Int32.nullable_field("noorders");
-                counter.as_fix_mut().set_tag(9001).unwrap();
+                FixFieldMut::new(&mut counter).set_tag(9001).unwrap();
                 let mut registry = FixRegistry::from_fields([counter]).unwrap();
                 let before = registry.clone();
                 let error = registry.insert(raw.clone()).unwrap_err();
@@ -631,7 +661,9 @@ mod identifiers {
                 );
 
                 let mut valid = component();
-                valid.as_fix_mut().set_identifiers(["clordid"]).unwrap();
+                FixFieldMut::new(&mut valid)
+                    .set_identifiers(["clordid"])
+                    .unwrap();
                 registry.insert(definition(valid)).unwrap();
                 let before = registry.clone();
                 let error = registry.add_field(raw).unwrap_err();
@@ -651,14 +683,16 @@ mod identifiers {
     fn raw_identifier_spellings_normalize_on_create_and_merge_before_references_compact() {
         for references in [false, true] {
             let mut first = tagged("clordid", 11);
-            first.as_fix_mut().set_names(["ClientOrder"]).unwrap();
+            FixFieldMut::new(&mut first)
+                .set_names(["ClientOrder"])
+                .unwrap();
             let second = tagged("orderid", 37);
             let mut registry = FixRegistry::from_fields([first.clone(), second.clone()]).unwrap();
             let mut members = [first, second];
             if references {
                 for child in &mut members {
                     let name = child.name().to_owned();
-                    child.as_fix_mut().set_field_ref(&name).unwrap();
+                    FixFieldMut::new(child).set_field_ref(&name).unwrap();
                 }
             }
             let mut raw = StructType::from_fields(members)
@@ -669,10 +703,7 @@ mod identifiers {
                 .unwrap();
             registry.insert(raw.clone()).unwrap();
             assert_eq!(
-                registry
-                    .field_by_name("order")
-                    .unwrap()
-                    .as_fix()
+                FixField::new(registry.field_by_name("order").unwrap())
                     .identifiers()
                     .collect::<Vec<_>>(),
                 ["clordid", "orderid"]
@@ -680,10 +711,7 @@ mod identifiers {
             raw.update_metadata([("FIX:identifiers", "37,11")]).unwrap();
             registry.add_field(raw).unwrap();
             assert_eq!(
-                registry
-                    .field_by_name("order")
-                    .unwrap()
-                    .as_fix()
+                FixField::new(registry.field_by_name("order").unwrap())
                     .identifiers()
                     .collect::<Vec<_>>(),
                 ["clordid", "orderid"]
@@ -695,13 +723,15 @@ mod identifiers {
     fn raw_identifier_spellings_normalize_after_inline_or_compact_json_children_resolve() {
         for references in [false, true] {
             let mut first = tagged("clordid", 11);
-            first.as_fix_mut().set_names(["ClientOrder"]).unwrap();
+            FixFieldMut::new(&mut first)
+                .set_names(["ClientOrder"])
+                .unwrap();
             let second = tagged("orderid", 37);
             let definitions = [first.clone(), second.clone()];
             let members = if references {
                 ["clordid", "orderid"].map(|name| {
                     let mut field = DataType::Null.nullable_field(name);
-                    field.as_fix_mut().set_field_ref(name).unwrap();
+                    FixFieldMut::new(&mut field).set_field_ref(name).unwrap();
                     field
                 })
             } else {
@@ -738,7 +768,7 @@ mod identifiers {
                     FixRegistry::from_json(&yggdryl::into_json_scalar(&snapshot).unwrap()).unwrap();
                 let component = registry.field_by_name("order").unwrap();
                 assert_eq!(
-                    component.as_fix().identifiers().collect::<Vec<_>>(),
+                    FixField::new(component).identifiers().collect::<Vec<_>>(),
                     ["clordid", "orderid"],
                     "references={references}, declaration={declaration}"
                 );
@@ -913,11 +943,11 @@ mod captured_rows {
 mod header_text {
     use std::sync::Arc;
 
-    use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
+    use yggdryl::{DataType, FixFieldMut, FixMsg, FixRegistry, Scalar};
 
     fn bare() -> FixMsg {
         let mut symbol = DataType::utf8().nullable_field("symbol");
-        symbol.as_fix_mut().set_tag(55).expect("a tag");
+        FixFieldMut::new(&mut symbol).set_tag(55).expect("a tag");
         let registry = Arc::new(FixRegistry::from_fields([symbol]).expect("a dictionary"));
         super::fixed_codec(registry)
             .parse_fix_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|")

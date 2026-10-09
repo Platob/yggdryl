@@ -228,7 +228,7 @@ pub(crate) fn key_refusal(text: &str) -> Error {
         kind: "identifier",
         reason: format_smolstr!(
             "expected an identifier key src:type or type, got {:?}",
-            crate::text::elide_to(text, 64)
+            crate::implementer::elide_to(text, 64)
         ),
     }
 }

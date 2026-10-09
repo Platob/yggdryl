@@ -829,7 +829,7 @@ impl Kind {
     /// has no order to settle and is held to its element grammar instead.
     fn ordered(self, value: &Scalar) -> Result<Scalar> {
         let elements = value.as_serie().ok_or_else(|| {
-            self.refused(crate::text::expected_got(
+            self.refused(crate::implementer::expected_got(
                 match self.shape() {
                     Shape::Entries(_) => "an array of entries",
                     Shape::Words => "an array of names",
@@ -934,7 +934,7 @@ pub(super) fn ordered_entries(
     let elements = value.as_sequence().ok_or_else(|| {
         refused(
             target,
-            crate::text::expected_got("an array of entries", value.kind()),
+            crate::implementer::expected_got("an array of entries", value.kind()),
         )
     })?;
     elements
@@ -953,7 +953,7 @@ fn order_entry(
     if entry.as_struct().is_none() && entry.as_mapping().is_none() {
         return Err(refused(
             target,
-            crate::text::expected_got("an entry object", entry.kind()),
+            crate::implementer::expected_got("an entry object", entry.kind()),
         ));
     }
     let mut held: Vec<(Scalar, Scalar)> = Vec::with_capacity(keys.len());
@@ -1002,13 +1002,13 @@ fn refused(target: &'static str, reason: impl fmt::Display) -> Error {
 /// in the store's own `codesets/` folder rather than in the field.
 ///
 /// ```
-/// use yggdryl::{DataType, Scalar, fix};
+/// use yggdryl::{fix, DataType, FixFieldMut, Scalar};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut side = DataType::utf8().nullable_field("Side");
-/// side.as_fix_mut().set_tag(54)?;
-/// side.as_fix_mut().set_codeset("sidecodeset")?;
-/// side.as_fix_mut().set_names(["side"])?;
+/// FixFieldMut::new(&mut side).set_tag(54)?;
+/// FixFieldMut::new(&mut side).set_codeset("sidecodeset")?;
+/// FixFieldMut::new(&mut side).set_names(["side"])?;
 ///
 /// let document = fix::into_fix_document(side.clone())?;
 /// let metadata = document.get_key_str("metadata").expect("the metadata");
@@ -1065,9 +1065,9 @@ pub fn from_fix_document(document: Scalar) -> Result<crate::Field> {
 /// for a reader to refuse later.
 pub(super) fn dump(value: Scalar) -> Result<Scalar> {
     cross(value, &|kind, held| {
-        let text = held
-            .as_str()
-            .ok_or_else(|| kind.invalid(crate::text::expected_got("its text", held.kind())))?;
+        let text = held.as_str().ok_or_else(|| {
+            kind.invalid(crate::implementer::expected_got("its text", held.kind()))
+        })?;
         kind.value_of(text)
             .map_err(|error| kind.invalid(format_args!("{error}")))
     })
@@ -1089,9 +1089,9 @@ pub(super) fn dump(value: Scalar) -> Result<Scalar> {
 pub(super) fn load(value: Scalar) -> Result<Scalar> {
     cross(value, &|kind, held| {
         if let Some(text) = held.as_str() {
-            return Err(kind.invalid(crate::text::expected_got(
+            return Err(kind.invalid(crate::implementer::expected_got(
                 "the document itself",
-                format_args!("the text {:?}", crate::text::elide_to(text, 32)),
+                format_args!("the text {:?}", crate::implementer::elide_to(text, 32)),
             )));
         }
         kind.text_of(held)

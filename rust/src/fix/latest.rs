@@ -45,8 +45,8 @@ use super::msg::FixMsg;
 use super::registry::{FixMap, name_key};
 use super::retired::{self, Fill, Part, Rule, When};
 use super::schema::{item_fields, tag_and_counter};
-use super::{FixRegistry, occurrence_name};
-use crate::{DataType, Field, Result, Scalar, StructType};
+use super::{FixField, FixRegistry, occurrence_name};
+use crate::{DataType, Field, Result, Scalar};
 
 /// One level of the row: the root, or one occurrence of a repeating group.
 ///
@@ -157,7 +157,7 @@ impl Level {
     fn position_of_field(&self, tag: Option<i32>, name: &str) -> Option<usize> {
         let by_tag = tag.and_then(|tag| {
             self.children.iter().position(|child| {
-                matches!(child, Child::Flat(field, _) if field.as_fix().tag().ok().flatten() == Some(tag))
+                matches!(child, Child::Flat(field, _) if FixField::new(field).tag().ok().flatten() == Some(tag))
             })
         });
         by_tag.or_else(|| {
@@ -178,12 +178,13 @@ impl Level {
             Child::Flat(field, value) => value.is_null() && item_fields(field).is_some(),
         };
         let by_counter = self.children.iter().position(|child| {
-            is_group(child) && child.field().as_fix().counter().ok().flatten() == Some(counter)
+            is_group(child)
+                && FixField::new(child.field()).counter().ok().flatten() == Some(counter)
         });
         by_counter.or_else(|| {
-            self.children
-                .iter()
-                .position(|child| is_group(child) && crate::folds_equal(child.field().name(), name))
+            self.children.iter().position(|child| {
+                is_group(child) && crate::implementer::folds_equal(child.field().name(), name)
+            })
         })
     }
 
@@ -423,7 +424,7 @@ impl ChildIndex {
         // A name key is believed only where the names it joins fold alike;
         // two names sharing a key are left to the scan.
         let by_name = |table: &FixMap<(bool, u64), usize>| match table.get(&key) {
-            Some(&at) if crate::folds_equal(children[at].name(), name) => Ok(Some(at)),
+            Some(&at) if crate::implementer::folds_equal(children[at].name(), name) => Ok(Some(at)),
             Some(_) => Err(()),
             None => Ok(None),
         };
@@ -450,7 +451,7 @@ fn same_child(left: &Child, left_tag: Option<i32>, right: &Child, right_tag: Opt
     }
     match (left_tag, right_tag) {
         (Some(left), Some(right)) => left == right,
-        _ => crate::folds_equal(left.name(), right.name()),
+        _ => crate::implementer::folds_equal(left.name(), right.name()),
     }
 }
 
@@ -484,7 +485,7 @@ impl Child {
         let (Some(members), Some(rows)) = (item_fields(&field), value.as_serie()) else {
             return Self::Flat(field, value);
         };
-        if field.as_fix().counter().ok().flatten().is_none() {
+        if FixField::new(&field).counter().ok().flatten().is_none() {
             return Self::Flat(field, value);
         }
         let occurrences = rows
@@ -527,7 +528,7 @@ fn pack_group(serie: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, S
         }
     }
     // The union took each member once by name.
-    let mut item = DataType::from(StructType::from_unique_fields(members))
+    let mut item = DataType::from(crate::implementer::struct_type_from_unique_fields(members))
         .required_field(occurrence_name(&serie));
     if finished.iter().any(Option::is_none) {
         item.set_nullable(true);
@@ -556,7 +557,7 @@ fn pack_group(serie: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, S
     };
     // The Serie's own metadata travels as the one it is rather than as a map
     // rebuilt from its entries for every group of every message.
-    let rebuilt = Field::new_with_metadata(
+    let rebuilt = crate::implementer::field_new_with_metadata(
         serie.name(),
         dtype,
         serie.is_nullable(),
@@ -619,7 +620,7 @@ fn converted(registry: &FixRegistry, known: &Field, value: &Scalar) -> Scalar {
     if value.is_null() {
         return Scalar::Null;
     }
-    if !matches!(value, crate::string_scalars!(_))
+    if !matches!(value, crate::implementer::string_scalars!(_))
         && let Ok(typed) = known.scalar(value.clone())
         && !typed.is_null()
     {
@@ -713,7 +714,7 @@ impl<'msg> Restater<'msg> {
         match rule.when {
             When::Any => true,
             When::Equals(text) => match value.as_bool() {
-                Some(held) => crate::boolean::bool_from_text(text) == Some(held),
+                Some(held) => crate::implementer::bool_from_text(text) == Some(held),
                 None => wire_text(value).is_some_and(|held| held == text),
             },
             When::Contains(text) => {
@@ -819,7 +820,10 @@ impl<'msg> Restater<'msg> {
             if !nullable
                 || field.name() != known.name()
                 || field.dtype() != known.dtype()
-                || !field.as_metadata().shares_storage_with(known.as_metadata())
+                || !crate::implementer::metadata_shares_storage_with(
+                    field.as_metadata(),
+                    known.as_metadata(),
+                )
             {
                 return false;
             }
@@ -999,7 +1003,7 @@ impl<'msg> Restater<'msg> {
                 // a second copy under the retired name would be a second
                 // owner of one fact.
                 if let Child::Flat(field, value) = &mut level.children[at]
-                    && field.as_fix().deprecated().is_some()
+                    && FixField::new(field).deprecated().is_some()
                 {
                     *value = Scalar::Null;
                     break;
@@ -1170,7 +1174,7 @@ impl<'msg> Restater<'msg> {
         let definition = self
             .registry
             .get_definition(crate::FixCategory::Groups, group)?;
-        let counter_tag = definition.as_fix().counter().ok().flatten()?;
+        let counter_tag = FixField::new(definition).counter().ok().flatten()?;
         let at = level.position_of_group(counter_tag, definition.name());
         let empty: Vec<Option<Level>> = Vec::new();
         let (serie, occurrences) = match at {
@@ -1294,9 +1298,9 @@ pub(super) fn merge_content(reference: &mut FixMsg, other: &FixMsg) -> Result<()
     merged.merge_from(&registry, other_level);
     merged.sort(&registry);
     let (fields, values) = merged.pack()?;
-    let root = Field::new_with_metadata(
+    let root = crate::implementer::field_new_with_metadata(
         root.name(),
-        DataType::from(StructType::from_checked_fields(fields)?),
+        DataType::from(crate::implementer::struct_type_from_checked_fields(fields)?),
         root.is_nullable(),
         root.as_metadata().clone(),
     );
@@ -1397,9 +1401,9 @@ pub(super) fn restate(msg: &mut FixMsg) -> Result<()> {
     };
     // The children were each checked by `from_fields`, which is what the
     // root's setter would check a second time before comparing every child.
-    let root = Field::new_with_metadata(
+    let root = crate::implementer::field_new_with_metadata(
         root.name(),
-        DataType::from(StructType::from_checked_fields(fields)?),
+        DataType::from(crate::implementer::struct_type_from_checked_fields(fields)?),
         root.is_nullable(),
         root.as_metadata().clone(),
     );

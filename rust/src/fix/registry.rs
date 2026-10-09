@@ -21,8 +21,8 @@ use std::sync::{Arc, OnceLock};
 use smol_str::{SmolStr, format_smolstr};
 
 use super::source::FixSource;
-use super::{FixId, FixKey};
-use crate::folds_equal;
+use super::{FixField, FixFieldMut, FixId, FixKey};
+use crate::implementer::folds_equal;
 use crate::xxhash::Xxh64;
 use crate::{Error, Field, FieldPath, FieldSegment, IOBase, Result};
 
@@ -378,7 +378,7 @@ fn datatype_disagreement(stored: &Field, tag: i32, incoming: &Field) -> Error {
         incoming.dtype().id().temporal_family(),
     ) {
         (Some("datetime"), Some("time"))
-            if stored.as_fix().shape() == super::field::FixShape::TzTimeOnly =>
+            if FixField::new(stored).shape() == super::field::FixShape::TzTimeOnly =>
         {
             ": the stored instant reads a clock on the epoch day, at the offset it states or else as a wall clock in the column's zone"
         }
@@ -392,7 +392,7 @@ fn datatype_disagreement(stored: &Field, tag: i32, incoming: &Field) -> Error {
         path: incoming.name().into(),
         reason: format_smolstr!(
             "{}{consequence}",
-            crate::text::expected_got(
+            crate::implementer::expected_got(
                 format_args!(
                     "the datatype {} stored for {} ({tag})",
                     stored.dtype(),
@@ -439,8 +439,7 @@ enum Naming {
 /// after its own wire value is, and a fold is where a real name takes its
 /// place.
 pub(super) fn is_unnamed(field: &Field) -> bool {
-    field
-        .as_fix()
+    FixField::new(field)
         .tag()
         .ok()
         .flatten()
@@ -620,7 +619,7 @@ impl fmt::Display for FixFailure {
 
 /// The identity a field enters the registry under, beside its tag.
 pub(super) fn canonical_identity(field: &Field) -> Result<(i32, FixId)> {
-    let view = field.as_fix();
+    let view = FixField::new(field);
     let tag = view
         .tag()?
         .ok_or_else(|| Error::absent("FIX:tag", field.name()))?;
@@ -656,7 +655,7 @@ pub(super) struct FieldFacts {
 
 impl FieldFacts {
     pub(super) fn of(field: &Field) -> Option<Self> {
-        let view = field.as_fix();
+        let view = FixField::new(field);
         let tag = view.tag().ok()?;
         Some(Self {
             tag,
@@ -758,7 +757,7 @@ impl FixRegistry {
     /// Uses one allocation for the shared XXH3 state, independent of catalog size.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        crate::hashing::stable_hash_of(self)
+        crate::implementer::stable_hash_of(self)
     }
 
     /// A registry holding the crate definitions and standard clock fields.
@@ -835,8 +834,7 @@ impl FixRegistry {
                 // A derived column is the fixed row's, never a field a
                 // message states, so no registry files it.
                 let registered = fields.iter().filter(|field| {
-                    !field
-                        .as_fix()
+                    !FixField::new(field)
                         .tag()
                         .ok()
                         .flatten()
@@ -867,7 +865,7 @@ impl FixRegistry {
                 continue;
             }
             let mut field = super::schema::CLOCK_DATATYPE.nullable_field(name);
-            field.as_fix_mut().set_tag(tag)?;
+            FixFieldMut::new(&mut field).set_tag(tag)?;
             field.set_display(display)?;
             self.insert(field)?;
         }
@@ -897,8 +895,7 @@ impl FixRegistry {
                     .all()
                     .map(|entry| entry.field.as_field())
                     .find(|field| {
-                        field
-                            .as_fix()
+                        FixField::new(field)
                             .id()
                             .ok()
                             .flatten()
@@ -929,7 +926,7 @@ impl FixRegistry {
                         self.catalog
                             .all()
                             .map(|entry| entry.field.as_field())
-                            .find(|field| field.as_fix().tag().ok().flatten() == Some(tag))
+                            .find(|field| FixField::new(field).tag().ok().flatten() == Some(tag))
                     })
                     .flatten()
             })
@@ -967,12 +964,12 @@ impl FixRegistry {
     /// that way reaches none.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixRegistry};
+    /// use yggdryl::{DataType, FixField, FixFieldMut, FixRegistry};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let field = |name: &str, tag: i32| -> yggdryl::Result<yggdryl::Field> {
     ///     let mut field = DataType::Decimal.nullable_field(name);
-    ///     field.as_fix_mut().set_tag(tag)?;
+    ///     FixFieldMut::new(&mut field).set_tag(tag)?;
     ///     Ok(field)
     /// };
     /// let registry = FixRegistry::from_fields([
@@ -983,7 +980,7 @@ impl FixRegistry {
     /// let tag = |name: &str| {
     ///     registry
     ///         .get_field_by_name(name)
-    ///         .and_then(|field| field.as_fix().tag().ok().flatten())
+    ///         .and_then(|field| FixField::new(field).tag().ok().flatten())
     /// };
     /// assert_eq!(tag("OfferPx"), Some(133));
     /// assert_eq!(tag("AskPx"), Some(133));
@@ -1138,12 +1135,12 @@ impl FixRegistry {
     pub fn dialects(&self) -> Vec<String> {
         let mut held: BTreeSet<String> = BTreeSet::new();
         for field in &self.fields {
-            for source in field.as_fix().sources() {
+            for source in FixField::new(field).sources() {
                 held.insert(source.to_owned());
             }
         }
         for field in self.catalog.all() {
-            for source in field.field.as_fix().sources() {
+            for source in FixField::new(&field.field).sources() {
                 held.insert(source.to_owned());
             }
         }
@@ -1233,7 +1230,7 @@ impl FixRegistry {
             .fields
             .iter()
             .chain(self.catalog.all().map(|entry| entry.field.as_field()))
-            .find(|field| field.as_fix().has_source(&key));
+            .find(|field| FixField::new(field).has_source(&key));
         if let Some(field) = named {
             return Err(Error::conflict(
                 "FIX source no field names",
@@ -1284,7 +1281,7 @@ impl FixRegistry {
     ) -> Result<Option<Field>> {
         self.validate_definition(crate::FixCategory::Fields, &field)?;
         let (tag, id) = canonical_identity(&field)?;
-        let alternate = field.as_fix().tags()?;
+        let alternate = FixField::new(&field).tags()?;
         let replacing = self.position_of_identity(&field)?;
         self.check_free(&field, tag, id, &alternate, replacing)?;
         if let Some(position) = replacing {
@@ -1362,26 +1359,25 @@ impl FixRegistry {
             merged.set_name(stored.name());
         }
         merged.set_metadata(field.as_metadata().merge_with(stored.as_metadata())?.iter())?;
-        merged.as_fix_mut().set_tag(tag)?;
-        merged.as_fix_mut().merge_with(&stored.as_fix())?;
+        FixFieldMut::new(&mut merged).set_tag(tag)?;
+        FixFieldMut::new(&mut merged).merge_with(&FixField::new(stored))?;
         if naming == Naming::Incoming {
             // The name the field takes is nobody's alias, its own included -
             // a stored field spelled by its normalization alone aliased what
             // it is now called - and the display the digits carried was a
             // spelling another tag owns, so it goes unless the arrival states
             // one.
-            let aliases: Vec<String> = merged
-                .as_fix()
+            let aliases: Vec<String> = FixField::new(&merged)
                 .names()
                 .filter(|alias| !folds_equal(alias, merged.name()))
                 .map(str::to_owned)
                 .collect();
-            merged.as_fix_mut().set_names(&aliases)?;
+            FixFieldMut::new(&mut merged).set_names(&aliases)?;
             if field.display().is_none() {
                 merged.remove_metadata("display");
             }
         }
-        let alternate = merged.as_fix().tags()?;
+        let alternate = FixField::new(&merged).tags()?;
         let (tag, id) = canonical_identity(&merged)?;
         self.check_free(&merged, tag, id, &alternate, Some(position))?;
         let (_, held) = canonical_identity(&self.fields[position])?;
@@ -1407,8 +1403,10 @@ impl FixRegistry {
         field: &Field,
         references: References,
     ) -> Result<()> {
-        let stored = self.fields[position].as_fix().codeset().map(SmolStr::new);
-        let incoming = field.as_fix().codeset().map(SmolStr::new);
+        let stored = FixField::new(&self.fields[position])
+            .codeset()
+            .map(SmolStr::new);
+        let incoming = FixField::new(field).codeset().map(SmolStr::new);
         self.unify_codeset(stored.as_deref(), incoming.as_deref(), references)
     }
 
@@ -1442,13 +1440,13 @@ impl FixRegistry {
         merged.set_metadata(field.as_metadata().merge_with(stored.as_metadata())?.iter())?;
         // The identity is the stored field's, and it is written before the
         // `FIX:` fold, which holds both sides to one tag.
-        merged.as_fix_mut().set_tag(tag)?;
-        merged.as_fix_mut().merge_with(&stored.as_fix())?;
+        FixFieldMut::new(&mut merged).set_tag(tag)?;
+        FixFieldMut::new(&mut merged).merge_with(&FixField::new(stored))?;
         // Stored order first, then what only the incoming field states. The
         // canonical tag is nobody's alternate, its own field's included.
-        let mut tags = stored.as_fix().tags()?;
+        let mut tags = FixField::new(stored).tags()?;
         let claimed = |tags: &[i32], held: i32| held == tag || tags.contains(&held);
-        for held in field.as_fix().tags()? {
+        for held in FixField::new(&field).tags()? {
             if !claimed(&tags, held) {
                 tags.push(held);
             }
@@ -1465,17 +1463,20 @@ impl FixRegistry {
         // Spellings dedupe under the same fold the index resolves them by,
         // so no alias is kept that the stored name or an earlier alias
         // already answers for.
-        let mut aliases: Vec<&str> = stored.as_fix().names().collect();
-        for alias in field.as_fix().names().chain(std::iter::once(field.name())) {
+        let mut aliases: Vec<&str> = FixField::new(stored).names().collect();
+        for alias in FixField::new(&field)
+            .names()
+            .chain(std::iter::once(field.name()))
+        {
             if !folds_equal(alias, stored.name())
                 && !aliases.iter().any(|held| folds_equal(held, alias))
             {
                 aliases.push(alias);
             }
         }
-        merged.as_fix_mut().set_tags(&tags)?;
-        merged.as_fix_mut().set_names(&aliases)?;
-        let alternate = merged.as_fix().tags()?;
+        FixFieldMut::new(&mut merged).set_tags(&tags)?;
+        FixFieldMut::new(&mut merged).set_names(&aliases)?;
+        let alternate = FixField::new(&merged).tags()?;
         self.check_free(&merged, tag, id, &alternate, Some(position))?;
         // As `update_resolved` does, last before the write: the fold keeps
         // the stored field's set name, so what the incoming field's set
@@ -1574,30 +1575,30 @@ impl FixRegistry {
     /// as it was.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixId, FixRegistry};
+    /// use yggdryl::{DataType, FixField, FixFieldMut, FixId, FixRegistry};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut symbol = DataType::utf8().nullable_field("Symbol");
-    /// symbol.as_fix_mut().set_tag(55)?;
+    /// FixFieldMut::new(&mut symbol).set_tag(55)?;
     /// let mut registry = FixRegistry::from_fields([symbol])?;
     ///
     /// // A venue's file calls the same field `symbol`, under its own tag and
     /// // with a second name: that is a second spelling of tag 55's field.
     /// let mut incoming = DataType::utf8().nullable_field("symbol");
-    /// incoming.as_fix_mut().set_tag(9001)?;
-    /// incoming.as_fix_mut().set_names(["Ticker"])?;
+    /// FixFieldMut::new(&mut incoming).set_tag(9001)?;
+    /// FixFieldMut::new(&mut incoming).set_names(["Ticker"])?;
     /// assert!(!registry.add_field(incoming)?, "folded into the stored field");
     ///
     /// let stored = registry.field_by_tag(9001)?;
     /// assert_eq!(stored.name(), "Symbol");
-    /// assert_eq!(stored.as_fix().id()?, Some(FixId::of(55, "Symbol")?));
-    /// assert_eq!(stored.as_fix().tags()?, [9001]);
-    /// assert!(stored.as_fix().names().any(|alias| alias == "Ticker"));
+    /// assert_eq!(FixField::new(stored).id()?, Some(FixId::of(55, "Symbol")?));
+    /// assert_eq!(FixField::new(stored).tags()?, [9001]);
+    /// assert!(FixField::new(stored).names().any(|alias| alias == "Ticker"));
     /// assert_eq!(registry.field_by_name("ticker")?.name(), "Symbol");
     ///
     /// // A field nothing stored answers to arrives.
     /// let mut price = DataType::Float64.nullable_field("Price");
-    /// price.as_fix_mut().set_tag(44)?;
+    /// FixFieldMut::new(&mut price).set_tag(44)?;
     /// assert!(registry.add_field(price)?);
     /// # Ok(())
     /// # }
@@ -1640,17 +1641,17 @@ impl FixRegistry {
     /// last and wins.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixRegistry, StructType};
+    /// use yggdryl::{DataType, FixFieldMut, FixRegistry, StructType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut symbol = DataType::utf8().nullable_field("Symbol");
-    /// symbol.as_fix_mut().set_tag(55)?;
+    /// FixFieldMut::new(&mut symbol).set_tag(55)?;
     /// let mut registry = FixRegistry::from_fields([symbol.clone()])?;
     ///
     /// // Tag 55 is stored and merges; tag 44 is new; the Struct is a component.
-    /// symbol.as_fix_mut().set_description("Ticker symbol")?;
+    /// FixFieldMut::new(&mut symbol).set_description("Ticker symbol")?;
     /// let mut price = DataType::Float64.nullable_field("Price");
-    /// price.as_fix_mut().set_tag(44)?;
+    /// FixFieldMut::new(&mut price).set_tag(44)?;
     /// let instrument = DataType::from(StructType::from_fields([DataType::utf8().nullable_field("Symbol")])?)
     ///     .required_field("Instrument");
     /// assert_eq!(registry.add_fields([symbol, price, instrument])?, (2, 1));
@@ -1757,19 +1758,19 @@ impl FixRegistry {
     /// passed over.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixRegistry, StructType};
+    /// use yggdryl::{DataType, FixField, FixFieldMut, FixRegistry, StructType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut symbol = DataType::utf8().nullable_field("Symbol");
-    /// symbol.as_fix_mut().set_tag(55)?;
+    /// FixFieldMut::new(&mut symbol).set_tag(55)?;
     /// let mut held = FixRegistry::from_fields([symbol.clone()])?;
     /// held.insert(DataType::from(StructType::from_fields([symbol.clone()])?).required_field("Instrument"))?;
     ///
     /// // The other dictionary holds the same field under its own tag, with a
     /// // second name, and knows one more member of the component.
     /// let mut ticker = DataType::utf8().nullable_field("symbol");
-    /// ticker.as_fix_mut().set_tag(9001)?;
-    /// ticker.as_fix_mut().set_names(["Ticker"])?;
+    /// FixFieldMut::new(&mut ticker).set_tag(9001)?;
+    /// FixFieldMut::new(&mut ticker).set_names(["Ticker"])?;
     /// let mut other = FixRegistry::from_fields([ticker])?;
     /// let venue = DataType::utf8().nullable_field("VenueSymbol");
     /// other.insert(DataType::from(StructType::from_fields([symbol, venue])?).required_field("Instrument"))?;
@@ -1780,7 +1781,7 @@ impl FixRegistry {
     /// assert!(merge.is_clean());
     /// let stored = held.field_by_tag(9001)?;
     /// assert_eq!(stored.name(), "Symbol");
-    /// assert_eq!(stored.as_fix().names().collect::<Vec<_>>(), ["Ticker"]);
+    /// assert_eq!(FixField::new(stored).names().collect::<Vec<_>>(), ["Ticker"]);
     /// let instrument = held.field_by_name("Instrument")?;
     /// assert_eq!(instrument.fields()[1].name(), "VenueSymbol");
     ///
@@ -1788,7 +1789,7 @@ impl FixRegistry {
     /// // every FIX datatype derives from: the field held stays, and the
     /// // declaration folds under it, counted as restated.
     /// let mut price = DataType::Float64.nullable_field("Price");
-    /// price.as_fix_mut().set_tag(44)?;
+    /// FixFieldMut::new(&mut price).set_tag(44)?;
     /// held.add_field(price.clone())?;
     /// price.set_dtype(DataType::utf8())?;
     /// let merge = held.merge_with(&FixRegistry::from_fields([price.clone()])?)?;
@@ -1800,7 +1801,7 @@ impl FixRegistry {
     /// // is named and everything else still folds.
     /// price.set_dtype(DataType::Boolean)?;
     /// let mut side = DataType::utf8().nullable_field("Side");
-    /// side.as_fix_mut().set_tag(54)?;
+    /// FixFieldMut::new(&mut side).set_tag(54)?;
     /// let merge = held.merge_with(&FixRegistry::from_fields([price, side])?)?;
     /// assert_eq!(merge.added, 1);
     /// assert_eq!(merge.dropped.len(), 1);
@@ -1894,7 +1895,7 @@ impl FixRegistry {
         let counters: std::collections::HashSet<i32> = other
             .catalog
             .iter(crate::FixCategory::Groups)
-            .filter_map(|group| group.as_fix().counter().ok().flatten())
+            .filter_map(|group| FixField::new(group).counter().ok().flatten())
             .collect();
         // The scalars alone: the definitions fold through the catalog merge
         // below, under their own rules, and counting them here would count
@@ -1917,7 +1918,7 @@ impl FixRegistry {
                     let held = &self.fields[position];
                     let refusal = Error::InvalidRecord {
                         path: declared.name().into(),
-                        reason: crate::text::expected_got(
+                        reason: crate::implementer::expected_got(
                             format_args!("tag {tag}, counting a repeating group, to spell a count"),
                             format_args!(
                                 "the alternate tag of {} ({}), held as {}",
@@ -2249,7 +2250,7 @@ impl FixRegistry {
                 .or_else(|| super::cfb::stem_dialect(handle).map(Cow::into_owned));
             (handle.read_all_bytes(), named, handle.url().cloned())
         });
-        let parsed = crate::parallel::ordered(
+        let parsed = crate::implementer::ordered(
             reads,
             threads,
             1,
@@ -2376,8 +2377,7 @@ impl FixRegistry {
     fn route(&self, field: &Field) -> Result<Route> {
         // The crate's own fields are every dictionary's, so folding one is
         // folding a field onto itself, and never a source's to redefine.
-        if field
-            .as_fix()
+        if FixField::new(field)
             .tag()
             .ok()
             .flatten()
@@ -2402,7 +2402,7 @@ impl FixRegistry {
             let holder = self.tags.get(&tag).copied().or_else(|| {
                 let holder = self.alternate_tags.get(&tag).copied()?;
                 let (canonical, _) = canonical_identity(&self.fields[holder]).ok()?;
-                let linked = field.as_fix().tags().ok()?.contains(&canonical);
+                let linked = FixField::new(field).tags().ok()?.contains(&canonical);
                 (!linked).then_some(holder)
             });
             if let Some(holder) = holder {
@@ -2680,9 +2680,11 @@ impl FixRegistry {
     }
 
     fn alias_matches(&self, position: usize, name: &str) -> bool {
-        self.fields
-            .get(position)
-            .is_some_and(|field| field.as_fix().names().any(|alias| folds_equal(alias, name)))
+        self.fields.get(position).is_some_and(|field| {
+            FixField::new(field)
+                .names()
+                .any(|alias| folds_equal(alias, name))
+        })
     }
 
     /// The canonical tag and identity of one of this registry's own fields,
@@ -2721,10 +2723,13 @@ impl FixRegistry {
         if let Some(at) = self.position_of_own(field) {
             return self.facts.get(at).copied().flatten();
         }
-        let storage = field.as_metadata().storage_address();
+        let storage = crate::implementer::metadata_storage_address(field.as_metadata());
         if let Some(position) = self.by_metadata.get(&storage).copied()
             && let Some(held) = self.fields.get(position)
-            && held.as_metadata().shares_storage_with(field.as_metadata())
+            && crate::implementer::metadata_shares_storage_with(
+                held.as_metadata(),
+                field.as_metadata(),
+            )
         {
             return self.facts.get(position).copied().flatten();
         }
@@ -2791,7 +2796,7 @@ impl FixRegistry {
                 ));
             }
         }
-        for alias in field.as_fix().names() {
+        for alias in FixField::new(field).names() {
             let key = name_digest(alias, ALIAS_SEED);
             if let Some(holder) = self.aliases.get(&key).filter(|position| other(position)) {
                 return Err(conflict(Held::Alias(alias), field, &self.fields[*holder]));
@@ -2812,7 +2817,7 @@ impl FixRegistry {
         let Some(field) = self.fields.get(position) else {
             return;
         };
-        let view = field.as_fix();
+        let view = FixField::new(field);
         // Remembered first, whatever the field answers: every position has
         // an entry, so a field that indexes nothing still identifies nothing.
         let identity = canonical_identity(field).ok();
@@ -2825,8 +2830,10 @@ impl FixRegistry {
             self.facts.resize(position + 1, None);
         }
         self.facts[position] = facts;
-        self.by_metadata
-            .insert(field.as_metadata().storage_address(), position);
+        self.by_metadata.insert(
+            crate::implementer::metadata_storage_address(field.as_metadata()),
+            position,
+        );
         let Some((tag, id)) = identity else {
             return;
         };
@@ -2853,11 +2860,11 @@ impl FixRegistry {
         let Some(field) = self.fields.get(position) else {
             return;
         };
-        let storage = field.as_metadata().storage_address();
+        let storage = crate::implementer::metadata_storage_address(field.as_metadata());
         if self.by_metadata.get(&storage) == Some(&pointing_at) {
             self.by_metadata.remove(&storage);
         }
-        let view = field.as_fix();
+        let view = FixField::new(field);
         if let Ok((tag, id)) = canonical_identity(field) {
             if self.ids.get(&id) == Some(&pointing_at) {
                 self.ids.remove(&id);
@@ -2984,11 +2991,10 @@ impl FixRegistry {
     pub fn idmap_sources(&self) -> &[(i32, super::FixIdSource)] {
         self.idmap_sources.get_or_init(|| {
             self.iter()
-                .filter_map(|field| Some((field.as_fix().tag().ok()??, field)))
+                .filter_map(|field| Some((FixField::new(field).tag().ok()??, field)))
                 .flat_map(|(tag, field)| {
                     // Every document was read whole when the field was taken.
-                    field
-                        .as_fix()
+                    FixField::new(field)
                         .idmap()
                         .filter_map(Result::ok)
                         .map(move |source| (tag, source))
@@ -3019,7 +3025,7 @@ impl FixRegistry {
     /// `TradeReportID(571)`'s `tradereportrefid`, which no field states.
     ///
     /// ```
-    /// use yggdryl::{FixRegistry, IdType};
+    /// use yggdryl::{FixField, FixFieldMut, FixRegistry, IdType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let registry = FixRegistry::from_handle(&yggdryl::local::LocalFolder::new(
@@ -3036,20 +3042,20 @@ impl FixRegistry {
     /// // Fields arriving name their parents to the fields already held.
     /// let field = |name: &str, tag: i32| -> yggdryl::Result<yggdryl::Field> {
     ///     let mut field = yggdryl::DataType::utf8().nullable_field(name);
-    ///     field.as_fix_mut().set_tag(tag)?;
+    ///     FixFieldMut::new(&mut field).set_tag(tag)?;
     ///     Ok(field)
     /// };
     /// let mut venue = FixRegistry::from_fields([field("OrderID", 37)?, field("OrigOrderID", 9001)?])?;
     /// let stated = |venue: &FixRegistry| -> yggdryl::Result<Vec<String>> {
-    ///     Ok(venue.field_by_tag(37)?.as_fix().parents().map(str::to_owned).collect())
+    ///     Ok(FixField::new(venue.field_by_tag(37)?).parents().map(str::to_owned).collect())
     /// };
     /// let tag_of = |venue: &FixRegistry, name: &str| -> yggdryl::Result<Option<i32>> {
-    ///     venue.field_by_name(name)?.as_fix().tag()
+    ///     FixField::new(venue.field_by_name(name)?).tag()
     /// };
     /// assert_eq!(stated(&venue)?, ["origorderid"]);
     /// // The one parent answers to its own name alone...
     /// assert!(venue.field_by_name("ParentOrderID").is_err());
-    /// assert!(venue.field_by_tag(9001)?.as_fix().names().next().is_none());
+    /// assert!(FixField::new(venue.field_by_tag(9001)?).names().next().is_none());
     /// // ...so a field of the other spelling is a second parent.
     /// venue.add_field(field("ParentOrderID", 9002)?)?;
     /// assert_eq!(stated(&venue)?, ["parentorderid", "origorderid"]);
@@ -3063,8 +3069,7 @@ impl FixRegistry {
         self.parents.get_or_init(|| {
             self.iter()
                 .filter_map(|field| {
-                    let parents: Box<[crate::IdType]> = field
-                        .as_fix()
+                    let parents: Box<[crate::IdType]> = FixField::new(field)
                         .parents()
                         .filter_map(|word| word.parse().ok())
                         .collect();
@@ -3194,8 +3199,7 @@ impl FixRegistry {
     /// the ones the names say - a `parent` type before an `orig` one;
     /// whether it moved.
     fn state_parent(&mut self, at: usize, rank: usize, kind: crate::IdType) -> bool {
-        let mut parents: Vec<crate::IdType> = self.fields[at]
-            .as_fix()
+        let mut parents: Vec<crate::IdType> = FixField::new(&self.fields[at])
             .parents()
             .filter_map(|word| word.parse().ok())
             .collect();
@@ -3207,8 +3211,7 @@ impl FixRegistry {
             .position(|held| held.parent_of().map_or(usize::MAX, |(_, held)| held) > rank)
             .unwrap_or(parents.len());
         parents.insert(slot, kind);
-        self.fields[at]
-            .as_fix_mut()
+        FixFieldMut::new(&mut self.fields[at])
             .set_parents(parents.iter().map(crate::IdType::as_str))
             .is_ok()
     }
@@ -3220,10 +3223,9 @@ impl FixRegistry {
     pub fn marketdatatype_sources(&self) -> &[(i32, SmolStr, crate::MarketDataType)] {
         self.marketdatatypes.get_or_init(|| {
             self.iter()
-                .filter_map(|field| Some((field.as_fix().tag().ok()??, field)))
+                .filter_map(|field| Some((FixField::new(field).tag().ok()??, field)))
                 .flat_map(|(tag, field)| {
-                    field
-                        .as_fix()
+                    FixField::new(field)
                         .marketdatatypes()
                         .map(move |(wire, member)| (tag, SmolStr::new(wire), member))
                 })
@@ -3239,13 +3241,12 @@ impl FixRegistry {
     /// `None` for a field that types nothing.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixRegistry, MarketDataType};
+    /// use yggdryl::{DataType, FixFieldMut, FixRegistry, MarketDataType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut ordtype = DataType::utf8().nullable_field("ordtype");
-    /// ordtype.as_fix_mut().set_tag(40)?;
-    /// ordtype
-    ///     .as_fix_mut()
+    /// FixFieldMut::new(&mut ordtype).set_tag(40)?;
+    /// FixFieldMut::new(&mut ordtype)
     ///     .set_marketdatatypes(&[("Z", MarketDataType::OrdPegged)])?;
     /// let registry = FixRegistry::from_fields([ordtype])?;
     /// assert_eq!(registry.marketdatatype_of(40, "Z"), Some(MarketDataType::OrdPegged));
@@ -3270,10 +3271,9 @@ impl FixRegistry {
     pub fn timeinforce_sources(&self) -> &[(i32, SmolStr, crate::TimeInForce)] {
         self.timeinforces.get_or_init(|| {
             self.iter()
-                .filter_map(|field| Some((field.as_fix().tag().ok()??, field)))
+                .filter_map(|field| Some((FixField::new(field).tag().ok()??, field)))
                 .flat_map(|(tag, field)| {
-                    field
-                        .as_fix()
+                    FixField::new(field)
                         .timeinforces()
                         .map(move |(wire, member)| (tag, SmolStr::new(wire), member))
                 })
@@ -3289,12 +3289,12 @@ impl FixRegistry {
     /// none.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixRegistry, TimeInForce};
+    /// use yggdryl::{DataType, FixFieldMut, FixRegistry, TimeInForce};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut tif = DataType::utf8().nullable_field("timeinforce");
-    /// tif.as_fix_mut().set_tag(59)?;
-    /// tif.as_fix_mut()
+    /// FixFieldMut::new(&mut tif).set_tag(59)?;
+    /// FixFieldMut::new(&mut tif)
     ///     .set_timeinforces(&[("G", TimeInForce::GoodTillCancel)])?;
     /// let registry = FixRegistry::from_fields([tif])?;
     /// assert_eq!(registry.timeinforce_of(59, "G"), Some(TimeInForce::GoodTillCancel));
@@ -3515,8 +3515,7 @@ pub mod internals {
 /// name folded - what its `FIX:parents` lists the parents of, and what a
 /// parent field's name is read against.
 fn identifier_type(field: &Field) -> Option<crate::IdType> {
-    field
-        .as_fix()
+    FixField::new(field)
         .idmap()
         .filter_map(Result::ok)
         .find(|source| source.role().is_none())

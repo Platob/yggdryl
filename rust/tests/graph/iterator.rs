@@ -1472,7 +1472,10 @@ fn a_market_data_walk_chains_within_one_kind_and_passes_the_rest_through() {
     assert_eq!(fix.get_crosscode(), "10:1:A1");
     let walked: Vec<MarketData> =
         EventIterator::new(vec![MarketData::from(typed), fix], true).collect();
-    assert!(walked[1].as_fix().is_some(), "the message keeps its leaf");
+    assert!(
+        walked[1].as_message::<FixMsg>().is_some(),
+        "the message keeps its leaf"
+    );
     assert_eq!(walked[1].get_side(), Side::Buy);
     assert_eq!(
         walked[1].get_crosscode(),

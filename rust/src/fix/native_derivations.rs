@@ -37,15 +37,16 @@
 //! | `CurrencyCodeSource(2897)` | `6`, ISO 4217, wherever `Currency` states a code ISO 4217 lists |
 //!
 //! A report is `MsgType` `8` or `9`, and where an order stands is the state
-//! its `OrdStatus(39)` reads as ([`State::from_fix_status`]): the one table
-//! the market's own order quantities read too. Arithmetic that overflows and
-//! an input the message does not state are silence, never a guess; a value
-//! the target's field refuses is dropped with a deduplicated warning naming
-//! the field.
+//! its `OrdStatus(39)` reads as
+//! ([`state::from_status`](super::state::from_status)): the one table the
+//! market's own order quantities read too. Arithmetic that overflows and an
+//! input the message does not state are silence, never a guess; a value the
+//! target's field refuses is dropped with a deduplicated warning naming the
+//! field.
 
 use smol_str::format_smolstr;
 
-use crate::logging::warning::warned;
+use crate::implementer::warned;
 use crate::{Cusip, DataType, Decimal, Figi, IdType, Isin, Scalar, Sedol, State, StringEnum};
 
 use super::identity::integer_of;
@@ -294,7 +295,7 @@ fn the_other_currency(row: &NativeRow<'_>, other: i32) -> Option<Scalar> {
 /// Where the order a report is about stands: the state its
 /// `OrdStatus(39)` reads as, where it states one.
 fn order_state(row: &NativeRow<'_>) -> Option<State> {
-    row.with_text(39, |code| State::from_fix_status(39, code))
+    row.with_text(39, |code| super::state::from_status(39, code))
         .flatten()
 }
 
@@ -425,7 +426,7 @@ fn time_in_force(row: &NativeRow<'_>) -> Option<Scalar> {
 }
 
 fn original_sending_time(row: &NativeRow<'_>) -> Option<Scalar> {
-    (crate::boolean::bool_of(&row.get(43)?) == Some(true))
+    (crate::implementer::bool_of(&row.get(43)?) == Some(true))
         .then(|| row.get(52))
         .flatten()
 }

@@ -222,7 +222,8 @@ impl MarketDescriptor {
 
     /// A member's own code adopted as the value it is, unread: the door a
     /// typed member crosses into a scalar, which only the kind's own macro
-    /// reaches; a code nothing proved goes through [`Self::member`].
+    /// reaches, through `implementer::adopt_market_code`; a code nothing
+    /// proved goes through [`Self::member`].
     #[must_use]
     pub(crate) fn adopt_code(&'static self, code: u16) -> Scalar {
         Scalar::Market(MarketScalar::new(self, code))
@@ -508,12 +509,6 @@ pub trait MarketValue:
 
     /// Narrow a scalar to this value, `None` for a scalar of any other kind.
     fn from_scalar(value: &Scalar) -> Option<Self>;
-
-    /// The datatype of this kind.
-    #[must_use]
-    fn dtype() -> DataType {
-        Self::KIND.dtype()
-    }
 }
 
 // ------------------------------------------------------------------------

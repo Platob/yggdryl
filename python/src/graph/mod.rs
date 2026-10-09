@@ -711,7 +711,7 @@ impl LeafKind for yggdryl::graph::MarketData {
     }
 
     fn held_fix(&self) -> Option<&yggdryl::FixMsg> {
-        self.as_fix()
+        self.as_message::<yggdryl::FixMsg>()
     }
 }
 

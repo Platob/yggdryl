@@ -119,9 +119,9 @@ impl MarketView {
         else {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$.view"),
-                reason: crate::text::expected_got(
+                reason: crate::implementer::expected_got(
                     format_args!("one of {}", Self::ALL.join(", ")),
-                    format_args!("{:?}", crate::text::elide_to(text, 64)),
+                    format_args!("{:?}", crate::implementer::elide_to(text, 64)),
                 ),
             });
         };
@@ -150,7 +150,7 @@ impl MarketView {
                 path: SmolStr::new_static("$.crosscode"),
                 reason: format_smolstr!(
                     "expected a crosscode only for the lifecycle view, got {:?} for `{}`",
-                    crate::text::elide_to(crosscode, 64),
+                    crate::implementer::elide_to(crosscode, 64),
                     view.as_str()
                 ),
             });

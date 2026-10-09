@@ -83,6 +83,8 @@ pub mod identifier;
 mod idkey;
 mod idsource;
 mod idtype;
+#[doc(hidden)]
+pub mod implementer;
 pub(crate) mod int256;
 pub mod integer;
 pub mod interval;
@@ -204,19 +206,19 @@ pub use fix::{
     FIGICODE_TAG_NAME, FIX_TYPED_TAGS, FIXMSG_TAG_NAME, FOREXCODE_TAG_NAME, FORWARDPOINTS_TAG_NAME,
     FXRATES_TAG_NAME, FixAnomaly, FixCapture, FixCode, FixCodeSet, FixCodeValue, FixCodec,
     FixCodes, FixCommit, FixDedup, FixDirection, FixDirectionEntry, FixDirections, FixDrop,
-    FixEntry, FixFailure, FixFieldIter, FixHeader, FixId, FixIdMapKind, FixIdSource, FixIdSources,
-    FixKey, FixLifted, FixMerge, FixMessages, FixMsg, FixPatterns, FixRegistry, FixSource,
-    FixSpellings, HIDDENQTY_TAG_NAME, IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME,
-    MARKETDATAKIND_TAG_NAME, MARKETDATATYPE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME,
-    MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME,
-    MSGPLUGINSIDE_TAG_NAME, MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME, ORDQTY_TAG_NAME,
-    ORIGCCY_TAG_NAME, PARTYIDS_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME, PREVUNIX_TAG_NAME,
-    PREVUUID_TAG_NAME, RECDUNIX_TAG_NAME, SECURITYIDS_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME,
-    SOH, SOURCEURL_TAG_NAME, SPOTRATE_TAG_NAME, SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS,
-    STANDARD_TRAILER_TAGS, STATE_TAG_NAME, STRIKEPX_TAG_NAME, TICKER_TAG_NAME, TRADABLE_TAG_NAME,
-    ULBRIDGE_ROWHEADER, UNIT_TAG_NAME, Words, fix_column_of, fix_column_tags, fix_crate_fields,
-    fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document,
-    is_crate_tag, is_derived_tag, plugin_side,
+    FixEntry, FixFailure, FixField, FixFieldIter, FixFieldMut, FixHeader, FixId, FixIdMapKind,
+    FixIdSource, FixIdSources, FixKey, FixLifted, FixMerge, FixMessages, FixMsg, FixPatterns,
+    FixRegistry, FixSource, FixSpellings, HIDDENQTY_TAG_NAME, IDENTIFIERS_TAG_NAME,
+    ISINCODE_TAG_NAME, MARKETDATAKIND_TAG_NAME, MARKETDATATYPE_TAG_NAME, METADATA_TAG_NAME,
+    MICCODE_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGORIGINATOR_TAG_NAME,
+    MSGPLUGINID_TAG_NAME, MSGPLUGINSIDE_TAG_NAME, MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME,
+    ORDQTY_TAG_NAME, ORIGCCY_TAG_NAME, PARTYIDS_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME,
+    PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME, RECDUNIX_TAG_NAME, SECURITYIDS_TAG_NAME, SEQNUM_TAG_NAME,
+    SNAPUNIX_TAG_NAME, SOH, SOURCEURL_TAG_NAME, SPOTRATE_TAG_NAME, SRCUUIDS_TAG_NAME,
+    STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, STATE_TAG_NAME, STRIKEPX_TAG_NAME,
+    TICKER_TAG_NAME, TRADABLE_TAG_NAME, ULBRIDGE_ROWHEADER, UNIT_TAG_NAME, Words, fix_column_of,
+    fix_column_tags, fix_crate_fields, fix_schema, fix_schema_carrying, fix_schema_tags,
+    from_fix_document, into_fix_document, is_crate_tag, is_derived_tag, plugin_side,
 };
 pub use hostname::HOSTNAME;
 pub use int256::{i256, u256};
@@ -242,10 +244,10 @@ pub use metadata::{Metadata, MetadataIntoIter, MetadataIter, PropertyIter, Proto
 pub use mime_type::MimeType;
 pub use protocol::{
     ArrowPropertyField, ArrowPropertyFieldMut, AzField, AzFieldMut, DigestField, DigestFieldMut,
-    FieldPropertiesField, FieldPropertiesFieldMut, FileField, FileFieldMut, FixField, FixFieldMut,
-    GlueField, GlueFieldMut, GsField, GsFieldMut, HttpField, HttpFieldMut, IcebergField,
-    IcebergFieldMut, IdentityField, IdentityFieldMut, MysqlField, MysqlFieldMut, PandasField,
-    PandasFieldMut, PartitionField, PartitionFieldMut, PolarsField, PolarsFieldMut, PostgresField,
+    FieldPropertiesField, FieldPropertiesFieldMut, FileField, FileFieldMut, GlueField,
+    GlueFieldMut, GsField, GsFieldMut, HttpField, HttpFieldMut, IcebergField, IcebergFieldMut,
+    IdentityField, IdentityFieldMut, MysqlField, MysqlFieldMut, PandasField, PandasFieldMut,
+    PartitionField, PartitionFieldMut, PolarsField, PolarsFieldMut, PostgresField,
     PostgresFieldMut, PostgresqlField, PostgresqlFieldMut, ProtocolField, ProtocolFieldMut,
     PythonField, PythonFieldMut, PythonKind, PythonMetadata, S3Field, S3FieldMut, SortField,
     SortFieldMut, SparkField, SparkFieldMut, SqlField, SqlFieldMut, TransformField,
@@ -286,8 +288,8 @@ pub(crate) use code::{code_cell_text, code_for_extension};
 pub(crate) use code::{code_refusal, code_text};
 pub use country::*;
 pub use cusip::*;
+pub(crate) use datatype::string_dtypes;
 pub use datatype::{DataType, VariantType};
-pub(crate) use datatype::{bytes_dtypes, string_dtypes};
 pub(crate) use datatype::{invalid, validate_non_negative};
 pub use date::*;
 pub use datetime::*;
@@ -336,12 +338,12 @@ pub use merge::Widening;
 pub use mic::*;
 pub(crate) use mime_type::MIMETYPE_EXTENSION_NAME;
 pub use mime_type::MimeTypeType;
-pub(crate) use parser::{fold_digest, folds_equal, normalized};
+pub(crate) use parser::{folds_equal, normalized};
 pub use pretty::Pretty;
 pub use ric::*;
 pub use runend::*;
 pub use scalar::Scalar;
-pub(crate) use scalar::{bytes_scalars, code_scalars, string_scalars};
+pub(crate) use scalar::code_scalars;
 pub use sedol::*;
 pub use serie::*;
 pub use side::*;

@@ -6,7 +6,7 @@ use super::client::Client;
 use super::file::S3File;
 use super::folder::S3Folder;
 use crate::holder::Holder;
-use crate::logging::warning::warned;
+use crate::warned;
 use crate::{Error, IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result, Uri, Url};
 
 /// An S3 location that resolves to the implementation it turns out to need.

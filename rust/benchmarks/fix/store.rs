@@ -2,7 +2,7 @@ use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::local::LocalFolder;
-use yggdryl::{DataType, FixRegistry, Url};
+use yggdryl::{DataType, FixField, FixFieldMut, FixRegistry, Url};
 
 use super::{DIALECT_FIELDS, scratch, seed, seed_root, two_dialects, venue_dialect};
 
@@ -14,7 +14,7 @@ fn sharded(shards: i32) -> (std::path::PathBuf, LocalFolder) {
             // Registry tags start at 1; zero is unresolved arrival provenance.
             let tag = shard * 100 + offset + 1;
             let mut field = DataType::Int64.nullable_field(format!("Field{tag}"));
-            field.as_fix_mut().set_tag(tag).unwrap();
+            FixFieldMut::new(&mut field).set_tag(tag).unwrap();
             field
         })
     });
@@ -78,10 +78,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let reloaded = FixRegistry::from_handle(&mixed_folder).expect("the shards read back");
     assert_eq!(reloaded.len(), mixed.len());
     assert!(
-        reloaded
-            .field(5_000)
-            .expect("the first venue field")
-            .as_fix()
+        FixField::new(reloaded.field(5_000).expect("the first venue field"))
             .has_source(super::venue())
     );
     assert_eq!(reloaded.dialects(), mixed.dialects());

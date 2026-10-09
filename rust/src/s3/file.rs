@@ -7,7 +7,7 @@ use super::client::Client;
 use super::folder::S3Folder;
 use super::request::Precondition;
 use crate::holder::Holder;
-use crate::logging::warning::warned;
+use crate::warned;
 use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Uri, Url};
 
 /// An S3 object addressed by offset.
