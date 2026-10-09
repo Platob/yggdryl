@@ -130,6 +130,10 @@ fn installed() {
     });
 }
 
+/// The census leaves out the two kinds sibling tests claim late
+/// (`lateclaim`, `lying`): a claim may land at any instant while this test
+/// runs, so the listing is read once, filtered, and both sides of the count
+/// are that one filtered reading.
 #[test]
 fn a_claim_registers_the_kind_under_its_byte_its_name_and_its_extension_name() {
     installed();
@@ -145,10 +149,11 @@ fn a_claim_registers_the_kind_under_its_byte_its_name_and_its_extension_name() {
     assert!(std::ptr::eq(kind_named("testwide").unwrap(), &TEST_WIDE));
     // The core's four and the two of this process, in byte order - and the
     // two other tests' own claims, where those tests ran first.
+    const LATE: [&str; 2] = ["lateclaim", "lying"];
     let claimed: Vec<&str> = kinds()
         .iter()
         .map(|kind| kind.name)
-        .filter(|name| !["lateclaim", "lying"].contains(name))
+        .filter(|name| !LATE.contains(name))
         .collect();
     assert_eq!(
         claimed,
@@ -162,12 +167,16 @@ fn a_claim_registers_the_kind_under_its_byte_its_name_and_its_extension_name() {
         ]
     );
     // The listing splices every kind in after the core's own enum.
-    let all: Vec<u8> = DataTypeId::all().iter().map(|id| id.as_u8()).collect();
+    let all: Vec<u8> = DataTypeId::all()
+        .iter()
+        .filter(|id| !LATE.contains(&id.as_str()))
+        .map(|id| id.as_u8())
+        .collect();
     let first = all.iter().position(|byte| *byte == 0xc7).unwrap();
     assert_eq!(all[first - 1], 0xc5);
     assert_eq!(all[first + 1], 0xc8);
-    assert_eq!(all.len(), DataTypeId::ALL.len() + kinds().len());
-    assert!(all.len() >= 98);
+    assert_eq!(all.len(), DataTypeId::ALL.len() + claimed.len());
+    assert_eq!(all.len(), 98);
     assert_eq!(DataTypeId::ALL.len(), 92);
     assert!(TEST_ENUM.id.is_registered() && !TEST_ENUM.id.is_core());
     assert_eq!(TEST_ENUM.id.as_str(), "testenum");
