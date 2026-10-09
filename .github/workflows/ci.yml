@@ -28,63 +28,135 @@ env:
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
 
+# The core is built first and every job that reuses it fans out behind it.
+#
+# `changes` plans the run from `.github/ci/rows.toml`, which says what each
+# job reads: a push to `main` runs every job, a pull request the jobs its
+# change can reach (`scripts/ci/plan.py`). A core lane - `core-default`,
+# `core-full`, `core-interop` - compiles the core once for one feature set
+# and hands what it compiled to the jobs of that feature set
+# (`.github/actions/rust-lane`), so a test shard or an exchange compiles its
+# own targets and never the core again. A job needs only what it reuses: the
+# jobs that build in place under a feature set no lane compiles - the wheels,
+# the CLI, the addon, the Rust examples, the leaf crates - start at once on
+# their dependency caches. `ci` - "CI result" - judges the run against the
+# plan, and is the one check to require.
+#
+# Every job but `changes` and `ci` asks the plan for its own name, framed
+# in spaces, and writes `needs:` as a flow list: the planner reads both and
+# refuses a workflow that drifts from `rows.toml`. The plan carries every
+# need of a planned job, so no `if:` asks for a need's result: a need that
+# fails skips its dependents, and the gate names each as planned and skipped.
 jobs:
-  rust:
-    # The default lane selects only the core, otherwise the bindings would
-    # unify Parquet and Iceberg into it. The full lane also lints binding Rust.
-    name: Rust quality (${{ matrix.name }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: default features
-            cache_key: default
-            clippy_packages: -p yggdryl
-            doc_packages: -p yggdryl
-            flags: ""
-          - name: all features
-            cache_key: full
-            clippy_packages: --workspace
-            doc_packages: --workspace
-            flags: --all-features
+  changes:
+    # The plan, and the one toolchain every Rust job of the run installs. The
+    # planner's own tests run first: a plan that answers wrong skips a proof
+    # silently, and the gate, which reads the plan, would agree with it.
+    name: Changes
+    runs-on: ubuntu-24.04
+    outputs:
+      toolchain: ${{ steps.toolchain.outputs.version }}
+      jobs: ${{ steps.plan.outputs.jobs }}
+      core_shards: ${{ steps.plan.outputs.core_shards }}
+      leaves: ${{ steps.plan.outputs.leaves }}
+      python_legs: ${{ steps.plan.outputs.python_legs }}
+      proof: ${{ steps.plan.outputs.proof }}
     steps:
       - uses: actions/checkout@v6
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal --component clippy,rustfmt
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          shared-key: stable-${{ matrix.cache_key }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          # A pull request checks out its merge commit, whose first parent is
+          # the base it merged onto: the change is read against that.
+          fetch-depth: 2
+      - name: Resolve the run's toolchain
+        id: toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          echo "version=$(rustc +stable --version | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+      - name: Restore the ledger of rows this pull request already proved
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci-ledger
+          key: ci-ledger-${{ github.run_id }}
+          restore-keys: ci-ledger-
+      - name: Test the planner
+        run: python3 -m unittest discover -s scripts/tests -p test_ci_plan.py
+      - name: Plan the run
+        id: plan
+        env:
+          TOOLCHAIN: ${{ steps.toolchain.outputs.version }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: python3 scripts/ci/plan.py plan
+
+  fmt:
+    name: Rust format
+    needs: [changes]
+    if: contains(needs.changes.outputs.jobs, ' fmt ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: setup
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          components: rustfmt
       - name: Formatting
-        if: matrix.name == 'default features'
         run: cargo fmt --all -- --check
+
+  lint-default:
+    # The default lane selects only the core, otherwise the bindings would
+    # unify Parquet and Iceberg into it.
+    name: Rust lint (default features)
+    needs: [changes]
+    if: contains(needs.changes.outputs.jobs, ' lint-default ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: setup
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: lint-default
+          save: "true"
+          components: clippy
       - name: Clippy
-        run: cargo clippy --locked ${{ matrix.clippy_packages }} --all-targets ${{ matrix.flags }} --no-deps -- -D warnings
-      - name: Tests and benchmark smoke tests
-        run: cargo test --locked -p yggdryl --all-targets --no-fail-fast ${{ matrix.flags }}
-      # The CLI's tests start the `yggdryl` binary and drive it - `yggdryl fix` over a
-      # dictionary, `yggdryl xmla serve` over a socket - and the binary links the
-      # default-feature core, so they run in the lane that has already built it.
-      - name: CLI tests and benchmark smoke tests
-        if: matrix.name == 'default features'
-        run: cargo test --locked -p yggdryl-cli --all-targets --no-fail-fast
-      # `--all-targets` is `--lib --bins --examples --tests --benches`, and
-      # doctests are none of those: the step above has never compiled one.
-      # They are the examples the published API pages carry, so they are the
-      # examples most read and least run - 190 of them on default features.
-      - name: Rustdoc examples
-        run: cargo test --locked -p yggdryl --doc ${{ matrix.flags }}
+        run: cargo clippy --locked -p yggdryl --all-targets --no-deps -- -D warnings
       - name: Documentation
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc --locked ${{ matrix.doc_packages }} --no-deps ${{ matrix.flags }}
+        run: cargo doc --locked -p yggdryl --no-deps
       - name: Check optimized benchmark configuration
-        run: cargo check --locked -p yggdryl --profile bench --benches ${{ matrix.flags }}
+        run: cargo check --locked -p yggdryl --profile bench --benches
+
+  lint-full:
+    # The full lane also lints binding Rust: every member under every feature.
+    name: Rust lint (all features)
+    needs: [changes]
+    if: contains(needs.changes.outputs.jobs, ' lint-full ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: setup
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: lint-full
+          save: "true"
+          components: clippy
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets --all-features --no-deps -- -D warnings
+      - name: Documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --workspace --no-deps --all-features
+      - name: Check optimized benchmark configuration
+        run: cargo check --locked -p yggdryl --profile bench --benches --all-features
 
   iceberg-msrv:
     name: Iceberg Rust 1.94
-    runs-on: ubuntu-latest
+    needs: [changes]
+    if: contains(needs.changes.outputs.jobs, ' iceberg-msrv ')
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       # The workspace's one declared MSRV: the core, its tests and the
@@ -94,27 +166,348 @@ jobs:
       - name: Check the core and the official Iceberg boundary at the declared MSRV
         run: cargo +1.94.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets --features iceberg
 
+  core-default:
+    # The core on default features, compiled first. It builds the library
+    # every default-feature test target links and the `interop` target the
+    # ZIP, Avro and Excel drivers run, and hands both on as `lane-default`:
+    # each shard then compiles only its own targets, and the three exchanges
+    # compile nothing.
+    name: Core build (default features)
+    needs: [changes]
+    if: contains(needs.changes.outputs.jobs, ' core-default ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: setup
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: stable-default
+          save: "true"
+      - name: Build the core and the interop target
+        run: cargo test --locked -p yggdryl --no-run --test interop
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: pack
+          lane: default
+
+  core-full:
+    # The core under every feature, compiled first and handed on as
+    # `lane-full`. `docs_index` is the smallest target that makes cargo build
+    # the library as every test target links it.
+    name: Core build (all features)
+    needs: [changes]
+    if: contains(needs.changes.outputs.jobs, ' core-full ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: setup
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: stable-full
+          save: "true"
+      - name: Build the core under every feature
+        run: cargo test --locked -p yggdryl --all-features --no-run --test docs_index
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: pack
+          lane: full
+
+  core-interop:
+    # The Rust half of the four exchanges that need a feature, compiled once
+    # with each driver's own invocation - `--features s3` for S3, Azure and
+    # Google, `parquet iceberg` from `rust/` for PyIceberg - so the jobs that
+    # start the servers compile nothing. The full lane's cache is the one
+    # with `s3` and Iceberg compiled; this job only reads it.
+    name: Core build (exchange features)
+    needs: [changes]
+    if: contains(needs.changes.outputs.jobs, ' core-interop ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: setup
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: stable-full
+      - name: Build the S3, Azure and Google exchanges' Rust half
+        run: cargo test --locked --manifest-path rust/Cargo.toml --features s3 --test interop --no-run
+      - name: Build the PyIceberg exchange's Rust half
+        working-directory: rust
+        run: cargo test --locked --features "parquet iceberg" --test interop --no-run
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: pack
+          lane: interop
+
+  core-tests-default:
+    # `cargo test --all-targets` on default features, one shard per job:
+    # `.github/ci/rows.toml` names the heavy targets, `rest` is every other,
+    # and `scripts/ci/plan.py targets` refuses a shard set whose union is not
+    # `--all-targets`. Each shard links the default lane's core.
+    name: Core tests (default features, ${{ matrix.shard }})
+    needs: [changes, core-default]
+    if: contains(needs.changes.outputs.jobs, ' core-tests-default ')
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.changes.outputs.core_shards).default }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: restore
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: stable-default
+          lane: default
+      - name: Tests and benchmark smoke tests
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python3 scripts/ci/plan.py targets yggdryl default "$SHARD" > "$RUNNER_TEMP/targets"
+          mapfile -t targets < "$RUNNER_TEMP/targets"
+          cargo test --locked -p yggdryl --no-fail-fast "${targets[@]}"
+      # `--all-targets` is `--lib --bins --examples --tests --benches`, and
+      # doctests are none of those: the step above has never compiled one.
+      # They are the examples the published API pages carry, so they are the
+      # examples most read and least run - 190 of them on default features.
+      - name: Rustdoc examples
+        if: matrix.shard == 'rest'
+        run: cargo test --locked -p yggdryl --doc
+
+  core-tests-full:
+    name: Core tests (all features, ${{ matrix.shard }})
+    needs: [changes, core-full]
+    if: contains(needs.changes.outputs.jobs, ' core-tests-full ')
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.changes.outputs.core_shards).full }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: restore
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: stable-full
+          lane: full
+      - name: Tests and benchmark smoke tests
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python3 scripts/ci/plan.py targets yggdryl full "$SHARD" > "$RUNNER_TEMP/targets"
+          mapfile -t targets < "$RUNNER_TEMP/targets"
+          cargo test --locked -p yggdryl --all-features --no-fail-fast "${targets[@]}"
+      - name: Rustdoc examples
+        if: matrix.shard == 'rest'
+        run: cargo test --locked -p yggdryl --doc --all-features
+
   pyiceberg-interop:
     name: PyIceberg exchange
-    runs-on: ubuntu-latest
+    needs: [changes, core-interop]
+    if: contains(needs.changes.outputs.jobs, ' pyiceberg-interop ')
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: ./.github/actions/rust-lane
         with:
-          shared-key: stable-full
-          save-if: false
+          mode: restore
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: stable-full
+          lane: interop
       - name: Install the external implementation
         run: python -m pip install "pyiceberg[pyarrow,sql-sqlite]==0.11.1" "pyarrow==25.0.1"
       - name: Exchange v1, v2, and v3 tables
         run: python scripts/check_iceberg_interop.py
 
+  object-interop:
+    # The S3 exchange with MinIO, cross-checked by boto3. A hand-written fake
+    # store proves the client agrees with itself; this proves it agrees with a
+    # real implementation, in both directions, on the keys a URL and a
+    # signature spell differently. MinIO is downloaded by the script, so the
+    # job provisions nothing of its own.
+    name: S3 exchange
+    needs: [changes, core-interop]
+    if: contains(needs.changes.outputs.jobs, ' object-interop ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      # The driver runs the `interop` target with `--features s3`, which the
+      # exchange lane built; this job used to compile the crate and the whole
+      # signed-HTTPS stack itself.
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: restore
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: stable-full
+          lane: interop
+      - name: Install the reference client
+        run: python -m pip install "boto3>=1.34"
+      - name: Exchange objects with MinIO and boto3
+        run: python scripts/check_object_interop.py
+
+  azure-interop:
+    # The Azure exchange with Azurite, cross-checked by azure-storage-blob.
+    # Azurite is the server that matters most for this store: it recomputes the
+    # Shared Key StringToSign exactly as the service does and answers 403 for
+    # anything that does not match, so a signature built wrong here is a
+    # failure rather than an agreement between two halves of one mistake. The
+    # script installs Azurite with npm, so the job provisions nothing itself.
+    name: Azure exchange
+    needs: [changes, core-interop]
+    if: contains(needs.changes.outputs.jobs, ' azure-interop ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: restore
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: stable-full
+          lane: interop
+      - name: Install the reference client
+        run: python -m pip install "azure-storage-blob>=12"
+      - name: Exchange blobs with Azurite and azure-storage-blob
+        run: python scripts/check_azure_interop.py
+
+  gcs-interop:
+    # The Google exchange with fake-gcs-server, cross-checked by
+    # google-cloud-storage. The emulator checks the shape of every request -
+    # the /storage/v1 paths, the name escaped into one segment, alt=media, the
+    # multipart/related framing, the resumable protocol's Content-Range and 308
+    # answers - and accepts any bearer token, so this lane proves the dialect
+    # and not the identity. The script fetches the emulator's published build.
+    name: Google exchange
+    needs: [changes, core-interop]
+    if: contains(needs.changes.outputs.jobs, ' gcs-interop ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: restore
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: stable-full
+          lane: interop
+      - name: Install the reference client
+        run: python -m pip install "google-cloud-storage>=2"
+      - name: Exchange objects with fake-gcs-server and google-cloud-storage
+        run: python scripts/check_gcs_interop.py
+
+  zip-interop:
+    # The ZIP exchange with Python's `zipfile`, from the standard library.
+    #
+    # `rust/tests/interop/zip.rs` is not feature-gated, so every Rust lane
+    # already runs it - and its three reading tests report `ok` having
+    # asserted nothing, because the archive `zipfile` writes is not there and
+    # the halves print `SKIPPED` and return. Only this driver produces that
+    # archive, and only it fails on the word. Until this job existed, the
+    # reading side of the ZIP backend had never once executed under CI.
+    name: ZIP exchange
+    needs: [changes, core-default]
+    if: contains(needs.changes.outputs.jobs, ' zip-interop ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      # The driver runs the `interop` target on default features, which the
+      # default lane built.
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: restore
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: stable-default
+          lane: default
+      - name: Exchange archives with zipfile
+        run: python scripts/check_zip_interop.py
+
+  avro-interop:
+    # The Avro exchange with fastavro, and - when the probe builds - with the
+    # `apache-avro` crate. Same shape as the ZIP job and the same reason:
+    # `rust/tests/interop/avro.rs` is ungated, so its reading half has been
+    # reporting `ok` in every lane while skipping for want of the container
+    # fastavro writes. The driver writes it and refuses the skip.
+    #
+    # fastavro is a checking tool of the script, never a dependency of the
+    # crate; the `apache-avro` probe is a scratch project the script writes
+    # outside the workspace, and a build failure there is reported and
+    # tolerated rather than failing the job.
+    name: Avro exchange
+    needs: [changes, core-default]
+    if: contains(needs.changes.outputs.jobs, ' avro-interop ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: restore
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: stable-default
+          lane: default
+      - name: Install the reference implementation
+        run: python -m pip install fastavro
+      - name: Exchange containers with fastavro
+        run: python scripts/check_avro_interop.py
+
+  excel-interop:
+    # The Excel exchange with openpyxl, the reference most spreadsheets are
+    # produced with in Python. Same shape as the Avro job and the same
+    # reason: `rust/tests/interop/excel.rs` is ungated, so its reading half
+    # reports `ok` in every lane while skipping for want of the workbooks
+    # openpyxl writes. The driver writes them and refuses the skip.
+    #
+    # openpyxl is a checking tool of the script, never a dependency of the
+    # crate.
+    name: Excel exchange
+    needs: [changes, core-default]
+    if: contains(needs.changes.outputs.jobs, ' excel-interop ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: restore
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: stable-default
+          lane: default
+      - name: Install the reference implementation
+        run: python -m pip install openpyxl
+      - name: Exchange workbooks with openpyxl
+        run: python scripts/check_excel_interop.py
+
   python-wheel:
+    # The command and the extension link the core under the binding's own
+    # features and PyO3's `abi3`, which no lane compiles, so the wheel builds
+    # in place over its own dependency cache, saved on `main`.
     name: Python binding wheel
+    needs: [changes]
+    if: contains(needs.changes.outputs.jobs, ' python-wheel ')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -123,12 +516,12 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: python/pyproject.toml
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: ./.github/actions/rust-lane
         with:
-          shared-key: stable-full
-          save-if: false
+          mode: setup
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: python
+          save: "true"
       - name: Install Maturin
         run: python -m pip install "maturin>=1.15,<2"
       # maturin copies python/wheel-data/ into the wheel and builds no binary
@@ -143,14 +536,14 @@ jobs:
       # at runtime (1620 tests: 27 s release, 89 s debug) and start ~10
       # minutes sooner.
       - name: Stage the yggdryl command
-        run: python scripts/stage_cli.py --debug
+        run: python scripts/stage_cli.py --debug --locked
       - name: Build wheel
         run: maturin build --locked --profile dev --manifest-path python/Cargo.toml --interpreter python --out python/dist
       # Nothing else fails when staging is skipped - the wheel just quietly
       # loses the command - so the contract is asserted rather than trusted.
       - name: The wheel carries the command
         run: |
-          python - <<'EOF'
+          python - <<'PY'
           import glob
           import tomllib
           import zipfile
@@ -168,189 +561,27 @@ jobs:
           ]
           assert scripts == [f"yggdryl-{version}.data/scripts/yggdryl"], scripts
           print(f"{wheel} carries {scripts[0]}")
-          EOF
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: python-ci-wheel
           path: python/dist/*.whl
           if-no-files-found: error
           compression-level: 0
-          retention-days: 1
-
-  object-interop:
-    # The S3 exchange with MinIO, cross-checked by boto3. A hand-written fake
-    # store proves the client agrees with itself; this proves it agrees with a
-    # real implementation, in both directions, on the keys a URL and a
-    # signature spell differently. MinIO is downloaded by the script, so the
-    # job provisions nothing of its own.
-    name: S3 exchange
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
-      # The driver builds the `interop` target with `--features s3`, and every
-      # other cargo-building job restores a cache; this one compiled the crate
-      # and the whole signed-HTTPS stack from scratch on every run. The full
-      # lane is the leg that has `s3` compiled.
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          shared-key: stable-full
-          save-if: false
-      - name: Install the reference client
-        run: python -m pip install "boto3>=1.34"
-      - name: Exchange objects with MinIO and boto3
-        run: python scripts/check_object_interop.py
-
-  azure-interop:
-    # The Azure exchange with Azurite, cross-checked by azure-storage-blob.
-    # Azurite is the server that matters most for this store: it recomputes the
-    # Shared Key StringToSign exactly as the service does and answers 403 for
-    # anything that does not match, so a signature built wrong here is a
-    # failure rather than an agreement between two halves of one mistake. The
-    # script installs Azurite with npm, so the job provisions nothing itself.
-    name: Azure exchange
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          shared-key: stable-full
-          save-if: false
-      - name: Install the reference client
-        run: python -m pip install "azure-storage-blob>=12"
-      - name: Exchange blobs with Azurite and azure-storage-blob
-        run: python scripts/check_azure_interop.py
-
-  gcs-interop:
-    # The Google exchange with fake-gcs-server, cross-checked by
-    # google-cloud-storage. The emulator checks the shape of every request -
-    # the /storage/v1 paths, the name escaped into one segment, alt=media, the
-    # multipart/related framing, the resumable protocol's Content-Range and 308
-    # answers - and accepts any bearer token, so this lane proves the dialect
-    # and not the identity. The script fetches the emulator's published build.
-    name: Google exchange
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          shared-key: stable-full
-          save-if: false
-      - name: Install the reference client
-        run: python -m pip install "google-cloud-storage>=2"
-      - name: Exchange objects with fake-gcs-server and google-cloud-storage
-        run: python scripts/check_gcs_interop.py
-
-  zip-interop:
-    # The ZIP exchange with Python's `zipfile`, from the standard library.
-    #
-    # `rust/tests/interop/zip.rs` is not feature-gated, so every Rust lane
-    # already runs it - and its three reading tests report `ok` having
-    # asserted nothing, because the archive `zipfile` writes is not there and
-    # the halves print `SKIPPED` and return. Only this driver produces that
-    # archive, and only it fails on the word. Until this job existed, the
-    # reading side of the ZIP backend had never once executed under CI.
-    name: ZIP exchange
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
-      # The driver builds the `interop` target on default features, which is
-      # what the default lane warms.
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          shared-key: stable-default
-          save-if: false
-      - name: Exchange archives with zipfile
-        run: python scripts/check_zip_interop.py
-
-  avro-interop:
-    # The Avro exchange with fastavro, and - when the probe builds - with the
-    # `apache-avro` crate. Same shape as the ZIP job and the same reason:
-    # `rust/tests/interop/avro.rs` is ungated, so its reading half has been
-    # reporting `ok` in every lane while skipping for want of the container
-    # fastavro writes. The driver writes it and refuses the skip.
-    #
-    # fastavro is a checking tool of the script, never a dependency of the
-    # crate; the `apache-avro` probe is a scratch project the script writes
-    # outside the workspace, and a build failure there is reported and
-    # tolerated rather than failing the job.
-    name: Avro exchange
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          shared-key: stable-default
-          save-if: false
-      - name: Install the reference implementation
-        run: python -m pip install fastavro
-      - name: Exchange containers with fastavro
-        run: python scripts/check_avro_interop.py
-
-  excel-interop:
-    # The Excel exchange with openpyxl, the reference most spreadsheets are
-    # produced with in Python. Same shape as the Avro job and the same
-    # reason: `rust/tests/interop/excel.rs` is ungated, so its reading half
-    # reports `ok` in every lane while skipping for want of the workbooks
-    # openpyxl writes. The driver writes them and refuses the skip.
-    #
-    # openpyxl is a checking tool of the script, never a dependency of the
-    # crate.
-    name: Excel exchange
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          shared-key: stable-default
-          save-if: false
-      - name: Install the reference implementation
-        run: python -m pip install openpyxl
-      - name: Exchange workbooks with openpyxl
-        run: python scripts/check_excel_interop.py
+          retention-days: 3
+          overwrite: true
 
   python:
     name: Python binding (${{ matrix.pyarrow }})
-    needs: python-wheel
+    needs: [changes, python-wheel]
+    if: contains(needs.changes.outputs.jobs, ' python ')
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        pyarrow:
-          - "pyarrow==18.*"
-          - "pyarrow>=18"
+        # Both legs, or the `leaf` legs of `rows.toml` where only a leaf
+        # crate's row runs this job.
+        pyarrow: ${{ fromJSON(needs.changes.outputs.python_legs) }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -409,6 +640,8 @@ jobs:
   # smoke script loads the extension module alone and says what it skipped.
   python-freethreaded:
     name: Python binding (free-threaded 3.14t, abi3t 3.15)
+    needs: [changes]
+    if: contains(needs.changes.outputs.jobs, ' python-freethreaded ')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -423,17 +656,18 @@ jobs:
             3.15
             3.14t
           allow-prereleases: true
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # Its own build: the free-threaded interpreters take PyO3 features no
+      # other job compiles. It reads the wheel job's dependency cache.
+      - uses: ./.github/actions/rust-lane
         with:
-          shared-key: stable-full
-          save-if: false
+          mode: setup
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: python
       - name: Install Maturin
         run: python3.14t -m pip install "maturin>=1.15,<2"
       # Debug, as in `python-wheel`: CI never measures.
       - name: Stage the yggdryl command
-        run: python3.14t scripts/stage_cli.py --debug
+        run: python3.14t scripts/stage_cli.py --debug --locked
       - name: Build the free-threaded wheels
         run: >-
           python3.14t -m maturin build --locked --profile dev
@@ -441,7 +675,7 @@ jobs:
           --interpreter python3.14t python3.15 --out python/dist-ft
       - name: The wheels are the two the lane owes
         run: |
-          python3.14t - <<'EOF'
+          python3.14t - <<'PY'
           import glob
           import os
           import zipfile
@@ -458,7 +692,7 @@ jobs:
           ]
           assert modules == ["yggdryl/_native.abi3t.so"], modules
           print(f"{abi3t} holds {modules[0]}")
-          EOF
+          PY
       # The `python` lane's tools but `polars`, which publishes no
       # free-threaded wheel, so its suites skip here and nowhere else.
       # `typing_extensions` is imported by the hints suite; `mypy` brings it
@@ -496,7 +730,8 @@ jobs:
     # pytest run above deselects it, this dedicated job provisions Spark with
     # scripts/setup_spark_interop.py and runs exactly it.
     name: Spark interop
-    needs: python-wheel
+    needs: [changes, python-wheel]
+    if: contains(needs.changes.outputs.jobs, ' spark-interop ')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -524,37 +759,151 @@ jobs:
       - name: Exchange tables with Spark
         run: python -m pytest python/tests/test_spark_interop.py -m spark_interop
 
-  docs-examples:
-    # Every fenced example under `docs/` and `skills/` compiled and run, in each
-    # of the three languages it is shown in - which the documentation contract
-    # requires of every example and nothing has ever enforced. `docs.yml`
-    # re-runs whenever this script changes but has never executed it, and
-    # `mkdocs build --strict` reads links and navigation, never a code block.
-    # 772 examples were shipping unrun.
-    #
-    # The three halves need three toolchains, which is why the job is one and
-    # not three: the Rust half generates an integration target and compiles it
-    # against `parquet iceberg s3`, the Python half runs under `python/.venv`
-    # where the script looks for its interpreter, and the JavaScript half
-    # needs the built addon and the Arrow package beside it.
-    name: Documentation examples
-    needs: python-wheel
+  cli:
+    # The CLI's tests start the `yggdryl` binary and drive it - `yggdryl fix`
+    # over a dictionary, `yggdryl xmla serve` over a socket. The binary links
+    # the default-feature core plus `http`, a feature set no lane builds, so
+    # it builds here, at once, and the command goes on to the Node.js book
+    # tests.
+    name: CLI tests
+    needs: [changes]
+    if: contains(needs.changes.outputs.jobs, ' cli ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: setup
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: cli
+          save: "true"
+      - name: CLI tests and benchmark smoke tests
+        run: cargo test --locked -p yggdryl-cli --all-targets --no-fail-fast
+      - name: Build the yggdryl command the book tests spawn
+        run: cargo build --locked -p yggdryl-cli
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-bin
+          path: target/debug/yggdryl
+          if-no-files-found: error
+          retention-days: 3
+          overwrite: true
+
+  node-addon:
+    # napi builds the addon for `--target x86_64-unknown-linux-gnu`, a
+    # directory no lane writes, so it builds here in place, at once, and the
+    # addon goes on to the Node.js tests and the JavaScript examples.
+    name: Node.js addon
+    needs: [changes]
+    if: contains(needs.changes.outputs.jobs, ' node-addon ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: setup
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: node
+          save: "true"
+      - name: Install Node.js build tooling
+        run: npm ci --prefix node
+      - name: Regenerate native module and audit package
+        run: npm run --prefix node test:package:debug
+      - name: Generated loader and declarations are current
+        run: git diff --exit-code -- node/index.js node/index.d.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: node-addon
+          path: node/*.node
+          if-no-files-found: error
+          retention-days: 3
+          overwrite: true
+
+  node:
+    # No Rust: the addon and the command arrive built.
+    name: Node.js binding
+    needs: [changes, node-addon, cli]
+    if: contains(needs.changes.outputs.jobs, ' node ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: node-addon
+          path: node
+      # `node/tests/book.test.js` drives `book.serve` against the real
+      # command, which it finds at `target/debug/yggdryl`, and skips naming the
+      # missing build when nothing is there - as it did in this job when it
+      # built only the addon. The command links the default-feature core plus
+      # `http`; an artifact keeps no mode, so it is made executable again.
+      - uses: actions/download-artifact@v4
+        with:
+          name: cli-bin
+          path: target/debug
+      - name: The yggdryl command the book tests spawn
+        run: chmod +x target/debug/yggdryl
+      - name: Install Node.js packages
+        run: npm ci --prefix node
+      - name: Smoke tests
+        run: npm test --prefix node
+      # The interactive documentation is generated by this addon, and the docs
+      # workflow is Python-only, so the drift check belongs to the job that
+      # tests it.
+      - name: Check the generated documentation manifests
+        run: |
+          node scripts/build_docs_playground.js --check
+          node scripts/build_docs_fix.js --check
+
+  # Every fenced example under `docs/` and `skills/` compiled and run, in each
+  # of the three languages it is shown in - which the documentation contract
+  # requires of every example and nothing had ever enforced. `docs.yml`
+  # re-runs whenever the script changes but has never executed it, and
+  # `mkdocs build --strict` reads links and navigation, never a code block.
+  # 772 examples were shipping unrun.
+  #
+  # One job per language, each behind what it runs on: the Rust half
+  # generates an integration target and compiles it against `parquet iceberg
+  # s3 s3tables http3`, the Python half runs under `python/.venv` with the
+  # wheel, and the JavaScript half needs the built addon and the Arrow
+  # package beside it.
+  docs-rust:
+    # The examples' feature set is every feature but `internals`, which adds
+    # no dependency, so the full lane's cache holds every crate it links.
+    name: Documentation examples (Rust)
+    needs: [changes]
+    if: contains(needs.changes.outputs.jobs, ' docs-rust ')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - uses: actions/setup-node@v6
+      - uses: ./.github/actions/rust-lane
         with:
-          node-version: "22"
-          package-manager-cache: false
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+          mode: setup
+          toolchain: ${{ needs.changes.outputs.toolchain }}
+          cache: stable-full
+      - name: Compile and run every Rust example
+        run: python scripts/check_docs_examples.py --lang rust
+
+  docs-python:
+    name: Documentation examples (Python)
+    needs: [changes, python-wheel]
+    if: contains(needs.changes.outputs.jobs, ' docs-python ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
-          shared-key: stable-full
-          save-if: false
+          python-version: "3.12"
       - uses: actions/download-artifact@v4
         with:
           name: python-ci-wheel
@@ -566,53 +915,156 @@ jobs:
           python -m venv python/.venv
           python/.venv/bin/pip install "pyarrow>=18" "pytest>=8" "pandas>=2" "polars>=1" tzdata
           python/.venv/bin/pip install --force-reinstall --no-deps python/dist/*.whl
-      - name: Build the addon and the packages the JavaScript examples require
-        run: |
-          npm ci --prefix node
-          npm run --prefix node build:debug
-      - name: Check the API inventories against the crate and both bindings
-        run: python scripts/check_api_inventory.py
-      - name: Compile and run every Rust example
-        run: python scripts/check_docs_examples.py --lang rust
       - name: Run every Python example
         run: python scripts/check_docs_examples.py --lang python
-      - name: Run every JavaScript example
-        run: python scripts/check_docs_examples.py --lang javascript
 
-  node:
-    name: Node.js binding
-    runs-on: ubuntu-latest
+  docs-javascript:
+    name: Documentation examples (JavaScript)
+    needs: [changes, node-addon]
+    if: contains(needs.changes.outputs.jobs, ' docs-javascript ')
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
           package-manager-cache: false
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: actions/download-artifact@v4
         with:
-          shared-key: stable-full
-          save-if: false
-      - name: Install Node.js build tooling
+          name: node-addon
+          path: node
+      - name: Install the packages the JavaScript examples require
         run: npm ci --prefix node
-      - name: Regenerate native module and audit package
-        run: npm run --prefix node test:package:debug
-      - name: Generated loader and declarations are current
-        run: git diff --exit-code -- node/index.js node/index.d.ts
-      # `node/tests/book.test.js` drives `book.serve` against the real
-      # command, which it finds at `target/debug/yggdryl`, and skips naming the
-      # missing build when nothing is there - as it did in this job, which
-      # built only the addon. The command links the default-feature core plus
-      # `http`, over the same cache and toolchain the addon just used.
-      - name: Build the yggdryl command the book tests spawn
-        run: cargo build --locked -p yggdryl-cli
-      - name: Smoke tests
-        run: npm test --prefix node
-      # The interactive documentation is generated by this addon, and the docs
-      # workflow is Python-only, so the drift check belongs to the job that
-      # already built it.
-      - name: Check the generated documentation manifests
+      - name: Run every JavaScript example
+        run: python scripts/check_docs_examples.py --lang javascript
+
+  inventory:
+    # The inventories read against the crate's and both bindings' sources;
+    # nothing is built.
+    name: API inventories
+    needs: [changes]
+    if: contains(needs.changes.outputs.jobs, ' inventory ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Check the API inventories against the crate and both bindings
+        run: python scripts/check_api_inventory.py
+
+  leaves:
+    # Every leaf crate `rows.toml` lists under `rust/<name>` - none until S4 -
+    # proven the way the core is: clippy and rustdoc at `-D warnings`, its
+    # tests and benchmark smoke tests in both feature lanes, sharded where
+    # `rows.toml` says, its rustdoc examples, the optimized benchmark
+    # configuration, and a check at the declared MSRV where it names one.
+    # A leaf compiles the core under its own feature unification, so it
+    # builds in place, at once, over its own dependency cache, which its full
+    # lane's `rest` shard saves on `main`. `FLAGS` is split on spaces: a leaf
+    # names its features with commas.
+    name: Leaf (${{ matrix.name }}, ${{ matrix.lane }}, ${{ matrix.shard }})
+    needs: [changes]
+    if: contains(needs.changes.outputs.jobs, ' leaves ')
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.leaves) }}
+    env:
+      PACKAGE: ${{ matrix.package }}
+      LANE: ${{ matrix.lane }}
+      SHARD: ${{ matrix.shard }}
+      FLAGS: ${{ matrix.flags }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/rust-lane
+        with:
+          mode: setup
+          toolchain: ${{ matrix.toolchain || needs.changes.outputs.toolchain }}
+          cache: ${{ matrix.cache }}
+          save: ${{ matrix.save }}
+          components: ${{ matrix.lane != 'msrv' && 'clippy' || '' }}
+      - name: Check at the declared MSRV
+        if: matrix.lane == 'msrv'
         run: |
-          node scripts/build_docs_playground.js --check
-          node scripts/build_docs_fix.js --check
+          read -ra flags <<< "$FLAGS"
+          cargo check --locked -p "$PACKAGE" --all-targets "${flags[@]}"
+      - name: Clippy
+        if: matrix.lane != 'msrv' && matrix.shard == 'rest'
+        run: |
+          read -ra flags <<< "$FLAGS"
+          cargo clippy --locked -p "$PACKAGE" --all-targets --no-deps "${flags[@]}" -- -D warnings
+      - name: Tests and benchmark smoke tests
+        if: matrix.lane != 'msrv'
+        run: |
+          read -ra flags <<< "$FLAGS"
+          python3 scripts/ci/plan.py targets "$PACKAGE" "$LANE" "$SHARD" > "$RUNNER_TEMP/targets"
+          mapfile -t targets < "$RUNNER_TEMP/targets"
+          cargo test --locked -p "$PACKAGE" --no-fail-fast "${flags[@]}" "${targets[@]}"
+      - name: Rustdoc examples
+        if: matrix.lane != 'msrv' && matrix.shard == 'rest'
+        run: |
+          read -ra flags <<< "$FLAGS"
+          cargo test --locked -p "$PACKAGE" --doc "${flags[@]}"
+      - name: Documentation
+        if: matrix.lane != 'msrv' && matrix.shard == 'rest'
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          read -ra flags <<< "$FLAGS"
+          cargo doc --locked -p "$PACKAGE" --no-deps "${flags[@]}"
+      - name: Check optimized benchmark configuration
+        if: matrix.lane != 'msrv' && matrix.shard == 'rest'
+        run: |
+          read -ra flags <<< "$FLAGS"
+          cargo check --locked -p "$PACKAGE" --profile bench --benches "${flags[@]}"
+
+  ci:
+    # The one check to require. It fails unless `changes` planned the run,
+    # every planned job passed and every other job was skipped - a planned
+    # job a failure upstream skipped is a failure here, and so is a job an
+    # `if:` let run unplanned - and it runs when anything above failed or
+    # was cancelled, so a skipped gate never reads as a pass. On a pull
+    # request it first adds to the ledger every row whose jobs all passed.
+    name: CI result
+    needs: [
+      changes, fmt, lint-default, lint-full, iceberg-msrv,
+      core-default, core-full, core-interop,
+      core-tests-default, core-tests-full,
+      pyiceberg-interop, object-interop, azure-interop, gcs-interop,
+      zip-interop, avro-interop, excel-interop,
+      python-wheel, python, python-freethreaded, spark-interop,
+      cli, node-addon, node, docs-rust, docs-python, docs-javascript,
+      inventory, leaves
+    ]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Restore the ledger
+        if: github.event_name == 'pull_request' && needs.changes.result == 'success'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci-ledger
+          key: ci-ledger-${{ github.run_id }}
+          restore-keys: ci-ledger-
+      - name: Record the rows this run proved
+        id: record
+        if: github.event_name == 'pull_request' && needs.changes.result == 'success'
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/ci/plan.py record
+      - name: Save the ledger
+        if: steps.record.outputs.added != '' && steps.record.outputs.added != '0'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci-ledger
+          key: ci-ledger-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Every planned job passed and every other was skipped
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/ci/plan.py gate

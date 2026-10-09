@@ -206,7 +206,7 @@ def rust_target(pages) -> tuple[int, list[str]]:
 
 def run_rust() -> int:
     result = subprocess.run(
-        ["cargo", "test", "--features", "parquet iceberg s3 s3tables http3", "--test", "docs_examples"],
+        ["cargo", "test", "--locked", "--features", "parquet iceberg s3 s3tables http3", "--test", "docs_examples"],
         cwd=ROOT,
         check=False,
     )

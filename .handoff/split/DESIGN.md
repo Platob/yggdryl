@@ -703,8 +703,13 @@ handoff if S6's diff is too large; it is not taken without the user.
   preflight refuses a half-out version, and the registry configuration (PyPI
   pending publisher, npm first publish, `CARGO_REGISTRY_TOKEN` scope) is the
   user's before the merge.
-- CI time: the workspace already runs two feature lanes; each new crate's
-  suite adds to the `rust` job.
+- CI time: each new crate is one line under `[leaves]` in
+  `.github/ci/rows.toml`, uncommented in the change that creates its
+  manifest: its suite runs as `Leaf` jobs in both feature lanes, at once,
+  and a change under its folder runs what proves it alone ("The CI
+  structure" below). A target that moves out of the core takes its shard
+  of `[shards.yggdryl]` with it, and an exchange that moves into a leaf is
+  named in its line's `jobs`.
 
 ## The slice table
 
@@ -1769,3 +1774,54 @@ Found sound and left as written: D3's `all()` order, D4's boundary, D11's
 citations and pickles, D13, D15, D16, D17, D19's positions and ranks and the
 new dictionary pin, D24's counts; no test code under any `src/`; P0's Node
 `fix.pluginSide` re-spells an existing door and adds none.
+
+## The CI structure
+
+The user's instruction: "Ensure then ci, builds are first core and then
+parallelized, add then exclusion rules strategy to only build leaves crates
+projects to implement faster on leaves implementations". Before it, 17 jobs
+ran everything on every push; the wall clock was the serial all-features
+lane, 18m09s (runs 37842429776 and 37839852909: 18m11s and 18m28s) - 2m02
+clippy, 13m10 tests of which 3m58 compiled and about 9m12 ran the 71
+targets one after another (`tests/fix.rs` 184 s, `tests/allocations.rs`
+116 s) - and the core was compiled again in 14 of the 17 jobs.
+
+Chosen: the second judge's synthesis of three designs - core lanes compiled
+once per feature set inside the run and handed on as artifacts, path rows
+plus a proof ledger, one gate - as implemented with two changes of the
+implementer's: a lane carries the core library and the `interop` target,
+never the test binaries (about 14 GB a lane), so each shard compiles its own
+targets once; and the planner is a standard-library script with its own
+tests (`scripts/ci/plan.py`, `scripts/tests/test_ci_plan.py`) rather than
+`dorny/paths-filter`, so classification and fingerprints read one glob
+grammar. The review's seven findings, as decided:
+
+| # | Finding | Disposition |
+| --- | --- | --- |
+| 1 | adding a leaf turned CI red: the tests hard-coded the commented lines | fixed: the tests read every `[leaves]` line, listed or not, and derive their expectations from the table; proven with `market` and `fix`, then all seven, switched on over stub manifests |
+| 2 | a leaf-only change ran nearly every binding and docs job | fixed: `libs` no longer extends the leaves; a leaf row runs the `Leaf` matrix, `[leaf] jobs` and its line's `jobs`, the `python` job one leg (`python_legs`) |
+| 3 | jobs restoring no lane waited for `core-default` | fixed: `cli`, `node-addon`, `docs-rust` and `leaves` need the plan alone; the barrier is gone; one dependency cache per leaf, saved on `main` |
+| 4 | `retention-days: 1` broke a next-day re-run | fixed: three days on every artifact, pinned by a test |
+| 5 | deleting `order.toml` failed the planner | fixed: an unknown path runs everything, pinned; nothing asserts it is tracked |
+| 6 | the Python lane built PyO3 without maturin's `abi3` | fixed: `core-python` folded into `python-wheel`; the free-threaded job builds its own |
+| 7 | docs said more than the YAML | fixed: the contributing and playground pages and AGENTS.md's ledger sentence |
+
+The leaf rule - a change under `rust/<leaf>/`, its manifest aside, for the
+leaf and every leaf `after` it:
+
+| Runs | Skips |
+| --- | --- |
+| the `Leaf` matrix (clippy and rustdoc on its package, its tests and rustdoc examples in both lanes, its MSRV check); `fmt`; `inventory`; `docs-rust`; `python-wheel` and the `pyarrow>=18` leg; `node-addon`, `node` and the `cli` it spawns; its exchanges | the core test shards, both lints, `python-freethreaded`, the `pyarrow==18.*` leg, `docs-python`, `docs-javascript`, every other exchange |
+
+| Leaf | Its exchanges |
+| --- | --- |
+| `avro` | `avro-interop` |
+| `parquet` | `pyiceberg-interop`, `spark-interop` |
+| `iceberg` | `pyiceberg-interop`, `spark-interop`, `iceberg-msrv` |
+| `excel` | `excel-interop` |
+| `market`, `fix`, `xmla` | none |
+
+A change to the core, the lock or any manifest, a path no row names, the
+workflow, the table or the planner, and every push to `main`, run
+everything. The measured figures of the first run under this structure are
+the handoff's State row "CI structure".

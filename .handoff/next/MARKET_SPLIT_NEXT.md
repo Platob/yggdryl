@@ -62,10 +62,10 @@ live AWS resource touched.
 | Fact | Value |
 | --- | --- |
 | Program branch | `ccr-0fe6f9d0-ruymat` |
-| HEAD | the commit holding this file, "Register the XMLA medium in place" (S2b), on `2d800d51b` |
+| HEAD | the commit holding this file, "Build the core first and run only the CI jobs a change reaches" (the CI structure), on `2048b4681` |
 | Draft PR | #209, draft |
 | Base | `origin/main` at `2ae975674`; no merge of `origin/main` was needed this session (nothing landed on `main` since) |
-| Slices done | P0 `3d8bf84d9` (D22), P1 `08ae4c6b7` (D23), S0 `6d71a36ee` (the pins), S1 `eeb4ec14d` (the market extension point), S1's handoff `719299cf6`, S2 `f9f665198` (the media extension point), S2's handoff `2d800d51b`, S2b, the commit holding this file (the XMLA medium registered in place, D33) - each pushed alone, its CI read green before the next |
+| Slices done | P0 `3d8bf84d9` (D22), P1 `08ae4c6b7` (D23), S0 `6d71a36ee` (the pins), S1 `eeb4ec14d` (the market extension point), S1's handoff `719299cf6`, S2 `f9f665198` (the media extension point), S2's handoff `2d800d51b`, S2b `c015226b6` (the XMLA medium registered in place, D33) and `2048b4681` (its CI's red census race fixed in the test), the CI structure, the commit holding this file - each pushed alone, its CI read green before the next |
 | Next | S3, the remaining seams in place (D5, D6, D9, D10) |
 
 What S1 built is the "S1: what was built" section of DESIGN.md. What S2
@@ -92,7 +92,7 @@ the core's own media three (`Ipc`, `Text`, `Csv`).
 
 ## Checks
 
-Every command below ran on the tree committed as S2b (the commit holding this file), from
+Every command below ran on the tree committed as S2b (`c015226b6`), from
 `/home/user/yggdryl`, with `CARGO_INCREMENTAL=0` and the debug info off, in
 one background chain (`logs/chain_s2b.sh` under the scratchpad) that cleaned
 the workspace's own artifacts between lanes. Its first attempt died on a
@@ -124,7 +124,7 @@ smoke rows before it.
 | the inventories | `python scripts/check_api_inventory.py`; `python scripts/generate_internals.py --check` | current (180 source files and 586 `pub` names not described yet, as before); `yggdryl::internals` current |
 | no test code under `src/` | `grep -rn '#\[cfg(test)\]\|#\[test\]\|mod tests' rust/src python/src node/src cli/src` | empty |
 | the review | an independent read of the slice (opus) after the settle | "could not refute the slice"; three findings, all fixed before the commit: AGENTS.md's three stale lines (the core's four media, `XmlaSerie`), the missing `GenericMediaSerie` test with the `require_settings::<XmlaOptions>` refusal pinned, the order pin's name |
-| CI | the run on `ccr-0fe6f9d0-ruymat` for PR #209 | S2b's run is read after the push; S2's run 37888869824 on `f9f665198` was success, all 17 jobs |
+| CI | the run on `ccr-0fe6f9d0-ruymat` for PR #209 | run 37902279246 on `2048b4681` (S2b and its test fix) success, all 17 jobs green, 18m57s wall; docs run 37902279190 success. The run on `c015226b6` (37900729990) was red in Rust quality (default features) on the `market_register` census race below, fixed in `2048b4681` |
 
 `rust/tests/market_register.rs`
 `a_claim_registers_the_kind_under_its_byte_its_name_and_its_extension_name`
@@ -135,9 +135,11 @@ and `a_name_parsed_before_its_claim_is_refused_naming_the_registration_and_resol
 claim `lying` and `lateclaim`, so a claim landing between the two reads
 answers `left: 98, right: 99`. Its all-features binary failed 25 of 200 runs
 in parallel and 0 of 100 under `--test-threads=1` on S2b's tree; S2b
-touches nothing of the market register. It is reported for the next slice
-to fix (read both counts without the two late kinds, or move the late
-claims into a target of their own), never re-run to green.
+touches nothing of the market register. It went red in CI's default lane
+on `c015226b6` (run 37900729990) and was fixed at its cause in `2048b4681`:
+both counts read one listing filtered of the two late kinds, and the count
+is exactly 98 - 0 failures in 300 parallel runs, default and with
+`internals`.
 
 Not run, as the slice made nothing of theirs stale: the charset table and
 interop checks, the ISIN seed check, the country and MIC table checks, every
@@ -220,3 +222,8 @@ rows decided or changed this session:
    (crates.io, PyPI trusted publishing and npm tokens for the new names).
 6. Registry and network checks skipped: none - D11's and D12's reads were
    made on 2026-10-08 (crates.io, PyPI and npm all answered).
+7. Branch protection: `main` has none today. When it gets some, require
+   `CI result` alone - the old job names ("Rust quality (...)",
+   "Documentation examples") are gone, and the gate fails unless every
+   planned job passed and every other was skipped (DESIGN.md "The CI
+   structure").

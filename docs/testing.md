@@ -230,6 +230,32 @@ AVRO_FUZZ_ITERATIONS=200000 cargo test -p yggdryl --features internals --test av
 
 A skipped half fails its driver, so a skipped exchange never reads as a pass.
 
+## What CI runs for a change
+
+`.github/workflows/ci.yml` builds the core first and fans every job that reuses
+it out behind it; `.github/ci/rows.toml` says what each job reads, and the
+`Changes` job plans the run from it through `scripts/ci/plan.py`. A push to
+`main` runs every job, and so does a pull request that touches the core, the
+lock, a manifest, the workflow, the table, the planner or a path no row names.
+Otherwise a pull request runs the jobs its change can reach, less those an
+earlier run of it already passed with the same inputs. `CI result` judges the
+run against the plan: every planned job passed and every other was skipped.
+
+A change under a leaf crate's folder `rust/<leaf>/`, its manifest aside, runs
+what proves that leaf and the leaves built on it, and nothing more:
+
+| Runs | Skips |
+| --- | --- |
+| the leaf's clippy, rustdoc, tests and rustdoc examples in both feature lanes, its MSRV check where it has one; the format check; the API inventories; the Rust page examples; the Python wheel with the `pyarrow>=18` test leg; the Node.js addon and suite with the CLI tests; the leaf's exchanges | the core's test shards, the workspace lints, the free-threaded build, the `pyarrow==18.*` leg, the Python and JavaScript page examples, every other exchange |
+
+| Leaf | Its exchanges |
+| --- | --- |
+| `avro` | Avro (fastavro) |
+| `parquet` | PyIceberg, Spark |
+| `iceberg` | PyIceberg, Spark, the Iceberg check at Rust 1.94 |
+| `excel` | Excel (openpyxl) |
+| `market`, `fix`, `xmla` | none |
+
 ## What a test looks like here
 
 - A name states the behaviour: `a_missing_stream_reads_as_empty_rather_than_failing`.

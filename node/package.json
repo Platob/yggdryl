@@ -62,7 +62,7 @@
     "bench:types:defaults": "node benchmarks/types/defaults.js",
     "bench:warehouse": "node benchmarks/warehouse.js",
     "build": "napi build --platform --release && node scripts/local-binding-only.js && node scripts/hide-private-types.js",
-    "build:debug": "napi build --platform && node scripts/local-binding-only.js && node scripts/hide-private-types.js",
+    "build:debug": "napi build --platform -- --locked && node scripts/local-binding-only.js && node scripts/hide-private-types.js",
     "prepack": "npm run typecheck",
     "test": "node --test \"tests/**/*.test.js\" && tsc --noEmit",
     "test:package": "npm run build && node scripts/local-binding-only.js --check && node scripts/hide-private-types.js --check && node scripts/check-package-files.js",

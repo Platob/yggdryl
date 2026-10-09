@@ -35,7 +35,7 @@ Smoke what you changed while you are changing it, then push and let CI run the m
     npm test --prefix node
     ```
 
-CI runs the rest on the pushed branch: both feature lanes, the 1.94 MSRV, the exchanges with MinIO, Azurite, fake-gcs-server, `zipfile`, fastavro, PyIceberg and Spark, both pyarrow legs, and every documentation example in three languages. Two checks have no job and stay local - `python scripts/generate_charset_tables.py --check` and `python scripts/check_charset_interop.py` - as does any benchmark whose number a page states.
+CI runs the rest on the pushed branch: on a change to the core and on every push to `main`, both feature lanes, the 1.94 MSRV, the exchanges with MinIO, Azurite, fake-gcs-server, `zipfile`, fastavro, openpyxl, PyIceberg and Spark, both pyarrow legs, and every documentation example in three languages; a pull request runs the jobs its change can reach ([Testing](testing.md#what-ci-runs-for-a-change)). Two checks have no job and stay local - `python scripts/generate_charset_tables.py --check` and `python scripts/check_charset_interop.py` - as does any benchmark whose number a page states.
 
 ## Where things go
 

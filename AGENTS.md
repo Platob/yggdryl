@@ -28,9 +28,11 @@ Two speeds of checking, and the fast one is the instruction:
 - **CI proves the change.** The exhaustive matrix - two feature lanes, the MSRV
   toolchain, seven exchange jobs against outside implementations, both pyarrow
   legs, a JVM, every documentation example in three languages - is
-  `.github/workflows/ci.yml`'s work, never a local rehearsal of it. Push the
-  branch and read the run. §2 says what each job proves, what CI never runs, and
-  what to do with a red one.
+  `.github/workflows/ci.yml`'s work, never a local rehearsal of it: the core
+  compiles first, every job that reuses it fans out behind it, and a pull
+  request runs the jobs its change can reach. Push the branch and read the run - its
+  `CI result` job. §2 says what each job proves, how a change selects its jobs,
+  what CI never runs, and what to do with a red one.
 
 A layer opens when the one below it smokes clean and its contract is settled,
 not when a local sweep has rehearsed CI. Done means: smoke clean, pushed, CI
@@ -2219,24 +2221,84 @@ dictionary:
 
 ## What CI proves
 
-Read this instead of running it. CI passes `--locked` to every cargo and
-maturin command, so a `Cargo.lock` that would have to move is a failure there
+Read this instead of running it. CI passes `--locked` to every cargo, maturin
+and napi build, so a `Cargo.lock` that would have to move is a failure there
 and not a silent update.
 
 | Job | Proves | The one command that reproduces it |
 | --- | --- | --- |
-| Rust quality (default features, all features) | `cargo fmt`; clippy at `-D warnings` on `-p yggdryl` and on `--workspace --all-features`; `cargo test --all-targets` in both lanes and the CLI's in the default one; rustdoc examples; `cargo doc` under `RUSTDOCFLAGS=-D warnings`; the optimized benchmark configuration | the failing step verbatim, with the lane's flags: nothing, or `--all-features` |
+| Changes | the planner's own tests, then the plan: the jobs this change reaches, the run's one toolchain | `python3 scripts/ci/plan.py plan --base origin/main` |
+| Rust format | `cargo fmt` over every member | `cargo fmt --all -- --check` |
+| Rust lint (default features, all features) | clippy at `-D warnings` on `-p yggdryl` and on `--workspace --all-features`; `cargo doc` under `RUSTDOCFLAGS=-D warnings` on the same; the optimized benchmark configuration in both lanes | the failing step verbatim |
+| Core build (default features, all features, exchange features) | the core compiles, once per feature set, before anything that reuses it: the library both test lanes link and the `interop` target, and the four exchanges' feature sets | the build step verbatim |
+| Core tests (default features, all features), one job per shard | `cargo test --all-targets` in both lanes, split by `[shards.yggdryl]` of `.github/ci/rows.toml` into shards whose union `scripts/ci/plan.py` holds to `--all-targets`, and the rustdoc examples in the `rest` shard | `cargo test --locked -p yggdryl --no-fail-fast <nothing, or --all-features> $(python3 scripts/ci/plan.py targets yggdryl <default or full> <shard>)` |
+| CLI tests | `cargo test --all-targets` of `yggdryl-cli`, and the `yggdryl` command the book tests drive | `cargo test --locked -p yggdryl-cli --all-targets --no-fail-fast` |
 | Iceberg Rust 1.94 | the declared MSRV, the workspace's one: the core with every target and the official Iceberg boundary | `cargo +1.94.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets --features iceberg` |
 | S3 / Azure / Google exchange | the object stores against MinIO with boto3, Azurite with azure-storage-blob, fake-gcs-server with google-cloud-storage - signatures and dialects against implementations that answer 403 | `python scripts/check_object_interop.py`, `check_azure_interop.py`, `check_gcs_interop.py`; each fetches its own server |
-| ZIP / Avro exchange | `zipfile` and fastavro writing the archive and the container this crate then reads: the direction whose in-tree tests skip when nothing produced the input | `python scripts/check_zip_interop.py`, `python scripts/check_avro_interop.py` |
+| ZIP / Avro / Excel exchange | `zipfile`, fastavro and openpyxl writing the archive, the container and the workbooks this crate then reads: the direction whose in-tree tests skip when nothing produced the input | `python scripts/check_zip_interop.py`, `check_avro_interop.py`, `check_excel_interop.py` |
 | PyIceberg exchange | v1, v2, and v3 tables against PyIceberg | `python scripts/check_iceberg_interop.py` |
 | Spark interop | Iceberg against the format's reference implementation, behind its own marker | §3, and only for that boundary |
-| Python binding wheel | `stage_cli.py --debug`, the maturin wheel at `--profile dev` (CI never measures; the release workflow builds what ships), and the assertion that it carries `yggdryl-<version>.data/scripts/yggdryl` | the wheel path in §3, with those two debug flags |
+| Python binding wheel | `stage_cli.py --debug --locked`, the maturin wheel at `--profile dev` (CI never measures; the release workflow builds what ships), and the assertion that it carries `yggdryl-<version>.data/scripts/yggdryl` | the wheel path in §3, with those debug flags |
 | Python binding (`pyarrow==18.*`, `pyarrow>=18`) | `pytest python/tests` and `mypy --strict` on both legs, with pandas, polars, tzdata, and xxhash installed so no suite skips silently | §3, with the leg's pyarrow pinned into `python/.venv` |
 | Python binding (free-threaded 3.14t, abi3t 3.15) | the `cp314-cp314t` and `cp315-abi3.abi3t` wheels build from `--interpreter python3.14t python3.15`, the abi3t one carrying `yggdryl/_native.abi3t.so` and nothing else as its extension; the whole suite and the wheel smoke pass on 3.14t with the GIL off (polars absent, `typing_extensions` present); the abi3t extension loads under 3.15 and 3.15t with the GIL off | §3's free-threading steps |
-| Node.js binding | `test:package:debug`, the generated loader and declarations unchanged, the `yggdryl` command built so the book tests drive it rather than skip, `node --test` plus `tsc --noEmit`, and the two docs manifests | §4 |
-| Documentation examples | every fenced block under `docs/` and `skills/` compiled and run in Rust, Python, and JavaScript | `python scripts/check_docs_examples.py --lang <the failing language>` |
+| Node.js addon | `test:package:debug` and the generated loader and declarations unchanged | §4's first two pre-push lines |
+| Node.js binding | `node --test` plus `tsc --noEmit` over that addon, with the `yggdryl` command there so the book tests drive it rather than skip, and the two docs manifests | §4 |
+| Documentation examples (Rust, Python, JavaScript) | every fenced block under `docs/` and `skills/` compiled and run in that language | `python scripts/check_docs_examples.py --lang <the failing language>` |
+| API inventories | `.api-inventory.txt` and `.api-bindings.txt` against the crate's and both bindings' sources | `python scripts/check_api_inventory.py` |
+| Leaf (crate, lane, shard) | a leaf crate under `rust/<name>` proven as the core is: clippy and rustdoc at `-D warnings`, its tests and rustdoc examples in both lanes, the optimized benchmark configuration, a check at the declared MSRV where its line names one | the failing step verbatim, with the entry's flags |
+| CI result | every planned job passed and every other job was skipped | its table names each job whose result is not the plan's |
 | `docs.yml` build | `mkdocs build --strict` - nav, links, and strict warnings | `python -m mkdocs build --strict --config-file mkdocs.yml` |
+
+## How a run is planned
+
+The core compiles first and every job that reuses it fans out behind it. A core
+lane compiles the core once for one feature set and hands what it compiled to
+the jobs of that feature set (`.github/actions/rust-lane`), so a test shard or
+an exchange compiles its own targets and never the core again. A job needs only
+what it reuses: what builds in place under a feature set no lane compiles - the
+wheels, the CLI, the addon, the Rust examples, a leaf crate - starts at once on
+its own dependency cache. A core that does not compile therefore fails in every
+job that compiles it, side by side, and `CI result` names each.
+
+`Changes` plans the run from `.github/ci/rows.toml`, which names what every job
+reads, through `scripts/ci/plan.py`, after running the planner's own tests:
+
+- A push to `main` runs every job.
+- A pull request runs the rows its change touches against the base, less the
+  rows whose jobs all passed in an earlier run of the same pull request at the
+  same fingerprint - every path the row reads, `Cargo.lock` and the workflow
+  among them, the toolchain and the runner image - within seven days. The
+  ledger is what lets a long branch whose diff always holds the core push a
+  leaf or a page and pay for that alone.
+- A path that no row and no `inert` pattern names runs everything - a new,
+  changed or deleted one alike, and it never fails the plan - and so do a
+  change to the workflow, the table or the planner and, from the next push, the
+  `ci:full` label.
+- A row names the jobs that prove it; the jobs those need - the lanes, the
+  wheel, the addon - come with them.
+
+A leaf crate is one line under `[leaves]` in that table, flipped on in the
+change that creates `rust/<name>/Cargo.toml`: the planner refuses a crate under
+`rust/` with no line and a line with no crate, and its tests hold whichever
+leaves the table lists. A change under `rust/<leaf>/` other than its manifest
+runs what proves that leaf and nothing more, for it and every leaf `after` it:
+
+| Runs | Skips |
+| --- | --- |
+| `Leaf` - clippy and rustdoc on `-p yggdryl-<leaf>` alone, its tests and rustdoc examples in both lanes, its MSRV check where its line names one; `Rust format`; `API inventories`; `Documentation examples (Rust)`; `Python binding wheel` and the `pyarrow>=18` leg; `Node.js addon`, `Node.js binding` and the `CLI tests` it spawns - the bindings link every crate; the leaf's exchanges, with the core lane each restores | the core test shards, `Rust lint` in both lanes, the free-threaded build, the `pyarrow==18.*` leg, the Python and JavaScript page examples, every other exchange |
+
+| Leaf | Its exchanges |
+| --- | --- |
+| `avro` | Avro exchange |
+| `parquet` | PyIceberg exchange, Spark interop |
+| `iceberg` | PyIceberg exchange, Spark interop, Iceberg Rust 1.94 |
+| `excel` | Excel exchange |
+| `market`, `fix`, `xmla` | none |
+
+A change to the core, the lock or any manifest - a leaf's included, since it
+can move the lock - or to a file the bindings share, and every push to `main`,
+runs everything. `CI result` is the one check to require. A job that starts
+reading a new path names it in its row in the same change.
 
 ## What CI never runs
 
@@ -2264,19 +2326,24 @@ measures. A Performance table on a page is regenerated by the release run above,
 on the machine that table names, or it is not changed at all.
 `scripts/generate_fix_dictionary.py --check` needs the upstream dictionaries, so
 it runs with a regeneration ([Before you push](#before-you-push)) and never in
-CI; `python -m unittest discover -s scripts/tests`, the generator's own suite,
-runs in the change that edits the generator and has no job either.
+CI; `python -m unittest discover -s scripts/tests -p test_generate_fix_dictionary.py`,
+the generator's own suite, runs in the change that edits the generator and has
+no job either. The planner's, `test_ci_plan.py`, runs first in `Changes`.
 
 ## A red run
 
-Read the failing job's log before touching anything: the matrix names the lane,
-the feature set, the toolchain, and the interpreter, and a failure in one leg
-only is usually a feature gate or a version floor rather than the behavior.
+Read the failing job's log before touching anything: `CI result` names every
+job whose result is not the plan's - a planned job that a failure upstream
+skipped is named beside that failure, and the failure is the one to read. The
+matrix names the lane, the feature set, the toolchain, and the interpreter, and
+a failure in one leg only is usually a feature gate or a version floor rather
+than the behavior.
 Reproduce it with the narrowest local command that can show it - that leg's
 feature flags, the one interop script, the one pyarrow version - fix the cause,
 smoke it, push again. Never re-run a job to see whether it passes this time,
-never skip, relax, or quarantine a check to make it green, and never report a
-run that has not been read.
+never skip, relax, or quarantine a check to make it green - narrowing a row of
+`.github/ci/rows.toml` so a job stops running is the same thing - and never
+report a run that has not been read.
 
 # 3. Python
 
