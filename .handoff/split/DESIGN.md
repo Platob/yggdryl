@@ -1918,6 +1918,362 @@ S6 cuts the other 99. S3 needs no answer from the user.
   above are corrected by this slice's docs phase against these counts
   (`design_inputs.md` B5).
 
+## P4: design
+
+### D38 - the generic event's two instants are `transunix` and `sendunix`, and the element's own names drop `curr`
+
+**Decision.** `Event`'s instant is `transunix` - the instant the operation
+really happened, its transaction time - and its technical clock is `sendunix` -
+the instant the message was sent or received on the wire. `currunix` and
+`recdunix` are deleted at every door in one sweep, and so is the `curr` prefix
+of the element's own two names (the user's amendment): `curruuid` is `uuid`
+and `currhashcode` is `hashcode` - the element's own identifier and content
+code need no qualifier, where `prevuuid`, `crossuuid`, `crosshashcode` and
+`srcuuids` keep the prefix that says whose they are. Nothing else is renamed:
+`creaunix`, `exprunix`, `prevunix`, `snapunix`, `execunix`, `crosscode` keep
+their names, and `currency` is not a `curr` name.
+
+**`transunix`** (`i64`, nanoseconds since the Unix epoch, UTC, never absent):
+when the operation really happened - the identity and order axis `currunix`
+was. `time_uuid` floors it to milliseconds, `is_after` orders by it, an
+`InstantSequence` run is the events at one `transunix` and `seqnum` the place
+within it, `prevunix` is the predecessor's, `creaunix` defaults to it, an
+expiry's is its deadline and a snapshot view's the tick (`snapunix` the
+original), candles bucket by it, `BookService` and the `Lifecycle` view filter
+and order by it, `IsinRegistry` dates `updunix`/`firstunix`/`lastunix` by it,
+`execunix` falls back to it. FIX: the row's stated `transunix`, else
+`TransactTime(60)` or a `TrdRegTimestamps(768)` stamp of an event type within
+`official_time_delay_ms` (1000) of the sending clock - the venue's own answer
+to when it happened - else the sending clock: `official_unix` as it is,
+re-spelled. Text: the line's one instant - the `mtime` capture under
+`parse_mtime`, else the handle's `mtime`, the epoch where the line has none; a
+capture named `transunix` is refused as `currunix` is (`DERIVED_EVENT_COLUMNS`).
+
+**`sendunix`** (`Option<i64>`, the same count): the technical clock - when the
+message crossed the wire as the nearest clock saw it: FIX the carrier's instant
+where a carrier exists (the text line's `transunix`, the capture's write
+time), else the sender's `SendingTime(52)` where stated, else none - today's
+`recdunix` precedence kept, because `SendingTime(52)` is already a column of
+the fixed row and the capture's clock has no other; text a row-header capture
+named `sendunix` alone (`EVENT_CAPTURES`), never the `mtime`. Outside identity
+and every digest, as `recdunix` was. The merge reference keeps its shape over
+the name: the statement sent last is the reference (`right_is_reference` - a
+stated clock leads an unstated one, equal or absent clocks fall back to the
+later `transunix`, exact ties keep `left`), two statements of one event keep
+the earliest `sendunix` (`fold_event_instants`, the trade's `canonical_data`,
+the book's `fold_bounds`), the book's `reference_clock` and the trade's
+`reference_key` read `(sendunix, transunix[, uuid])`. The alternative
+reading - `sendunix` the sender's `SendingTime(52)` first - is one precedence
+line and its tests; it was not taken, and the handoff names it for the user.
+
+**The element's own names.** `uuid` (`ElementColumn::Uuid`, display `UUID`,
+`get_uuid`/`set_uuid`, `Event::time_uuid` unchanged as the derivation) and
+`hashcode` (`ElementColumn::HashCode`, display `Hash Code`,
+`get_hashcode`/`set_hashcode`) are the first two of the six element columns,
+their positions, datatypes and derivations unchanged: `hashcode` is still the
+XXH3-64 of what the element states and `uuid` the UUIDv7 over `transunix`,
+`seqnum`, `hashcode` and `crosshashcode`. A text row's six element columns
+open with `uuid`; the `marketdata` row, the FIX row, the BookService keys and
+the pages spell them.
+
+**Wire.** Crate fields 65_001 `uuid`, 65_002 `hashcode`, 65_007 `transunix`
+and 65_009 `sendunix`: the tags kept, the names and descriptions re-spelled
+(`UUID_TAG_NAME`, `HASHCODE_TAG_NAME`, `TRANSUNIX_TAG_NAME`,
+`SENDUNIX_TAG_NAME`; every crate-field text naming one of the four re-spelled
+with them), so the crate's field shard and the fixed-row component are written
+again (the dump, `YGGDRYL_FIX_DUMP_WRITE=1`), the dictionary hash moves once
+with the sentence "It last moved when `curruuid`, `currhashcode`, `currunix`
+and `recdunix` became `uuid`, `hashcode`, `transunix` and `sendunix`: 65_001,
+65_002, 65_007 and 65_009 re-spelled with their descriptions, so the crate's
+field shard and the fixed row component were written again. No count of the
+census below moved.", `docs/assets/fix.json` is
+regenerated after the addon, and `rust/tests/fix/equivalence.snapshot` is
+written again (`YGGDRYL_FIX_EQUIVALENCE_WRITE=1`): its keyed lines
+re-spelled (`field.uuid`, `field.hashcode`, `field.transunix`,
+`field.sendunix`), every value and every digest line unchanged - the digest
+feeds no instant and no label. `EventColumn::TransUnix` and `SendUnix` keep positions 1 and 3 of
+nine (display `Transaction Time`, `Sending Time`; descriptions "When the
+operation happened: the settled transaction instant, UTC." and "When the
+message crossed the wire, where that is known; the earliest its statements
+know."). The `marketdata` row, the FIX row, the text row, the `BookService`
+JSON and CSV keys and `node/book/audit.js` spell the new names. The one open
+pin: `rust/src/fix/msg.rs:3201` pins a content code whose doc says a column
+relabel moved every content code; the slice reads the content-code feed and
+states whether the four labels enter it - if they do, that pin and every
+`uuid` move once with the sentence; if not, both hold.
+
+**Bindings and pages.** Python and Node getters, setters, the constructor's
+first positional (`transunix`), `**facts` keys, error texts ("states
+`transunix` once, as its first argument"), the `.pyi` stubs,
+`.api-bindings.txt`, `.api-inventory.txt`; Node re-spelled only, no door
+added. Every page and skill, the schema tables (tag literals unchanged),
+`docs/fix/capture.md`'s dating rule, `docs/graph/serve.md`'s CSV header;
+AGENTS.md: the text row contract sentence, the `graph/` (`element.rs`,
+`column.rs`), `fix/` and `isin_registry.rs` rows.
+
+**Pins.** `MarketData` at 912, every `allocations` and `iobase_calls` row and
+the census unmoved; the hash, the dump, the snapshot and `fix.json` move once
+each as above.
+
+**The sweep's anchors beyond the bare names**: `get_/set_currunix`,
+`get_/set_recdunix`, `get_/set_curruuid`, `get_/set_currhashcode`,
+`walked_currunix`, `EventColumn::CurrUnix`/`RecdUnix`,
+`ElementColumn::CurrUuid`/`CurrHashCode`, the `*_TAG_NAME` constants,
+upper-case `CURRUNIX`/`CURRUUID`/`CURRHASHCODE` keys in binding tests,
+`fix_event_recdunix`/`graph_order_event_recdunix`/`eventCurrunix` typing
+names, test names, the Iceberg declarations in tests (`time_bucket('15
+minutes', currunix)`, the sort and key lists); `refrecdunix` - the retired
+FIX field 65_064, a name of its own - is excluded by the regex and not
+renamed.
+
+Slice: P4, in place, after S3 lands and before P5 (D37); one commit.
+
+## P5: design
+
+### D37 - `MarketMessage`, the market side's own message, and the FIX codec's doors onto it
+
+**Decision.** `MarketMessage` is a concrete public struct in
+`rust/src/graph/message.rs` - the one message every protocol lands in and the
+one `MarketData` holds whole. S3's `pub trait MarketMessage`,
+`MarketData::Fix(Box<dyn MarketMessage>)`, `as_message::<T>()`, `into_any`,
+`clone_box` and `dyn_eq` are deleted; nothing in `graph/` names a FIX type.
+
+**The type.**
+
+```rust
+pub struct MarketMessage {
+    facts: Box<OperationEventFacts>, // every element, event, market and operation fact, typed - the one owner
+    stated: StatedFacts,             // the facts the source stated, one bit each (FixMsg's 28 bits, generic)
+    root: Arc<Field>,                // the protocol's entry root - one Field per dictionary, shared
+    row: Scalar,                     // the entries: the ordered run under root, what was stated beyond the facts
+    children: Vec<MarketMessage>,    // the elements the message states - a book message's levels - each a message
+    metadata: Metadata,              // the keys no dictionary resolved
+    anomalies: Vec<Anomaly>,         // what a parse or a walk could not honour
+    instrument: InstrumentStatement, // countrycode, underlyingisin, eusipacode stated of its instrument
+}
+```
+
+- `Element`, `Event`, `Market` and `Operation` are implemented once, on
+  `MarketMessage`, through `delegate_event!`, `delegate_market!` and
+  `delegate_operation!` over `facts`; `with_previous`, `merge_with` and
+  `restating` are concrete over `Element`'s combinators
+  (`following_operation`, `merging_operation_event`, `fold_anomalies`, all
+  generic); `note_conflict` pushes an `Anomaly`; `follow_identity` is the
+  trait's provided one. `OperationEventFacts` stays crate-private.
+- The entries are the one row shape: `record() -> FieldRecord<'_>`,
+  `entry(name) -> Option<FieldScalar<'_>>` by exact name through
+  `Field::index_of`, `with_entries(root, row)` canonicalizing once under the
+  root. No second schema class, no per-read parse: a cell read is one buffer
+  read. A tag index is FIX's, on its handle.
+- `children` are full messages - facts filled by the codec at parse, the
+  record under the group's root (one `Arc<Field>` per group per dictionary);
+  the parent's record holds no cell for them. `into_market_data(self)`: with
+  children, one leaf per child the book records
+  (`MarketDataKind::is_recorded`), the parent's facts carried into what the
+  child states nothing of (`carry`, as `expand_message` does today), each
+  child's facts box moved; without, one leaf by `marketdatakind`, the facts
+  box moved, zero allocations; a book message with no children one scoped
+  snapshot control. `into_market_leaf` as today. `expand_message`,
+  `operations`, `direct_of`, `is_book_message`, `carry`, `direct_unmapped`
+  and `FixMarketIterator` move from `fix/market.rs` to `graph/message.rs`
+  (`MessageIterator`, the lazy projection of sorted messages into leaves) and
+  read facts alone - every FIX reading they made (tag 268, `MDEntryType`,
+  `MsgType`) is a fact the parse filled.
+- `Anomaly { field, reason }` in `graph/anomaly.rs` is `FixAnomaly` moved and
+  renamed - no row holds it today and none will.
+- `InstrumentStatement { countrycode: Option<Country>, underlyingisin:
+  Option<Isin>, eusipacode: Option<Eusipa> }`: what a message states of its
+  instrument that is a registry fact and no element fact - set by a codec at
+  parse (FIX from `UnderlyingSecurityID(309)`, `UnderlyingSymbol(311)` and the
+  bridge keys exactly as `stated_underlying_isin`/`stated_eusipa` read them
+  today), read by `IsinRegistry::learn_stating` through `instrument()`,
+  lifted into no column.
+- `StatedFacts`: the bits of the facts a source stated; `FixMsg`'s `stated`
+  and `row_stated` move here, its `stale` bits vanish - the row holds no fact
+  cell to go stale.
+- Size: about 170 bytes inline in `MarketData::Message(MarketMessage)`, the
+  facts boxed as `FixMsg` boxes them today; `size_of::<MarketData>() == 912`
+  holds, `SnapshotEvent` the widest leaf.
+- `MarketData::Message(MarketMessage)` replaces `Fix(..)`;
+  `MarketKind::Message`, spelled `message`, replaces `Fix`/`fix` - last in
+  the order as `fix` was, the `kinds` pins in both bindings and
+  `rust/tests/graph/kind.rs` re-pinned with the sentence; `From<MarketMessage>
+  for MarketData`, `TryFrom<MarketData> for MarketMessage`, `as_message()` and
+  `as_message_mut()` borrow; `From<FixMsg> for MarketData` is `into_message`
+  then hold; the `marketdata` writer and the book fold split a held message
+  through `into_market_data` as they split a FIX message today.
+- The message's own row form: `MarketMessage::field(root: &Field) -> Field` -
+  the fact columns in `marketdata` order (`ElementColumn`, `EventColumn`,
+  `MarketColumn`, `OperationColumn`), then the entry root's children, then
+  `children` (`serie<struct<..>>` of the child form, one level), `metadata`,
+  `anomalies` (`serie<struct<field: utf8, reason: utf8>>`) -
+  `into_scalar(&self)` and `from_scalar(root, &Scalar)`; pickle and the value
+  stream ride it. It is not the FIX fixed row, which is the codec's.
+
+**FIX.**
+
+- `FixMsg` stays as the codec's handle over a message: `registry:
+  Arc<FixRegistry>`, `message: MarketMessage`, `header: Box<FixHeader>` (the
+  typed header cache), the tag and name indexes into the record, the capture
+  it was cut from where one exists. `FixLifted` is deleted: the record's cells
+  are the typed storage and `LIFTED_TAGS` render from them. `into_message(self)
+  -> MarketMessage` moves, zero allocations; `from_message(registry, message)
+  -> Result<FixMsg>`: a message under this registry's entry root adopted as
+  it is, its indexes rebuilt once, O(entries), no text parsed; one under
+  another root re-rooted - an entry whose name the registry resolves lands
+  under that field, one it does not in `metadata`, the facts untouched.
+  `FixMsg`'s hand-written `Element`/`Event`/`Market`/`Operation` impls are
+  deleted; the codec reads facts through `message()`/`message_mut()`, and a
+  view that must be an event (the lifecycle's `LifecycleMessage`) delegates
+  to the message as it does today.
+- The FIX entry root: one `Arc<Field>` per registry built beside
+  `fix_schema` - the fixed row's columns less the fact columns (the crate tags
+  `Typed::fact` maps onto facts), less `metadata`, less the elements group
+  the children render; `fixentries` among them. `into_row` interleaves the
+  fact columns (from `facts`) and the entry columns (from `row`, shared) by a
+  per-registry column index; `from_row` is the inverse, the entries' run
+  shared; the `NoMDEntries(268)` occurrences render into `fixentries` from
+  the children, byte for byte as today. The fixed row's definition and column
+  order, the crate dump, `fixmsg` (65_053) and the dictionary hash are
+  untouched; the equivalence snapshot is unmoved.
+- A tag the dictionary's idmap maps onto a fact - `Side(54)`, `Price(44)`,
+  `OrderQty(38)`, every one of them - is never an entry: it is read into the
+  fact at parse and rendered from the fact at `into_row` and on the wire. The
+  entries are the tags the idmap does not consume. So "a FIX message writing
+  the side as `Side(54)`" is the render rule, and `follow_identity` needs no
+  FIX override.
+- Wire: `into_bytes`/`into_text` as today for a parsed message. For a message
+  no FIX parse built - its root another dictionary's or empty - the renderer
+  writes each stated fact under the standard tag the idmap names for it (one
+  tag per fact, the inverse of the enrichment, the table listed in the
+  contract from `Typed`/`identity::record`), else under its crate tag
+  (65_0xx), so no stated fact is lost; `MsgType(35)` from `marketdatakind`
+  and `state` where unstated - `8` for an order or an execution event, `S` for
+  a quote, `W` for a book, `AE` for a trade, the table beside
+  `fix::state::from_msgtype`; the header from the entries; the entries by
+  tag in pre-order; the trailer stated only. `FixCodec::parse(render(m))`
+  restates `m` - facts, stated bits, entries, metadata, children equal - the
+  round-trip pin in `rust/tests/fix/`.
+- `stated_underlying_isin` and `stated_eusipa` become the parse's
+  `state_instrument` fill; `refill_instrument_ids` stays the parse's.
+
+**Bindings.** Python: `MarketMessage` (frozen, hashable, pickled through its
+row form), `FixMsg.into_message()`, `FixMsg.from_message(registry, message)`,
+`MarketData(message)` intake, `MarketData.as_message()` replacing `as_fix()`,
+`Anomaly` replacing `FixAnomaly`. Node: `asFix()` re-spelled `asMessage()`
+answering a `MarketMessage` object - the class Node must carry to keep the
+door it has - `MarketData`'s intake of a `FixMsg` converting inside,
+`FixAnomaly` re-spelled; nothing else added.
+
+**Cost.** `into_message` and `into_market_leaf` zero allocations (the facts
+box moves); the rekey rows (`allocations.rs` @8595) unchanged; bytes per
+parsed message within the @8715 pin - the caches that leave `FixMsg` pay for
+the message's vectors; children exist for book messages alone, and a new
+row at a `W` fixture states their cost; a new `allocations` row for
+`into_message`/`from_message`; the `fix` bench gains the render of a native
+message.
+
+**Pages.** `docs/graph/market-data.md` (the message, its doors, its row
+form), the FIX pages' from/into, skills `yggdryl-market-data` and
+`yggdryl-fix`; AGENTS.md: the `graph/` row (`message.rs`, `anomaly.rs`,
+`market_data.rs`), the `fix/` row (`FixMsg` the handle; the idmap rule), the
+S4 note (the 31 market-owned items FIX reached mostly gone: a public message
+with public trait doors needs no `from_facts`).
+
+Slice: P5, in place, after P4 (it speaks `transunix`/`sendunix`) and before
+S4; one commit.
+
+## P3: design
+
+### D36 - `yggdryl-s3`: the object-store backend as the ninth crate, through a storage-backend extension point
+
+**Decision.** The object-store backend (`rust/src/s3/`: Amazon S3, Google
+Cloud Storage, Azure Blob Storage) reaches `Holder` through a register, as a
+medium reaches `Media`, and leaves for `rust/s3/` as `yggdryl-s3`. `aws/` and
+`auth/` stay in the core under the `aws` feature.
+
+1. **The register.** `rust/src/holder/backend.rs`: `StorageBackend` - `name()
+   -> &'static str` (the crate), `schemes() -> &'static [Scheme]`,
+   `is_property(&str) -> bool`, `holder(&Url, &[(String, String)]) ->
+   Result<Holder>` - one `static` per backend, claimed all-or-none on
+   `plugin::Register<Scheme, &'static dyn StorageBackend>` (`claim_backend`,
+   `backend_for`, `backends`), asked by `Holder::from_url` after the
+   identifier is lowered and after the local and ZIP arms, before `http`, its
+   answer `described` as every other (media type, codec - the pin P3 writes
+   first, missing today). A scheme a core arm holds (`file`, `zip`, `http`,
+   `https`, `memory`, ...) is refused at claim. `Locator` stays what it is - an
+   object a location names, asked before lowering - and is not widened. The
+   ten object-store schemes (`s3 s3a s3n gs gcs az abfs abfss wasb wasbs`) are
+   the backend's claim; `Holder::is_backend_property` reads
+   `backend_for(scheme)?.is_property`; a scheme no claim answers is refused
+   naming the crate to install.
+2. **The handle.** `Holder::Registered(Box<dyn RegisteredHandle>)`,
+   `RegisteredHandle: IOBase + Sync + Debug` with `implementation_name`,
+   `exists(&self) -> bool` (its role's), `reopen(&self) -> Result<Holder>`
+   (what `from_handle` answers: the same client, nothing sent), `as_any` and
+   `as_any_mut`. `S3Folder`, `S3Path` and `S3File` leave the enum: three `cfg`
+   arms out of each of the six exhaustive matches, one `Registered` arm in.
+3. **The capabilities** the wildcards specialized on S3 become `IOBase`
+   methods with defaults - no second storage trait: `upload_from(&mut self,
+   source: &mut dyn Read, length: u64) -> Result<()>` (default: the source
+   read whole then `write_all_bytes`, today's fall-through), `discard(&self)
+   -> Result<bool>` (default `false`: nothing staged to drop, the caller
+   removes), `as_leaf(&self) -> Result<Option<Holder>>` and
+   `as_container(&self) -> Result<Option<Holder>>` (default `None`: the handle
+   as it is), `set_known_size(&mut self, size: u64)` (default no-op);
+   `into_byte_stream`'s `Registered` arm reads the existing
+   `owned_stream_bytes` (S3's lazy resuming `GET`, one request) else the
+   cursor reader. `delegate_iobase!` forwards them, so every wrapper keeps
+   them. `iceberg/staging.rs` (`upload`, `unpublished`, `leaf`, `container`,
+   `sized`), `iceberg/catalog/mod.rs` `folder_role` and Python's `Role::of`
+   lose their S3 arms and call the verbs. Every request-count pin holds: the
+   trio keeps its own `IOBase` impls, and construction, child resolution and
+   a reopen stay request-free.
+4. **`Site::Store`** becomes `Site::Opened { url: Url, open: Arc<dyn
+   Fn(&Properties) -> Result<Holder> + Send + Sync> }` - `Eq`/`Hash` by url,
+   `Debug` by hand - built by `s3tables/` over the backend under the bucket's
+   session; `warehouse/handle.rs` names no AWS or S3 type.
+5. **`aws/` and `auth/` stay core**, under `aws`: who this process is to AWS
+   for every service, `with_sigv4` an inherent method of `http::Request`,
+   `ureq` in no published signature. The 58 non-public items `s3/` reaches
+   land in `implementer` (gated as their owners are, the ureq-typed
+   forwarders included - the door is hidden); the 23 `cfg(feature = "s3")`
+   sites in `aws/`, `auth/`, `http/` and `xml/` re-key to the feature of the
+   module that holds them.
+6. **Edges.** D15 amended: `yggdryl-iceberg`'s `s3tables` depends on
+   `yggdryl-s3` (which implies `yggdryl[aws]`) and installs it; the core's `s3`
+   feature is deleted at S6d (P3 keeps it in place); the bindings and the CLI
+   link the crate and install it at import and start; a pure-Rust
+   `Holder::from_url("s3://..")` before `install()` is refused naming
+   `yggdryl-s3`, as a medium is.
+7. **Pins.** The 11 core-resident pins over S3 handles and the five
+   `accounting::iceberg` tests move at S6d to `rust/iceberg/tests/` (a
+   dev-dependency on the leaf from the core's tests is a cycle; from
+   iceberg's it is the `s3tables` edge); `FakeS3` stays in
+   `rust/tests/support/`, `#[path]`-included by the crate's tests; the three
+   exchange scripts keep their `--test interop s3::<dialect>::` and move with
+   the tests.
+8. **Bindings.** Python's `S3File`/`S3Folder`/`S3Path` classes pick by
+   `downcast_ref` through `as_any` (the `warehouse.rs` precedent), `cloned`
+   replaced by `from_handle`; Node's `folder_holder_for` links the crate.
+9. **CI.** `[leaves]` gains `s3 = { package = "yggdryl-s3", jobs =
+   ["object-interop", "azure-interop", "gcs-interop"] }` and `iceberg` takes
+   `after = ["s3"]`; the planner's `LEAF_LINE` reads `[a-z][a-z0-9]*`,
+   `EXCHANGES` gains the three, `NEVER` drops them for `s3`, its tests with
+   it.
+10. **Slices.** P3 in place: the register, `Holder::Registered`, the `IOBase`
+    capabilities, `Site::Opened`, the trio claimed by the core itself under
+    `CORE` at startup, the missing `from_url` pin, the pages (the Object
+    stores section of `docs/holder/index.md` gains the extension point); S6d
+    the move to `rust/s3/` with `install()`, the leaf line, the tests moved.
+    P3's files are disjoint from P4's and P5's (`holder/`, `iobase.rs`,
+    `iceberg/staging.rs`, `iceberg/catalog/mod.rs`, `warehouse/handle.rs`,
+    `s3tables/`, `s3/`, the bindings' handle files), so it runs beside them
+    and lands when its chain is clean.
+
+Names: `StorageBackend`, `RegisteredHandle`, `Holder::Registered`,
+`claim_backend`, `backend_for`, `backends`, `Site::Opened`.
+
 ## The ledger
 
 | D# | decision | evidence | slice |
@@ -1956,6 +2312,9 @@ S6 cuts the other 99. S3 needs no answer from the user.
 | D34 | the medium holds its origin (`read_origin_field`), one schema answer, one projection rule (declared ∩ the columns the select and early filter read), one composer in `media_serie.rs` that `read_record_serie` also calls, `source_field` and the five residual copies gone; S8 amended | the user's instruction; `pushdown_map/design_inputs.md`; "P2 results" | S2b, built P2 |
 | D35 | `MediaCache` on every wrapper under `cache_ttl` (milliseconds, 0 realtime, outside the hash feed as `file_threads`), served while open or younger than the TTL, every write door updating or invalidating it | the user's instruction; `pushdown_map/metadata_caches.md`; "P2 results" | S2b, built P2 |
 | D33 | `yggdryl-xmla`, an eighth crate through the media point, `soap/` with it; registered in place in S2b (the core's own media three: `RecordOptions::Xmla`, `Media::Xmla`, `Serie::Xmla` deleted), moved in S6c; the Python `Xmla` class stays in the one native module; the CLI's `xmla serve` depends on it | the user's instruction; the 32 core sites and the 26 import lines above; crates.io 404 | S2b, built S6c |
+| D38 | `currunix` -> `transunix` (the transaction instant, required, the identity and order axis), `recdunix` -> `sendunix` (the technical wire clock, optional, the merge reference), and the element's own `curruuid` -> `uuid`, `currhashcode` -> `hashcode` (`prevuuid`, `crossuuid`, `crosshashcode`, `srcuuids` keep their prefix); precedences, values, derivations, positions and tags unchanged - the carrier's clock first, else `SendingTime(52)`; crate fields 65_001, 65_002, 65_007 and 65_009 re-spelled, so the dump, the dictionary hash (once, with its sentence), the snapshot's keys and `fix.json` move and the census does not | the instants map | P4 |
+| D37 | `MarketMessage` a concrete public struct in `graph/message.rs` - boxed facts, `StatedFacts`, the entries as an `Arc<Field>` root and a `Scalar` row, `children`, `Metadata`, `Vec<Anomaly>`, `InstrumentStatement` - the four traits implemented once on it; `MarketData::Message`, `MarketKind::Message` (`message`); `FixMsg` the codec's handle over a message (`into_message`, `from_message`), an idmap-mapped tag never an entry, a native message rendered by the inverse idmap else its crate tags; S3's trait, `as_message::<T>()` and `Box<dyn MarketMessage>` deleted | the message map, `message_map/design_inputs.md` | P5 |
+| D36 | `yggdryl-s3` through a storage-backend extension point: `StorageBackend` claimed per scheme on the register (`claim_backend`, `backend_for`, `backends`), asked by `Holder::from_url` after lowering, its answer described; `Holder::Registered(Box<dyn RegisteredHandle>)`; the verbs the wildcards specialized on S3 (`upload_from`, `discard`, `as_leaf`, `as_container`, `set_known_size`) as `IOBase` defaults and `into_byte_stream` over `owned_stream_bytes`; `Site::Opened` with an opener; `aws/` and `auth/` stay core under `aws`; `yggdryl-iceberg[s3tables]` depends on `yggdryl-s3`; CI leaf `s3` with the three exchanges | the backend map, `s3_backend_map/design_inputs.md` | P3 in place, S6d the move |
 | D25 | the seventeen codes stay core and flat; the register holds enum kinds alone (`Code8`/`Code16`), `MarketPayload`, `is_canonical`, `respell` and `CODE_VALUE_RANK` deleted; `yggdryl-market` carries the enums, `graph/` and the ISIN registry | the user's instruction; the S0 pins; one free Code byte | S1 |
 
 ## Review (S0)
