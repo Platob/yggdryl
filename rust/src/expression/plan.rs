@@ -1298,10 +1298,7 @@ impl Plan {
     /// # Errors
     ///
     /// The first error `map` answers, the plan dropped with it.
-    pub(crate) fn map_sources(
-        mut self,
-        mut map: impl FnMut(Source) -> Result<Source>,
-    ) -> Result<Self> {
+    pub fn map_sources(mut self, mut map: impl FnMut(Source) -> Result<Source>) -> Result<Self> {
         if let Some(from) = self.from.take() {
             self.from = Some(map(from)?);
         }

@@ -1,5 +1,7 @@
 //! Record-format integration tests, one module per media family.
 
+#[path = "media/doors.rs"]
+mod doors;
 #[path = "media/inference.rs"]
 mod inference;
 #[path = "media/magic.rs"]
@@ -12,5 +14,7 @@ mod mod_;
 mod options;
 #[path = "media/partition.rs"]
 mod partition;
+#[path = "media/registered.rs"]
+mod registered;
 #[path = "media/structured.rs"]
 mod structured;

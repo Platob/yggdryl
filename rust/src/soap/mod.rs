@@ -239,7 +239,11 @@ impl Fragment {
     /// The value as the natural document carries it: with the scope's
     /// bindings the element spells declared on it, so a message's natural
     /// value and its bytes describe one message.
-    pub(crate) fn natural_value(&self) -> Result<Scalar> {
+    ///
+    /// # Errors
+    ///
+    /// Returns what declaring the scope's bindings on the value refuses.
+    pub fn natural_value(&self) -> Result<Scalar> {
         Ok(self
             .declared_value(None)?
             .unwrap_or_else(|| self.value.clone()))
@@ -971,7 +975,11 @@ fn record(entries: impl IntoIterator<Item = (SmolStr, Scalar)>) -> Result<Scalar
 }
 
 /// Refuse a name two of `fragments` share, naming it as `what`.
-pub(crate) fn distinct(fragments: &[Fragment], what: &str) -> Result<()> {
+///
+/// # Errors
+///
+/// Returns [`Error::Codec`] naming the shared name and `what`.
+pub fn distinct(fragments: &[Fragment], what: &str) -> Result<()> {
     for (index, fragment) in fragments.iter().enumerate() {
         if fragments[..index]
             .iter()

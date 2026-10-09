@@ -328,7 +328,8 @@ fn catalog_name(url: &Url) -> Result<SmolStr> {
     })
 }
 
-/// The absence of a catalog called `name`.
-pub(crate) fn no_catalog(name: &str) -> Error {
+/// The absence of a catalog called `name`: what every door that resolves a
+/// catalog by name answers for one the warehouse does not hold.
+pub fn no_catalog(name: &str) -> Error {
     Error::absent("catalog", path_text(&[SmolStr::new(name)]))
 }

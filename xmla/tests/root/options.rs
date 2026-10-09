@@ -13,11 +13,11 @@ use yggdryl::arrow::BatchReader;
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::soap::ENVELOPE_NAMESPACE;
-use yggdryl::xmla::{Content, Method, NAMESPACE, ROWSET_NAMESPACE, XmlaOptions};
 use yggdryl::{
     Codec, DataType, Field, Filter, IOBase, IOMedia, IOMode, Level, MediaType, MimeType, Plan,
     Scalar, Selector, StructType, Timezone, Url,
 };
+use yggdryl_xmla::{Content, Method, NAMESPACE, ROWSET_NAMESPACE, XmlaOptions};
 
 /// The rowset the fixtures read and write: `id` and a nullable `symbol`.
 fn schema() -> Field {
@@ -48,8 +48,10 @@ fn reader() -> BatchReader {
     yggdryl::arrow::batch_reader(batch.schema(), [batch])
 }
 
-/// An empty in-memory handle declaring the XMLA media type.
+/// An empty in-memory handle declaring the XMLA media type, the encoding
+/// registered so the type reaches the medium through the core's doors.
 fn handle() -> Buffer {
+    yggdryl_xmla::register();
     Buffer::new().with_media_type(MediaType::new(MimeType::XMLA))
 }
 
@@ -264,22 +266,6 @@ fn the_xmla_variant_refuses_the_settings_of_another_encoding() {
         );
     }
 
-    #[cfg(feature = "parquet")]
-    {
-        assert_eq!(options.parquet_compression_name(), None);
-        assert_eq!(options.parquet_max_row_group_size(), None);
-        assert_eq!(options.parquet_key_value_metadata(), None);
-        let message = options
-            .set_parquet_max_row_group_size(10)
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("expected Parquet options"), "{message}");
-        assert!(
-            message.contains("got application/xmla+xml options"),
-            "{message}"
-        );
-    }
-
     assert_eq!(options, before);
 }
 
@@ -334,7 +320,7 @@ fn an_encoding_no_variant_covers_names_the_xmla_media_type_among_those_that_are(
 fn new_and_default_are_one_value() {
     assert_eq!(XmlaOptions::new(), XmlaOptions::default());
     // The module path and the re-export name one type.
-    let options: yggdryl::xmla::options::XmlaOptions = XmlaOptions::default();
+    let options: yggdryl_xmla::options::XmlaOptions = XmlaOptions::default();
     assert_eq!(options, XmlaOptions::new());
 }
 
@@ -753,10 +739,11 @@ fn the_plan_reads_which_columns_and_partitions_it_narrows_to() {
 
 #[test]
 fn the_xmla_media_type_names_the_xmla_variant() {
+    yggdryl_xmla::register();
     let media_type = MediaType::from_str("application/xmla+xml").unwrap();
     assert_eq!(media_type.base(), &MimeType::XMLA);
     let options = RecordOptions::for_media_type(&media_type).unwrap();
-    assert_eq!(options, RecordOptions::Xmla(XmlaOptions::new()));
+    assert_eq!(options, RecordOptions::from(XmlaOptions::new()));
     assert_eq!(options.mime_type(), MimeType::XMLA);
     assert_eq!(
         RecordOptions::for_mime_type(&MimeType::XMLA).unwrap(),
@@ -766,19 +753,20 @@ fn the_xmla_media_type_names_the_xmla_variant() {
     let shouted = MediaType::from_str("APPLICATION/XMLA+XML").unwrap();
     assert_eq!(
         RecordOptions::for_media_type(&shouted).unwrap(),
-        RecordOptions::Xmla(XmlaOptions::new())
+        RecordOptions::from(XmlaOptions::new())
     );
 }
 
 #[test]
 fn a_content_coding_does_not_change_the_record_encoding() {
+    yggdryl_xmla::register();
     let url = Url::from_str("file:///a.xmla.gz").unwrap();
     let media_type = url.media_type();
     assert_eq!(media_type.base(), &MimeType::XMLA);
     assert_eq!(media_type.encoding(), Some(&MimeType::GZIP));
     assert_eq!(
         RecordOptions::for_media_type(&media_type).unwrap(),
-        RecordOptions::Xmla(XmlaOptions::new())
+        RecordOptions::from(XmlaOptions::new())
     );
 }
 
@@ -795,9 +783,14 @@ fn the_options_convert_into_the_xmla_variant_unchanged() {
     assert_eq!(record.field(), Some(schema()));
     assert_eq!(record.name(), "row");
     assert_eq!(record.max_row_size(), Some(9));
-    let RecordOptions::Xmla(inner) = record else {
-        panic!("XMLA options convert into the XMLA variant");
+    let RecordOptions::Registered(registered) = &record else {
+        panic!("XMLA options convert into the registered variant");
     };
+    assert_eq!(registered.mime_type(), &MimeType::XMLA);
+    assert_eq!(registered.properties().get("envelope"), Some("false"));
+    assert_eq!(registered.properties().get("method"), Some("Discover"));
+    assert_eq!(registered.properties().get("content"), Some("Data"));
+    let inner = XmlaOptions::from_record_options(&record).expect("the XMLA options read back");
     assert_eq!(inner, options);
 }
 
@@ -816,9 +809,7 @@ fn the_variant_forwards_every_shared_setting_to_the_xmla_options() {
     record.set_max_byte_size(Some(2));
     record.set_commit_batch_num(Some(1));
     record.set_level(Level::FAST);
-    let RecordOptions::Xmla(inner) = record else {
-        unreachable!("the setters keep the variant");
-    };
+    let inner = XmlaOptions::from_record_options(&record).expect("the setters keep the variant");
     assert_eq!(
         inner,
         XmlaOptions::new()
@@ -844,13 +835,13 @@ fn the_variant_forwards_every_shared_setting_to_the_xmla_options() {
 fn an_xmla_handle_answers_the_default_xmla_options() {
     assert_eq!(
         handle().record_options().unwrap(),
-        RecordOptions::Xmla(XmlaOptions::new())
+        RecordOptions::from(XmlaOptions::new())
     );
     let named =
         Buffer::new().with_media_type(Url::from_str("file:///cube.XMLA").unwrap().media_type());
     assert_eq!(
         named.record_options().unwrap(),
-        RecordOptions::Xmla(XmlaOptions::new())
+        RecordOptions::from(XmlaOptions::new())
     );
 }
 

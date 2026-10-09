@@ -44,8 +44,8 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::xml::{Element, XSD_NAMESPACE, XSI_NAMESPACE};
-use crate::{
+use yggdryl::xml::{Element, XSD_NAMESPACE, XSI_NAMESPACE};
+use yggdryl::{
     Charset, DataType, Error, Field, Result, Scalar, Serie, StructType, TimeUnit, Timezone,
 };
 
@@ -291,7 +291,7 @@ impl fmt::Display for XsdType {
 /// escaped as `_x005F_x` so the encoding reads back exactly.
 ///
 /// ```
-/// use yggdryl::xmla::rowset::{decode_name, encode_name};
+/// use yggdryl_xmla::rowset::{decode_name, encode_name};
 ///
 /// assert_eq!(encode_name("Order Id"), "Order_x0020_Id");
 /// assert_eq!(encode_name("2024"), "_x0032_024");
@@ -306,13 +306,13 @@ pub fn encode_name(name: &str) -> SmolStr {
     let mut first = true;
     while let Some(character) = characters.next() {
         let allowed = if first {
-            crate::xml::is_name_start(character) && character != ':'
+            yggdryl::xml::is_name_start(character) && character != ':'
         } else {
-            crate::xml::is_name_char(character) && character != ':'
+            yggdryl::xml::is_name_char(character) && character != ':'
         };
         let escape = !allowed || (character == '_' && characters.peek() == Some(&'x'));
         if escape {
-            crate::xml::write_x_escape(&mut encoded, character);
+            yggdryl::xml::write_x_escape(&mut encoded, character);
         } else {
             encoded.push(character);
         }
@@ -338,7 +338,7 @@ pub fn decode_name(encoded: &str) -> SmolStr {
     if encoded == EMPTY_NAME {
         return SmolStr::new_static("");
     }
-    SmolStr::new(crate::xml::decode_x_escapes(encoded))
+    SmolStr::new(yggdryl::xml::decode_x_escapes(encoded))
 }
 
 /// One column of a rowset: the element name it is spelled under, how its
@@ -420,7 +420,7 @@ enum Shape {
 /// is spelled under.
 ///
 /// ```
-/// use yggdryl::xmla::rowset::Rowset;
+/// use yggdryl_xmla::rowset::Rowset;
 /// use yggdryl::{DataType, Field, Scalar, Serie, StructType};
 ///
 /// let field = Field::new(
@@ -522,7 +522,7 @@ impl Rowset {
     pub fn write_root<W: Write>(
         &self,
         writer: &mut W,
-        batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>,
+        batches: impl IntoIterator<Item = yggdryl::arrow::Result<Serie>>,
         schema: bool,
         data: bool,
     ) -> Result<()> {
@@ -547,7 +547,7 @@ impl Rowset {
     pub fn write_root_reporting<W: Write>(
         &self,
         writer: &mut W,
-        batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>,
+        batches: impl IntoIterator<Item = yggdryl::arrow::Result<Serie>>,
         schema: bool,
         data: bool,
     ) -> Result<Option<super::response::XmlaError>> {
@@ -559,7 +559,7 @@ impl Rowset {
     fn write_root_with<W: Write>(
         &self,
         writer: &mut W,
-        batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>,
+        batches: impl IntoIterator<Item = yggdryl::arrow::Result<Serie>>,
         schema: bool,
         data: bool,
         report: bool,
@@ -755,7 +755,7 @@ impl Rowset {
             fields.push(field);
         }
         let field = Field::new(
-            crate::media::DEFAULT_ROOT_NAME,
+            yggdryl::media::DEFAULT_ROOT_NAME,
             DataType::from(StructType::from_fields(fields)?),
             false,
         );
@@ -809,12 +809,11 @@ impl Rowset {
                 reason: format_smolstr!("{error}"),
             };
             let record = read_value(&row, &self.field, &root_column).map_err(located)?;
-            let shaped = crate::xml::shaped(record, &self.field);
+            let shaped = yggdryl::xml::shaped(record, &self.field);
             let canonical = self.field.from_natural_value(shaped).map_err(located)?;
             rows.push(canonical);
         }
-        let borrowed: Vec<&Scalar> = rows.iter().collect();
-        crate::serie::from_canonical_rows(Arc::clone(&self.field), &borrowed)
+        Serie::from_scalars(Arc::clone(&self.field), rows)
     }
 
     /// Read a whole `root` element: its rows under the columns `field`
@@ -834,7 +833,7 @@ impl Rowset {
         Self::read_root_with(
             root,
             field,
-            crate::ArrowCastOptions::default().with_safe(false),
+            yggdryl::ArrowCastOptions::default().with_safe(false),
         )
     }
 
@@ -854,7 +853,7 @@ impl Rowset {
     pub fn read_root_with(
         root: &Element<'_>,
         field: Option<&Field>,
-        cast: crate::ArrowCastOptions,
+        cast: yggdryl::ArrowCastOptions,
     ) -> Result<(Self, Serie)> {
         match (field, root.child(Some(XSD_NAMESPACE), "schema")) {
             (Some(field), Some(schema)) => {
@@ -1029,7 +1028,7 @@ fn first_zone(
             .text()
             .map(str::trim)
             .filter(|text| !text.is_empty())
-            .map(|text| crate::temporal::parse_timestamp(text).is_ok());
+            .map(|text| yggdryl::temporal::parse_timestamp(text).is_ok());
     };
     let child_field = nested_fields(field).get(*head)?;
     let child_column = column.children.get(*head)?;
@@ -1221,7 +1220,7 @@ fn write_cell<W: Write>(
                 ))
             })?;
             write!(writer, "<{element}>")?;
-            crate::xml::write_element_text(writer, text)?;
+            yggdryl::xml::write_element_text(writer, text)?;
             write!(writer, "</{element}>")?;
             Ok(())
         }
@@ -1230,7 +1229,7 @@ fn write_cell<W: Write>(
                 return Ok(());
             };
             write!(writer, "<{element}>")?;
-            writer.write_all(crate::bytes::into_base64(bytes).as_bytes())?;
+            writer.write_all(yggdryl::bytes::into_base64(bytes).as_bytes())?;
             write!(writer, "</{element}>")?;
             Ok(())
         }
@@ -1317,20 +1316,23 @@ fn write_leaf<W: Write>(writer: &mut W, value: &Scalar, field: &Field) -> Result
     if let Scalar::DateTime64(instant) = value
         && !instant.timezone().is_naive()
     {
-        let text =
-            crate::temporal::format_timestamp(instant.count(), instant.unit(), &instant.timezone())
-                .ok_or_else(|| {
-                    invalid(format_smolstr!(
-                        "column `{}` holds the datetime count {}, which has no ISO 8601 spelling",
-                        field.name(),
-                        instant.count()
-                    ))
-                })?;
+        let text = yggdryl::temporal::format_timestamp(
+            instant.count(),
+            instant.unit(),
+            &instant.timezone(),
+        )
+        .ok_or_else(|| {
+            invalid(format_smolstr!(
+                "column `{}` holds the datetime count {}, which has no ISO 8601 spelling",
+                field.name(),
+                instant.count()
+            ))
+        })?;
         let offset_only = text.split('[').next().unwrap_or(&text);
-        crate::xml::write_element_text(writer, offset_only)?;
+        yggdryl::xml::write_element_text(writer, offset_only)?;
         return Ok(());
     }
-    crate::xml::write_leaf_text(writer, value, field.name())
+    yggdryl::xml::write_leaf_text(writer, value, field.name())
 }
 
 /// Read one element as the value of `field`: null where it is marked `nil` in
@@ -1452,7 +1454,7 @@ fn write_declaration<W: Write>(writer: &mut W, field: &Field, element: &str) -> 
         _ => (field, false),
     };
     write!(writer, "<xsd:element sql:field=\"")?;
-    crate::xml::write_attribute_text(writer, field.name())?;
+    yggdryl::xml::write_attribute_text(writer, field.name())?;
     write!(writer, "\" name=\"{element}\"")?;
     let nested = match item.dtype() {
         DataType::Struct(fields) => Some(fields),

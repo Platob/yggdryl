@@ -1,5 +1,5 @@
 //! `rust/src/xmla/mod.rs`: the six XML for Analysis 1.1 namespaces, every
-//! name the module re-exports at `yggdryl::xmla`, and the module's promise
+//! name the module re-exports at `yggdryl_xmla`, and the module's promise
 //! end to end - a request built through the API or spelled by hand, answered
 //! by the tabular provider, and read back as the rowset, the empty answer,
 //! the dataset or the SOAP fault its namespaces say it is.
@@ -10,15 +10,15 @@ use yggdryl::holder::{Buffer, Holder};
 use yggdryl::media::RecordOptions;
 use yggdryl::soap::{ENVELOPE_NAMESPACE, Envelope, Fault, FaultCode};
 use yggdryl::xml::Element;
-use yggdryl::xmla::definitions::definition_of;
-use yggdryl::xmla::service::code;
-use yggdryl::xmla::{
+use yggdryl::{
+    DataType, FolderCatalog, IOBase, IOMedia, MediaType, MimeType, Scalar, Serie, StructType,
+};
+use yggdryl_xmla::definitions::definition_of;
+use yggdryl_xmla::service::code;
+use yggdryl_xmla::{
     Answer, Discover, EMPTY_NAMESPACE, EXCEPTION_NAMESPACE, Execute, MDDATASET_NAMESPACE, Method,
     NAMESPACE, PropertyList, ROWSET_NAMESPACE, Request, RequestType, Response, Restrictions,
     SQL_NAMESPACE, Service, ServiceOptions, Session, XmlaError, property,
-};
-use yggdryl::{
-    DataType, FolderCatalog, IOBase, IOMedia, MediaType, MimeType, Scalar, Serie, StructType,
 };
 
 /// The XML Schema namespace a rowset's `xsd:schema` is in.
@@ -58,6 +58,7 @@ fn scratch(label: &str) -> PathBuf {
 
 /// A catalog folder holding the literal `trades.xmla` table.
 fn trades_catalog(label: &str) -> PathBuf {
+    yggdryl_xmla::register();
     let root = scratch(label);
     std::fs::write(root.join("trades.xmla"), TRADES).expect("the table is written");
     root
@@ -65,6 +66,7 @@ fn trades_catalog(label: &str) -> PathBuf {
 
 /// The provider with its default options and no catalog at all.
 fn empty_service() -> Service {
+    yggdryl_xmla::register();
     Service::new(ServiceOptions::new())
 }
 
@@ -457,8 +459,8 @@ fn an_xmla_error_is_written_in_the_exception_namespace() {
     let fragment = error.into_fragment().expect("the Error element is built");
     let element = fragment.element();
     assert!(element.is_in(EXCEPTION_NAMESPACE, "Error"));
-    let fault = yggdryl::xmla::fault(FaultCode::Server, error.clone()).expect("the fault is built");
-    let bytes = yggdryl::xmla::write_fault(Vec::new(), &[], &fault).expect("the fault is written");
+    let fault = yggdryl_xmla::fault(FaultCode::Server, error.clone()).expect("the fault is built");
+    let bytes = yggdryl_xmla::write_fault(Vec::new(), &[], &fault).expect("the fault is written");
     let read = fault_of(&bytes);
     let [detail] = read.detail() else {
         panic!("one detail element in {read}");
@@ -476,7 +478,7 @@ fn a_rowset_declares_its_columns_under_the_sql_namespace() {
     .map(DataType::from)
     .expect("a valid root")
     .required_field("row");
-    let rowset = yggdryl::xmla::Rowset::new(field).expect("a rowset");
+    let rowset = yggdryl_xmla::Rowset::new(field).expect("a rowset");
     let mut document = Vec::new();
     rowset
         .write_root(&mut document, std::iter::empty(), true, true)
@@ -524,7 +526,7 @@ fn a_rowset_declares_its_columns_under_the_sql_namespace() {
 
 #[test]
 fn a_root_in_the_empty_namespace_answers_nothing() {
-    let written = yggdryl::xmla::write_empty(Vec::new(), &[], Method::Execute)
+    let written = yggdryl_xmla::write_empty(Vec::new(), &[], Method::Execute)
         .expect("the empty answer is written");
     let text = String::from_utf8(written.clone()).expect("UTF-8");
     // The empty root declares the instance, schema and exception namespaces
@@ -594,60 +596,60 @@ fn a_response_is_read_by_its_namespaces_whatever_prefixes_spell_them() {
 }
 
 // ----------------------------------------------------------------------------
-// Every re-exported name resolves at `yggdryl::xmla`, as the item its own
+// Every re-exported name resolves at `yggdryl_xmla`, as the item its own
 // module declares.
 // ----------------------------------------------------------------------------
 
 #[test]
 fn the_vocabulary_names_resolve_at_the_module_root() {
-    use yggdryl::xmla::vocabulary;
-    let method: vocabulary::Method = yggdryl::xmla::Method::Discover;
+    use yggdryl_xmla::vocabulary;
+    let method: vocabulary::Method = yggdryl_xmla::Method::Discover;
     assert_eq!(method.as_str(), "Discover");
-    let format: vocabulary::Format = yggdryl::xmla::Format::Tabular;
+    let format: vocabulary::Format = yggdryl_xmla::Format::Tabular;
     assert_eq!(format.as_str(), "Tabular");
-    let content: vocabulary::Content = yggdryl::xmla::Content::SchemaData;
+    let content: vocabulary::Content = yggdryl_xmla::Content::SchemaData;
     assert_eq!(content.as_str(), "SchemaData");
-    let request_type: vocabulary::RequestType = yggdryl::xmla::RequestType::DiscoverDatasources;
+    let request_type: vocabulary::RequestType = yggdryl_xmla::RequestType::DiscoverDatasources;
     assert_eq!(request_type.as_str(), "DISCOVER_DATASOURCES");
     let properties: vocabulary::PropertyList =
-        yggdryl::xmla::PropertyList::new().with(yggdryl::xmla::property::CATALOG, "market");
+        yggdryl_xmla::PropertyList::new().with(yggdryl_xmla::property::CATALOG, "market");
     assert_eq!(properties.catalog(), Some("market"));
     assert_eq!(
-        yggdryl::xmla::property::CATALOG,
+        yggdryl_xmla::property::CATALOG,
         vocabulary::property::CATALOG
     );
     let restrictions: vocabulary::Restrictions =
-        yggdryl::xmla::Restrictions::new().with("TABLE_NAME", "trades");
+        yggdryl_xmla::Restrictions::new().with("TABLE_NAME", "trades");
     assert_eq!(
         restrictions.get("table_name"),
         Some(["trades".to_owned()].as_slice())
     );
-    let access: vocabulary::Access = yggdryl::xmla::Access::ReadWrite;
+    let access: vocabulary::Access = yggdryl_xmla::Access::ReadWrite;
     assert_eq!(access.as_str(), "ReadWrite");
-    let mode: vocabulary::AuthenticationMode = yggdryl::xmla::AuthenticationMode::Unauthenticated;
+    let mode: vocabulary::AuthenticationMode = yggdryl_xmla::AuthenticationMode::Unauthenticated;
     assert_eq!(mode.as_str(), "Unauthenticated");
-    let axis: vocabulary::AxisFormat = yggdryl::xmla::AxisFormat::TupleFormat;
+    let axis: vocabulary::AxisFormat = yggdryl_xmla::AxisFormat::TupleFormat;
     assert_eq!(axis.as_str(), "TupleFormat");
-    let mdx: vocabulary::MdxSupport = yggdryl::xmla::MdxSupport::Core;
+    let mdx: vocabulary::MdxSupport = yggdryl_xmla::MdxSupport::Core;
     assert_eq!(mdx.as_str(), "Core");
-    let provider: vocabulary::ProviderType = yggdryl::xmla::ProviderType::Tdp;
+    let provider: vocabulary::ProviderType = yggdryl_xmla::ProviderType::Tdp;
     assert_eq!(provider.as_str(), "TDP");
-    let state: vocabulary::StateSupport = yggdryl::xmla::StateSupport::Sessions;
+    let state: vocabulary::StateSupport = yggdryl_xmla::StateSupport::Sessions;
     assert_eq!(state.as_str(), "Sessions");
 }
 
 #[test]
 fn the_request_names_resolve_at_the_module_root() {
-    use yggdryl::xmla::request;
-    let discover: request::Discover = yggdryl::xmla::Discover::new(RequestType::DbschemaTables);
-    let command: request::Command = yggdryl::xmla::Command::Statement("select 1".to_owned());
-    let execute: request::Execute = yggdryl::xmla::Execute::new(command);
+    use yggdryl_xmla::request;
+    let discover: request::Discover = yggdryl_xmla::Discover::new(RequestType::DbschemaTables);
+    let command: request::Command = yggdryl_xmla::Command::Statement("select 1".to_owned());
+    let execute: request::Execute = yggdryl_xmla::Execute::new(command);
     assert_eq!(execute.command().statement(), Some("select 1"));
-    let method: request::RequestMethod = yggdryl::xmla::RequestMethod::Discover(discover.clone());
-    let request: request::Request = yggdryl::xmla::Request::new(method);
+    let method: request::RequestMethod = yggdryl_xmla::RequestMethod::Discover(discover.clone());
+    let request: request::Request = yggdryl_xmla::Request::new(method);
     assert_eq!(request.discover(), Some(&discover));
     assert_eq!(request.kind(), Method::Discover);
-    let session: request::Session = yggdryl::xmla::Session::Continue("abc".into());
+    let session: request::Session = yggdryl_xmla::Session::Continue("abc".into());
     assert_eq!(session.session_id(), Some("abc"));
     let block = session.into_fragment().expect("the header block is built");
     assert!(block.element().is_in(NAMESPACE, "Session"));
@@ -655,83 +657,82 @@ fn the_request_names_resolve_at_the_module_root() {
 
 #[test]
 fn the_response_names_resolve_at_the_module_root() {
-    use yggdryl::xmla::response;
-    let error: response::XmlaError = yggdryl::xmla::XmlaError::new(7, "no table");
+    use yggdryl_xmla::response;
+    let error: response::XmlaError = yggdryl_xmla::XmlaError::new(7, "no table");
     let fault: Fault =
-        yggdryl::xmla::fault(FaultCode::Client, error.clone()).expect("the fault is built");
+        yggdryl_xmla::fault(FaultCode::Client, error.clone()).expect("the fault is built");
     assert_eq!(
         fault,
         response::fault(FaultCode::Client, error.clone()).expect("built")
     );
-    let faulted =
-        yggdryl::xmla::write_fault(Vec::new(), &[], &fault).expect("the fault is written");
+    let faulted = yggdryl_xmla::write_fault(Vec::new(), &[], &fault).expect("the fault is written");
     assert_eq!(
         faulted,
         response::write_fault(Vec::new(), &[], &fault).expect("the fault is written")
     );
     assert_eq!(XmlaError::from_fault(&fault_of(&faulted)), vec![error]);
 
-    let empty = yggdryl::xmla::write_empty(Vec::new(), &[], Method::Discover)
+    let empty = yggdryl_xmla::write_empty(Vec::new(), &[], Method::Discover)
         .expect("the empty answer is written");
     let read: response::Response =
-        yggdryl::xmla::Response::from_bytes(&empty, None).expect("a response");
+        yggdryl_xmla::Response::from_bytes(&empty, None).expect("a response");
     assert!(matches!(read.answer(), response::Answer::Empty));
 
     let field = StructType::from_fields([DataType::utf8().required_field("Keyword")])
         .map(DataType::from)
         .expect("a valid root")
         .required_field("row");
-    let rowset = yggdryl::xmla::Rowset::new(field.clone()).expect("a rowset");
+    let rowset = yggdryl_xmla::Rowset::new(field.clone()).expect("a rowset");
     let rows = Serie::from_scalars(
         field,
         [Scalar::from_struct([("Keyword", Scalar::from("select"))]).expect("a row")],
     )
     .expect("the rows");
-    let written = yggdryl::xmla::write_rowset(
+    let written = yggdryl_xmla::write_rowset(
         Vec::new(),
         &[],
         Method::Discover,
         &rowset,
         std::iter::once(Ok(rows.clone())),
-        yggdryl::xmla::Content::SchemaData,
+        yggdryl_xmla::Content::SchemaData,
     )
     .expect("the rowset is written");
     let read = response_of(&written);
     assert_eq!(read.rows(), Some(&rows));
     assert_eq!(
-        read.rowset().map(yggdryl::xmla::Rowset::field),
+        read.rowset().map(yggdryl_xmla::Rowset::field),
         Some(rowset.field())
     );
 }
 
 #[test]
 fn the_rowset_names_resolve_at_the_module_root() {
-    use yggdryl::xmla::rowset;
+    use yggdryl_xmla::rowset;
     let field = StructType::from_fields([DataType::Int32.required_field("Order Id")])
         .map(DataType::from)
         .expect("a valid root")
         .required_field("row");
-    let built: rowset::Rowset = yggdryl::xmla::Rowset::new(field).expect("a rowset");
+    let built: rowset::Rowset = yggdryl_xmla::Rowset::new(field).expect("a rowset");
     assert_eq!(built.element_names(), ["Order_x0020_Id"]);
-    let xsd: rowset::XsdType = yggdryl::xmla::XsdType::Int;
-    assert_eq!(yggdryl::xmla::XsdType::of(&DataType::Int32), Some(xsd));
+    let xsd: rowset::XsdType = yggdryl_xmla::XsdType::Int;
+    assert_eq!(yggdryl_xmla::XsdType::of(&DataType::Int32), Some(xsd));
     assert_eq!(xsd.as_str(), "xsd:int");
-    assert_eq!(yggdryl::xmla::encode_name("Order Id"), "Order_x0020_Id");
+    assert_eq!(yggdryl_xmla::encode_name("Order Id"), "Order_x0020_Id");
     assert_eq!(
-        yggdryl::xmla::encode_name("Order Id"),
+        yggdryl_xmla::encode_name("Order Id"),
         rowset::encode_name("Order Id")
     );
-    assert_eq!(yggdryl::xmla::decode_name("Order_x0020_Id"), "Order Id");
+    assert_eq!(yggdryl_xmla::decode_name("Order_x0020_Id"), "Order Id");
     assert_eq!(
-        yggdryl::xmla::decode_name("Order_x0020_Id"),
+        yggdryl_xmla::decode_name("Order_x0020_Id"),
         rowset::decode_name("Order_x0020_Id")
     );
 }
 
 #[test]
 fn the_medium_names_resolve_at_the_module_root() {
-    use yggdryl::xmla::{media, options};
-    let settings: options::XmlaOptions = yggdryl::xmla::XmlaOptions::new();
+    use yggdryl_xmla::{media, options};
+    let settings: options::XmlaOptions = yggdryl_xmla::XmlaOptions::new();
     let field = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
@@ -753,38 +754,38 @@ fn the_medium_names_resolve_at_the_module_root() {
     )
     .expect("the rows");
     let mut held = Buffer::new().with_media_type(MediaType::from_file_name("orders.xmla"));
-    yggdryl::xmla::overwrite_arrow_reader(
+    yggdryl_xmla::overwrite_arrow_reader(
         &mut held,
         rows.into_arrow_reader().expect("a reader"),
         &settings,
     )
     .expect("the document is written");
     assert_eq!(
-        yggdryl::xmla::read_field(&held, &settings).expect("the schema"),
+        yggdryl_xmla::read_field(&held, &settings).expect("the schema"),
         field
     );
-    let batches: usize = yggdryl::xmla::read_batch_reader(&held, None, &settings)
+    let batches: usize = yggdryl_xmla::read_batch_reader(&held, None, &settings)
         .expect("a reader")
         .map(|batch| batch.expect("a batch").num_rows())
         .sum();
     assert_eq!(batches, 2);
-    let wrapped: media::Xmla<Buffer> = yggdryl::xmla::Xmla::new(held);
+    let wrapped: media::Xmla<Buffer> = yggdryl_xmla::Xmla::new(held);
     assert_eq!(wrapped.options(), &settings);
 }
 
 #[test]
 fn the_dbtype_names_resolve_at_the_module_root() {
-    use yggdryl::xmla::dbtype;
-    let indicator: dbtype::DbType = yggdryl::xmla::DbType::of(&DataType::Int32);
-    assert_eq!(indicator, yggdryl::xmla::DbType::I4);
+    use yggdryl_xmla::dbtype;
+    let indicator: dbtype::DbType = yggdryl_xmla::DbType::of(&DataType::Int32);
+    assert_eq!(indicator, yggdryl_xmla::DbType::I4);
     assert_eq!(indicator.code(), 3);
 }
 
 #[test]
 fn the_provider_names_resolve_at_the_module_root() {
-    use yggdryl::xmla::service;
-    let options: service::ServiceOptions = yggdryl::xmla::ServiceOptions::new();
-    let provider: service::Service = yggdryl::xmla::Service::new(options);
+    use yggdryl_xmla::service;
+    let options: service::ServiceOptions = yggdryl_xmla::ServiceOptions::new();
+    let provider: service::Service = yggdryl_xmla::Service::new(options);
     let outcome: Result<service::Execution, Fault> =
         provider.execute(&Execute::statement("select * from trades"));
     let Err(fault) = outcome else {
@@ -800,8 +801,8 @@ fn the_provider_names_resolve_at_the_module_root() {
 fn the_provider_is_routed_on_the_crates_http_server() {
     use std::sync::Arc;
     use yggdryl::http::{Server, ServerOptions};
-    let provider = Arc::new(yggdryl::xmla::Service::new(
-        yggdryl::xmla::ServiceOptions::new(),
+    let provider = Arc::new(yggdryl_xmla::Service::new(
+        yggdryl_xmla::ServiceOptions::new(),
     ));
     let server = Server::bind_with("127.0.0.1:0", ServerOptions::default()).expect("a port");
     let endpoint = Arc::clone(&provider)
@@ -1576,14 +1577,14 @@ fn the_columns_of_a_literal_table_state_its_declared_types_and_nullability() {
                 Scalar::from("symbol"),
                 Scalar::from(1_u32),
                 Scalar::from(false),
-                Scalar::from(yggdryl::xmla::DbType::Wstr.code()),
+                Scalar::from(yggdryl_xmla::DbType::Wstr.code()),
             ],
             [
                 Scalar::from("trades"),
                 Scalar::from("price"),
                 Scalar::from(2_u32),
                 Scalar::from(true),
-                Scalar::from(yggdryl::xmla::DbType::R8.code()),
+                Scalar::from(yggdryl_xmla::DbType::R8.code()),
             ],
         ]
     );
@@ -2002,8 +2003,8 @@ fn words_of(response: &Response) -> Vec<Scalar> {
 
 #[test]
 fn a_rowset_written_from_several_batches_declares_its_columns_once_and_keeps_row_order() {
-    let rowset = yggdryl::xmla::Rowset::new(keyword_field()).expect("a rowset");
-    let written = yggdryl::xmla::write_rowset(
+    let rowset = yggdryl_xmla::Rowset::new(keyword_field()).expect("a rowset");
+    let written = yggdryl_xmla::write_rowset(
         Vec::new(),
         &[],
         Method::Execute,
@@ -2013,7 +2014,7 @@ fn a_rowset_written_from_several_batches_declares_its_columns_once_and_keeps_row
             Ok(keywords(&[])),
             Ok(keywords(&["where"])),
         ],
-        yggdryl::xmla::Content::SchemaData,
+        yggdryl_xmla::Content::SchemaData,
     )
     .expect("the rowset is written");
     let text = String::from_utf8(written.clone()).expect("UTF-8");
@@ -2030,13 +2031,13 @@ fn a_rowset_written_from_several_batches_declares_its_columns_once_and_keeps_row
         ]
     );
 
-    let nothing = yggdryl::xmla::write_rowset(
+    let nothing = yggdryl_xmla::write_rowset(
         Vec::new(),
         &[],
         Method::Execute,
         &rowset,
         std::iter::empty(),
-        yggdryl::xmla::Content::SchemaData,
+        yggdryl_xmla::Content::SchemaData,
     )
     .expect("the rowset is written");
     let response = response_of(&nothing);
@@ -2046,7 +2047,7 @@ fn a_rowset_written_from_several_batches_declares_its_columns_once_and_keeps_row
 
 #[test]
 fn a_batch_the_rowset_cannot_hold_fails_the_write_or_is_reported_in_the_exception_namespace() {
-    let rowset = yggdryl::xmla::Rowset::new(keyword_field()).expect("a rowset");
+    let rowset = yggdryl_xmla::Rowset::new(keyword_field()).expect("a rowset");
     let numbers = StructType::from_fields([DataType::Int64.required_field("Key Word")])
         .map(DataType::from)
         .expect("a valid root")
@@ -2059,24 +2060,24 @@ fn a_batch_the_rowset_cannot_hold_fails_the_write_or_is_reported_in_the_exceptio
         .expect("the rows")
     };
 
-    let refusal = yggdryl::xmla::write_rowset(
+    let refusal = yggdryl_xmla::write_rowset(
         Vec::new(),
         &[],
         Method::Execute,
         &rowset,
         [Ok(keywords(&["select"])), Ok(wrong())],
-        yggdryl::xmla::Content::SchemaData,
+        yggdryl_xmla::Content::SchemaData,
     )
     .expect_err("a batch of another column type is no row of this rowset");
     assert!(refusal.to_string().contains("`Key Word`"), "{refusal}");
 
-    let (bytes, failed) = yggdryl::xmla::response::write_rowset_reporting(
+    let (bytes, failed) = yggdryl_xmla::response::write_rowset_reporting(
         Vec::new(),
         &[],
         Method::Execute,
         &rowset,
         [Ok(keywords(&["select"])), Ok(wrong())],
-        yggdryl::xmla::Content::SchemaData,
+        yggdryl_xmla::Content::SchemaData,
     )
     .expect("the failure is reported inside a complete document");
     let failed = failed.expect("the failure is handed back");
@@ -2113,7 +2114,7 @@ fn a_batch_the_rowset_cannot_hold_fails_the_write_or_is_reported_in_the_exceptio
 
 #[test]
 fn the_medium_reads_a_literal_document_s_columns_and_rows() {
-    let settings = yggdryl::xmla::XmlaOptions::new();
+    let settings = yggdryl_xmla::XmlaOptions::new();
     let held = Buffer::from_bytes(TRADES.as_bytes().to_vec())
         .with_media_type(MediaType::from_file_name("trades.xmla"));
     let expected = StructType::from_fields([
@@ -2124,10 +2125,10 @@ fn the_medium_reads_a_literal_document_s_columns_and_rows() {
     .expect("a valid root")
     .required_field("row");
     assert_eq!(
-        yggdryl::xmla::read_field(&held, &settings).expect("the schema"),
+        yggdryl_xmla::read_field(&held, &settings).expect("the schema"),
         expected
     );
-    let batches: Vec<_> = yggdryl::xmla::read_batch_reader(&held, None, &settings)
+    let batches: Vec<_> = yggdryl_xmla::read_batch_reader(&held, None, &settings)
         .expect("a reader")
         .map(|batch| batch.expect("a batch"))
         .collect();
@@ -2138,7 +2139,7 @@ fn the_medium_reads_a_literal_document_s_columns_and_rows() {
     assert_eq!(batch.column(1).null_count(), 1, "MSFT has no price");
 
     let empty = Buffer::new().with_media_type(MediaType::from_file_name("trades.xmla"));
-    let refusal = yggdryl::xmla::read_field(&empty, &settings)
+    let refusal = yggdryl_xmla::read_field(&empty, &settings)
         .expect_err("an empty document states no columns");
     assert!(
         refusal
@@ -2153,7 +2154,7 @@ fn the_rows_an_execution_streams_are_the_rows_its_answer_carries() {
     let service = trades_service("execution");
     let execute =
         Execute::statement("select symbol, price from trades where price is not null limit 10");
-    let Ok(yggdryl::xmla::Execution::Rowset { rowset, rows }) = service.execute(&execute) else {
+    let Ok(yggdryl_xmla::Execution::Rowset { rowset, rows }) = service.execute(&execute) else {
         panic!("the statement is answered with a rowset");
     };
     let streamed: Vec<Scalar> = rows

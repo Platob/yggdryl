@@ -55,10 +55,12 @@ fn opened_field(opened: Opened, options: &RecordOptions) -> Result<crate::Field>
 ///
 /// The container half of [`IOMedia::read_arrow_field`], shared with the media
 /// wrappers whose own schema read reads one leaf's bytes.
-pub(crate) fn container_field(
-    handle: &dyn IOBase,
-    options: &RecordOptions,
-) -> Result<crate::Field> {
+///
+/// # Errors
+///
+/// Returns what listing the container or reading the schema of what it
+/// holds refuses.
+pub fn container_field(handle: &dyn IOBase, options: &RecordOptions) -> Result<crate::Field> {
     use crate::media::IORecordOptions;
 
     if let Some(field) = options.field() {
@@ -69,7 +71,11 @@ pub(crate) fn container_field(
 
 /// `options`, or the handle's own where none were given: the one place an
 /// absent record option set is resolved.
-pub(crate) fn own_options<'o, M: IOMedia + ?Sized>(
+///
+/// # Errors
+///
+/// Returns what [`IOMedia::record_options`] refuses.
+pub fn own_options<'o, M: IOMedia + ?Sized>(
     media: &M,
     options: Option<&'o RecordOptions>,
 ) -> Result<std::borrow::Cow<'o, RecordOptions>> {
@@ -1104,7 +1110,11 @@ pub trait IOMedia: Send {
 }
 
 /// Remove settings that narrow a read before computing whole-media dimensions.
-pub(crate) fn dimension_options<M: IOMedia + ?Sized>(media: &M) -> Result<RecordOptions> {
+///
+/// # Errors
+///
+/// Returns what [`IOMedia::record_options`] refuses.
+pub fn dimension_options<M: IOMedia + ?Sized>(media: &M) -> Result<RecordOptions> {
     use crate::media::IORecordOptions;
 
     let mut options = media.record_options()?;
@@ -1122,7 +1132,12 @@ pub(crate) fn dimension_options<M: IOMedia + ?Sized>(media: &M) -> Result<Record
 ///
 /// The one container count, shared by the [`IOMedia::row_size`] default and
 /// the media wrappers whose own count reads one leaf's bytes.
-pub(crate) fn container_row_size(handle: &dyn IOBase, options: &RecordOptions) -> Result<u64> {
+///
+/// # Errors
+///
+/// Returns what listing the container or counting a leaf refuses, and a
+/// total past `u64`.
+pub fn container_row_size(handle: &dyn IOBase, options: &RecordOptions) -> Result<u64> {
     #[cfg(feature = "iceberg")]
     if let Some(table) = crate::iceberg::located(handle)? {
         return table.row_size();
@@ -1467,7 +1482,11 @@ pub(crate) fn read_serie_default<M: IOMedia + ?Sized>(
 }
 
 /// Read a retained record encoding, whose owner already chose its format.
-pub(crate) fn read_record_serie<M: IOMedia + ?Sized>(
+///
+/// # Errors
+///
+/// Returns what the options or the read refuse.
+pub fn read_record_serie<M: IOMedia + ?Sized>(
     media: &M,
     options: Option<&RecordOptions>,
 ) -> Result<crate::Serie> {

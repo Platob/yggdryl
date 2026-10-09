@@ -1204,7 +1204,7 @@ fn split_leading_segments(raw: &str, count: usize) -> (&str, String) {
 ///
 /// Returns [`Error::Parse`] with target `http path` for a query, a fragment
 /// or a control byte in it.
-pub(crate) fn normalize_path(path: &str) -> Result<String> {
+pub fn normalize_path(path: &str) -> Result<String> {
     if let Some(position) = path
         .bytes()
         .position(|byte| byte == b'?' || byte == b'#' || byte < b' ' || byte == 0x7f)

@@ -17,7 +17,7 @@ Each medium has a page of its own - what declares it, how it reads, how it write
 | [YAML](yaml.md) | `application/yaml`, `.yaml` | default |
 | [TOML](toml.md) | `application/toml`, `.toml` | default |
 | [XML](xml.md) | `application/xml`, `.xml` | default |
-| [XML for Analysis](xmla.md) | `application/xmla+xml`, `.xmla`; the provider serves catalogs over HTTP | default; the provider's route `http` feature |
+| [XML for Analysis](xmla.md) | `application/xmla+xml`, `.xmla`; the provider serves catalogs over HTTP | the `yggdryl-xmla` crate, registered with the core; the provider's route its `http` feature |
 | [Excel](excel.md) | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `.xlsx` | default |
 | [Iceberg](iceberg.md) | a table folder | `iceberg` feature |
 | [HTTP messages](http.md) | `message/http`, `.http` | `http` feature |

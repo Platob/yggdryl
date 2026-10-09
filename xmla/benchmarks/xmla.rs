@@ -8,13 +8,16 @@
 
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
-use yggdryl::xmla::{
+use yggdryl::{DataType, Field, FolderCatalog, Scalar, Serie, StructType};
+use yggdryl_xmla::{
     Content, Discover, Method, PropertyList, Request, RequestType, Response, Restrictions, Rowset,
     write_rowset,
 };
-use yggdryl::{DataType, Field, FolderCatalog, Scalar, Serie, StructType};
 
-use crate::bench_profile::corpus;
+#[path = "../../rust/benchmarks/bench_profile.rs"]
+mod bench_profile;
+
+use bench_profile::corpus;
 
 /// The record field every benchmark row is laid out under.
 fn field() -> Field {
@@ -132,8 +135,8 @@ pub(crate) fn xmla_benchmarks(criterion: &mut Criterion) {
 fn service_benchmarks(criterion: &mut Criterion, field: &Field) {
     use yggdryl::holder::Holder;
     use yggdryl::media::RecordOptions;
-    use yggdryl::xmla::{Execute, Service, ServiceOptions};
     use yggdryl::{IOBase, IOMedia, MimeType};
+    use yggdryl_xmla::{Execute, Service, ServiceOptions};
 
     let root = std::env::temp_dir().join(format!("yggdryl-bench-xmla-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
@@ -232,4 +235,10 @@ fn service_benchmarks(criterion: &mut Criterion, field: &Field) {
     }
     group.finish();
     let _ = std::fs::remove_dir_all(&root);
+}
+
+fn main() {
+    let mut criterion = Criterion::default().configure_from_args();
+    xmla_benchmarks(&mut criterion);
+    criterion.final_summary();
 }

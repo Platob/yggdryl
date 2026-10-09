@@ -137,11 +137,10 @@ mod internal {
     //! names until a setting reads through them.
 
     use yggdryl::Scalar;
+    use yggdryl::integer::integer_from_text_as;
     #[cfg(feature = "http")]
     use yggdryl::internals::integer::{BYTE_COUNT_SPELLINGS, byte_count_from_text};
-    use yggdryl::internals::integer::{
-        INTEGER_SPELLINGS, integer_from_scalar_as, integer_from_text_as,
-    };
+    use yggdryl::internals::integer::{INTEGER_SPELLINGS, integer_from_scalar_as};
 
     #[test]
     fn a_scalar_reads_as_the_number_it_is_or_the_digits_it_spells_and_never_wraps() {

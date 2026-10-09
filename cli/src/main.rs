@@ -128,6 +128,10 @@ fn on_runner() -> Result<bool, String> {
 
 fn main() -> ExitCode {
     warnings::install();
+    // The `.xmla` medium reaches the core's record doors by registration,
+    // so a rowset document in a served folder is listed and read as the
+    // table it is, whichever command serves it.
+    yggdryl_xmla::register();
     let cli = Cli::parse();
     let on_runner = match on_runner() {
         Ok(on_runner) => on_runner,

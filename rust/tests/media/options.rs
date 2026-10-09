@@ -1006,7 +1006,9 @@ fn every_concrete_options_type_carries_the_same_thread_count() {
     assert_threads(yggdryl::text::TextOptions::new());
     assert_threads(ExcelOptions::new());
     assert_threads(yggdryl::csv::CsvOptions::new());
-    assert_threads(yggdryl::xmla::XmlaOptions::new());
+    assert_threads(yggdryl::media::RegisteredOptions::new(
+        yggdryl::MimeType::XMLA,
+    ));
     #[cfg(feature = "parquet")]
     assert_threads(yggdryl::parquet::ParquetOptions::new());
 

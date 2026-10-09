@@ -17,17 +17,18 @@ use yggdryl::http::{
 };
 use yggdryl::media::RecordOptions;
 use yggdryl::soap::Envelope;
-use yggdryl::xmla::{
-    Discover, Execute, PropertyList, Request, RequestType, Response, Service, ServiceOptions,
-    XmlaError,
-};
 use yggdryl::{
     DataType, FolderCatalog, IOBase, IOMedia, MimeType, Result, Scalar, StructType, Url,
+};
+use yggdryl_xmla::{
+    Discover, Execute, PropertyList, Request, RequestType, Response, Service, ServiceOptions,
+    XmlaError,
 };
 
 /// A fresh catalog folder, named after `label`, holding `trades` with two
 /// rows.
 fn catalog_root(label: &str) -> PathBuf {
+    yggdryl_xmla::register();
     let mut root = yggdryl::local::LocalFolder::temporary()
         .expect("a temporary directory")
         .path()

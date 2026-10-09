@@ -604,7 +604,7 @@ pub(crate) fn format_datetime(count: i64, unit: TimeUnit) -> Option<SmolStr> {
 /// the zone's name in brackets when the name is a place rather than an
 /// offset, because `+02:00` cannot say `Europe/Paris`. A zone this build has
 /// no rules for spells the UTC reading with `Z` and keeps its bracketed name.
-pub(crate) fn format_timestamp(count: i64, unit: TimeUnit, zone: &Timezone) -> Option<SmolStr> {
+pub fn format_timestamp(count: i64, unit: TimeUnit, zone: &Timezone) -> Option<SmolStr> {
     let per = per_second(unit)?;
     let offset = zone.offset_at(count.div_euclid(per));
     let local = match offset {
@@ -1040,7 +1040,7 @@ pub(crate) fn parse_datetime(text: &str) -> Result<(i64, TimeUnit)> {
 /// datetime does: `20260818Z` is the 18th at midnight in UTC. The zone stays
 /// required either way, because an instant a column stores must never carry a
 /// zone the text did not state.
-pub(crate) fn parse_timestamp(text: &str) -> Result<(i64, TimeUnit, Timezone)> {
+pub fn parse_timestamp(text: &str) -> Result<(i64, TimeUnit, Timezone)> {
     let (local, unit, end) = parse_datetime_at(text, "timestamp")?;
     zoned_at(text, local, unit, end)
 }

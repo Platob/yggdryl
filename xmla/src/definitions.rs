@@ -10,7 +10,7 @@
 
 use std::sync::OnceLock;
 
-use crate::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
+use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
 
 use super::rowset::Rowset;
 use super::vocabulary::RequestType;
@@ -137,7 +137,7 @@ fn definition(
         .into_iter()
         .map(|Column(name, dtype, nullable, _)| Field::new(name, dtype, nullable));
     let field = Field::new(
-        crate::media::DEFAULT_ROOT_NAME,
+        yggdryl::media::DEFAULT_ROOT_NAME,
         DataType::from(StructType::from_fields(fields).expect("distinct column names")),
         false,
     );

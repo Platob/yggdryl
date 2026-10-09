@@ -1,0 +1,50 @@
+# `yggdryl-xmla`: XML for Analysis 1.1 over the core - the `.xmla` rowset
+# document as a record medium, and the tabular provider that answers Discover
+# and Execute over a warehouse. Its own member rather than a module of the
+# core, so a library consumer that never speaks XMLA carries none of it; the
+# core learns the medium by registration (`yggdryl_xmla::register`) rather than
+# by a variant of its own.
+[package]
+name = "yggdryl-xmla"
+description = "XML for Analysis 1.1 over Yggdryl: the rowset document medium and the tabular provider"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["xmla", "olap", "soap", "arrow"]
+categories = ["encoding"]
+# The core is the one crate crates.io carries; this one names it by path
+# alone, so a publication would need a versioned dependency and a release
+# step of its own.
+publish = false
+
+[features]
+default = []
+# The provider's HTTP binding: `Service::route` on the core's `http::Server`.
+http = ["yggdryl/http"]
+# The core's own features, forwarded as the CLI forwards them: what a served
+# folder can hold - Parquet leaves, Iceberg tables, an S3 or S3 Tables
+# location - and the HTTP versions the route answers over. The crate adds no
+# code under any of them.
+parquet = ["yggdryl/parquet"]
+iceberg = ["parquet", "yggdryl/iceberg"]
+http3 = ["http", "yggdryl/http3"]
+s3 = ["http", "yggdryl/s3"]
+s3tables = ["s3", "iceberg", "yggdryl/s3tables"]
+
+[dependencies]
+arrow-array.workspace = true
+arrow-schema.workspace = true
+smol_str = { version = "=0.3.2", features = ["serde"] }
+yggdryl = { path = "../rust" }
+
+[dev-dependencies]
+criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
+
+# The rowset document written from and read into record columns, the Discover
+# envelope a client sends, and the provider's answers over a folder catalog.
+[[bench]]
+name = "xmla"
+path = "benchmarks/xmla.rs"
+harness = false

@@ -371,6 +371,7 @@ impl Role {
             Self::Media(Encoding::Xmla) => "Xmla",
             Self::Media(Encoding::Csv) => "Csv",
             Self::Media(Encoding::Excel) => "Excel",
+            Self::Media(Encoding::Registered) => "Media",
             Self::Warehouse(implementation) => implementation.class_name(),
             Self::Held => "IOBase",
         }

@@ -6,9 +6,11 @@ Smoke what you changed while you are changing it, then push and let CI run the m
 
     ```bash
     cargo test -p yggdryl --test <entry> <filter>   # the loop, while you write
+    cargo test -p yggdryl-xmla --test root <filter>  # the same loop over the XML for Analysis crate
     cargo fmt --all
-    cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings
+    cargo clippy -p yggdryl -p yggdryl-xmla --all-targets --no-deps -- -D warnings
     cargo test -p yggdryl --all-targets
+    cargo test -p yggdryl-xmla --all-targets
     cargo test -p yggdryl --doc
     ```
 
@@ -52,7 +54,8 @@ test file at the matching path.
 | `rust/src/http/` - the client, sessions, requests, responses, streams, pages and the `Server`; its `wire.rs` message grammar | [Holder: HTTP](holder/index.md#http) and [Media: HTTP messages](media/http.md) |
 | `rust/src/codec.rs`, `rust/src/coding/`, `rust/src/gzip.rs`, `zlib.rs`, `zstd.rs` | [Media: compression](media/compression.md) |
 | `rust/src/charset.rs`, `rust/src/charset/`, `rust/src/utf8.rs`, `ascii.rs`, `cp1252.rs` | [Media: charsets](media/charsets.md) |
-| `rust/src/media_type.rs`, `mime_type.rs`, `rust/src/media/`, and one root folder per medium: `rust/src/ipc/`, `parquet/`, `avro/`, `csv/`, `iceberg/`, `text/`, `xmla/`, `excel/` | [Media](media/index.md), and the medium's own page beside it |
+| `rust/src/media_type.rs`, `mime_type.rs`, `rust/src/media/` - `registered.rs` the registry an encoding another crate implements enters by, `doors.rs` the record doors it answers `IOMedia` through - and one root folder per medium: `rust/src/ipc/`, `parquet/`, `avro/`, `csv/`, `iceberg/`, `text/`, `excel/` | [Media](media/index.md), and the medium's own page beside it |
+| `xmla/` - the `yggdryl-xmla` crate: the `.xmla` rowset document medium, registered with the core, and the XML for Analysis provider over a warehouse, with its own `tests/` and `benchmarks/` | [Media: XML for Analysis](media/xmla.md) |
 | `rust/src/json/`, `toml/`, `yaml/`, `xml/` over the codec machinery in `rust/src/text/` | [JSON](media/json.md), [YAML](media/yaml.md), [TOML](media/toml.md), [XML](media/xml.md) |
 | `rust/src/uri/` | [URI](uri/index.md) |
 | `rust/src/arrow/` | [Arrow](arrow/index.md) |

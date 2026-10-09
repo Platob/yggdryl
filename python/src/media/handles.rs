@@ -91,19 +91,29 @@ pub(crate) enum Encoding {
     Xmla,
     Csv,
     Excel,
+    /// An encoding registered with the core by a crate this extension does
+    /// not name: held as the plain `Media` class.
+    Registered,
 }
 
 impl Encoding {
     /// Read the encoding off a media value before it is moved.
-    pub(crate) const fn of(media: &yggdryl::media::Media) -> Self {
+    pub(crate) fn of(media: &yggdryl::media::Media) -> Self {
         match media {
             yggdryl::media::Media::Ipc(_) => Self::Ipc,
             yggdryl::media::Media::Parquet(_) => Self::Parquet,
             yggdryl::media::Media::Avro(_) => Self::Avro,
             yggdryl::media::Media::Text(_) => Self::Text,
-            yggdryl::media::Media::Xmla(_) => Self::Xmla,
             yggdryl::media::Media::Csv(_) => Self::Csv,
             yggdryl::media::Media::Excel(_) => Self::Excel,
+            // The XMLA medium `yggdryl-xmla` registers when the extension
+            // loads is the one registered encoding with a class of its own.
+            yggdryl::media::Media::Registered(inner)
+                if inner.encoding() == yggdryl::MimeType::XMLA =>
+            {
+                Self::Xmla
+            }
+            yggdryl::media::Media::Registered(_) => Self::Registered,
         }
     }
 }
@@ -127,6 +137,7 @@ pub(crate) fn describe(
         Encoding::Xmla => Py::new(py, media.add_subclass(PyXmla))?.into_any(),
         Encoding::Csv => Py::new(py, media.add_subclass(PyCsv))?.into_any(),
         Encoding::Excel => Py::new(py, media.add_subclass(PyExcel))?.into_any(),
+        Encoding::Registered => Py::new(py, media)?.into_any(),
     })
 }
 

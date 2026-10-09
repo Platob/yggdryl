@@ -1,5 +1,5 @@
 //! The SOAP 1.1 HTTP binding of a provider: the routes a [`Service`] answers
-//! on an [`http::Server`](crate::http::Server).
+//! on an [`http::Server`](yggdryl::http::Server).
 //!
 //! XML for Analysis is SOAP 1.1 over HTTP `POST`, and the connection side of
 //! that - framing, keep-alive, `Expect: 100-continue`, timeouts and bounds,
@@ -15,7 +15,7 @@
 //! use yggdryl::FolderCatalog;
 //! use yggdryl::holder::Holder;
 //! use yggdryl::http::{Server, ServerOptions};
-//! use yggdryl::xmla::{Service, ServiceOptions};
+//! use yggdryl_xmla::{Service, ServiceOptions};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let service = Service::new(ServiceOptions::new())
@@ -29,9 +29,9 @@
 
 use std::sync::Arc;
 
-use crate::http::{Body, Method, Request, Response, Server, Status};
-use crate::soap::{self, Fault, FaultCode};
-use crate::{Format, MimeType, Result, Url};
+use yggdryl::http::{Body, Method, Request, Response, Server, Status};
+use yggdryl::soap::{self, Fault, FaultCode};
+use yggdryl::{Format, MimeType, Result, Url};
 
 use super::response::{ACTOR, XmlaError, fault, write_fault};
 use super::service::{Service, code};
@@ -67,7 +67,7 @@ impl Service {
     pub fn route(self: Arc<Self>, server: &Server, path: &str) -> Result<Url> {
         // A path the server would not route is refused here rather than
         // routed nowhere.
-        let path = crate::http::server::normalize_path(path)?;
+        let path = yggdryl::http::server::normalize_path(path)?;
         let path = path.as_str();
         let endpoint = server.url_of(path)?;
         let provider = format!(

@@ -638,7 +638,8 @@ impl MimeType {
             MimeTypeWire::Toml => Some(Format::Toml),
             MimeTypeWire::Xml => Some(Format::Xml),
             // A rowset document is XML, and a record encoding rather than a
-            // structured document: its rows are read through the XMLA medium.
+            // structured document: its rows are read through the XMLA medium
+            // the `yggdryl-xmla` crate registers.
             MimeTypeWire::Xmla => None,
             _ => match self.structured_suffix() {
                 Some("json") => Some(Format::Json),

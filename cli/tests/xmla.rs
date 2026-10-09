@@ -10,7 +10,7 @@ use yggdryl::holder::Holder;
 use yggdryl::http::{Request as HttpRequest, Status};
 use yggdryl::local::LocalFolder;
 use yggdryl::media::IORecordOptions;
-use yggdryl::xmla::{Discover, Request, RequestType, Response};
+use yggdryl_xmla::{Discover, Request, RequestType, Response};
 use yggdryl::{DataType, IOBase, IOMedia, Scalar, StructType};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);

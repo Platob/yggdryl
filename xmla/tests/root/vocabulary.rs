@@ -8,7 +8,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use yggdryl::Error;
-use yggdryl::xmla::{
+use yggdryl_xmla::{
     Access, AuthenticationMode, AxisFormat, Content, Format, MdxSupport, Method, PropertyList,
     ProviderType, RequestType, Restrictions, StateSupport, property,
 };
@@ -470,7 +470,7 @@ fn each_method_carries_its_soap_action() {
     for method in Method::ALL {
         assert_eq!(
             method.soap_action(),
-            format!("{}:{}", yggdryl::xmla::NAMESPACE, method.as_str()),
+            format!("{}:{}", yggdryl_xmla::NAMESPACE, method.as_str()),
             "the action is the method in the XMLA namespace"
         );
     }

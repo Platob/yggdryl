@@ -8,13 +8,13 @@ use std::sync::Arc;
 
 use yggdryl::holder::Holder;
 use yggdryl::xml::{Element, XSI_NAMESPACE};
-use yggdryl::xmla::definitions::{Definition, definition_of, definitions};
-use yggdryl::xmla::{
-    Discover, ROWSET_NAMESPACE, Request, RequestType, Response, Rowset, SQL_NAMESPACE, Service,
-    ServiceOptions, XsdType, decode_name, encode_name,
-};
 use yggdryl::{
     DataType, Field, FolderCatalog, Scalar, Serie, StructType, TimeUnit, Timezone, Uuid,
+};
+use yggdryl_xmla::definitions::{Definition, definition_of, definitions};
+use yggdryl_xmla::{
+    Discover, ROWSET_NAMESPACE, Request, RequestType, Response, Rowset, SQL_NAMESPACE, Service,
+    ServiceOptions, XsdType, decode_name, encode_name,
 };
 
 /// One column as the specification declares it: its name, datatype and
@@ -1961,6 +1961,7 @@ fn a_definition_is_shared_across_threads_and_debugs_as_itself() {
 
 /// A fresh, empty catalog folder under the temporary directory.
 fn catalog_folder(label: &str) -> PathBuf {
+    yggdryl_xmla::register();
     let mut root = yggdryl::local::LocalFolder::temporary()
         .expect("a temporary directory")
         .path()

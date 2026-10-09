@@ -1,6 +1,6 @@
 //! `yggdryl xmla`: the XML for Analysis provider from a terminal.
 //!
-//! `serve` routes the provider in [`yggdryl::xmla`] on the crate's HTTP
+//! `serve` routes the provider in [`yggdryl_xmla`] on the core's HTTP
 //! [`Server`] over folders of record media - one catalog per folder, its
 //! files the tables, its folders the schemas - and answers Discover and
 //! Execute until it is stopped. Nothing here decides what a request means:
@@ -18,8 +18,8 @@ use std::time::Duration;
 
 use clap::{Args, Subcommand};
 use yggdryl::http::{ForwardedHeader, Server, ServerOptions};
-use yggdryl::xmla::{Service, ServiceOptions};
 use yggdryl::{Catalog, ObjectValue, Properties, Result, Url};
+use yggdryl_xmla::{Service, ServiceOptions};
 
 use crate::{location, style, timeout};
 

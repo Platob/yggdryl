@@ -3,12 +3,12 @@
 //! `_xHHHH_` element names and the XML Schema type table.
 
 use yggdryl::xml::{Element, XSD_NAMESPACE, XSI_NAMESPACE};
-use yggdryl::xmla::rowset::{ROOT_ELEMENT, ROW_ELEMENT};
-use yggdryl::xmla::{
-    EXCEPTION_NAMESPACE, ROWSET_NAMESPACE, Rowset, SQL_NAMESPACE, XsdType, decode_name, encode_name,
-};
 use yggdryl::{
     DataType, Field, Scalar, Serie, State, StructType, TimeUnit, Timezone, UnionMode, Uuid,
+};
+use yggdryl_xmla::rowset::{ROOT_ELEMENT, ROW_ELEMENT};
+use yggdryl_xmla::{
+    EXCEPTION_NAMESPACE, ROWSET_NAMESPACE, Rowset, SQL_NAMESPACE, XsdType, decode_name, encode_name,
 };
 
 // Fixtures.
@@ -3270,11 +3270,8 @@ fn a_batch_failing_once_rows_are_written_is_reported_inside_the_root() {
         .write_root_reporting(&mut document, batches, false, true)
         .expect("the failure is handed back, never raised")
         .expect("the failure");
-    assert_eq!(
-        failed.code(),
-        yggdryl::xmla::service::code::EXECUTION_FAILED
-    );
-    assert_eq!(failed.source(), yggdryl::xmla::response::ACTOR);
+    assert_eq!(failed.code(), yggdryl_xmla::service::code::EXECUTION_FAILED);
+    assert_eq!(failed.source(), yggdryl_xmla::response::ACTOR);
     assert!(failed.description().contains("$.rows"), "{failed:?}");
     assert!(
         failed.description().contains("the source went away"),

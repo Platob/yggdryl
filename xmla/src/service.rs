@@ -31,10 +31,10 @@ use super::vocabulary::{
     Access, AuthenticationMode, AxisFormat, Content, Format, MdxSupport, Method, PropertyList,
     ProviderType, RequestType, StateSupport, property,
 };
-use crate::expression::{Location, Plan, Source, Target};
-use crate::soap::{Fault, FaultCode, Fragment};
-use crate::warehouse::{holds, no_catalog, path_text};
-use crate::{
+use yggdryl::expression::{Location, Plan, Source, Target};
+use yggdryl::soap::{Fault, FaultCode, Fragment};
+use yggdryl::warehouse::{holds, no_catalog, path_text};
+use yggdryl::{
     ArrowCastOptions, Catalog, CatalogValue, DataType, Error, Field, Namespace, NamespaceValue,
     Object, ObjectValue, Result, Scalar, Serie, StreamChunkedSerie, Table, TableValue, Uuid,
     Warehouse,
@@ -288,7 +288,7 @@ impl Service {
             None => return Ok(Vec::new()),
             Some(Session::Begin) => Session::Continue(self.new_session_id()),
             Some(Session::Continue(id) | Session::End(id)) => {
-                if crate::uuid_parse(id.as_bytes()).is_err() {
+                if Uuid::from_bytes(id.as_bytes()).is_err() {
                     return Err(Fault::client(format!(
                         "the session {id:?} is not one this provider opened"
                     ))
@@ -310,7 +310,7 @@ impl Service {
             .map(|elapsed| i64::try_from(elapsed.as_micros()).unwrap_or(i64::MAX))
             .unwrap_or(0);
         let count = self.sessions.fetch_add(1, Ordering::Relaxed);
-        let payload = crate::xxhash::xxh3(&count.to_le_bytes());
+        let payload = yggdryl::xxhash::xxh3(&count.to_le_bytes());
         Uuid::from_v7(micros, payload).map_or_else(
             |_| SmolStr::new(format!("{count:032x}")),
             |uuid| SmolStr::new(uuid.to_string()),
@@ -894,8 +894,8 @@ impl Service {
         }
         let plan: Plan = statement
             .as_str()
-            .parse::<crate::Expression>()
-            .and_then(crate::expression::IntoPlan::into_plan)
+            .parse::<yggdryl::Expression>()
+            .and_then(yggdryl::expression::IntoPlan::into_plan)
             .map_err(|error| {
                 if looks_like_mdx(statement.as_str()) {
                     return client_fault(
@@ -1066,7 +1066,9 @@ fn tables_under(parent: &dyn NamespaceValue, into: &mut Vec<Table>) -> Result<()
         match child? {
             Object::Table(table) => into.push(table),
             Object::Namespace(namespace) => namespaces.push(namespace),
-            Object::Catalog(_) => {}
+            // A catalog below a namespace, and any object kind the core
+            // adds, holds no table of this namespace's.
+            _ => {}
         }
     }
     for namespace in namespaces {
@@ -1337,7 +1339,7 @@ fn spelled(value: &Scalar) -> String {
         return text.to_owned();
     }
     let mut spelled = Vec::new();
-    if crate::xml::write_leaf_text(&mut spelled, value, "restriction").is_err() {
+    if yggdryl::xml::write_leaf_text(&mut spelled, value, "restriction").is_err() {
         return String::new();
     }
     String::from_utf8(spelled).unwrap_or_default()
@@ -1561,13 +1563,13 @@ fn provider_type_rows() -> Result<Vec<Scalar>> {
         ("date32", DataType::Date32),
         (
             "time64(us)",
-            DataType::time64(crate::TimeUnit::Microsecond)?,
+            DataType::time64(yggdryl::TimeUnit::Microsecond)?,
         ),
         (
             "datetime64(us, UTC)",
             DataType::DateTime64 {
-                unit: crate::TimeUnit::Microsecond,
-                timezone: crate::Timezone::UTC,
+                unit: yggdryl::TimeUnit::Microsecond,
+                timezone: yggdryl::Timezone::UTC,
             },
         ),
         ("utf8", DataType::utf8()),
@@ -1660,12 +1662,12 @@ fn column_row(table: &Table, position: usize, column: &Field) -> Result<Scalar> 
             Scalar::from(i16::from(*scale)),
         ),
         DataType::Decimal => (
-            Scalar::from(u16::from(crate::Decimal::PRECISION)),
-            Scalar::from(i16::from(crate::Decimal::SCALE)),
+            Scalar::from(u16::from(yggdryl::Decimal::PRECISION)),
+            Scalar::from(i16::from(yggdryl::Decimal::SCALE)),
         ),
         DataType::BigDecimal => (
-            Scalar::from(u16::from(crate::BigDecimal::PRECISION)),
-            Scalar::from(i16::from(crate::BigDecimal::SCALE)),
+            Scalar::from(u16::from(yggdryl::BigDecimal::PRECISION)),
+            Scalar::from(i16::from(yggdryl::BigDecimal::SCALE)),
         ),
         _ if indicator.is_unsigned().is_some() => (
             indicator
@@ -1718,8 +1720,8 @@ fn instant(nanos: Option<i64>) -> Result<Scalar> {
     match nanos {
         Some(nanos) => Scalar::datetime64(
             nanos.div_euclid(1_000),
-            crate::TimeUnit::Microsecond,
-            crate::Timezone::UTC,
+            yggdryl::TimeUnit::Microsecond,
+            yggdryl::Timezone::UTC,
         ),
         None => Ok(Scalar::Null),
     }
@@ -1737,7 +1739,7 @@ fn not_understood(request: &Request) -> Option<Fault> {
     request.header().iter().find_map(|block| {
         let element = block.element();
         let demanded = element
-            .attribute_in(Some(crate::soap::ENVELOPE_NAMESPACE), "mustUnderstand")
+            .attribute_in(Some(yggdryl::soap::ENVELOPE_NAMESPACE), "mustUnderstand")
             .or_else(|| element.attribute_in(None, "mustUnderstand"))
             .is_some_and(|value| value.trim() == "1");
         let session = matches!(

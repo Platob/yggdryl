@@ -9,7 +9,7 @@
 
 use std::fmt;
 
-use crate::DataType;
+use yggdryl::DataType;
 
 /// One OLE DB type indicator, by its `DBTYPE_*` name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]

@@ -40,8 +40,8 @@ jobs:
         include:
           - name: default features
             cache_key: default
-            clippy_packages: -p yggdryl
-            doc_packages: -p yggdryl
+            clippy_packages: -p yggdryl -p yggdryl-xmla
+            doc_packages: -p yggdryl -p yggdryl-xmla
             flags: ""
           - name: all features
             cache_key: full
@@ -69,18 +69,26 @@ jobs:
       - name: CLI tests and benchmark smoke tests
         if: matrix.name == 'default features'
         run: cargo test --locked -p yggdryl-cli --all-targets --no-fail-fast
+      # The XML for Analysis crate: the medium the core reaches by
+      # registration and the provider over it, in both lanes - its `http`
+      # feature is the provider's route, which the full lane's
+      # `--all-features` turns on.
+      - name: XMLA crate tests and benchmark smoke tests
+        run: cargo test --locked -p yggdryl-xmla --all-targets --no-fail-fast ${{ matrix.flags }}
       # `--all-targets` is `--lib --bins --examples --tests --benches`, and
       # doctests are none of those: the step above has never compiled one.
       # They are the examples the published API pages carry, so they are the
       # examples most read and least run - 190 of them on default features.
       - name: Rustdoc examples
         run: cargo test --locked -p yggdryl --doc ${{ matrix.flags }}
+      - name: XMLA crate rustdoc examples
+        run: cargo test --locked -p yggdryl-xmla --doc ${{ matrix.flags }}
       - name: Documentation
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --locked ${{ matrix.doc_packages }} --no-deps ${{ matrix.flags }}
       - name: Check optimized benchmark configuration
-        run: cargo check --locked -p yggdryl --profile bench --benches ${{ matrix.flags }}
+        run: cargo check --locked -p yggdryl -p yggdryl-xmla --profile bench --benches ${{ matrix.flags }}
 
   iceberg-msrv:
     name: Iceberg Rust 1.94
@@ -93,6 +101,8 @@ jobs:
         run: rustup toolchain install 1.94.0 --profile minimal
       - name: Check the core and the official Iceberg boundary at the declared MSRV
         run: cargo +1.94.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets --features iceberg
+      - name: Check the XMLA crate at the declared MSRV
+        run: cargo +1.94.0 check --locked -p yggdryl-xmla --all-targets --features http
 
   pyiceberg-interop:
     name: PyIceberg exchange

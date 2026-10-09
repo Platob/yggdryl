@@ -810,7 +810,8 @@ mod base64 {
     //! The one base64 reader and writer the document layers share.
 
     use yggdryl::Bytes;
-    use yggdryl::internals::bytes::{BASE64_SPELLING, base64_into, from_base64, into_base64};
+    use yggdryl::bytes::into_base64;
+    use yggdryl::internals::bytes::{BASE64_SPELLING, base64_into, from_base64};
 
     #[test]
     fn base64_reads_the_standard_padded_alphabet_with_whitespace_between_the_digits() {

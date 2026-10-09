@@ -243,10 +243,13 @@ pub use lifecycle::{not_empty, skip_absent};
 #[cfg(feature = "iceberg")]
 pub(crate) use transfer::prepare_arrow_write_deriving;
 pub use transfer::{ArrowWriteSession, overwrite_serie_default};
+pub use transfer::{
+    append_arrow_reader_default, leaf_writer, merge_arrow_reader_default,
+    overwrite_arrow_reader_default_with_field,
+};
 pub(crate) use transfer::{
-    append_arrow_reader_default, append_serie_default, leaf_field, leaf_reader, leaf_row_size,
-    leaf_writer, merge_arrow_reader_default, merge_serie_default, non_empty_arrow_reader,
-    overwrite_arrow_reader_default_with_field, stored_field,
+    append_serie_default, leaf_field, leaf_reader, leaf_row_size, merge_serie_default,
+    non_empty_arrow_reader, stored_field,
 };
 /// Random-access byte storage addressed by explicit offsets.
 ///

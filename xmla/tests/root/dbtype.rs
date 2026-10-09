@@ -11,10 +11,10 @@ use arrow_schema::{
     DataType as ArrowDataType, Field as ArrowField, Fields as ArrowFields, IntervalUnit,
     TimeUnit as ArrowTimeUnit, UnionFields, UnionMode as ArrowUnionMode,
 };
-use yggdryl::xmla::DbType;
 use yggdryl::{
     DataType, DataTypeId, DataTypeKind, Field, StructType, TimeUnit, Timezone, UnionMode,
 };
+use yggdryl_xmla::DbType;
 
 /// Every indicator with the number and the name `oledb.h` gives it, in the
 /// numeric order `DbType::ALL` promises.

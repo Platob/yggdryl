@@ -69,10 +69,9 @@ rust/                    The core crate
   src/charset/           What every code page shares
   src/media/             What every record medium shares: Media, record
                          options, inference, magic, merge, partitions
-  src/{ipc,parquet,avro,csv,iceberg,xmla,excel}/
-                         One folder per record medium; xmla/ also holds the
-                         XML for Analysis provider and its HTTP server, and
-                         excel/ the workbook, sheet and cell model
+  src/{ipc,parquet,avro,csv,iceberg,excel}/
+                         One folder per record medium; excel/ also holds the
+                         workbook, sheet and cell model
   src/text/              The plain-text medium and what the structured
                          codecs share
   src/{json,toml,yaml,xml}/
@@ -98,6 +97,10 @@ node/                    The JavaScript extension
   src/                   Node-API views, laid out like python/src
   *.js                   The loader and its convenience protocols
   tests/                 The mirror of both, file for file
+xmla/                    The XML for Analysis crate, yggdryl-xmla: the .xmla
+                         rowset document medium, registered with the core, and
+                         the provider yggdryl xmla serve routes; src/, tests/
+                         and benchmarks/ laid out as the core's are
 cli/                     The yggdryl command-line tool
 skills/                  Agent skills for code using the package, one folder
                          per layer, published as a Claude Code plugin by

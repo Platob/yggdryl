@@ -13,8 +13,6 @@ mod iceberg;
 #[cfg(feature = "parquet")]
 #[path = "media/io.rs"]
 mod io;
-#[path = "media/xmla.rs"]
-mod xmla;
 
 use criterion::{Criterion, criterion_group};
 
@@ -45,7 +43,6 @@ criterion_group!(
     excel::excel_benchmarks,
     io_benchmarks,
     iceberg_benchmarks,
-    xmla::xmla_benchmarks,
 );
 
 fn main() {

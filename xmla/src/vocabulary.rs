@@ -13,7 +13,7 @@ use std::str::FromStr;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{Error, Result};
+use yggdryl::{Error, Result};
 
 /// The two methods XML for Analysis defines.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -615,7 +615,7 @@ impl PropertyList {
         // enumeration or count read here, and is refused rather than unset.
         self.get(property::TIMEOUT)
             .map(|value| {
-                crate::integer::integer_from_text_as::<u32>(value)
+                yggdryl::integer::integer_from_text_as::<u32>(value)
                     .ok_or_else(|| unknown("Timeout", value, "a count of seconds"))
             })
             .transpose()
@@ -751,7 +751,7 @@ fn unknown(what: &str, value: &str, expected: &str) -> Error {
         path: format_smolstr!("$.{what}"),
         reason: format_smolstr!(
             "expected {expected}, got {:?}",
-            crate::text::elide_to(value, crate::text::ERROR_TEXT_LIMIT)
+            yggdryl::text::elide_to(value, yggdryl::text::ERROR_TEXT_LIMIT)
         ),
     }
 }

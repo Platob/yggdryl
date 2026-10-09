@@ -117,7 +117,13 @@ impl arrow_array::RecordBatchReader for Counted {
 ///
 /// Stateful media override the trait method only to perform that validation
 /// before the source reader is pulled, then call this shared implementation.
-pub(crate) fn append_arrow_reader_default(
+///
+/// # Errors
+///
+/// Returns the options' refusals - a mode, a cadence, a thread count or a
+/// limit the append cannot take - and what the handle refuses as it is
+/// read, shaped and written.
+pub fn append_arrow_reader_default(
     handle: &mut (impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
@@ -161,7 +167,13 @@ pub(crate) fn append_arrow_reader_default(
 
 /// The default merge implementation after an encoding-specific boundary has
 /// validated its option variant.
-pub(crate) fn merge_arrow_reader_default(
+///
+/// # Errors
+///
+/// Returns the options' refusals - a mode, a cadence, a thread count, a
+/// limit or a key the merge cannot take - and what the handle refuses as
+/// it is read, matched and written.
+pub fn merge_arrow_reader_default(
     handle: &mut (impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
@@ -265,7 +277,13 @@ pub fn overwrite_serie_default(
 /// then an existing stored field completes the result. `None` is reserved for
 /// a table-format redirection whose own commit owns its metadata cache.
 /// The rows read and written travel beside it.
-pub(crate) fn overwrite_arrow_reader_default_with_field(
+///
+/// # Errors
+///
+/// Returns the options' refusals - a mode, a cadence or a thread count the
+/// overwrite cannot take - and what the handle refuses as it is shaped and
+/// written.
+pub fn overwrite_arrow_reader_default_with_field(
     handle: &mut (impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
@@ -1184,7 +1202,11 @@ pub(crate) fn leaf_reader(
         }
         RecordOptions::Avro(avro) => crate::avro::read_batch_reader(handle, declared, avro)?,
         RecordOptions::Text(text) => crate::text::arrow::read_arrow_reader(handle, text)?,
-        RecordOptions::Xmla(xmla) => crate::xmla::read_batch_reader(handle, declared, xmla)?,
+        RecordOptions::Registered(registered) => {
+            registered
+                .encoding()?
+                .read_batch_reader(handle.as_io_base(), declared, registered)?
+        }
         RecordOptions::Csv(csv) => crate::csv::read_batch_reader(handle, declared, csv)?,
         RecordOptions::Excel(excel) => crate::excel::read_batch_reader(handle, declared, excel)?,
     };
@@ -1210,7 +1232,9 @@ pub(crate) fn leaf_row_size(
         RecordOptions::Parquet(parquet) => crate::parquet::row_size(handle, parquet),
         RecordOptions::Avro(avro) => crate::avro::row_size(handle, avro),
         RecordOptions::Text(text) => crate::text::arrow::row_size(handle, text),
-        RecordOptions::Xmla(xmla) => crate::xmla::row_size(handle, xmla),
+        RecordOptions::Registered(registered) => registered
+            .encoding()?
+            .row_size(handle.as_io_base(), registered),
         RecordOptions::Csv(csv) => crate::csv::row_size(handle, csv),
         RecordOptions::Excel(excel) => crate::excel::row_size(handle, excel),
     }
@@ -1244,7 +1268,9 @@ pub(crate) fn leaf_field(
         }
         RecordOptions::Avro(avro) => Ok(crate::avro::read_field(handle, avro)?),
         RecordOptions::Text(text) => text.source_field(),
-        RecordOptions::Xmla(xmla) => crate::xmla::read_field(handle, xmla),
+        RecordOptions::Registered(registered) => registered
+            .encoding()?
+            .read_field(handle.as_io_base(), registered),
         RecordOptions::Csv(csv) => crate::csv::read_field(handle, csv),
         RecordOptions::Excel(excel) => crate::excel::read_field(handle, excel),
     }
@@ -1255,7 +1281,11 @@ pub(crate) fn leaf_field(
 /// This is the only place a record write reaches an encoding. Nothing reaches
 /// the handle until the last batch has been encoded, so a failure leaves the
 /// resource exactly as it was.
-pub(crate) fn leaf_writer(
+///
+/// # Errors
+///
+/// Returns what encoding `batches` or writing the handle refuses.
+pub fn leaf_writer(
     handle: &mut (impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
@@ -1270,7 +1300,11 @@ pub(crate) fn leaf_writer(
         RecordOptions::Text(text) => {
             crate::text::arrow::write_arrow_reader(handle, batches, text)?;
         }
-        RecordOptions::Xmla(xmla) => crate::xmla::overwrite_arrow_reader(handle, batches, xmla)?,
+        RecordOptions::Registered(registered) => registered.encoding()?.overwrite_arrow_reader(
+            handle.as_io_base_mut(),
+            batches,
+            registered,
+        )?,
         RecordOptions::Csv(csv) => crate::csv::overwrite_arrow_reader(handle, batches, csv)?,
         RecordOptions::Excel(excel) => {
             crate::excel::overwrite_arrow_reader(handle, batches, excel)?
@@ -1298,11 +1332,13 @@ pub(crate) fn stored_field(
     if matches!(options, RecordOptions::Text(_)) {
         return Ok(None);
     }
-    // A rowset document may state no schema at all (a `Content` of `Data`),
-    // which is a resource with no shape yet rather than one that cannot be
-    // read.
-    if matches!(options, RecordOptions::Xmla(_)) {
-        return crate::xmla::media::stated_field(handle);
+    // A registered encoding states what its own bytes declare - a rowset
+    // document may state no schema at all, which is a resource with no
+    // shape yet rather than one that cannot be read.
+    if let RecordOptions::Registered(registered) = options {
+        return registered
+            .encoding()?
+            .stated_field(handle.as_io_base(), registered);
     }
     // A CSV states its shape by its header and its sample, read under the
     // dialect the options state - a probe under the default separator would

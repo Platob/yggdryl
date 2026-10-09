@@ -8,7 +8,7 @@
 //! may send beside it.
 //!
 //! ```
-//! use yggdryl::xmla::{Discover, PropertyList, Request, RequestType, Restrictions};
+//! use yggdryl_xmla::{Discover, PropertyList, Request, RequestType, Restrictions};
 //!
 //! let discover = Discover::new(RequestType::DbschemaTables)
 //!     .with_restrictions(Restrictions::new().with("TABLE_CATALOG", "market"))
@@ -25,9 +25,9 @@ use std::io::Write;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::soap::{Body, Envelope, EnvelopeWriter, Fragment};
-use crate::xml::{ATTRIBUTE_PREFIX, Element};
-use crate::{Error, Result, Scalar};
+use yggdryl::soap::{Body, Envelope, EnvelopeWriter, Fragment};
+use yggdryl::xml::{ATTRIBUTE_PREFIX, Element};
+use yggdryl::{Error, Result, Scalar};
 
 use super::NAMESPACE;
 use super::vocabulary::{Method, PropertyList, RequestType, Restrictions};
@@ -672,7 +672,7 @@ impl Request {
     /// Returns the XML writer's refusal for a name or a value with no XML
     /// spelling, or the sink's failure.
     pub fn into_writer<W: Write>(&self, writer: W) -> Result<W> {
-        crate::soap::distinct(&self.header, "header block")?;
+        yggdryl::soap::distinct(&self.header, "header block")?;
         let mut envelope = EnvelopeWriter::begin(writer, &self.header)?;
         let body = envelope.body();
         match &self.method {
@@ -682,7 +682,7 @@ impl Request {
                     "<{} xmlns=\"{NAMESPACE}\"><RequestType>",
                     Method::Discover.as_str()
                 )?;
-                crate::xml::write_element_text(body, discover.request_type.as_str())?;
+                yggdryl::xml::write_element_text(body, discover.request_type.as_str())?;
                 write!(body, "</RequestType><Restrictions>")?;
                 if discover.restrictions.is_empty() {
                     write!(body, "<RestrictionList/>")?;
@@ -690,7 +690,11 @@ impl Request {
                     write!(body, "<RestrictionList>")?;
                     for (name, values) in discover.restrictions.entries() {
                         for value in values {
-                            crate::xml::write_fragment(body, name, &Scalar::from(value.as_str()))?;
+                            yggdryl::xml::write_fragment(
+                                body,
+                                name,
+                                &Scalar::from(value.as_str()),
+                            )?;
                         }
                     }
                     write!(body, "</RestrictionList>")?;
@@ -708,7 +712,7 @@ impl Request {
                 match &execute.command {
                     Command::Statement(text) => {
                         write!(body, "<Statement>")?;
-                        crate::xml::write_element_text(body, text)?;
+                        yggdryl::xml::write_element_text(body, text)?;
                         write!(body, "</Statement>")?;
                     }
                     // Under the Execute's default namespace: a command read
@@ -722,9 +726,9 @@ impl Request {
                     for (name, value) in &execute.parameters {
                         one_value(name, value)?;
                         write!(body, "<Parameter><Name>")?;
-                        crate::xml::write_element_text(body, name)?;
+                        yggdryl::xml::write_element_text(body, name)?;
                         write!(body, "</Name>")?;
-                        crate::xml::write_fragment(body, "Value", value)?;
+                        yggdryl::xml::write_fragment(body, "Value", value)?;
                         write!(body, "</Parameter>")?;
                     }
                     write!(body, "</Parameters>")?;
@@ -744,7 +748,7 @@ fn write_properties<W: Write>(writer: &mut W, properties: &PropertyList) -> Resu
     }
     write!(writer, "<Properties><PropertyList>")?;
     for (name, value) in properties.entries() {
-        crate::xml::write_fragment(writer, name, &Scalar::from(value.as_str()))?;
+        yggdryl::xml::write_fragment(writer, name, &Scalar::from(value.as_str()))?;
     }
     write!(writer, "</PropertyList></Properties>")?;
     Ok(())
@@ -815,9 +819,9 @@ fn element_name(name: &str) -> Result<&str> {
     let mut characters = name.chars();
     let starts = characters
         .next()
-        .is_some_and(|first| crate::xml::is_name_start(first) && first != ':');
+        .is_some_and(|first| yggdryl::xml::is_name_start(first) && first != ':');
     if !starts
-        || !characters.all(|character| crate::xml::is_name_char(character) && character != ':')
+        || !characters.all(|character| yggdryl::xml::is_name_char(character) && character != ':')
     {
         return Err(invalid(format_smolstr!(
             "`{name}` is not an XML element name, so no XMLA argument spells it"

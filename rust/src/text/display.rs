@@ -9,7 +9,7 @@ use smol_str::{SmolStr, format_smolstr};
 /// An error message must never allocate proportionally to an input payload, so
 /// every caller-supplied name, value, or rendered schema crosses this budget
 /// before it reaches a message.
-pub(crate) const ERROR_TEXT_LIMIT: usize = 64;
+pub const ERROR_TEXT_LIMIT: usize = 64;
 
 /// The suffix appended when bounded interpolation drops trailing text.
 const ELLIPSIS: char = '\u{2026}';
@@ -20,13 +20,13 @@ const ELLIPSIS: char = '\u{2026}';
 /// which is what a caller-supplied identifier requires so an empty string, a
 /// trailing space, or a control character stays visible. Both stop at the last
 /// character boundary at or before `limit` and append an ellipsis.
-pub(crate) const fn elide_to(value: &str, limit: usize) -> Elided<'_> {
+pub const fn elide_to(value: &str, limit: usize) -> Elided<'_> {
     Elided { value, limit }
 }
 
 /// Caller text bounded to a byte budget for error interpolation.
 #[derive(Clone, Copy)]
-pub(crate) struct Elided<'a> {
+pub struct Elided<'a> {
     value: &'a str,
     limit: usize,
 }
@@ -152,7 +152,7 @@ impl<T: fmt::Display> fmt::Display for ElidedDisplay<'_, T> {
 ///
 /// Both sides render through the same formatter so a reader can diff them by
 /// eye.
-pub(crate) fn expected_got(expected: impl fmt::Display, actual: impl fmt::Display) -> SmolStr {
+pub fn expected_got(expected: impl fmt::Display, actual: impl fmt::Display) -> SmolStr {
     format_smolstr!("expected {expected}, got {actual}")
 }
 
@@ -169,22 +169,8 @@ pub mod internals {
 
     use std::fmt;
 
-    /// The byte budget caller text crosses before it reaches a message.
-    pub const ERROR_TEXT_LIMIT: usize = super::ERROR_TEXT_LIMIT;
-
-    /// Borrow caller text for bounded interpolation: `Display` renders it
-    /// unquoted, `Debug` quoted and escaped.
-    pub fn elide_to(value: &str, limit: usize) -> impl fmt::Debug + fmt::Display {
-        super::elide_to(value, limit)
-    }
-
     /// Render any [`fmt::Display`] value through an explicit byte budget.
     pub fn elide_display_to<T: fmt::Display>(value: &T, limit: usize) -> impl fmt::Display {
         super::elide_display_to(value, limit)
-    }
-
-    /// Build the canonical `expected ..., got ...` failure sentence.
-    pub fn expected_got(expected: impl fmt::Display, actual: impl fmt::Display) -> String {
-        super::expected_got(expected, actual).to_string()
     }
 }

@@ -317,7 +317,6 @@ fn a_record_wrapper_forwards_the_tail_read() {
     check("excel", |handle| {
         Box::new(yggdryl::excel::Excel::new(handle))
     });
-    check("xmla", |handle| Box::new(yggdryl::xmla::Xmla::new(handle)));
     check("text", |handle| Box::new(yggdryl::text::Text::new(handle)));
     check("a running digest", |handle| {
         Box::new(yggdryl::xxhash::Hashed::new(handle, DigestAlgorithm::Xxh3))
@@ -1099,23 +1098,6 @@ mod records {
     }
 
     #[test]
-    fn xmla_costs() {
-        // A rowset document is held whole, as every structured text document
-        // is: XML has no frame to read a prefix of. So the schema, the row
-        // count and the rows are each one read of the whole handle, and the
-        // column count is the schema's read - never a second one to break a
-        // tie, and never a per-row call.
-        surfaces(
-            "xmla",
-            "file:///lake/part.xmla",
-            "read_all_bytes=1 media_type=2 is_container=1",
-            "read_all_bytes=1 media_type=3 is_container=1",
-            "read_all_bytes=1 size=1 media_type=3 is_container=2",
-            "read_all_bytes=1 media_type=3 is_container=2",
-        );
-    }
-
-    #[test]
     fn csv_costs() {
         // A CSV streams, so every surface is one `pstream_bytes` over the
         // handle and never a whole read, and the counts are the plain-text
@@ -1498,127 +1480,6 @@ fn a_random_read_through_a_charset_seeks_rather_than_re_decoding() {
     costs("a second size", &calls, "none", || {
         assert_eq!(decoded.size(), whole.len() as u64);
     });
-}
-
-mod provider {
-    //! What the XML for Analysis provider asks of the store behind a catalog,
-    //! per request. A catalog takes a `Holder`, so the count is taken on a
-    //! filesystem behind an `FsFolder` rather than on `Counted`; what a
-    //! Discover costs is the catalog's listing and, for the columns, each
-    //! table's schema. An Execute reopens its table by URL, which an
-    //! `FsFolder` has none of that `Holder::from_url` holds, so its cost is
-    //! measured by the `media/xmla/service/execute` benchmark and not pinned
-    //! here.
-
-    use std::sync::Arc;
-
-    use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::holder::Holder;
-    use yggdryl::media::RecordOptions;
-    use yggdryl::xmla::{
-        Discover, PropertyList, Request, RequestType, Response, Service, ServiceOptions,
-    };
-    use yggdryl::{DataType, Field, FolderCatalog, IOBase, IOMedia, MimeType, StructType};
-
-    use crate::counting_filesystem::{CountingFileSystem, counted_folder};
-
-    fn trades_field() -> Field {
-        StructType::from_fields([
-            DataType::utf8().required_field("symbol"),
-            DataType::Int64.required_field("size"),
-        ])
-        .map(DataType::from)
-        .expect("a valid root")
-        .required_field("row")
-    }
-
-    fn trades_batch() -> RecordBatch {
-        RecordBatch::try_new(
-            trades_field().into_arrow_schema().expect("an Arrow schema"),
-            vec![
-                Arc::new(StringArray::from(vec!["AAPL", "MSFT", "GOOG"])),
-                Arc::new(Int64Array::from(vec![100, 250, 75])),
-            ],
-        )
-        .expect("a batch")
-    }
-
-    /// A service over a `market` catalog holding one IPC table, `trades`.
-    fn ipc_catalog() -> (Arc<CountingFileSystem>, Service) {
-        let (filesystem, folder) = counted_folder("market");
-        let root = Holder::from(folder);
-        let mut leaf = root
-            .child_by_path("trades.arrows")
-            .expect("the table resolves");
-        let batch = trades_batch();
-        leaf.overwrite_arrow_reader(
-            yggdryl::arrow::batch_reader(batch.schema(), [batch]),
-            &RecordOptions::for_mime_type(&MimeType::ARROW_STREAM).expect("IPC options"),
-        )
-        .expect("the table is written");
-        let service =
-            Service::new(ServiceOptions::new()).with_catalog(FolderCatalog::bound("market", root));
-        (filesystem, service)
-    }
-
-    /// The calls one Discover of `request_type`, under the `market` catalog,
-    /// makes, by name; the answer is checked to be a rowset of `rows` rows.
-    fn discover(
-        filesystem: &CountingFileSystem,
-        service: &Service,
-        request_type: RequestType,
-        rows: usize,
-    ) -> String {
-        let message = Request::from(
-            Discover::new(request_type.clone())
-                .with_properties(PropertyList::new().with("Catalog", "market")),
-        )
-        .into_bytes()
-        .expect("the request encodes");
-        let mut answer = Vec::new();
-        let costs = filesystem.costs(|| {
-            answer = service.handle(&message, Vec::new()).expect("answered");
-        });
-        let response = Response::from_bytes(&answer, None)
-            .unwrap_or_else(|error| panic!("{request_type}: {error}"));
-        assert_eq!(
-            response.rows().map(yggdryl::Serie::len),
-            Some(rows),
-            "{request_type}"
-        );
-        costs
-    }
-
-    #[test]
-    fn a_discover_over_an_ipc_catalog_costs_its_listing_and_the_columns_a_schema_read() {
-        let (filesystem, service) = ipc_catalog();
-        let properties = discover(&filesystem, &service, RequestType::DiscoverProperties, 53);
-        let catalogs = discover(&filesystem, &service, RequestType::DbschemaCatalogs, 1);
-        let cubes = discover(&filesystem, &service, RequestType::MdschemaCubes, 1);
-        let tables = discover(&filesystem, &service, RequestType::DbschemaTables, 1);
-        let columns = discover(&filesystem, &service, RequestType::DbschemaColumns, 2);
-        // Nothing is read for what the provider states about itself, and a
-        // catalog row - or the cube row that restates it - costs nothing over
-        // this store. The tables are the one listing of the root plus two
-        // `file_info` per table - the `fs` backend answers a listed child's
-        // kind and modification time by asking the store again, each once,
-        // since the folder catalog hands the leaf on as the listing gave it -
-        // and the columns add one open of the leaf's stream and the schema
-        // read; never a read of a row. Moving the provider onto the folder
-        // catalog took one `file_info` off a table row and two off a column
-        // read: the old catalog asked a leaf's kind three times.
-        assert_eq!(
-            [properties, catalogs, cubes, tables, columns],
-            [
-                "none",
-                "none",
-                "none",
-                "file_info=2 list=1",
-                "file_info=2 list=1 open_input_stream=1",
-            ],
-            "properties, catalogs, cubes, tables, columns"
-        );
-    }
 }
 
 mod isin_registry {

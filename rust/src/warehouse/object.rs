@@ -318,7 +318,7 @@ pub(crate) fn write_path(formatter: &mut fmt::Formatter<'_>, parts: &[SmolStr]) 
 
 /// A path rendered as the plan grammar spells it, which is how every error
 /// names one.
-pub(crate) fn path_text(parts: &[SmolStr]) -> String {
+pub fn path_text(parts: &[SmolStr]) -> String {
     struct Rendered<'a>(&'a [SmolStr]);
 
     impl fmt::Display for Rendered<'_> {

@@ -541,6 +541,11 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     // The core's logging tree, hosted by `logging`: records reach the
     // Python logger of their Rust module path at the levels it states.
     logging::install(module.py())?;
+    // The `.xmla` medium reaches the core's record doors by registration:
+    // after it, a handle named `application/xmla+xml` composes the `Xmla`
+    // class and reads and writes rowset documents through the same doors as
+    // every other encoding.
+    yggdryl_xmla::register();
     register_classes(module)?;
     register_functions(module)?;
     module.add(

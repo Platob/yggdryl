@@ -14,13 +14,13 @@ use std::io::Write;
 
 use yggdryl::soap::{Envelope, Fault, FaultCode, Fragment};
 use yggdryl::xml::Element;
-use yggdryl::xmla::response::{ACTOR, write_rowset_reporting};
-use yggdryl::xmla::service::code::EXECUTION_FAILED;
-use yggdryl::xmla::{
+use yggdryl::{ArrowCastOptions, DataType, Error, Field, Scalar, Serie, StructType};
+use yggdryl_xmla::response::{ACTOR, write_rowset_reporting};
+use yggdryl_xmla::service::code::EXECUTION_FAILED;
+use yggdryl_xmla::{
     Answer, Content, Method, Response, Rowset, Session, XmlaError, fault, write_empty, write_fault,
     write_rowset,
 };
-use yggdryl::{ArrowCastOptions, DataType, Error, Field, Scalar, Serie, StructType};
 
 const SOAP: &str = "http://schemas.xmlsoap.org/soap/envelope/";
 const XMLA: &str = "urn:schemas-microsoft-com:xml-analysis";

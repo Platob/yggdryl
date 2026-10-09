@@ -59,8 +59,9 @@ pub(crate) mod scanner;
 mod wire;
 
 pub use element::{Element, Scope, XSD_NAMESPACE, XSI_NAMESPACE};
-pub(crate) use wire::{
-    decode_x_escapes, is_name_char, is_name_start, natural, shaped, write_attribute_text,
+pub(crate) use wire::natural;
+pub use wire::{
+    decode_x_escapes, is_name_char, is_name_start, shaped, write_attribute_text,
     write_element_text, write_fragment, write_leaf_text, write_x_escape,
 };
 

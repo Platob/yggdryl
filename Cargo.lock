@@ -4418,6 +4418,7 @@ dependencies = [
  "crossterm",
  "shlex",
  "yggdryl",
+ "yggdryl-xmla",
 ]
 
 [[package]]
@@ -4434,6 +4435,7 @@ dependencies = [
  "napi-derive",
  "serde_json",
  "yggdryl",
+ "yggdryl-xmla",
 ]
 
 [[package]]
@@ -4448,6 +4450,18 @@ dependencies = [
  "mimalloc",
  "pyo3",
  "serde_json",
+ "yggdryl",
+ "yggdryl-xmla",
+]
+
+[[package]]
+name = "yggdryl-xmla"
+version = "0.1.21"
+dependencies = [
+ "arrow-array 59.2.0",
+ "arrow-schema 59.2.0",
+ "criterion",
+ "smol_str",
  "yggdryl",
 ]
 

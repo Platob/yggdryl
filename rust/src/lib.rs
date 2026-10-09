@@ -170,7 +170,6 @@ pub mod warehouse;
 mod window_serie;
 pub mod wkb;
 pub mod xml;
-pub mod xmla;
 pub mod xxhash;
 pub mod yaml;
 pub mod zip;

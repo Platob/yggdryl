@@ -7,11 +7,11 @@
 //! whose path is `$.xmla`.
 
 use yggdryl::soap::{Body, ENVELOPE_NAMESPACE, Envelope, Fault, Fragment};
-use yggdryl::xmla::{
+use yggdryl::{Error, Scalar};
+use yggdryl_xmla::{
     Command, Discover, Execute, Method, NAMESPACE, PropertyList, Request, RequestMethod,
     RequestType, Restrictions, Session,
 };
-use yggdryl::{Error, Scalar};
 
 /// The Analysis Services scripting namespace, a command language XMLA
 /// carries without owning.

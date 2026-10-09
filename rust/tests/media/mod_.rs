@@ -69,10 +69,11 @@ fn the_name_picks_the_implementation() {
         Media::open(handle("events.log")).unwrap(),
         Media::Text(_)
     ));
-    assert!(matches!(
-        Media::open(handle("catalog.xmla")).unwrap(),
-        Media::Xmla(_)
-    ));
+    // An encoding no crate registered in this process - XML for Analysis,
+    // which `yggdryl-xmla` registers - is one this build does not implement,
+    // as Parquet is without its feature.
+    let refused = Media::open(handle("catalog.xmla")).unwrap_err().to_string();
+    assert!(refused.contains("got application/xmla+xml"), "{refused}");
     assert!(matches!(
         Media::open(handle("trades.csv")).unwrap(),
         Media::Csv(_)
@@ -145,7 +146,6 @@ fn every_variant_round_trips_batches_through_the_same_calls() {
     let mut names = vec![
         "trades.arrows",
         "trades.arrows.gz",
-        "trades.xmla",
         "trades.csv",
         "trades.tsv",
         "trades.csv.gz",
@@ -196,9 +196,9 @@ fn generic_media_preserves_commit_cadence_through_variant_redirection() {
             Media::Parquet(parquet) => parquet.options_mut().set_commit_batch_num(Some(1)),
             Media::Avro(avro) => avro.options_mut().set_commit_batch_num(Some(1)),
             Media::Text(text) => text.options_mut().set_commit_batch_num(Some(1)),
-            Media::Xmla(xmla) => xmla.options_mut().set_commit_batch_num(Some(1)),
             Media::Csv(csv) => csv.options_mut().set_commit_batch_num(Some(1)),
             Media::Excel(excel) => excel.options_mut().set_commit_batch_num(Some(1)),
+            Media::Registered(_) => unreachable!("no registered encoding is listed"),
         }
 
         let options = media.record_options().unwrap();

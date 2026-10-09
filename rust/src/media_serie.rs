@@ -436,7 +436,6 @@ pub(crate) fn require_kind(options: &RecordOptions, kind: &str) -> Result<()> {
         "Csv" => matches!(options, RecordOptions::Csv(_)),
         "Text" => matches!(options, RecordOptions::Text(_)),
         "Excel" => matches!(options, RecordOptions::Excel(_)),
-        "Xmla" => matches!(options, RecordOptions::Xmla(_)),
         _ => true,
     };
     if accepted {
@@ -535,7 +534,6 @@ impl Serie {
             Self::Csv(value) => Some(value.media_state()),
             Self::Text(value) => Some(value.media_state()),
             Self::Excel(value) => Some(value.media_state()),
-            Self::Xmla(value) => Some(value.media_state()),
             #[cfg(feature = "iceberg")]
             Self::IcebergTable(value) => Some(value.media_state()),
             Self::WarehouseTable(value) => Some(value.media_state()),
@@ -559,7 +557,6 @@ impl Serie {
             Self::Csv(value) => Arc::make_mut(value).splice(range, rows),
             Self::Text(value) => Arc::make_mut(value).splice(range, rows),
             Self::Excel(value) => Arc::make_mut(value).splice(range, rows),
-            Self::Xmla(value) => Arc::make_mut(value).splice(range, rows),
             #[cfg(feature = "iceberg")]
             Self::IcebergTable(value) => Arc::make_mut(value).splice(range, rows),
             Self::WarehouseTable(value) => Arc::make_mut(value).splice(range, rows),

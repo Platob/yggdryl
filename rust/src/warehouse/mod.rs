@@ -64,24 +64,22 @@ mod properties;
 mod system;
 mod table;
 
-pub use catalog::{Catalog, CatalogValue};
+pub use catalog::{Catalog, CatalogValue, no_catalog};
 pub use folder::{FolderCatalog, FolderLayout, FolderNamespace};
 pub use handle::Handle;
 pub use media::MediaTable;
 pub use memory::{MemoryCatalog, MemoryNamespace};
 pub use namespace::{Names, Namespace, NamespaceValue, Namespaces, Tables};
-pub use object::{IntoObjectPath, Object, ObjectValue, Objects};
+pub use object::{IntoObjectPath, Object, ObjectValue, Objects, path_text};
 pub use properties::Properties;
 pub use system::SystemWarehouse;
 pub use table::{Table, TableValue};
 
-pub(crate) use catalog::no_catalog;
 #[cfg(feature = "iceberg")]
 pub(crate) use folder::{entry_name, table_layout};
 #[cfg(feature = "iceberg")]
 pub(crate) use handle::Site;
 pub(crate) use namespace::no_table;
-pub(crate) use object::path_text;
 #[cfg(feature = "iceberg")]
 pub(crate) use object::{extended, implementation_name};
 
@@ -389,7 +387,7 @@ impl Warehouse {
 
 /// Whether `prefix` holds `url` on a path boundary, and how long the match
 /// is: the one containment rule every location check reads.
-pub(crate) fn holds(prefix: &str, url: &str) -> Option<usize> {
+pub fn holds(prefix: &str, url: &str) -> Option<usize> {
     let prefix = prefix.trim_end_matches('/');
     let rest = url.strip_prefix(prefix)?;
     (rest.is_empty() || rest.starts_with(['/', '?', '#'])).then_some(prefix.len())

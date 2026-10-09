@@ -2582,6 +2582,7 @@ pub struct HostStats { requests, gets, heads, puts, posts, deletes, others: u64 
   pub fn into_inner(self) -> W
 
 ### yggdryl::http::server  [rust/src/http/server.rs]  (a base HTTP/1.1 server hosting IOBase handles and routes; `server/mount.rs` serves a holder, `server/connection.rs` the connection loop, `server/forwarded.rs` the base a request was made under behind a proxy)
+pub fn normalize_path(path: &str) -> Result<String>  (the canonical spelling of a mount prefix or a route path; a query, a fragment or a control byte refused as Error::Parse)
   pub type Handler = dyn Fn(&Request) -> Result<Response> + Send + Sync + 'static;
   pub enum Fault { CutBodyAt(u64), CloseBeforeAnswer, Refuse { status: Status, retry_after: Option<Duration> }, Delay(Duration) }
   pub struct Recorded { method: Method, target: String, path: String, query: Vec<(String, String)>, headers: Headers, body_len: u64, status: Status, peer: Option<SocketAddr>, client: Option<IpAddr> }
@@ -2695,6 +2696,7 @@ pub enum Holder
 
 
 ### yggdryl::warehouse  [rust/src/warehouse/mod.rs]  (one abstraction for every place that answers "which tables are there, and how do I read one": the four traits, the four enums, the registry and its process-wide instance; every name re-exported at the crate root)
+pub fn holds(prefix: &str, url: &str) -> Option<usize>  (whether `prefix` holds `url` on a path boundary, and how long the match is: the one containment rule every location check reads)
 pub struct Warehouse  (the catalogs, in registration order; Clone, Default, Eq, Hash)
   pub const fn new() -> Self
   pub fn register(&mut self, object: impl Into<Object>) -> Result<()>  (a catalog by its name; a namespace or a table at its path, memory catalogs and namespaces created along it; conflict when the name is taken, refused by name under an object that lists its own store)
@@ -2709,6 +2711,7 @@ pub struct Warehouse  (the catalogs, in registration order; Clone, Default, Eq, 
   pub fn properties_for(&self, url: &Url) -> Properties  (the effective properties of the deepest registered object whose URL holds `url` on a path boundary)
 
 ### yggdryl::warehouse::object  [rust/src/warehouse/object.rs]
+pub fn path_text(parts: &[SmolStr]) -> String  (a path rendered as the plan grammar spells it, which is how every error names one)
 pub trait ObjectValue: std::fmt::Debug + Send + Sync  (what every object a warehouse path reaches answers)
   fn name(&self) -> &str
   fn path(&self) -> &[SmolStr]
@@ -2735,6 +2738,7 @@ pub struct Objects  (the children of a namespace, one at a time, fused after the
   pub fn into_listing(self, recursive: bool) -> crate::Listing
 
 ### yggdryl::warehouse::catalog  [rust/src/warehouse/catalog.rs]
+pub fn no_catalog(name: &str) -> Error  (the absence of a catalog called `name`, what every door that resolves one by name answers)
 pub trait CatalogValue: NamespaceValue  (the first namespace layer)
   fn namespace_levels(&self) -> Option<usize>
 pub enum Catalog  (Memory(MemoryCatalog), Folder(Box<FolderCatalog>), Iceberg(Box<IcebergCatalog>) under `iceberg`, S3Tables(Box<S3TablesCatalog>) under `s3tables`; non_exhaustive; ObjectValue, NamespaceValue, CatalogValue by delegation; IOBase and IOMedia as a container of handles; Display the name)
@@ -3714,7 +3718,7 @@ pub struct Workbook
 
 ### yggdryl::media  [rust/src/media/mod.rs]
   pub const DEFAULT_VALUE_NAME: &str = "value"  (the child name a value wraps into a struct under when none is declared)
-pub enum Media
+pub enum Media  (one variant per encoding the core ships, and `Registered(Box<dyn RegisteredMedia>)` the wrapper of an encoding another crate registered under the handle's MIME type)
   pub fn open(handle: Holder) -> Result<Self>
   pub fn open_as(handle: Holder, base: &MimeType) -> Result<Self>
   pub fn ipc(handle: Holder) -> Self
@@ -3722,13 +3726,42 @@ pub enum Media
   pub fn avro(handle: Holder) -> Self
   pub fn with_field(self, field: Field) -> Self
   pub fn text(handle: Holder) -> Self
-  pub fn xmla(handle: Holder) -> Self
   pub fn csv(handle: Holder) -> Self  (the `Csv(crate::csv::Csv<Holder>)` variant, which `open`/`open_as` bind `text/csv` and `text/tab-separated-values` to and `Holder::into_media` composes for a `.csv`, `.tsv` or `.csv.gz` name; `impl From<crate::csv::Csv<Holder>> for Media`)
   pub fn excel(handle: Holder) -> Self
   pub const fn handle(&self) -> &Holder
   pub fn into_handle(self) -> Holder
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
+
+### yggdryl::media::registered  [rust/src/media/registered.rs]  (an encoding another crate implements, registered under its MIME type so the core's record doors reach it after the core's own; nothing registered, the type is one this build does not implement, named in the refusal)
+pub trait RegisteredEncoding: fmt::Debug + Send + Sync + 'static
+  fn mime_type(&self) -> MimeType
+  fn options(&self) -> RegisteredOptions  (the defaults, every setting of the encoding's own stated in the properties)
+  fn read_field(&self, handle: &dyn IOBase, options: &RegisteredOptions) -> Result<Field>
+  fn row_size(&self, handle: &dyn IOBase, options: &RegisteredOptions) -> Result<u64>
+  fn read_batch_reader(&self, handle: &dyn IOBase, declared: Option<&Field>, options: &RegisteredOptions) -> crate::arrow::Result<BatchReader>  (the cast onto the declared field is the core's, after this door)
+  fn overwrite_arrow_reader(&self, handle: &mut dyn IOBase, batches: BatchReader, options: &RegisteredOptions) -> Result<()>
+  fn stated_field(&self, handle: &dyn IOBase, options: &RegisteredOptions) -> Result<Option<Field>>  (what the bytes declare, `None` where they declare none)
+  fn open(&self, handle: Holder) -> Box<dyn RegisteredMedia>  (the wrapper a handle named by the MIME type composes)
+pub trait RegisteredMedia: IOBase + Sync + fmt::Debug
+  fn encoding(&self) -> MimeType
+  fn handle(&self) -> &Holder
+  fn into_handle(self: Box<Self>) -> Holder
+  fn with_field(self: Box<Self>, field: Field) -> Box<dyn RegisteredMedia>
+pub struct RegisteredOptions  (Clone, Debug, Eq, Hash, Ord; IORecordOptions over the shared settings every encoding's options carry, the encoding's own beside them as Properties)
+  pub fn new(mime_type: MimeType) -> Self
+  pub const fn mime_type(&self) -> &MimeType
+  pub const fn properties(&self) -> &Properties
+  pub const fn properties_mut(&mut self) -> &mut Properties
+  pub fn with_property(mut self, name: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Self
+  pub fn encoding(&self) -> Result<Arc<dyn RegisteredEncoding>>  (refused at `$.encoding` naming the MIME type when nothing in this process is registered under it)
+pub fn register(encoding: Arc<dyn RegisteredEncoding>)  (replaces the one held under its MIME type, so a crate's `register()` is idempotent)
+pub fn registered(mime_type: &MimeType) -> Option<Arc<dyn RegisteredEncoding>>
+pub fn registered_mime_types() -> Vec<MimeType>  (in registration order)
+
+### yggdryl::media::doors  [rust/src/media/doors.rs]  (the doors a medium implemented outside the crate answers IOMedia through - what the core's own wrappers call, so the write modes, the cadence, the limits and the counted rows keep one owner)
+pub use crate::iobase::{append_arrow_reader_default, leaf_writer, merge_arrow_reader_default, overwrite_arrow_reader_default_with_field};
+pub use crate::iomedia::{container_field, container_row_size, dimension_options, own_options, read_record_serie};
 
 ### yggdryl::media::options  [rust/src/media/options.rs]
 pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
@@ -3801,7 +3834,7 @@ pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024  (the cadence a push-
   fn limit_arrow_reader( &self, reader: crate::arrow::BatchReader, ) -> Result<crate::arrow::BatchReader>
   fn require_write_limits(&self) -> Result<()>
   fn write_limit_is_zero(&self) -> bool
-  pub enum RecordOptions
+  pub enum RecordOptions  (one variant per encoding the core ships, and `Registered(RegisteredOptions)` the options of an encoding another crate registered under its MIME type, which `for_mime_type` answers after the core's own)
   pub fn stable_hash(&self) -> u64
   pub const fn timezone(&self) -> Option<&crate::Timezone>
   pub fn set_timezone(&mut self, timezone: Option<crate::Timezone>) -> Result<()>
@@ -3841,7 +3874,7 @@ pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024  (the cadence a push-
   pub fn require_num_threads(&self) -> Result<Option<usize>>  (#[doc(hidden)], for the bindings: zero refused naming $.num_threads before a write pulls its source)
   pub fn for_media_type(media_type: &MediaType) -> Result<Self>
   pub fn for_mime_type(base: &MimeType) -> Result<Self>  (`text/csv` -> `Csv(CsvOptions::new())`, `text/tab-separated-values` -> `Csv(CsvOptions::tsv())`)
-  pub const fn mime_type(&self) -> MimeType  (a `Csv` under a tab separator `TSV`, else `CSV`)
+  pub fn mime_type(&self) -> MimeType  (a `Csv` under a tab separator `TSV`, else `CSV`; a `Registered` its own)
 
 ### yggdryl::parquet::metadata  [rust/src/parquet/metadata.rs]
 pub struct ColumnStatistics
@@ -4454,6 +4487,10 @@ pub struct Limits
   pub const fn max_documents(self) -> usize
 
 ### yggdryl::text  [rust/src/text/mod.rs]
+pub const ERROR_TEXT_LIMIT: usize = 64  (the byte budget caller text crosses before it reaches an error message)
+pub struct Elided<'a>  (Copy; caller text bounded to a byte budget: `Display` unquoted, `Debug` quoted and escaped, an ellipsis where it was cut)
+pub const fn elide_to(value: &str, limit: usize) -> Elided<'_>
+pub fn expected_got(expected: impl fmt::Display, actual: impl fmt::Display) -> SmolStr  (the canonical `expected ..., got ...` sentence)
 pub struct ScalarIter<'a>
   pub fn from_utf8(input: &str, format: Format) -> Result<Scalar>
   pub fn from_utf8_with_limits(input: &str, format: Format, limits: Limits) -> Result<Scalar>
@@ -4559,7 +4596,8 @@ pub fn from_toml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported
   pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
 
 ### yggdryl::xml  [rust/src/xml/mod.rs]
-pub use element::{Element, Scope, XSD_NAMESPACE, XSI_NAMESPACE};  (the namespace-aware view over a parsed document, which `soap/` and `xmla/` read through)
+pub use element::{Element, Scope, XSD_NAMESPACE, XSI_NAMESPACE};  (the namespace-aware view over a parsed document, which `soap/` and the `yggdryl-xmla` crate read through)
+pub use wire::{decode_x_escapes, is_name_char, is_name_start, shaped, write_attribute_text, write_element_text, write_fragment, write_leaf_text, write_x_escape};  (the writer primitives, the XML 1.0 name classes, the `_xHHHH_` escape and the field-directed reshaping a medium spelled in XML - the rowset document - is written and read with)
 pub fn from_xml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)
   pub fn from_xml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar>  (re-exported at the crate root)
   pub fn into_xml_scalar(value: &Scalar) -> Result<String>  (re-exported at the crate root)
@@ -4784,7 +4822,9 @@ pub const ENCODING_NAMESPACE: &str = "http://schemas.xmlsoap.org/soap/encoding/"
 pub const PREFIX: &str = "SOAP-ENV"
 pub const CONTENT_TYPE: &str = "text/xml; charset=utf-8"
 pub const ACTION_HEADER: &str = "SOAPAction"
+pub fn distinct(fragments: &[Fragment], what: &str) -> Result<()>  (a name two fragments share refused, named as `what`)
 pub struct Fragment
+  pub fn natural_value(&self) -> Result<Scalar>  (the value as the natural document carries it, the scope's bindings declared on it)
   pub fn new(name: impl Into<SmolStr>, value: Scalar) -> Self
   pub fn in_namespace( name: impl Into<SmolStr>, namespace: &str, value: Scalar, ) -> Result<Self>
   pub fn name(&self) -> &str
@@ -4830,7 +4870,8 @@ pub struct EnvelopeWriter<W: Write>
   pub fn fault(mut self, fault: &Fault) -> Result<W>
   pub fn finish(mut self) -> Result<W>
 
-### yggdryl::xmla  [rust/src/xmla/mod.rs]
+### yggdryl_xmla  [xmla/src/lib.rs]  (the `yggdryl-xmla` crate: the XML for Analysis medium and provider over the core, reached by the core's own record doors once `register` ran)
+pub fn register()  (the XMLA encoding registered with the core under `application/xmla+xml`; idempotent, and never needed to wrap a handle explicitly with `Xmla::new`)
 pub const NAMESPACE: &str = "urn:schemas-microsoft-com:xml-analysis"
 pub const ROWSET_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-analysis:rowset"
 pub const MDDATASET_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-analysis:mddataset"
@@ -4838,7 +4879,7 @@ pub const EMPTY_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-analysis:empty"
 pub const EXCEPTION_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-analysis:exception"
 pub const SQL_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-sql"
 
-### yggdryl::xmla::dbtype  [rust/src/xmla/dbtype.rs]
+### yggdryl_xmla::dbtype  [xmla/src/dbtype.rs]
 pub enum DbType
   pub const ALL: &'static [Self]
   pub const fn code(self) -> u16
@@ -4849,7 +4890,7 @@ pub enum DbType
   pub const fn is_unsigned(self) -> Option<bool>
   pub const fn is_fixed_precision(self) -> bool
 
-### yggdryl::xmla::definitions  [rust/src/xmla/definitions.rs]
+### yggdryl_xmla::definitions  [xmla/src/definitions.rs]
 pub struct Definition
   pub const fn request_type(&self) -> &RequestType
   pub const fn guid(&self) -> &Scalar
@@ -4862,7 +4903,7 @@ pub struct Definition
 pub fn definitions() -> &'static [Definition]
 pub fn definition_of(request_type: &RequestType) -> Option<&'static Definition>
 
-### yggdryl::xmla::media  [rust/src/xmla/media.rs]
+### yggdryl_xmla::media  [xmla/src/media.rs]
 pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &XmlaOptions) -> Result<Field>
 pub fn read_batch_reader<H: IOBase + ?Sized>( handle: &H, field: Option<&Field>, options: &XmlaOptions, ) -> crate::arrow::Result<BatchReader>
 pub fn overwrite_arrow_reader<H: IOBase + ?Sized>( handle: &mut H, batches: BatchReader, options: &XmlaOptions, ) -> Result<()>
@@ -4875,15 +4916,24 @@ pub struct Xmla<H: IOBase>
   pub const fn handle(&self) -> &H
   pub fn handle_mut(&mut self) -> &mut H
   pub fn into_handle(self) -> H
+impl RegisteredMedia for Xmla<Holder>  (`encoding` XMLA, `handle`, `into_handle`, `with_field`: what `Media::Registered` holds once the encoding is registered)
+pub struct XmlaEncoding  (the `RegisteredEncoding` the core routes a leaf of `application/xmla+xml` through: each door reads the typed `XmlaOptions` out of the registered options and answers through the free functions above; `open` retains `Xmla` over the handle)
 
-### yggdryl::xmla::options  [rust/src/xmla/options.rs]
+### yggdryl_xmla::options  [xmla/src/options.rs]
 pub struct XmlaOptions
+  pub const ENVELOPE: &str = "envelope"  (the properties XMLA's own settings travel under in the core's `RegisteredOptions`)
+  pub const METHOD: &str = "method"
+  pub const CONTENT: &str = "content"
   pub fn new() -> Self
+  pub fn into_registered(self) -> RegisteredOptions  (the shared settings as they are, `envelope` a flag, `method` and `content` their names)
+  pub fn from_registered(options: &RegisteredOptions) -> Result<Self>  (refused at `$.encoding` for another MIME type, and by the vocabulary for a value no setting spells; an absent property its default)
+  pub fn from_record_options(options: &RecordOptions) -> Result<Self>  (the registered variant under the XMLA MIME type, any other refused at `$.encoding` naming it)
+impl From<XmlaOptions> for RecordOptions  (`RecordOptions::Registered(options.into_registered())`)
   pub const fn without_envelope(mut self) -> Self
   pub const fn with_method(mut self, method: Method) -> Self
   pub const fn with_content(mut self, content: Content) -> Self
 
-### yggdryl::xmla::request  [rust/src/xmla/request.rs]
+### yggdryl_xmla::request  [xmla/src/request.rs]
 pub struct Discover
   pub fn new(request_type: RequestType) -> Self
   pub fn with_restrictions(mut self, restrictions: Restrictions) -> Self
@@ -4928,7 +4978,7 @@ pub struct Request
   pub fn into_bytes(&self) -> Result<Vec<u8>>
   pub fn into_writer<W: Write>(&self, writer: W) -> Result<W>  (the payload's children in the XMLA schema's order)
 
-### yggdryl::xmla::response  [rust/src/xmla/response.rs]
+### yggdryl_xmla::response  [xmla/src/response.rs]
 pub const ACTOR: &str = "yggdryl"
 pub struct XmlaError
   pub fn new(code: u32, description: impl Into<String>) -> Self
@@ -4957,7 +5007,7 @@ pub fn write_rowset_reporting<W: Write>( writer: W, header: &[Fragment], method:
 pub fn write_empty<W: Write>(writer: W, header: &[Fragment], method: Method) -> Result<W>
 pub fn write_fault<W: Write>(writer: W, header: &[Fragment], fault: &Fault) -> Result<W>
 
-### yggdryl::xmla::rowset  [rust/src/xmla/rowset.rs]
+### yggdryl_xmla::rowset  [xmla/src/rowset.rs]
 pub const ROW_ELEMENT: &str = "row"
 pub const ROOT_ELEMENT: &str = "root"
 pub enum XsdType
@@ -4984,11 +5034,11 @@ pub struct Rowset
   pub fn read_root_with(root: &Element<'_>, field: Option<&Field>, cast: crate::ArrowCastOptions) -> Result<(Self, Serie)>  (a declared field types the rows; a safe cast nulls what it cannot hold)
   pub fn stated_field(root: &Element<'_>) -> Result<Option<Field>>
 
-### yggdryl::xmla::server  [rust/src/xmla/server.rs]  (behind the `http` feature)
+### yggdryl_xmla::server  [xmla/src/server.rs]  (behind the `http` feature)
 impl Service
   pub fn route(self: Arc<Self>, server: &Server, path: &str) -> Result<Url>  (a GET the endpoint's description, a HEAD its head, a POST answered as it is sent; any other method the server's 405)
 
-### yggdryl::xmla::service  [rust/src/xmla/service.rs]
+### yggdryl_xmla::service  [xmla/src/service.rs]
 pub mod code  (the `ErrorCode` values the provider's faults carry)
   pub const BAD_REQUEST: u32 = 0x0001
   pub const UNSUPPORTED_REQUEST_TYPE: u32 = 0x0002
@@ -5021,7 +5071,7 @@ pub struct Service
   pub fn execute(&self, execute: &Execute) -> std::result::Result<Execution, Fault>
 pub const KEYWORDS: &[&str]  (the statement grammar's reserved words, the rows of DISCOVER_KEYWORDS)
 
-### yggdryl::xmla::vocabulary  [rust/src/xmla/vocabulary.rs]
+### yggdryl_xmla::vocabulary  [xmla/src/vocabulary.rs]
 pub enum Method
   pub const ALL: [Self; 2] = [Self::Discover, Self::Execute]
   pub const fn as_str(self) -> &'static str
@@ -5206,6 +5256,7 @@ pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Se
 ### yggdryl::bytes  [rust/src/bytes.rs]  (the byte family: six leaves, each a DataType, Field and Scalar variant of its own, the number on fixed_binary and sized_binary carried inline; BytesType the view over them)
 pub use scalars::{Bytes, INLINE_BYTES};  (re-exported at yggdryl::types through `pub use bytes::*`; Bytes and BytesType also at the crate root)
 pub const BYTES_EXTENSION_NAME: &str = "yggdryl.bytes";
+pub fn into_base64(payload: &[u8]) -> String  (the base64 a byte cell is spelled as, one string)
 pub enum BytesType  (#[non_exhaustive]; Copy; Default = Binary; Binary, LargeBinary, BinaryView, LargeBinaryView, FixedBinary(u32), SizedBinary(u32); Display = the canonical name plus "(n)" on a numbered leaf - binary, large_binary_view, fixed_binary(16), sized_binary(16); serde as the name alone)
   pub const ALL: [Self; 6] = [ Self::Binary, Self::LargeBinary, Self::BinaryView, Self::LargeBinaryView, Self::FixedBinary(1), Self::SizedBinary(1), ];
   pub const fn id(self) -> DataTypeId
@@ -5595,6 +5646,7 @@ pub struct Version  (a u16 major, a u16 minor and an optional SmolStr patch; Clo
   pub type VersionField = FieldOf<VersionType>;
 
 ### yggdryl::integer  [rust/src/integer.rs]
+pub fn integer_from_text_as<T: TryFrom<i128> + TryFrom<u128>>(text: &str) -> Option<T>  (the one integer grammar read at a native width; `None` for a spelling it refuses or a value past the width)
 pub const fn is_integer(&self) -> bool  (on DataType and on Scalar: DataTypeKind::Integer.contains(self.id()))
 
 ### yggdryl  [rust/src/lib.rs]
@@ -6071,6 +6123,9 @@ pub struct ProtocolField<'field>
   pub fn empty(field: impl Into<Arc<Field>>) -> Result<Self>  (the empty column of field; a union of no member, wherever it lies, refused)
   pub fn with_capacity(field: impl Into<Arc<Field>>, rows: usize) -> Result<Self>  (the empty column whose buffers reserve rows; an encoding reserves nothing)
   pub fn from_scalars(field: impl Into<Arc<Field>>, rows: impl IntoIterator<Item = Scalar>) -> Result<Self>  (every row through Field::scalar, laid out once, landed proven with no second read)
+  pub fn is_string_storage(&self) -> bool  (one of the seven text storage layouts, whichever string leaf the field declares - never a code, a version, a URI, a zone or a MIME or media type)
+  pub fn is_byte_storage(&self) -> bool  (one of the four byte storage layouts - never a UUID or a geospatial reading)
+  pub fn value_bytes(&self, index: usize) -> Option<&[u8]>  (the storage as it stands - text in the field's charset, a fixed slot with its padding; a caller first knows the leaf is a text or byte storage one, since `None` does not say which it was)
   pub fn lit(field: impl Into<Arc<Field>>, value: Scalar, rows: usize) -> crate::arrow::Result<Self>  (rows copies of value as one constant column, LitSerie: the value proven by Field::scalar once - a text field reads an integer as its text, a sequence refused - and laid out as one row, the whole array built only when something exports it)
   pub fn from_default(field: impl Into<Arc<Field>>, rows: usize) -> crate::arrow::Result<Self>  (Field::default_value as the constant column lit builds; a required null field has no default)
   pub fn from_arrow_array(field: Option<&Field>, array: ArrayRef, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (None: the array's own field, named item, nullable where it holds a logical null, no buffer copied, each non-contract row read once; Some: one ArrowCastPlan compiled and applied, an exact layout the identity plan sharing the buffers)
@@ -6575,6 +6630,8 @@ pub fn from_json(value: &str) -> Result<Self>
   pub fn into_json(self) -> Result<String>
 
 ### yggdryl::temporal  [rust/src/temporal.rs]  (what the five temporal families share: the ISO 8601 spellings and the Scalar readers that answer across the families, which family a leaf is in being DataTypeId::temporal_family; no datatype, no field and no leaf value lives here, and TemporalValue, the contract every leaf answers, is under yggdryl::value)
+pub fn format_timestamp(count: i64, unit: TimeUnit, zone: &Timezone) -> Option<SmolStr>  (a zoned instant as its local reading plus its offset - `Z` for UTC - and the zone's name in brackets where it is a place; `None` for a count with no spelling)
+pub fn parse_timestamp(text: &str) -> Result<(i64, TimeUnit, Timezone)>  (the ISO 8601 instant, zoned or not, read into its count, unit and zone)
 impl Scalar
   pub const fn temporal_unit(&self) -> Option<TimeUnit>  (an interval answers its layout unit)
   pub const fn temporal_timezone(&self) -> Option<Timezone>  (an interval answers Timezone::NAIVE)
@@ -8087,6 +8144,7 @@ pub enum Location
   pub const fn source(&self) -> &Source
   pub const fn keys(&self) -> &JoinKeys
   pub struct Plan
+  pub fn map_sources(mut self, mut map: impl FnMut(Source) -> Result<Source>) -> Result<Self>  (every source the plan reads - its `from`, then each join's - replaced by what `map` answers; the one door that rewrites where a plan reads, which is how a catalog resolves the tables a plan names)
   pub fn new() -> Self
   pub fn from_scalar(value: &crate::Scalar) -> Result<Self>
   pub fn from_field(field: &Field) -> Self

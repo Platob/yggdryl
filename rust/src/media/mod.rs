@@ -1,9 +1,11 @@
 //! One value naming every media implementation in the core.
 //!
 //! [`Media`] is to a media encoding what [`Holder`] is to [`IOBase`]: a concrete
-//! enum over the implementations the core ships, so a caller can hold "some
-//! media over some handle" without a trait object and without knowing which
-//! encoding is involved until the media type says.
+//! enum over the implementations the core ships - and one arm,
+//! [`Media::Registered`], over the wrapper of an encoding another crate
+//! [`register`]ed under its MIME type - so a caller can hold "some media over
+//! some handle" without knowing which encoding is involved until the media
+//! type says.
 //!
 //! Every variant answers the same four questions - what is the schema, what
 //! are the rows, what are the batches, and what are the bytes - so choosing an
@@ -45,14 +47,21 @@
 //! # }
 //! ```
 
+pub mod doors;
 mod inference;
 mod magic;
 pub(crate) mod merge;
 pub(crate) mod options;
 pub mod partition;
+mod registered;
 pub(crate) mod structured;
 
 pub use magic::MAGIC_PROBE_LEN;
+pub(crate) use registered::implemented_encodings;
+pub use registered::{
+    RegisteredEncoding, RegisteredMedia, RegisteredOptions, register, registered,
+    registered_mime_types,
+};
 /// The root Field name a record surface uses when none is declared.
 pub const DEFAULT_ROOT_NAME: &str = "row";
 /// The child name a value wraps into a struct under when none is declared.
@@ -85,12 +94,14 @@ pub enum Media {
     Avro(crate::avro::Avro<Holder>),
     /// Plain-text rows under one retained flat configuration.
     Text(crate::text::Text<Holder>),
-    /// An XML for Analysis rowset document.
-    Xmla(crate::xmla::Xmla<Holder>),
     /// A CSV or TSV document.
     Csv(crate::csv::Csv<Holder>),
     /// An Office Open XML workbook.
     Excel(crate::excel::Excel<Holder>),
+    /// The wrapper of an encoding another crate implements and
+    /// [`register`]ed under the handle's MIME type - an XML for Analysis
+    /// rowset document under `yggdryl-xmla`.
+    Registered(Box<dyn RegisteredMedia>),
 }
 
 impl Media {
@@ -128,9 +139,6 @@ impl Media {
         if base == &MimeType::PLAIN_TEXT {
             return Ok(Self::Text(crate::text::Text::new(handle)));
         }
-        if base == &MimeType::XMLA {
-            return Ok(Self::Xmla(crate::xmla::Xmla::new(handle)));
-        }
         // The type asked for names the dialect, whatever the handle's own
         // name would pick.
         if base == &MimeType::CSV {
@@ -146,15 +154,14 @@ impl Media {
         if base == &MimeType::XLSX {
             return Ok(Self::Excel(crate::excel::Excel::new(handle)));
         }
+        // An encoding another crate registered answers after the core's own,
+        // so a registration never shadows a built-in implementation.
+        if let Some(encoding) = registered(base) {
+            return Ok(Self::Registered(encoding.open(handle)));
+        }
         Err(Error::IncompatibleSchema(format!(
-            "expected a media type with an implementation in this build \
-             (application/vnd.apache.arrow.stream{}, application/avro, text/plain, \
-             application/xmla+xml, text/csv, text/tab-separated-values, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet), got {base}",
-            if cfg!(feature = "parquet") {
-                ", application/vnd.apache.parquet"
-            } else {
-                "; the `parquet` feature is not enabled"
-            }
+            "expected a media type with an implementation in this build ({}), got {base}",
+            implemented_encodings()
         )))
     }
 
@@ -179,11 +186,6 @@ impl Media {
         Self::Text(crate::text::Text::new(handle))
     }
 
-    /// Hold an XML for Analysis rowset document over a handle.
-    pub fn xmla(handle: Holder) -> Self {
-        Self::Xmla(crate::xmla::Xmla::new(handle))
-    }
-
     /// Hold a CSV or TSV document over a handle.
     pub fn csv(handle: Holder) -> Self {
         Self::Csv(crate::csv::Csv::new(handle))
@@ -203,9 +205,9 @@ impl Media {
             Self::Parquet(parquet) => Self::Parquet(parquet.with_field(field)),
             Self::Avro(avro) => Self::Avro(avro.with_field(field)),
             Self::Text(text) => Self::Text(text.with_field(field)),
-            Self::Xmla(xmla) => Self::Xmla(xmla.with_field(field)),
             Self::Csv(csv) => Self::Csv(csv.with_field(field)),
             Self::Excel(excel) => Self::Excel(excel.with_field(field)),
+            Self::Registered(inner) => Self::Registered(inner.with_field(field)),
         }
     }
 
@@ -214,16 +216,16 @@ impl Media {
     /// The companion of [`crate::coding::Coded::handle`] and
     /// [`crate::text::Text::handle`]: one accessor that answers what a
     /// record encoding is layered over, whichever encoding it is.
-    pub const fn handle(&self) -> &Holder {
+    pub fn handle(&self) -> &Holder {
         match self {
             Self::Ipc(inner) => inner.handle(),
             #[cfg(feature = "parquet")]
             Self::Parquet(inner) => inner.handle(),
             Self::Avro(inner) => inner.handle(),
             Self::Text(inner) => inner.handle(),
-            Self::Xmla(inner) => inner.handle(),
             Self::Csv(inner) => inner.handle(),
             Self::Excel(inner) => inner.handle(),
+            Self::Registered(inner) => inner.handle(),
         }
     }
 
@@ -240,9 +242,9 @@ impl Media {
             Self::Parquet(inner) => inner.into_handle(),
             Self::Avro(inner) => inner.into_handle(),
             Self::Text(inner) => inner.into_handle(),
-            Self::Xmla(inner) => inner.into_handle(),
             Self::Csv(inner) => inner.into_handle(),
             Self::Excel(inner) => inner.into_handle(),
+            Self::Registered(inner) => inner.into_handle(),
         }
     }
 
@@ -254,9 +256,9 @@ impl Media {
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
-            Self::Xmla(xmla) => xmla,
             Self::Csv(csv) => csv,
             Self::Excel(excel) => excel,
+            Self::Registered(inner) => inner.as_ref(),
         }
     }
 
@@ -268,9 +270,9 @@ impl Media {
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
-            Self::Xmla(xmla) => xmla,
             Self::Csv(csv) => csv,
             Self::Excel(excel) => excel,
+            Self::Registered(inner) => inner.as_mut(),
         }
     }
 
@@ -287,9 +289,9 @@ impl Media {
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
-            Self::Xmla(xmla) => xmla,
             Self::Csv(csv) => csv,
             Self::Excel(excel) => excel,
+            Self::Registered(inner) => inner.as_ref(),
         }
     }
 
@@ -301,9 +303,9 @@ impl Media {
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
-            Self::Xmla(xmla) => xmla,
             Self::Csv(csv) => csv,
             Self::Excel(excel) => excel,
+            Self::Registered(inner) => inner.as_mut(),
         }
     }
 }
@@ -546,9 +548,9 @@ impl From<crate::text::Text<Holder>> for Media {
     }
 }
 
-impl From<crate::xmla::Xmla<Holder>> for Media {
-    fn from(value: crate::xmla::Xmla<Holder>) -> Self {
-        Self::Xmla(value)
+impl From<Box<dyn RegisteredMedia>> for Media {
+    fn from(value: Box<dyn RegisteredMedia>) -> Self {
+        Self::Registered(value)
     }
 }
 

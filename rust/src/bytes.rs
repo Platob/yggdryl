@@ -1912,9 +1912,10 @@ pub(crate) fn base64_into(payload: &[u8], target: &mut Vec<u8>) {
     target.truncate(start + written);
 }
 
-/// The base64 [`base64_into`] appends, as one string of its own.
+/// A payload spelled as base64, one string of its own: what a byte cell is
+/// written as wherever a document carries bytes as text.
 #[must_use]
-pub(crate) fn into_base64(payload: &[u8]) -> String {
+pub fn into_base64(payload: &[u8]) -> String {
     use base64::Engine as _;
 
     base64::engine::general_purpose::STANDARD.encode(payload)
@@ -1933,12 +1934,6 @@ pub mod internals {
     /// Read a payload out of base64 text.
     pub fn from_base64(text: &str) -> Option<Bytes> {
         Bytes::from_base64(text)
-    }
-
-    /// Spell a payload as base64 text.
-    #[must_use]
-    pub fn into_base64(payload: &[u8]) -> String {
-        super::into_base64(payload)
     }
 
     /// Append a payload's base64 to a buffer.

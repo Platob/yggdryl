@@ -5,9 +5,8 @@
 //! the eliding is pinned through `yggdryl::internals`; the sentences it builds
 //! are pinned wherever the refusals that carry them are.
 
-use yggdryl::internals::text_display::{
-    ERROR_TEXT_LIMIT, elide_display_to, elide_to, expected_got,
-};
+use yggdryl::internals::text_display::elide_display_to;
+use yggdryl::text::{ERROR_TEXT_LIMIT, elide_to, expected_got};
 
 #[test]
 fn short_text_is_unchanged() {

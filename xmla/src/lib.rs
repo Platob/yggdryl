@@ -1,6 +1,12 @@
 //! XML for Analysis 1.1: the SOAP protocol analytical clients discover
 //! metadata and run statements over, as a record medium and as a server.
 //!
+//! This crate is the medium and the provider over the `yggdryl` core: the
+//! core's dispatch learns the `.xmla` rowset document by [`register`] -
+//! after it, a handle named `application/xmla+xml` composes [`Xmla`] and
+//! reads and writes rowsets through the core's generic record doors - and
+//! [`Xmla::new`] wraps any handle explicitly whether or not it ran.
+//!
 //! XMLA has two methods. `Discover` asks a provider about itself - its data
 //! sources, its properties, the request types it answers - and about a
 //! catalog - its tables, their columns, the datatypes it speaks - and is
@@ -19,19 +25,21 @@
 //! | [`dbtype`] | OLE DB's `DBTYPE_*` indicators, what `DBSCHEMA_COLUMNS` states a column as |
 //! | [`options`], [`media`] | the `.xmla` record medium: [`XmlaOptions`] and [`Xmla`] |
 //! | [`definitions`] | the rowsets this crate's provider answers, each as a `Field` with its restriction columns |
-//! | [`service`] | the provider over a [`Warehouse`](crate::Warehouse): every Discover answered from the catalogs it serves through the warehouse traits, every Execute run through the expression grammar's `Plan` against that warehouse; under the `http` feature, `Service::route` answers it on an `http::Server` |
+//! | [`service`] | the provider over a [`Warehouse`](yggdryl::Warehouse): every Discover answered from the catalogs it serves through the warehouse traits, every Execute run through the expression grammar's `Plan` against that warehouse; under the `http` feature, `Service::route` answers it on an `http::Server` |
 //!
-//! The SOAP envelope and fault are XML's own, in [`crate::soap`], and the
+//! The SOAP envelope and fault are XML's own, in [`yggdryl::soap`], and the
 //! HTTP it travels over is the crate's `http` server and
 //! client; this module speaks XMLA over them.
 //!
 //! The provider is a *tabular* one: its data sources are the catalogs of a
-//! [`Warehouse`](crate::Warehouse) - any [`Catalog`](crate::Catalog), a
+//! [`Warehouse`](yggdryl::Warehouse) - any [`Catalog`](yggdryl::Catalog), a
 //! folder read as namespaces and tables among them - and a statement is the
 //! expression grammar's plan, such as `select symbol, price from trades
 //! where price is not null limit 10`, run against that warehouse. The
 //! multidimensional rowsets and the MDX a multidimensional provider answers
 //! are read and refused by name, never answered.
+
+#![deny(unsafe_code)]
 
 pub mod dbtype;
 pub mod definitions;
@@ -46,8 +54,7 @@ pub mod service;
 pub mod vocabulary;
 
 pub use dbtype::DbType;
-pub(crate) use media::row_size;
-pub use media::{Xmla, overwrite_arrow_reader, read_batch_reader, read_field};
+pub use media::{Xmla, XmlaEncoding, overwrite_arrow_reader, read_batch_reader, read_field};
 pub use options::XmlaOptions;
 pub use request::{Command, Discover, Execute, Request, RequestMethod, Session};
 pub use response::{Answer, Response, XmlaError, fault, write_empty, write_fault, write_rowset};
@@ -80,4 +87,13 @@ pub const SQL_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-sql";
 
 pub(crate) use request::invalid;
 
-pub use media::XmlaSerie;
+/// Register the XMLA encoding with the core, so a handle whose media type
+/// is `application/xmla+xml` - a `.xmla` name - reads and writes rowset
+/// documents through the core's generic record doors: `Holder::from_url`
+/// composes [`Xmla`], `RecordOptions::for_media_type` answers the XMLA
+/// options, and a folder catalog lists a `.xmla` leaf as the table it is.
+/// Idempotent, and never needed to wrap a handle explicitly with
+/// [`Xmla::new`].
+pub fn register() {
+    yggdryl::media::register(std::sync::Arc::new(XmlaEncoding));
+}

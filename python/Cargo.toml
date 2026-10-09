@@ -25,6 +25,9 @@ yggdryl = { path = "../rust", default-features = false, features = [
     "s3",
     "s3tables",
 ] }
+# The `.xmla` medium, registered with the core when the extension loads, so
+# `IOBase('trades.xmla')` is the `Xmla` handle it always was.
+yggdryl-xmla = { path = "../xmla" }
 serde_json = "1"
 # The extension's own allocator. Every Arrow buffer a read decodes is a
 # large allocation, and the system allocator maps and unmaps those per call,

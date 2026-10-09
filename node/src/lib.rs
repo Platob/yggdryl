@@ -467,10 +467,13 @@ pub fn hostname_native() -> &'static str {
 }
 
 /// Installs the core's logging tree as the process's logger when the addon
-/// loads, unless something in the process already installed one.
+/// loads, unless something in the process already installed one, and
+/// registers the `.xmla` medium with the core so a rowset document reads and
+/// writes through the same doors as every other encoding.
 #[napi_derive::module_init]
 fn install_logging() {
     logging::install();
+    yggdryl_xmla::register();
 }
 
 impl Generator for JsDifferenceIterator {

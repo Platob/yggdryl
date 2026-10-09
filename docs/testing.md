@@ -83,7 +83,9 @@ everything it declares.
     cargo test -p yggdryl --all-features --test value
     cargo test -p yggdryl --all-features --test warehouse
     cargo test -p yggdryl --all-features --test xml
-    cargo test -p yggdryl --all-features --test xmla
+    cargo test -p yggdryl-xmla --all-features --test root          # the XML for Analysis crate
+    cargo test -p yggdryl-xmla --all-features --test iobase_calls  # its pinned `IOBase` call counts
+    cargo test -p yggdryl-xmla --all-features --test allocations   # its counting allocator
     cargo test -p yggdryl --all-features --test xxhash
     cargo test -p yggdryl --all-features --test yaml
     cargo test -p yggdryl --all-features --test zip

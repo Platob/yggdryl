@@ -16,9 +16,9 @@ use std::io::Write;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::soap::{Body, Envelope, EnvelopeWriter, Fault, FaultCode, Fragment};
-use crate::xml::{ATTRIBUTE_PREFIX, Element, XSD_NAMESPACE, XSI_NAMESPACE};
-use crate::{Error, Field, Result, Scalar, Serie};
+use yggdryl::soap::{Body, Envelope, EnvelopeWriter, Fault, FaultCode, Fragment};
+use yggdryl::xml::{ATTRIBUTE_PREFIX, Element, XSD_NAMESPACE, XSI_NAMESPACE};
+use yggdryl::{Error, Field, Result, Scalar, Serie};
 
 use super::rowset::Rowset;
 use super::vocabulary::{Content, Method};
@@ -161,11 +161,11 @@ impl XmlaError {
     /// sink's failure.
     pub fn write<W: Write>(&self, writer: &mut W) -> Result<()> {
         write!(writer, "<Error ErrorCode=\"{}\" Description=\"", self.code)?;
-        crate::xml::write_attribute_text(writer, &self.description)?;
+        yggdryl::xml::write_attribute_text(writer, &self.description)?;
         write!(writer, "\" Source=\"")?;
-        crate::xml::write_attribute_text(writer, &self.source)?;
+        yggdryl::xml::write_attribute_text(writer, &self.source)?;
         write!(writer, "\" HelpFile=\"")?;
-        crate::xml::write_attribute_text(writer, &self.help_file)?;
+        yggdryl::xml::write_attribute_text(writer, &self.help_file)?;
         write!(writer, "\"/>")?;
         Ok(())
     }
@@ -178,7 +178,7 @@ impl XmlaError {
                 .map(str::to_owned)
         };
         let code = attribute("ErrorCode")
-            .and_then(|code| crate::integer::integer_from_text_as::<u32>(&code))
+            .and_then(|code| yggdryl::integer::integer_from_text_as::<u32>(&code))
             .unwrap_or(0);
         Some(Self {
             code,
@@ -310,7 +310,7 @@ impl Response {
         Self::from_envelope_with(
             envelope,
             field,
-            crate::ArrowCastOptions::default().with_safe(false),
+            yggdryl::ArrowCastOptions::default().with_safe(false),
         )
     }
 
@@ -325,7 +325,7 @@ impl Response {
     pub fn from_envelope_with(
         envelope: &Envelope,
         field: Option<&Field>,
-        cast: crate::ArrowCastOptions,
+        cast: yggdryl::ArrowCastOptions,
     ) -> Result<Self> {
         let payload = match envelope.body() {
             Body::Payload(fragment) => fragment,
@@ -405,7 +405,7 @@ pub fn write_rowset<W: Write>(
     header: &[Fragment],
     method: Method,
     rowset: &Rowset,
-    batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>,
+    batches: impl IntoIterator<Item = yggdryl::arrow::Result<Serie>>,
     content: Content,
 ) -> Result<W> {
     let mut envelope = EnvelopeWriter::begin(writer, header)?;
@@ -439,7 +439,7 @@ pub fn write_rowset_reporting<W: Write>(
     header: &[Fragment],
     method: Method,
     rowset: &Rowset,
-    batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>,
+    batches: impl IntoIterator<Item = yggdryl::arrow::Result<Serie>>,
     content: Content,
 ) -> Result<(W, Option<XmlaError>)> {
     let mut envelope = EnvelopeWriter::begin(writer, header)?;

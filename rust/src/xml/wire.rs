@@ -125,7 +125,7 @@ fn write_root<W: Write>(
 /// # Errors
 ///
 /// Returns the writer's refusals for the value: what has no XML spelling.
-pub(crate) fn write_fragment<W: Write>(writer: &mut W, name: &str, value: &Scalar) -> Result<()> {
+pub fn write_fragment<W: Write>(writer: &mut W, name: &str, value: &Scalar) -> Result<()> {
     write_element(
         writer,
         name,
@@ -147,18 +147,14 @@ pub(crate) fn write_fragment<W: Write>(writer: &mut W, name: &str, value: &Scala
 ///
 /// Returns [`Error::Codec`] for a value that is not a leaf, or a leaf with no
 /// XML spelling.
-pub(crate) fn write_leaf_text<W: Write>(
-    writer: &mut W,
-    value: &Scalar,
-    context: &str,
-) -> Result<()> {
+pub fn write_leaf_text<W: Write>(writer: &mut W, value: &Scalar, context: &str) -> Result<()> {
     write_leaf(writer, value, Escape::Content, context)
 }
 
 /// Spell `character` as the `_xHHHH_` escape Office Open XML gives a
 /// character a name or a string cannot carry: one escape per UTF-16 unit,
 /// upper-case hex, so a supplementary character is two.
-pub(crate) fn write_x_escape(target: &mut String, character: char) {
+pub fn write_x_escape(target: &mut String, character: char) {
     use std::fmt::Write as _;
 
     let mut units = [0_u16; 2];
@@ -170,7 +166,7 @@ pub(crate) fn write_x_escape(target: &mut String, character: char) {
 /// Read every `_xHHHH_` escape in `encoded` back into the character it
 /// spells - a surrogate pair joined, a half with no partner U+FFFD - and
 /// leave everything else standing. Text carrying no escape is borrowed.
-pub(crate) fn decode_x_escapes(encoded: &str) -> std::borrow::Cow<'_, str> {
+pub fn decode_x_escapes(encoded: &str) -> std::borrow::Cow<'_, str> {
     if !encoded.contains("_x") {
         return std::borrow::Cow::Borrowed(encoded);
     }
@@ -221,7 +217,7 @@ pub(crate) fn decode_x_escapes(encoded: &str) -> std::borrow::Cow<'_, str> {
 /// # Errors
 ///
 /// Returns [`Error::Codec`] for a character XML 1.0 cannot carry.
-pub(crate) fn write_element_text<W: Write>(writer: &mut W, text: &str) -> Result<()> {
+pub fn write_element_text<W: Write>(writer: &mut W, text: &str) -> Result<()> {
     write_escaped(writer, text, Escape::Content)
 }
 
@@ -230,7 +226,7 @@ pub(crate) fn write_element_text<W: Write>(writer: &mut W, text: &str) -> Result
 /// # Errors
 ///
 /// Returns [`Error::Codec`] for a character XML 1.0 cannot carry.
-pub(crate) fn write_attribute_text<W: Write>(writer: &mut W, text: &str) -> Result<()> {
+pub fn write_attribute_text<W: Write>(writer: &mut W, text: &str) -> Result<()> {
     write_escaped(writer, text, Escape::Attribute)
 }
 
@@ -760,7 +756,7 @@ pub(super) fn is_name(name: &str) -> bool {
 }
 
 /// `NameStartChar` of XML 1.0, fifth edition.
-pub(crate) const fn is_name_start(character: char) -> bool {
+pub const fn is_name_start(character: char) -> bool {
     matches!(
         character,
         ':' | 'A'..='Z'
@@ -782,7 +778,7 @@ pub(crate) const fn is_name_start(character: char) -> bool {
 }
 
 /// `NameChar` of XML 1.0, fifth edition.
-pub(crate) const fn is_name_char(character: char) -> bool {
+pub const fn is_name_char(character: char) -> bool {
     is_name_start(character)
         || matches!(
             character,
@@ -890,7 +886,7 @@ enum Position {
 /// every type but `string`; a union's type id and an interval's components
 /// are the numbers their digits spell. Nothing here types a value: the
 /// field's contract does that next.
-pub(crate) fn shaped(value: Scalar, field: &Field) -> Scalar {
+pub fn shaped(value: Scalar, field: &Field) -> Scalar {
     shaped_at(value, field, Position::Container)
 }
 

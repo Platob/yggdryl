@@ -658,8 +658,6 @@ pub enum Serie {
     Text(Arc<crate::text::TextSerie>),
     /// A retained native excel scan, decoded only on demand.
     Excel(Arc<crate::excel::ExcelSerie>),
-    /// A retained native xmla scan, decoded only on demand.
-    Xmla(Arc<crate::xmla::XmlaSerie>),
     #[cfg(feature = "iceberg")]
     /// A retained native iceberg scan, decoded only on demand.
     IcebergTable(Arc<crate::iceberg::IcebergTableSerie>),
@@ -786,7 +784,6 @@ macro_rules! column {
             | Serie::Csv(_)
             | Serie::Text(_)
             | Serie::Excel(_)
-            | Serie::Xmla(_)
             | Serie::WarehouseTable(_)
             | Serie::GenericMedia(_) => {
                 unreachable!("a held leaf is never a composite")
@@ -1181,7 +1178,6 @@ macro_rules! column_mut {
             | Serie::Csv(_)
             | Serie::Text(_)
             | Serie::Excel(_)
-            | Serie::Xmla(_)
             | Serie::WarehouseTable(_)
             | Serie::GenericMedia(_) => {
                 unreachable!("a held leaf is never a composite")
@@ -2757,7 +2753,7 @@ impl Serie {
     /// string leaf its field declares - never a code, a version, a URI, a
     /// zone or a MIME or media type, which hold the same buffers under a
     /// variant of their own.
-    pub(crate) fn is_string_storage(&self) -> bool {
+    pub fn is_string_storage(&self) -> bool {
         matches!(
             self.laid_out(),
             Self::Utf8String(_)
@@ -2773,7 +2769,7 @@ impl Serie {
     /// Whether this is one of the four byte storage layouts - never a UUID
     /// or a geospatial reading, which hold the same buffers under a variant
     /// of their own.
-    pub(crate) fn is_byte_storage(&self) -> bool {
+    pub fn is_byte_storage(&self) -> bool {
         matches!(
             self.laid_out(),
             Self::Binary(_) | Self::LargeBinary(_) | Self::BinaryView(_) | Self::FixedBytes(_)
@@ -2791,7 +2787,7 @@ impl Serie {
     /// first knows the variant is a text or byte storage leaf - through
     /// [`Self::is_string_storage`] / [`Self::is_byte_storage`] or by matching
     /// those variants - because a `None` here does not say which it was.
-    pub(crate) fn value_bytes(&self, index: usize) -> Option<&[u8]> {
+    pub fn value_bytes(&self, index: usize) -> Option<&[u8]> {
         match self.laid_out() {
             Self::Utf8String(column) => column.value(index).map(str::as_bytes),
             Self::LargeUtf8String(column) => column.value(index).map(str::as_bytes),

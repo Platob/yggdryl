@@ -750,7 +750,7 @@ pub(crate) const BYTE_COUNT_SPELLINGS: &str =
 /// the widest storage this crate holds and narrowed to `T` exactly: a
 /// magnitude `T` cannot hold is `None`, never wrapped. The one grammar every
 /// count in the crate reads, a setting's `max_attempts` as much as a cell.
-pub(crate) fn integer_from_text_as<T: TryFrom<i128> + TryFrom<u128>>(text: &str) -> Option<T> {
+pub fn integer_from_text_as<T: TryFrom<i128> + TryFrom<u128>>(text: &str) -> Option<T> {
     let text = text.trim();
     match text.parse::<i128>() {
         Ok(value) => T::try_from(value).ok(),
@@ -902,11 +902,6 @@ pub mod internals {
     /// What every refusal of a byte count names.
     #[cfg(feature = "http")]
     pub const BYTE_COUNT_SPELLINGS: &str = super::BYTE_COUNT_SPELLINGS;
-
-    /// Read an integer out of text at one native width.
-    pub fn integer_from_text_as<T: TryFrom<i128> + TryFrom<u128>>(text: &str) -> Option<T> {
-        super::integer_from_text_as(text)
-    }
 
     /// Read an integer out of a scalar - a number or its digits - at one
     /// native width.

@@ -773,16 +773,18 @@ impl Holder {
             return self;
         }
 
-        let supported = *base == crate::MimeType::ARROW_STREAM
+        // An encoding another crate registered answers after the core's own,
+        // so a registration never shadows a built-in implementation.
+        let registered = crate::media::registered(base);
+        let built_in = *base == crate::MimeType::ARROW_STREAM
             || *base == crate::MimeType::ARROW_FILE
             || *base == crate::MimeType::AVRO
             || *base == crate::MimeType::PLAIN_TEXT
-            || *base == crate::MimeType::XMLA
             || *base == crate::MimeType::CSV
             || *base == crate::MimeType::TSV
             || *base == crate::MimeType::XLSX
             || cfg!(feature = "parquet") && *base == crate::MimeType::PARQUET;
-        if !supported {
+        if !built_in && registered.is_none() {
             return self;
         }
 
@@ -805,17 +807,21 @@ impl Holder {
         if *base == crate::MimeType::PLAIN_TEXT {
             return self.into_text();
         }
-        if *base == crate::MimeType::XMLA {
-            return Self::Media(Box::new(crate::media::Media::xmla(self)));
-        }
         if *base == crate::MimeType::CSV || *base == crate::MimeType::TSV {
             return Self::Media(Box::new(crate::media::Media::csv(self)));
         }
         if *base == crate::MimeType::XLSX {
             return Self::Media(Box::new(crate::media::Media::excel(self)));
         }
-        debug_assert_eq!(*base, crate::MimeType::AVRO);
-        Self::Media(Box::new(crate::media::Media::avro(self)))
+        if *base == crate::MimeType::AVRO {
+            return Self::Media(Box::new(crate::media::Media::avro(self)));
+        }
+        match registered {
+            Some(encoding) => Self::Media(Box::new(crate::media::Media::Registered(
+                encoding.open(self),
+            ))),
+            None => self,
+        }
     }
 
     /// Materialize this holder and retain any record metadata the inferred

@@ -14,14 +14,15 @@ use yggdryl::http::{Request as WireRequest, Response as WireResponse};
 use yggdryl::media::IORecordOptions;
 use yggdryl::media::RecordOptions;
 use yggdryl::soap::{Envelope, FaultCode, Fragment};
-use yggdryl::xmla::{
+use yggdryl::{DataType, Field, FolderCatalog, IOBase, IOMedia, MimeType, Scalar, StructType};
+use yggdryl_xmla::{
     Answer, Command, Content, Discover, Execute, PropertyList, Request, RequestType, Response,
     Restrictions, Service, ServiceOptions, Session,
 };
-use yggdryl::{DataType, Field, FolderCatalog, IOBase, IOMedia, MimeType, Scalar, StructType};
 
 /// A fresh catalog folder under the temporary directory, named after `label`.
 fn catalog_root(label: &str) -> PathBuf {
+    yggdryl_xmla::register();
     let mut root = yggdryl::local::LocalFolder::temporary()
         .expect("a temporary directory")
         .path()
@@ -401,7 +402,7 @@ fn an_unsupported_request_type_is_a_client_fault_naming_the_rowset() {
         "{}",
         refused.string()
     );
-    let errors = yggdryl::xmla::XmlaError::from_fault(&refused);
+    let errors = yggdryl_xmla::XmlaError::from_fault(&refused);
     assert_eq!(errors.len(), 1);
     assert_eq!(errors[0].source(), "yggdryl");
 }
@@ -567,7 +568,7 @@ fn content_none_verifies_and_answers_the_empty_root() {
             .with_properties(PropertyList::new().with("Content", Content::None.as_str())),
     );
     assert!(response.rows().is_none());
-    assert!(matches!(response.answer(), yggdryl::xmla::Answer::Empty));
+    assert!(matches!(response.answer(), yggdryl_xmla::Answer::Empty));
 }
 
 #[test]
@@ -885,7 +886,7 @@ fn excel_service(label: &str) -> Service {
 #[cfg(feature = "http")]
 fn door(name: &str) -> Vec<(String, Vec<u8>, Vec<u8>)> {
     let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/xmla/fixtures/excel")
+        .join("tests/root/fixtures/excel")
         .join(name);
     let mut numbers: Vec<String> = std::fs::read_dir(&folder)
         .unwrap_or_else(|error| panic!("{}: {error}", folder.display()))
@@ -934,7 +935,7 @@ fn shape(bytes: &[u8]) -> String {
     let envelope = Envelope::from_bytes(bytes)
         .unwrap_or_else(|error| panic!("{error}\n{}", String::from_utf8_lossy(bytes)));
     if let Some(fault) = envelope.fault() {
-        let errors = yggdryl::xmla::XmlaError::from_fault(fault);
+        let errors = yggdryl_xmla::XmlaError::from_fault(fault);
         return format!(
             "fault {:#06x}",
             errors.first().map_or(0, |error| error.code())

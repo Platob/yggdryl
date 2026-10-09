@@ -29,6 +29,9 @@ doc = false
 # core a consumer has, and `yggdryl xmla serve` and `yggdryl market serve` answer on the
 # core's HTTP server.
 yggdryl = { path = "../rust", features = ["http"] }
+# The XML for Analysis provider `yggdryl xmla serve` routes, and the `.xmla`
+# medium it registers so a rowset document in a served folder is a table.
+yggdryl-xmla = { path = "../xmla", features = ["http"] }
 # Argument parsing with derived help, so every command documents itself and
 # `--help` is generated from the same declaration the parser uses.
 clap = { version = "4.5", features = ["derive", "wrap_help"] }

@@ -13,11 +13,21 @@ use std::sync::{Arc, OnceLock};
 
 use arrow_array::RecordBatchIterator;
 
-use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
-use crate::media::{IORecordOptions, RecordOptions};
-use crate::soap::ENVELOPE_NAMESPACE;
-use crate::xml::Element;
-use crate::{ArrowCastOptions, Charset, Field, IOBase, IOMedia, Result, Serie, StreamChunkedSerie};
+use yggdryl::arrow::BatchReader;
+use yggdryl::holder::Holder;
+use yggdryl::media::doors::{
+    append_arrow_reader_default, container_field, container_row_size, dimension_options,
+    leaf_writer, merge_arrow_reader_default, overwrite_arrow_reader_default_with_field,
+    own_options, read_record_serie,
+};
+use yggdryl::media::{
+    IORecordOptions, RecordOptions, RegisteredEncoding, RegisteredMedia, RegisteredOptions,
+};
+use yggdryl::soap::ENVELOPE_NAMESPACE;
+use yggdryl::xml::Element;
+use yggdryl::{
+    ArrowCastOptions, Charset, Field, IOBase, IOMedia, MimeType, Result, Serie, StreamChunkedSerie,
+};
 
 use super::options::XmlaOptions;
 use super::response::Response;
@@ -37,11 +47,11 @@ fn read_document<H: IOBase + ?Sized>(
     let bytes = handle.codec().load(&encoded)?;
     let charset = Charset::from_media_type(handle.media_type());
     let text = charset.decode(&bytes)?;
-    let document = crate::xml::from_utf8(&text)?;
+    let document = yggdryl::xml::from_utf8(&text)?;
     let root = Element::root(&document)?;
     if root.is(Some(ENVELOPE_NAMESPACE), "Envelope") {
         let response = Response::from_envelope_with(
-            &crate::soap::Envelope::from_natural(&document)?,
+            &yggdryl::soap::Envelope::from_natural(&document)?,
             field,
             cast,
         )?;
@@ -81,11 +91,11 @@ pub(crate) fn stated_field<H: IOBase + ?Sized>(handle: &H) -> Result<Option<Fiel
     let bytes = handle.codec().load(&encoded)?;
     let charset = Charset::from_media_type(handle.media_type());
     let text = charset.decode(&bytes)?;
-    let document = crate::xml::from_utf8(&text)?;
+    let document = yggdryl::xml::from_utf8(&text)?;
     let root = Element::root(&document)?;
     let envelope;
     let root = if root.is(Some(ENVELOPE_NAMESPACE), "Envelope") {
-        envelope = crate::soap::Envelope::from_natural(&document)?;
+        envelope = yggdryl::soap::Envelope::from_natural(&document)?;
         let Some(payload) = envelope.payload() else {
             return Ok(None);
         };
@@ -149,7 +159,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     handle: &H,
     field: Option<&Field>,
     options: &XmlaOptions,
-) -> crate::arrow::Result<BatchReader> {
+) -> yggdryl::arrow::Result<BatchReader> {
     match read_document(handle, field, cast_of(options))? {
         Some((_, rows)) => {
             let batch = rows.into_arrow_batch()?;
@@ -162,7 +172,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
         None => {
             // Per the laziness contract, a missing document holds no rows.
             let schema = match field.cloned().or_else(|| options.field()) {
-                Some(field) => arrow_schema_from_field(&field)?,
+                Some(field) => field.into_arrow_schema()?,
                 None => Arc::new(arrow_schema::Schema::empty()),
             };
             Ok(Box::new(RecordBatchIterator::new(
@@ -194,7 +204,7 @@ pub fn overwrite_arrow_reader<H: IOBase + ?Sized>(
             "an XMLA document is written in UTF-8; the handle declares {charset}"
         )));
     }
-    let root = field_from_arrow_schema(options.name(), batches.schema().as_ref())?;
+    let root = Field::from_arrow_schema(options.name(), batches.schema().as_ref())?;
     let rowset = Rowset::new(root.clone())?;
     let rows =
         StreamChunkedSerie::from_arrow_reader(Some(&root), batches, ArrowCastOptions::default())?;
@@ -284,14 +294,10 @@ impl<H: IOBase> Xmla<H> {
         self.handle
     }
 
-    fn require_options<'a>(&self, options: &'a RecordOptions) -> Result<&'a XmlaOptions> {
-        match options {
-            RecordOptions::Xmla(options) => Ok(options),
-            _ => Err(crate::Error::InvalidRecord {
-                path: smol_str::SmolStr::new_static("$.encoding"),
-                reason: crate::text::expected_got("XMLA record options", options.mime_type()),
-            }),
-        }
+    /// The XMLA options `options` carry: the registered variant under the
+    /// XMLA MIME type, read back into the typed settings.
+    fn require_options(&self, options: &RecordOptions) -> Result<XmlaOptions> {
+        XmlaOptions::from_record_options(options)
     }
 
     fn invalidate(&mut self) {
@@ -310,10 +316,7 @@ impl<H: IOBase> IOMedia for Xmla<H> {
 
     fn row_size(&self) -> Result<u64> {
         if self.handle.is_container() {
-            return crate::iomedia::container_row_size(
-                &self.handle,
-                &crate::iomedia::dimension_options(self)?,
-            );
+            return container_row_size(&self.handle, &dimension_options(self)?);
         }
         row_size(&self.handle, &self.options)
     }
@@ -329,11 +332,7 @@ impl<H: IOBase> IOMedia for Xmla<H> {
         }
         // Past the session's cache, which only a leaf ever fills.
         if self.handle.is_container() {
-            return Ok(crate::iomedia::container_field(
-                &self.handle,
-                &crate::iomedia::dimension_options(self)?,
-            )?
-            .field_len());
+            return Ok(container_field(&self.handle, &dimension_options(self)?)?.field_len());
         }
 
         // One read answers both an empty document (no columns) and a held
@@ -353,89 +352,161 @@ impl<H: IOBase> IOMedia for Xmla<H> {
     }
 
     fn record_options(&self) -> Result<RecordOptions> {
-        Ok(RecordOptions::Xmla(self.options.clone()))
+        Ok(RecordOptions::from(self.options.clone()))
     }
 
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
-        let options = self.require_options(options)?;
-        if let Some(field) = options.field() {
+        let xmla = self.require_options(options)?;
+        if let Some(field) = xmla.field() {
             return Ok(field.clone());
         }
         if self.opened
             && let Some(cached) = self.cached_schema.get()
         {
-            return Ok(cached.clone().with_name(options.name()));
+            return Ok(cached.clone().with_name(xmla.name()));
         }
         if self.handle.is_container() {
-            return crate::iomedia::container_field(&self.handle, &options.clone().into());
+            return container_field(&self.handle, options);
         }
-        let field = read_field(&self.handle, options)?;
+        let field = read_field(&self.handle, &xmla)?;
         if self.opened {
             let _ = self.cached_schema.set(field.clone());
         }
         Ok(field)
     }
 
-    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::Serie> {
-        let options = crate::iomedia::own_options(self, options)?;
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<Serie> {
+        let options = own_options(self, options)?;
         self.require_options(&options)?;
-        crate::iomedia::read_record_serie(self, Some(&options))
+        read_record_serie(self, Some(&options))
     }
 
     fn overwrite_serie(
         &mut self,
-        value: crate::Serie,
+        value: Serie,
         options: Option<&RecordOptions>,
-    ) -> Result<crate::IOResult> {
-        let options = crate::iomedia::own_options(self, options)?;
+    ) -> Result<yggdryl::IOResult> {
+        let options = own_options(self, options)?;
         let options = options.as_ref();
-        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
+        let batches = StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_options(options)?;
         self.invalidate();
-        crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options)
-            .map(|(_, result)| result)
+        overwrite_arrow_reader_default_with_field(self, batches, options).map(|(_, result)| result)
     }
 
     fn overwrite_prepared_serie(
         &mut self,
-        value: crate::StreamChunkedSerie,
+        value: StreamChunkedSerie,
         options: &RecordOptions,
     ) -> Result<()> {
         let batches = value.into_arrow_reader();
         self.require_options(options)?;
         self.invalidate();
-        crate::iobase::leaf_writer(self, batches, options)
+        leaf_writer(self, batches, options)
     }
 
     fn append_serie(
         &mut self,
-        value: crate::Serie,
+        value: Serie,
         options: Option<&RecordOptions>,
-    ) -> Result<crate::IOResult> {
-        let options = crate::iomedia::own_options(self, options)?;
+    ) -> Result<yggdryl::IOResult> {
+        let options = own_options(self, options)?;
         let options = options.as_ref();
-        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
+        let batches = StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_options(options)?;
         self.invalidate();
-        crate::iobase::append_arrow_reader_default(self, batches, options)
+        append_arrow_reader_default(self, batches, options)
     }
 
     fn merge_serie(
         &mut self,
-        value: crate::Serie,
+        value: Serie,
         options: Option<&RecordOptions>,
-    ) -> Result<crate::IOResult> {
-        let options = crate::iomedia::own_options(self, options)?;
+    ) -> Result<yggdryl::IOResult> {
+        let options = own_options(self, options)?;
         let options = options.as_ref();
-        let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
+        let batches = StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_options(options)?;
         self.invalidate();
-        crate::iobase::merge_arrow_reader_default(self, batches, options)
+        merge_arrow_reader_default(self, batches, options)
+    }
+}
+
+impl RegisteredMedia for Xmla<Holder> {
+    fn encoding(&self) -> MimeType {
+        MimeType::XMLA
+    }
+
+    fn handle(&self) -> &Holder {
+        &self.handle
+    }
+
+    fn into_handle(self: Box<Self>) -> Holder {
+        self.handle
+    }
+
+    fn with_field(self: Box<Self>, field: Field) -> Box<dyn RegisteredMedia> {
+        Box::new(Xmla::with_field(*self, field))
+    }
+}
+
+/// The XMLA rowset document as the record encoding the core reaches once
+/// [`register`](crate::register) holds it: each door reads the typed
+/// [`XmlaOptions`] out of the registered options and answers through the
+/// free functions of this module.
+#[derive(Debug)]
+pub struct XmlaEncoding;
+
+impl RegisteredEncoding for XmlaEncoding {
+    fn mime_type(&self) -> MimeType {
+        MimeType::XMLA
+    }
+
+    fn options(&self) -> RegisteredOptions {
+        XmlaOptions::new().into_registered()
+    }
+
+    fn read_field(&self, handle: &dyn IOBase, options: &RegisteredOptions) -> Result<Field> {
+        read_field(handle, &XmlaOptions::from_registered(options)?)
+    }
+
+    fn row_size(&self, handle: &dyn IOBase, options: &RegisteredOptions) -> Result<u64> {
+        row_size(handle, &XmlaOptions::from_registered(options)?)
+    }
+
+    fn read_batch_reader(
+        &self,
+        handle: &dyn IOBase,
+        declared: Option<&Field>,
+        options: &RegisteredOptions,
+    ) -> yggdryl::arrow::Result<BatchReader> {
+        read_batch_reader(handle, declared, &XmlaOptions::from_registered(options)?)
+    }
+
+    fn overwrite_arrow_reader(
+        &self,
+        handle: &mut dyn IOBase,
+        batches: BatchReader,
+        options: &RegisteredOptions,
+    ) -> Result<()> {
+        overwrite_arrow_reader(handle, batches, &XmlaOptions::from_registered(options)?)
+    }
+
+    fn stated_field(
+        &self,
+        handle: &dyn IOBase,
+        _options: &RegisteredOptions,
+    ) -> Result<Option<Field>> {
+        stated_field(handle)
+    }
+
+    fn open(&self, handle: Holder) -> Box<dyn RegisteredMedia> {
+        Box::new(Xmla::new(handle))
     }
 }
 
 impl<H: IOBase> IOBase for Xmla<H> {
-    crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, read_tail_bytes,
+    yggdryl::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, read_tail_bytes,
         pstream_bytes,
         size, capacity, reserve, uri, url, bound_location, mtime, media_type, applied_codec, flush, parent,
         child_by_path, ls, kind, is_container);
@@ -455,7 +526,7 @@ impl<H: IOBase> IOBase for Xmla<H> {
         self.handle.create_bytes(bytes)
     }
 
-    fn set_media_type(&mut self, media_type: crate::MediaType) {
+    fn set_media_type(&mut self, media_type: yggdryl::MediaType) {
         self.invalidate();
         self.handle.set_media_type(media_type);
     }
@@ -502,5 +573,3 @@ impl<H: IOBase> IOBase for Xmla<H> {
         self.handle.remove(recursive)
     }
 }
-
-crate::media_serie::media_serie!(XmlaSerie, Xmla, as_xmla, get_xmla_mut);
