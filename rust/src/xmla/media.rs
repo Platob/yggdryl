@@ -14,10 +14,13 @@ use std::sync::{Arc, OnceLock};
 use arrow_array::RecordBatchIterator;
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
-use crate::media::{IORecordOptions, RecordOptions};
+use crate::holder::Holder;
+use crate::media::{IORecordOptions, Media, MediaCodec, RecordOptions};
 use crate::soap::ENVELOPE_NAMESPACE;
 use crate::xml::Element;
-use crate::{ArrowCastOptions, Charset, Field, IOBase, IOMedia, Result, Serie, StreamChunkedSerie};
+use crate::{
+    ArrowCastOptions, Charset, Field, IOBase, IOMedia, MimeType, Result, Serie, StreamChunkedSerie,
+};
 
 use super::options::XmlaOptions;
 use super::response::Response;
@@ -503,4 +506,83 @@ impl<H: IOBase> IOBase for Xmla<H> {
     }
 }
 
-crate::media_serie::media_serie!(XmlaSerie, Xmla, as_xmla, get_xmla_mut);
+/// The MIME type an XMLA rowset document answers.
+static XMLA_TYPES: [MimeType; 1] = [MimeType::XMLA];
+
+/// An XMLA rowset document as a record medium: [`read_batch_reader`],
+/// [`read_field`] and [`overwrite_arrow_reader`] behind the one contract
+/// every medium answers.
+#[derive(Debug)]
+pub struct XmlaCodec;
+
+/// The XMLA rowset medium, claimed by the core under its MIME type.
+pub static XMLA_CODEC: XmlaCodec = XmlaCodec;
+
+impl MediaCodec for XmlaCodec {
+    fn name(&self) -> &'static str {
+        "xmla"
+    }
+
+    fn title(&self) -> &'static str {
+        "XMLA"
+    }
+
+    fn rank(&self) -> u8 {
+        4
+    }
+
+    fn mime_types(&self) -> &'static [MimeType] {
+        &XMLA_TYPES
+    }
+
+    fn default_options(&self, _base: &MimeType) -> RecordOptions {
+        RecordOptions::Xmla(XmlaOptions::new())
+    }
+
+    fn read_batch_reader(
+        &self,
+        handle: &dyn IOBase,
+        declared: Option<&Field>,
+        options: &RecordOptions,
+    ) -> Result<BatchReader> {
+        let xmla = options.require_settings::<XmlaOptions>()?;
+        Ok(read_batch_reader(handle, declared, xmla)?)
+    }
+
+    fn row_size(&self, handle: &dyn IOBase, options: &RecordOptions) -> Result<u64> {
+        row_size(handle, options.require_settings::<XmlaOptions>()?)
+    }
+
+    fn read_field(&self, handle: &dyn IOBase, options: &RecordOptions) -> Result<Field> {
+        read_field(handle, options.require_settings::<XmlaOptions>()?)
+    }
+
+    /// A rowset document may state no schema at all (a `Content` of
+    /// `Data`), which is a resource with no shape yet rather than one that
+    /// cannot be read.
+    fn stated_field(&self, handle: &dyn IOBase, _options: &RecordOptions) -> Result<Option<Field>> {
+        stated_field(handle)
+    }
+
+    fn overwrite_arrow_reader(
+        &self,
+        handle: &mut dyn IOBase,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        let xmla = options.require_settings::<XmlaOptions>()?;
+        overwrite_arrow_reader(handle, batches, xmla)
+    }
+
+    fn open(&self, handle: Holder) -> Media {
+        Media::Xmla(Xmla::new(handle))
+    }
+}
+
+crate::media_serie::media_serie!(
+    XmlaSerie,
+    Xmla,
+    as_xmla,
+    get_xmla_mut,
+    accepts = Some(&XMLA_TYPES)
+);

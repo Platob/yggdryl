@@ -475,17 +475,8 @@ impl<H: IOBase> crate::IOMedia for Buffered<H> {
         crate::IOMedia::read_serie(&self.handle, options)
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        crate::IOMedia::read_parquet_statistics(&self.handle)
-    }
-
-    #[cfg(feature = "parquet")]
-    fn read_parquet_geospatial_statistics(
-        &self,
-        column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
-        crate::IOMedia::read_parquet_geospatial_statistics(&self.handle, column)
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        crate::IOMedia::as_any(&self.handle)
     }
 }
 

@@ -130,7 +130,8 @@ fn from_url_refuses_a_type_this_build_has_no_catalog_for_and_a_nameless_url() {
         .expect_err("no S3 Tables catalog in this build");
         assert_eq!(
             error.to_string(),
-            "filesystem \"s3tables\" does not support holding an S3 Tables catalog in this build"
+            "filesystem \"s3tables\" does not support holding a location of this scheme; \
+             install the crate that claims it and call its `install()`"
         );
     }
     let error = Catalog::from_url(

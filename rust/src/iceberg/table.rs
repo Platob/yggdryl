@@ -372,13 +372,7 @@ impl IcebergTable<Handle> {
         let location = location.as_ref();
         #[cfg(feature = "s3tables")]
         if location.names_s3_tables() {
-            return match crate::s3tables::locate(location, properties)? {
-                crate::Object::Table(crate::Table::Iceberg(table)) => Ok(*table),
-                other => Err(crate::s3tables::not_a_table(
-                    location,
-                    ObjectValue::kind(&other),
-                )),
-            };
+            return crate::s3tables::open(location, properties);
         }
         let root = rooted_at(location, properties)?;
         Ok(Self::open(root)?.stating(properties))
@@ -4821,7 +4815,7 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
     /// media type off, and its encoding is still not a guess: this module
     /// writes Parquet, so that is what an Iceberg table's rows are.
     fn record_options(&self) -> Result<RecordOptions> {
-        Ok(RecordOptions::Parquet(crate::parquet::ParquetOptions::new()))
+        Ok(RecordOptions::from(crate::parquet::ParquetOptions::new()))
     }
 
     /// The table's own match key: its identity partition columns, then the
@@ -5276,8 +5270,8 @@ fn backoff_ms(attempt: u32, min: u64, max: u64) -> u64 {
 /// commit of a write that reaches it and append to it on every later one.
 /// An overwrite of a stated scope, or of an unpartitioned table, replaces
 /// on its first commit alone, which `scope` records. One value per write -
-/// a [`IcebergTable`] or [`super::Located`] stream, or a write session - and
-/// nothing a keyed merge records.
+/// an [`IcebergTable`] stream's, or the one a [`super::Located`] holds for
+/// the write session that located it - and nothing a keyed merge records.
 ///
 /// Bounded by the partitions the write's rows fall in: one tuple each,
 /// held until the write ends, because a later commit may reach any of them.
@@ -6168,7 +6162,7 @@ fn write_data_file(
                 .with_field(stored.clone());
             options.set_file_threads(threads);
             if parquet {
-                let RecordOptions::Parquet(parquet) = &options else {
+                let Some(parquet) = options.settings::<crate::parquet::ParquetOptions>() else {
                     return Err(not_encodable(mime_type));
                 };
                 let (metadata, length) = crate::parquet::overwrite_buffered(
@@ -7535,7 +7529,8 @@ impl std::error::Error for Forked {}
 /// `second`: two commits claimed it under two codecs, and a reader that
 /// chose between them would drop one acknowledged commit from the chain.
 fn forked(version: u32, first: &str, second: &str) -> Error {
-    Error::Iceberg {
+    Error::External {
+        origin: "Iceberg",
         reason: format_smolstr!(
             "expected one metadata document of version {version}, got two: {first} and \
              {second}; two commits claimed the version under two codecs and the table forked"
@@ -7546,7 +7541,7 @@ fn forked(version: u32, first: &str, second: &str) -> Error {
 
 /// Whether `error` is the refusal [`forked`] answers.
 fn is_forked(error: &Error) -> bool {
-    matches!(error, Error::Iceberg { source: Some(source), .. } if source.is::<Forked>())
+    matches!(error, Error::External { source: Some(source), .. } if source.is::<Forked>())
 }
 
 /// A commit's base no longer its version's one document, the source of the
@@ -7567,7 +7562,8 @@ impl std::error::Error for MovedBase {}
 /// longer stands alone at its version: `found` holds what the version is
 /// now, the other spelling's document or other bytes under its own name.
 fn moved_base(version: u32, name: &str, found: &str) -> Error {
-    Error::Iceberg {
+    Error::External {
+        origin: "Iceberg",
         reason: format_smolstr!(
             "expected the metadata document {name} a commit built on to stand alone at \
              version {version}, got {found} changed since it was read; the claim it built \
@@ -7609,7 +7605,7 @@ impl From<Error> for Unclaimed {
 
 /// Whether `error` is the refusal [`moved_base`] answers.
 fn is_moved_base(error: &Error) -> bool {
-    matches!(error, Error::Iceberg { source: Some(source), .. } if source.is::<MovedBase>())
+    matches!(error, Error::External { source: Some(source), .. } if source.is::<MovedBase>())
 }
 
 /// The document a listing of `metadata/` settles on, for a folder whose hint
@@ -8126,10 +8122,3 @@ pub mod internals {
         table.child_at(location)
     }
 }
-
-crate::media_serie::media_serie!(
-    IcebergTableSerie,
-    IcebergTable,
-    as_iceberg_table,
-    get_iceberg_table_mut
-);

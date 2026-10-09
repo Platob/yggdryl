@@ -163,7 +163,11 @@ mod vocabulary {
         let (handle, _) = named("rows.xlsx", Vec::new());
         match handle.into_declared_media() {
             Holder::Media(media) => assert!(
-                matches!(media.as_ref(), yggdryl::media::Media::Excel(_)),
+                matches!(
+                    media.as_ref(),
+                    yggdryl::media::Media::Registered(wrapper)
+                        if wrapper.medium().name() == "excel"
+                ),
                 "{media:?}"
             ),
             other => panic!("expected the workbook medium, got {other:?}"),
@@ -172,7 +176,7 @@ mod vocabulary {
 
     #[test]
     fn a_workbook_name_promotes_to_the_excel_medium_and_answers_records() {
-        use yggdryl::media::{IORecordOptions as _, Media, RecordOptions};
+        use yggdryl::media::{IORecordOptions as _, Media};
         use yggdryl::{DataType, IOMedia as _, Scalar, StructType};
 
         let field = DataType::from(
@@ -191,7 +195,9 @@ mod vocabulary {
         let mut held = handle.into_media().into_media().into_declared_media();
         match &held {
             Holder::Media(media) => match media.as_ref() {
-                Media::Excel(excel) => assert!(matches!(excel.handle(), Holder::Buffer(_))),
+                Media::Registered(wrapper) if wrapper.medium().name() == "excel" => {
+                    assert!(matches!(wrapper.handle(), Holder::Buffer(_)));
+                }
                 other => panic!("expected the workbook medium, got {other:?}"),
             },
             other => panic!("expected a retained media holder, got {other:?}"),
@@ -200,7 +206,7 @@ mod vocabulary {
 
         // A handle holding nothing is an empty workbook, not a failure.
         let options = held.record_options().unwrap();
-        assert!(matches!(options, RecordOptions::Excel(_)));
+        assert!(options.settings::<yggdryl::excel::ExcelOptions>().is_some());
         assert_eq!(held.row_size().unwrap(), 0);
         assert_eq!(held.read_arrow_reader(&options).unwrap().count(), 0);
 

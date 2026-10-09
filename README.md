@@ -68,7 +68,8 @@ rust/                    The core crate
   src/coding/            What every codec shares: Coded and Codec dispatch
   src/charset/           What every code page shares
   src/media/             What every record medium shares: Media, record
-                         options, inference, magic, merge, partitions
+                         options, the registers of media and table formats,
+                         inference, magic, merge, partitions
   src/{ipc,parquet,avro,csv,iceberg,xmla,excel}/
                          One folder per record medium; xmla/ also holds the
                          XML for Analysis provider and its HTTP server, and
@@ -156,9 +157,9 @@ The record surface is one streaming read and three explicit write intents:
 `IOMedia::read_arrow_reader` returns an `arrow::BatchReader`, while
 `IOMedia::overwrite_arrow_reader`, `IOMedia::append_arrow_reader`, and
 `IOMedia::merge_arrow_reader` consume one. The encoding comes from the handle's
-media type rather than an argument, `options.field` selects and casts in one
-pass, and a handle addressing a folder reads and writes across the partitions
-beneath it. The canonical signatures and intent rules live on the
+media type, the medium the register claims for it, rather than an argument;
+`options.field` selects and casts in one pass, and a handle addressing a folder
+reads and writes across the partitions beneath it. The canonical signatures and intent rules live on the
 [records page](docs/holder/index.md#records).
 
 ```rust

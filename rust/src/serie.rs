@@ -648,22 +648,12 @@ pub enum Serie {
     StreamKey(Arc<SharedStream<crate::StreamKeySerie>>),
     /// A retained native ipc scan, decoded only on demand.
     Ipc(Arc<crate::ipc::IpcSerie>),
-    #[cfg(feature = "parquet")]
-    /// A retained native parquet scan, decoded only on demand.
-    Parquet(Arc<crate::parquet::ParquetSerie>),
-    /// A retained native avro scan, decoded only on demand.
-    Avro(Arc<crate::avro::AvroSerie>),
     /// A retained native csv scan, decoded only on demand.
     Csv(Arc<crate::csv::CSVSerie>),
     /// A retained native text scan, decoded only on demand.
     Text(Arc<crate::text::TextSerie>),
-    /// A retained native excel scan, decoded only on demand.
-    Excel(Arc<crate::excel::ExcelSerie>),
     /// A retained native xmla scan, decoded only on demand.
     Xmla(Arc<crate::xmla::XmlaSerie>),
-    #[cfg(feature = "iceberg")]
-    /// A retained native iceberg scan, decoded only on demand.
-    IcebergTable(Arc<crate::iceberg::IcebergTableSerie>),
     /// A retained native warehouse scan, decoded only on demand.
     WarehouseTable(Arc<crate::warehouse::WarehouseTableSerie>),
     #[cfg(feature = "http")]
@@ -781,19 +771,13 @@ macro_rules! column {
             | Serie::Keys(_)
             | Serie::StreamKey(_)
             | Serie::Ipc(_)
-            | Serie::Avro(_)
             | Serie::Csv(_)
             | Serie::Text(_)
-            | Serie::Excel(_)
             | Serie::Xmla(_)
             | Serie::WarehouseTable(_)
             | Serie::GenericMedia(_) => {
                 unreachable!("a held leaf is never a composite")
             }
-            #[cfg(feature = "parquet")]
-            Serie::Parquet(_) => unreachable!("a held leaf is never a composite"),
-            #[cfg(feature = "iceberg")]
-            Serie::IcebergTable(_) => unreachable!("a held leaf is never a composite"),
             #[cfg(feature = "http")]
             Serie::Http(_) => unreachable!("a held leaf is never a composite"),
         }
@@ -1164,19 +1148,13 @@ macro_rules! column_mut {
             | Serie::Keys(_)
             | Serie::StreamKey(_)
             | Serie::Ipc(_)
-            | Serie::Avro(_)
             | Serie::Csv(_)
             | Serie::Text(_)
-            | Serie::Excel(_)
             | Serie::Xmla(_)
             | Serie::WarehouseTable(_)
             | Serie::GenericMedia(_) => {
                 unreachable!("a held leaf is never a composite")
             }
-            #[cfg(feature = "parquet")]
-            Serie::Parquet(_) => unreachable!("a held leaf is never a composite"),
-            #[cfg(feature = "iceberg")]
-            Serie::IcebergTable(_) => unreachable!("a held leaf is never a composite"),
             #[cfg(feature = "http")]
             Serie::Http(_) => unreachable!("a held leaf is never a composite"),
         }

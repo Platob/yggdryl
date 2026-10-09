@@ -763,7 +763,7 @@ mod internal {
             ],
         );
 
-        let scanned = media.read_parquet_geospatial_statistics("shape").unwrap();
+        let scanned = yggdryl::parquet::read_media_geospatial_statistics(&media, "shape").unwrap();
         let bounds = scanned.bounding_box.unwrap();
         assert_eq!(
             (bounds.xmin, bounds.xmax, bounds.ymin, bounds.ymax),
@@ -829,16 +829,14 @@ mod internal {
             vec![Arc::new(Int64Array::from(vec![1]))],
         );
 
-        let message = media
-            .read_parquet_geospatial_statistics("id")
+        let message = yggdryl::parquet::read_media_geospatial_statistics(&media, "id")
             .unwrap_err()
             .to_string();
         assert!(message.contains("expected WKB binary storage"), "{message}");
         assert!(message.contains("got Int64"), "{message}");
         assert!(message.contains("$.id"), "{message}");
 
-        let message = media
-            .read_parquet_geospatial_statistics("absent")
+        let message = yggdryl::parquet::read_media_geospatial_statistics(&media, "absent")
             .unwrap_err()
             .to_string();
         assert!(
@@ -1579,7 +1577,7 @@ mod records {
         let media = Parquet::new(Buffer::new()).with_field(field.clone());
         let options = media.record_options().unwrap();
 
-        assert!(matches!(options, RecordOptions::Parquet(_)));
+        assert!(options.settings::<ParquetOptions>().is_some());
         assert_eq!(options.field(), Some(field));
     }
 

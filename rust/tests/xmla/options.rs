@@ -10,8 +10,11 @@ use std::sync::Arc;
 use arrow_array::{Array, Int64Array, RecordBatch, RecordBatchReader, StringArray};
 
 use yggdryl::arrow::BatchReader;
+use yggdryl::avro::AvroOptions;
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
+#[cfg(feature = "parquet")]
+use yggdryl::parquet::ParquetOptions;
 use yggdryl::soap::ENVELOPE_NAMESPACE;
 use yggdryl::xmla::{Content, Method, NAMESPACE, ROWSET_NAMESPACE, XmlaOptions};
 use yggdryl::{
@@ -243,15 +246,29 @@ fn the_xmla_variant_refuses_the_settings_of_another_encoding() {
         "{message}"
     );
 
-    assert_eq!(options.avro_block_codec(), None);
-    assert_eq!(options.avro_sync_marker(), None);
+    assert_eq!(
+        options
+            .settings::<AvroOptions>()
+            .map(AvroOptions::block_codec),
+        None
+    );
+    assert_eq!(
+        options
+            .settings::<AvroOptions>()
+            .and_then(AvroOptions::sync_marker),
+        None
+    );
     for (error, path) in [
         (
-            options.set_avro_block_codec("null").unwrap_err(),
+            options
+                .require_settings_mut::<AvroOptions>("$.block_codec", "a block codec")
+                .unwrap_err(),
             "$.block_codec",
         ),
         (
-            options.set_avro_sync_marker(None).unwrap_err(),
+            options
+                .require_settings_mut::<AvroOptions>("$.sync_marker", "a synchronization marker")
+                .unwrap_err(),
             "$.sync_marker",
         ),
     ] {
@@ -266,11 +283,26 @@ fn the_xmla_variant_refuses_the_settings_of_another_encoding() {
 
     #[cfg(feature = "parquet")]
     {
-        assert_eq!(options.parquet_compression_name(), None);
-        assert_eq!(options.parquet_max_row_group_size(), None);
-        assert_eq!(options.parquet_key_value_metadata(), None);
+        assert_eq!(
+            options
+                .settings::<ParquetOptions>()
+                .map(ParquetOptions::compression_name),
+            None
+        );
+        assert_eq!(
+            options
+                .settings::<ParquetOptions>()
+                .map(|parquet| parquet.max_row_group_size),
+            None
+        );
+        assert_eq!(
+            options
+                .settings::<ParquetOptions>()
+                .map(|parquet| parquet.key_value_metadata.as_slice()),
+            None
+        );
         let message = options
-            .set_parquet_max_row_group_size(10)
+            .require_settings_mut::<ParquetOptions>("$.max_row_group_size", "a row-group size")
             .unwrap_err()
             .to_string();
         assert!(message.contains("expected Parquet options"), "{message}");

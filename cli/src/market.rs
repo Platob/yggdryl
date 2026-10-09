@@ -22,10 +22,10 @@ use clap::{Args, Subcommand};
 use yggdryl::graph::{BookEvent, BookIterator, BookService, BookServiceOptions, MarketData};
 use yggdryl::holder::Holder;
 use yggdryl::http::{ForwardedHeader, Method, Request, Response, Server, ServerOptions, Status};
-use yggdryl::media::{IORecordOptions, RecordOptions};
+use yggdryl::media::IORecordOptions;
 use yggdryl::text::{TextOptions, read_text_lines};
 use yggdryl::{
-    Error, FixCodec, FixRegistry, IOBase, IOKind, IOMedia, Result, Scheme, Timezone, Url,
+    Error, FixCodec, FixRegistry, IOBase, IOKind, IOMedia, MimeType, Result, Scheme, Timezone, Url,
 };
 
 use crate::{location, style, timeout};
@@ -464,7 +464,7 @@ fn land(table: &mut Holder, books: Vec<BookEvent>) -> Result<()> {
         None,
     )?;
     let mut options = table.record_options()?;
-    if matches!(options, RecordOptions::Avro(_)) && options.field().is_none() {
+    if options.mime_type() == MimeType::AVRO && options.field().is_none() {
         options.set_field(MarketData::field()?.into_scheme_compat(&Scheme::ICEBERG)?);
     }
     table.append_arrow_reader(rows, &options)?;

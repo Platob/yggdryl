@@ -210,17 +210,8 @@ impl crate::IOMedia for Coded {
         crate::IOMedia::merge_serie(self.as_io_mut(), value, options)
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        crate::IOMedia::read_parquet_statistics(self.as_io())
-    }
-
-    #[cfg(feature = "parquet")]
-    fn read_parquet_geospatial_statistics(
-        &self,
-        column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
-        crate::IOMedia::read_parquet_geospatial_statistics(self.as_io(), column)
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        crate::IOMedia::as_any(self.as_io())
     }
 }
 

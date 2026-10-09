@@ -1013,10 +1013,9 @@ pub(crate) struct PyIcebergTable;
 /// The Iceberg table a holder is, when it holds one.
 fn iceberg_of(holder: &Holder) -> PyResult<&IcebergTable<Handle>> {
     match holder {
-        Holder::Table(table) => match table.as_ref() {
-            Table::Iceberg(table) => Ok(table),
-            other => Err(not_iceberg(other)),
-        },
+        Holder::Table(table) => table
+            .downcast_ref::<IcebergTable<Handle>>()
+            .ok_or_else(|| not_iceberg(table)),
         _ => Err(PyValueError::new_err(
             "expected a handle holding an Iceberg table, got another handle",
         )),
@@ -1026,10 +1025,14 @@ fn iceberg_of(holder: &Holder) -> PyResult<&IcebergTable<Handle>> {
 /// The Iceberg table a holder is, mutably.
 fn iceberg_of_mut(holder: &mut Holder) -> PyResult<&mut IcebergTable<Handle>> {
     match holder {
-        Holder::Table(table) => match table.as_mut() {
-            Table::Iceberg(table) => Ok(table),
-            other => Err(not_iceberg(other)),
-        },
+        Holder::Table(table) => {
+            if table.downcast_ref::<IcebergTable<Handle>>().is_none() {
+                return Err(not_iceberg(table));
+            }
+            table
+                .downcast_mut::<IcebergTable<Handle>>()
+                .ok_or_else(|| PyValueError::new_err("expected an Iceberg table"))
+        }
         _ => Err(PyValueError::new_err(
             "expected a handle holding an Iceberg table, got another handle",
         )),

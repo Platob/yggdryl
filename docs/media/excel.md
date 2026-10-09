@@ -8,10 +8,10 @@ An Office Open XML workbook (`.xlsx`): one worksheet of it read and written as r
 | --- | --- |
 | Declared by | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `.xlsx` |
 | Build | default |
-| Rust | `yggdryl::excel`: `Excel<H>` over any handle with `ExcelOptions`, the free `read_field`, `read_batch_reader` and `overwrite_arrow_reader`; [`Workbook`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Workbook.html), [`Sheet`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Sheet.html), [`Cell`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Cell.html), `CellRef` and `CellRange` for the [workbook](#workbook) |
+| Rust | `yggdryl::excel`: `Excel<H>` over any handle with `ExcelOptions`, `EXCEL_CODEC` the [registered medium](index.md#registering-a-medium), the free `read_field`, `read_batch_reader` and `overwrite_arrow_reader`; [`Workbook`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Workbook.html), [`Sheet`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Sheet.html), [`Cell`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Cell.html), `CellRef` and `CellRange` for the [workbook](#workbook) |
 | Python | any `IOBase` whose name declares a workbook; `yggdryl.excel`: `Workbook`, `Sheet`, `Cell`, `CellRef`, `CellRange`, `Row` |
 | JavaScript | any `IOBase` whose name declares a workbook; `Workbook`, `Sheet`, `Cell`, `CellRef`, `CellRange` and the `excel` namespace |
-| Settings | [`ExcelOptions`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.ExcelOptions.html): `sheet`, `header` and `range`, beside the shared [`RecordOptions`](index.md#options) |
+| Settings | [`ExcelOptions`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.ExcelOptions.html): `sheet`, `header` and `range`, beside the shared [`RecordOptions`](index.md#options); in Rust `sheet`/`set_sheet` and `range`/`set_range` are the methods of `ExcelOptions`, reached through `options.settings::<ExcelOptions>()` ([A medium's own settings](index.md#a-mediums-own-settings)), and `header` stays on `RecordOptions` beside CSV's |
 | Refused | a coded name such as `.xlsx.gz` or `.xlsx.zst`: the package is deflated inside |
 
 An Office Open XML workbook (`.xlsx`) is a ZIP package of XML parts, and one worksheet of it is the record medium: the first row of the range names the columns, every cell below is a value, and a write renders the part row by row as the batches arrive. The whole workbook is the random-access side of the same medium - [`Workbook`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Workbook.html), [`Sheet`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Sheet.html) and [`Cell`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Cell.html) - any cell by its `A1` reference, a sheet's rows laid out from a `Serie` and read back as one.
@@ -28,6 +28,7 @@ Three facts about the file decide what a read answers. A number cell is a `float
     use std::sync::Arc;
 
     use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
+    use yggdryl::excel::ExcelOptions;
     use yggdryl::holder::Buffer;
     use yggdryl::media::IORecordOptions;
     use yggdryl::{DataType, IOMedia, MimeType, StructType};
@@ -58,12 +59,16 @@ Three facts about the file decide what a read answers. A number cell is a `float
 
     // A range's first row is its header.
     let mut narrowed = options.clone();
-    narrowed.set_excel_range(Some("B1:C".parse()?))?;
+    narrowed
+        .require_settings_mut::<ExcelOptions>("$.range", "a cell range")?
+        .set_range(Some("B1:C".parse()?));
     assert_eq!(handle.read_arrow_field(&narrowed)?.field_len(), 2);
 
     // A sheet the workbook lacks reads as the empty stream.
     let mut missing = options.clone();
-    missing.set_excel_sheet(Some("Missing"))?;
+    missing
+        .require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")?
+        .set_sheet(Some("Missing"))?;
     assert_eq!(handle.read_arrow_reader(&missing)?.count(), 0);
     ```
 
@@ -147,7 +152,7 @@ A write renders the part row by row as the batches arrive, with no row held past
 === "Rust"
 
     ```rust
-    use yggdryl::excel::Workbook;
+    use yggdryl::excel::{ExcelOptions, Workbook};
     use yggdryl::holder::Buffer;
     use yggdryl::media::IORecordOptions;
     use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar, StructType, Url};
@@ -175,7 +180,9 @@ A write renders the part row by row as the batches arrive, with no row held past
     // A sheet the workbook lacks is added beside the others, which stay as they were;
     // an append adds rows under the sheet's own.
     let mut on_notes = handle.record_options()?.with_field(notes);
-    on_notes.set_excel_sheet(Some("Notes"))?;
+    on_notes
+        .require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")?
+        .set_sheet(Some("Notes"))?;
     handle.overwrite_records([note("a"), note("b")], &on_notes)?;
     handle.append_records([note("c")], &on_notes)?;
 

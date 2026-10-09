@@ -13,10 +13,11 @@ use arrow_array::RecordBatchIterator;
 use smol_str::SmolStr;
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
-use crate::media::{IORecordOptions, RecordOptions};
+use crate::holder::Holder;
+use crate::media::{IORecordOptions, Media, MediaCodec, MediaWrapper, RecordOptions};
 use crate::{
-    ArrowCastOptions, DataType, Error, Field, IOBase, IOMedia, Result, StreamChunkedSerie,
-    StructType,
+    ArrowCastOptions, DataType, Error, Field, IOBase, IOMedia, MimeType, Result,
+    StreamChunkedSerie, StructType,
 };
 
 use super::cell::CellRef;
@@ -276,6 +277,84 @@ pub fn overwrite_arrow_reader<H: IOBase + ?Sized>(
     handle.write_all_bytes(&bytes)
 }
 
+/// The MIME type a workbook answers.
+static EXCEL_TYPES: [MimeType; 1] = [MimeType::XLSX];
+
+/// An Office Open XML workbook as a record medium: [`read_batch_reader`],
+/// [`read_field`] and [`overwrite_arrow_reader`] behind the one contract
+/// every medium answers.
+#[derive(Debug)]
+pub struct ExcelCodec;
+
+/// The workbook medium, claimed under its MIME type.
+pub static EXCEL_CODEC: ExcelCodec = ExcelCodec;
+
+impl MediaCodec for ExcelCodec {
+    fn name(&self) -> &'static str {
+        "excel"
+    }
+
+    fn title(&self) -> &'static str {
+        "Excel"
+    }
+
+    fn rank(&self) -> u8 {
+        6
+    }
+
+    fn mime_types(&self) -> &'static [MimeType] {
+        &EXCEL_TYPES
+    }
+
+    fn default_options(&self, _base: &MimeType) -> RecordOptions {
+        RecordOptions::registered(ExcelOptions::new())
+    }
+
+    /// A workbook is a ZIP package deflated inside, so an outer coding names
+    /// a file no spreadsheet opens.
+    fn compresses_internally(&self) -> bool {
+        true
+    }
+
+    fn read_batch_reader(
+        &self,
+        handle: &dyn IOBase,
+        declared: Option<&Field>,
+        options: &RecordOptions,
+    ) -> Result<BatchReader> {
+        let excel = options.require_settings::<ExcelOptions>()?;
+        Ok(read_batch_reader(handle, declared, excel)?)
+    }
+
+    fn row_size(&self, handle: &dyn IOBase, options: &RecordOptions) -> Result<u64> {
+        row_size(handle, options.require_settings::<ExcelOptions>()?)
+    }
+
+    fn read_field(&self, handle: &dyn IOBase, options: &RecordOptions) -> Result<Field> {
+        read_field(handle, options.require_settings::<ExcelOptions>()?)
+    }
+
+    /// A sheet may hold no rows, which is a resource with no shape yet,
+    /// never one that cannot be read.
+    fn stated_field(&self, handle: &dyn IOBase, options: &RecordOptions) -> Result<Option<Field>> {
+        stated_field(handle, options.require_settings::<ExcelOptions>()?)
+    }
+
+    fn overwrite_arrow_reader(
+        &self,
+        handle: &mut dyn IOBase,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        let excel = options.require_settings::<ExcelOptions>()?;
+        overwrite_arrow_reader(handle, batches, excel)
+    }
+
+    fn open(&self, handle: Holder) -> Media {
+        Media::Registered(Box::new(Excel::new(handle)))
+    }
+}
+
 /// A byte handle retained with one workbook configuration.
 ///
 /// Rows flow through the ordinary [`IOMedia`] methods, and the wrapper
@@ -369,13 +448,12 @@ impl<H: IOBase> Excel<H> {
     }
 
     fn require_options<'a>(&self, options: &'a RecordOptions) -> Result<&'a ExcelOptions> {
-        match options {
-            RecordOptions::Excel(options) => Ok(options),
-            _ => Err(Error::InvalidRecord {
+        options
+            .settings::<ExcelOptions>()
+            .ok_or_else(|| Error::InvalidRecord {
                 path: SmolStr::new_static("$.encoding"),
                 reason: crate::text::expected_got("Excel record options", options.mime_type()),
-            }),
-        }
+            })
     }
 
     fn invalidate(&mut self) {
@@ -445,7 +523,7 @@ impl<H: IOBase> IOMedia for Excel<H> {
     }
 
     fn record_options(&self) -> Result<RecordOptions> {
-        Ok(RecordOptions::Excel(self.options.clone()))
+        Ok(self.options.clone().into())
     }
 
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
@@ -590,4 +668,20 @@ impl<H: IOBase> IOBase for Excel<H> {
     }
 }
 
-crate::media_serie::media_serie!(ExcelSerie, Excel, as_excel, get_excel_mut);
+impl MediaWrapper for Excel<Holder> {
+    fn medium(&self) -> &'static dyn MediaCodec {
+        &EXCEL_CODEC
+    }
+
+    fn handle(&self) -> &Holder {
+        &self.handle
+    }
+
+    fn into_handle(self: Box<Self>) -> Holder {
+        self.handle
+    }
+
+    fn with_field(self: Box<Self>, field: Field) -> Box<dyn MediaWrapper> {
+        Box::new(Excel::with_field(*self, field))
+    }
+}

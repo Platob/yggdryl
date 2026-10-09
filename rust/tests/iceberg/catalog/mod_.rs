@@ -134,9 +134,9 @@ fn names(names: Names) -> Vec<String> {
 
 /// The Iceberg table a generic table holds.
 fn iceberg(table: Table) -> IcebergTable<Handle> {
-    match table {
-        Table::Iceberg(table) => *table,
-        other => panic!("expected an Iceberg table, got {other:?}"),
+    match table.downcast_ref::<IcebergTable<Handle>>() {
+        Some(iceberg) => iceberg.clone(),
+        None => panic!("expected an Iceberg table, got {table:?}"),
     }
 }
 
@@ -204,10 +204,15 @@ fn each_object_answers_the_kind_and_the_implementation_it_is() {
     // Storage sees three folders; the framing is what tells them apart, so
     // each value answers for itself.
     assert_eq!(ObjectValue::kind(&catalog), IOKind::Catalog);
-    assert!(matches!(catalog, Catalog::Iceberg(_)));
+    assert!(matches!(catalog, Catalog::Registered(_)));
+    assert!(catalog.downcast_ref::<IcebergCatalog>().is_some());
 
     let table = created(&catalog, "nyc.taxis");
-    assert!(matches!(table, Table::Iceberg(_)), "{table:?}");
+    assert!(matches!(table, Table::Registered(_)), "{table:?}");
+    assert!(
+        table.downcast_ref::<IcebergTable<Handle>>().is_some(),
+        "{table:?}"
+    );
     assert_eq!(IOBase::kind(&table), IOKind::Table);
     assert_eq!(ObjectValue::kind(&table), IOKind::Table);
     assert!(table.is_tabular());
@@ -219,7 +224,12 @@ fn each_object_answers_the_kind_and_the_implementation_it_is() {
     // A namespace is a folder that is not a table; that it is a *namespace*
     // is what the catalog framing adds.
     let nyc = catalog.namespaces().get("nyc").unwrap();
-    assert!(matches!(nyc, Namespace::Iceberg(_)), "{nyc:?}");
+    assert!(matches!(nyc, Namespace::Registered(_)), "{nyc:?}");
+    assert!(
+        nyc.downcast_ref::<yggdryl::iceberg::IcebergNamespace>()
+            .is_some(),
+        "{nyc:?}"
+    );
     assert_eq!(ObjectValue::kind(&nyc), IOKind::Namespace);
     assert_eq!(nyc.to_string(), "lake.nyc");
     assert_eq!(nyc.name(), "nyc");
@@ -1048,7 +1058,11 @@ fn a_catalog_is_named_and_located_as_it_was_stated() {
             .with_property("name", "lake"),
     )
     .unwrap();
-    assert!(matches!(built, Catalog::Iceberg(_)), "{built:?}");
+    assert!(matches!(built, Catalog::Registered(_)), "{built:?}");
+    assert!(
+        built.downcast_ref::<IcebergCatalog>().is_some(),
+        "{built:?}"
+    );
     assert_eq!(built.name(), "lake");
     assert_eq!(
         built.properties().unwrap().get("type"),
@@ -1147,7 +1161,11 @@ fn a_registered_catalog_answers_its_tables_to_the_warehouse_and_to_a_plan() {
     let mut warehouse = Warehouse::default();
     warehouse.register(catalog).unwrap();
     let table = warehouse.table("lake.nyc.taxis").unwrap();
-    assert!(matches!(table, Table::Iceberg(_)), "{table:?}");
+    assert!(matches!(table, Table::Registered(_)), "{table:?}");
+    assert!(
+        table.downcast_ref::<IcebergTable<Handle>>().is_some(),
+        "{table:?}"
+    );
     assert_eq!(rows(&table).len(), 3);
 
     // A plan names the table by its path and reads it through the same
@@ -1349,7 +1367,9 @@ mod object_store {
         names, reader, rows, taxis,
     };
     use crate::server::FakeS3;
+    use yggdryl::Handle;
     use yggdryl::holder::Holder;
+    use yggdryl::iceberg::IcebergTable;
     use yggdryl::s3::{self, Credentials, Provider, S3Options};
 
     /// The bucket the warehouse is in.
@@ -1403,7 +1423,11 @@ mod object_store {
             // Each name on the way down resolves to an undecided location and
             // is re-cast as the prefix it names; nothing refuses the backend.
             let table = created(&catalog, "sales.orders");
-            assert!(matches!(table, Table::Iceberg(_)), "{name}: {table:?}");
+            assert!(matches!(table, Table::Registered(_)), "{name}: {table:?}");
+            assert!(
+                table.downcast_ref::<IcebergTable<Handle>>().is_some(),
+                "{name}: {table:?}"
+            );
             assert_eq!(table.to_string(), "lake.sales.orders", "{name}");
             let keys = store.keys(BUCKET);
             for key in [
@@ -1414,7 +1438,16 @@ mod object_store {
             }
 
             let sales = catalog.namespaces().get("sales").unwrap();
-            assert!(matches!(sales, Namespace::Iceberg(_)), "{name}: {sales:?}");
+            assert!(
+                matches!(sales, Namespace::Registered(_)),
+                "{name}: {sales:?}"
+            );
+            assert!(
+                sales
+                    .downcast_ref::<yggdryl::iceberg::IcebergNamespace>()
+                    .is_some(),
+                "{name}: {sales:?}"
+            );
             assert_eq!(ObjectValue::kind(&sales), IOKind::Namespace, "{name}");
             assert_eq!(names(catalog.namespaces().iter()), ["sales"], "{name}");
             assert_eq!(names(sales.tables().iter()), ["orders"], "{name}");

@@ -386,15 +386,21 @@ impl Entry {
     }
 }
 
-/// The object an entry is, at `path`, carrying `effective`.
+/// The object an entry is, at `path`, carrying `effective`; `None` for an
+/// entry that is no object.
+///
+/// # Errors
+///
+/// Returns the claimed table format's refusal of a folder laid out as one of
+/// its tables.
 fn object_of(
     entry: Holder,
     container: bool,
     path: Vec<SmolStr>,
     levels: usize,
     effective: &Properties,
-) -> Option<Object> {
-    match Entry::of(&entry, container, levels) {
+) -> Result<Option<Object>> {
+    Ok(match Entry::of(&entry, container, levels) {
         Entry::Namespace => Some(Object::Namespace(Namespace::Folder(Box::new(
             FolderNamespace {
                 handle: Handle::bound(entry, false, &path, effective.clone()),
@@ -405,18 +411,22 @@ fn object_of(
                 levels: levels - 1,
             },
         )))),
-        #[cfg(feature = "iceberg")]
-        Entry::Table(FolderLayout::Format) => {
-            let root = Handle::bound(entry, false, &path, Properties::new());
-            Some(Object::Table(Table::Iceberg(Box::new(
-                crate::iceberg::IcebergTable::at(path, root).inheriting(effective),
-            ))))
-        }
+        // A folder laid out as a table is the table object the claimed
+        // format answers; with no claim it is listed as a media table of that
+        // layout, which refuses to read by name.
+        Entry::Table(FolderLayout::Format) => Some(Object::Table(
+            match crate::media::format::format_named(TABLE_LAYOUT_FORMAT) {
+                Some(format) => format.table(path, entry, effective)?,
+                None => Table::Media(Box::new(
+                    MediaTable::listed(path, entry, FolderLayout::Format).inheriting(effective),
+                )),
+            },
+        )),
         Entry::Table(layout) => Some(Object::Table(Table::Media(Box::new(
             MediaTable::listed(path, entry, layout).inheriting(effective),
         )))),
         Entry::Other => None,
-    }
+    })
 }
 
 /// The children of `folder`, lazily: one listing, and one listing of
@@ -435,7 +445,7 @@ fn list(folder: &Holder, path: &[SmolStr], levels: usize, effective: Properties)
         // Asked once per entry: on a store a listed leaf's role is a request.
         let container = entry.is_container();
         let name = table_name(&file, container);
-        object_of(entry, container, extended(&path, &name), levels, &effective).map(Ok)
+        object_of(entry, container, extended(&path, &name), levels, &effective).transpose()
     }))
 }
 
@@ -466,7 +476,7 @@ fn get(
         if table_name(&file, container) != name {
             continue;
         }
-        if let Some(object) = object_of(entry, container, child.clone(), levels, effective) {
+        if let Some(object) = object_of(entry, container, child.clone(), levels, effective)? {
             found.push(object);
         }
     }
@@ -493,10 +503,15 @@ fn is_table_format(folder: &Holder) -> bool {
     table_layout(folder).unwrap_or(false)
 }
 
+/// The format whose layout [`table_layout`] detects, the one table layout
+/// there is: the register's key the folder catalog asks for the table
+/// object.
+pub(crate) const TABLE_LAYOUT_FORMAT: &str = "iceberg";
+
 /// Whether a folder is laid out as an Iceberg table: its `metadata/` holds
 /// the `version-hint.text` a catalog-less table keeps, or a metadata
 /// document - one listing of `metadata/` and no read. The layout is the
-/// fact, so a build without the `iceberg` feature lists the table too and
+/// fact, so a build no format claim reads it in lists the table too and
 /// refuses to read it by name. A `metadata/` that is not there is no
 /// layout; any other listing failure is the store's own.
 pub(crate) fn table_layout(folder: &Holder) -> Result<bool> {

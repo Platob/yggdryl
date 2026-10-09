@@ -3897,7 +3897,14 @@ mod tables {
             .expect_err("v3 keyed merge must preserve existing row IDs");
         assert_eq!(pulls.load(std::sync::atomic::Ordering::SeqCst), 0);
         assert!(
-            matches!(&merge_error, yggdryl::Error::Iceberg { source: None, .. }),
+            matches!(
+                &merge_error,
+                yggdryl::Error::External {
+                    origin: "Iceberg",
+                    source: None,
+                    ..
+                }
+            ),
             "{merge_error:?}"
         );
         assert!(merge_error.to_string().contains("merge"), "{merge_error}");
@@ -3907,7 +3914,14 @@ mod tables {
             .compact()
             .expect_err("v3 compaction must preserve existing row IDs");
         assert!(
-            matches!(&compact_error, yggdryl::Error::Iceberg { source: None, .. }),
+            matches!(
+                &compact_error,
+                yggdryl::Error::External {
+                    origin: "Iceberg",
+                    source: None,
+                    ..
+                }
+            ),
             "{compact_error:?}"
         );
         assert!(
@@ -9211,7 +9225,8 @@ mod line_projection {
             bodies.iter().collect::<Vec<_>>(),
             [Some("first"), Some("second")]
         );
-        let yggdryl::Table::Iceberg(table) = table else {
+        let Some(table) = table.downcast_ref::<yggdryl::iceberg::IcebergTable<yggdryl::Handle>>()
+        else {
             panic!("expected an Iceberg table, got {table:?}");
         };
         assert_eq!(

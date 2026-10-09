@@ -8,10 +8,10 @@ The Apache Avro object container format: a header naming the writer schema and t
 | --- | --- |
 | Declared by | `application/avro`, `.avro` |
 | Build | default; the record surface rides Arrow, and the `snappy` block codec needs the `parquet` feature |
-| Rust | `yggdryl::avro`: `Avro<H>` over any handle with `AvroOptions` and the free `read_field`, `read_batch_reader` and `overwrite_arrow_reader` for records; `read_container`, `read_container_resolved`, `write_container`, `read_blocks` and `Schema` for the raw codec, and `into_single_object_vec`/`from_single_object_slice` for single-object encoding |
+| Rust | `yggdryl::avro`: `Avro<H>` over any handle with `AvroOptions`, `AVRO_CODEC` the [registered medium](index.md#registering-a-medium) and the free `read_field`, `read_batch_reader` and `overwrite_arrow_reader` for records; `read_container`, `read_container_resolved`, `write_container`, `read_blocks` and `Schema` for the raw codec, and `into_single_object_vec`/`from_single_object_slice` for single-object encoding |
 | Python | any `IOBase` whose name declares Avro; `yggdryl.avro`: `loads`, `dumps`, `blocks`, `loads_single`, `dumps_single`, `Schema` |
 | JavaScript | any `IOBase` whose name declares Avro; `avro`: `loads`, `dumps`, `blocks`, `loadsSingle`, `dumpsSingle`, `Schema` |
-| Settings | `block_codec` - `deflate` unless set, or `null`, `snappy`, `zstandard` - and `sync_marker`, sixteen bytes, beside the shared [`RecordOptions`](index.md#options) |
+| Settings | `block_codec` - `deflate` unless set, or `null`, `snappy`, `zstandard` - and `sync_marker`, sixteen bytes, beside the shared [`RecordOptions`](index.md#options); in Rust the `AvroOptions` methods `block_codec`, `set_block_codec`, `sync_marker` and `set_sync_marker`, reached through `options.settings::<AvroOptions>()` ([A medium's own settings](index.md#a-mediums-own-settings)) |
 
 ## Read
 
@@ -122,6 +122,7 @@ A record write derives the writer schema from the field and writes the header - 
 
     use arrow_array::types::Int32Type;
     use arrow_array::{ArrayRef, DictionaryArray, Int64Array, RecordBatch};
+    use yggdryl::avro::AvroOptions;
     use yggdryl::holder::Buffer;
     use yggdryl::{arrow, avro, IOBase, IOMedia, MimeType, Scalar};
 
@@ -135,7 +136,9 @@ A record write derives the writer schema from the field and writes the header - 
     for codec in ["null", "deflate", "zstandard"] {
         let mut handle = Buffer::new().with_media_type(MimeType::AVRO.into());
         let mut options = handle.record_options()?;
-        options.set_avro_block_codec(codec)?;
+        options
+            .require_settings_mut::<AvroOptions>("$.block_codec", "a block codec")?
+            .set_block_codec(codec)?;
         handle.overwrite_arrow_reader(arrow::batch_reader(batch.schema(), [batch.clone()]), &options)?;
         sizes.push(handle.size());
 

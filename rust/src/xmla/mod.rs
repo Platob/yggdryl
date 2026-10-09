@@ -46,8 +46,9 @@ pub mod service;
 pub mod vocabulary;
 
 pub use dbtype::DbType;
-pub(crate) use media::row_size;
-pub use media::{Xmla, overwrite_arrow_reader, read_batch_reader, read_field};
+pub use media::{
+    XMLA_CODEC, Xmla, XmlaCodec, overwrite_arrow_reader, read_batch_reader, read_field,
+};
 pub use options::XmlaOptions;
 pub use request::{Command, Discover, Execute, Request, RequestMethod, Session};
 pub use response::{Answer, Response, XmlaError, fault, write_empty, write_fault, write_rowset};

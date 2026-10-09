@@ -1031,9 +1031,18 @@ pub(crate) fn filter_after_select<'a>(
     })
 }
 
-/// Place each conjunction at the schema its columns belong to. This keeps
-/// native source pruning available beside predicates on selected aliases.
-pub(crate) fn filter_phases<'filter, 'name>(
+/// Place each conjunction of `filter` at the schema its columns belong to:
+/// the early phase, over the stored columns `input` names, which a medium
+/// pushes into its read and prunes by; and the late phase, over the rows the
+/// `select` publishes, for a conjunction naming an alias or a column only
+/// the projection lays out. A filter nothing in it reads from the projection
+/// is the early phase whole, the late one always true.
+///
+/// What a medium outside the core reads to split a `where` clause the way
+/// the core's media do, beside
+/// [`IORecordOptions::apply_columns`](crate::media::IORecordOptions::apply_columns)
+/// and [`Bounds`].
+pub fn filter_phases<'filter, 'name>(
     filter: &'filter Filter,
     select: &Selector,
     input: impl IntoIterator<Item = &'name str>,

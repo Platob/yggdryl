@@ -1082,7 +1082,7 @@ mod records {
             .media_type();
         let mut sink = Buffer::new();
         sink.set_media_type(media_type.clone());
-        let written = RecordOptions::Parquet(
+        let written = RecordOptions::from(
             ParquetOptions::new().with_compression(parquet::basic::Compression::UNCOMPRESSED),
         );
         sink.overwrite_arrow_batch(batch(200_000), &written)

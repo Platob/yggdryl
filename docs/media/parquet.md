@@ -8,9 +8,9 @@ The Apache Parquet file format: columns stored in row groups, pages compressed i
 | --- | --- |
 | Declared by | `application/vnd.apache.parquet`, `.parquet` |
 | Build | the `parquet` feature |
-| Rust | `yggdryl::parquet`: `Parquet<H>` over any handle, configured by `ParquetOptions`, and the free `read_field`, `read_batch_reader`, `overwrite_arrow_reader` and `read_statistics` over any `IOBase` |
+| Rust | `yggdryl::parquet`: `Parquet<H>` over any handle, configured by `ParquetOptions`, `PARQUET_CODEC` the [registered medium](index.md#registering-a-medium), the free `read_field`, `read_batch_reader`, `overwrite_arrow_reader` and `read_statistics` over any `IOBase`, and `read_media_statistics` and `read_media_geospatial_statistics` over any media that is one Parquet leaf |
 | Python, JavaScript | any `IOBase` whose name declares Parquet, through the [calls every medium answers](index.md#read), plus the footer readers `read_parquet_statistics` / `readParquetStatistics` and `read_parquet_geospatial_statistics` / `readParquetGeospatialStatistics` |
-| Settings | `compression`, `max_row_group_size` and `key_value_metadata`, beside the shared [`RecordOptions`](index.md#options) |
+| Settings | `compression`, `max_row_group_size` and `key_value_metadata`, beside the shared [`RecordOptions`](index.md#options); in Rust the fields and setters of `ParquetOptions`, which a handle's options hold as `options.settings::<ParquetOptions>()` ([A medium's own settings](index.md#a-mediums-own-settings)) |
 | Refused | a coded name such as `.parquet.gz`, and a union column |
 | `uuid` | written as `FIXED_LEN_BYTE_ARRAY(16)` annotated `UUID`, at the root and nested in a struct, a serie or a map; a foreign file's `UUID` column reads as `uuid` |
 
@@ -58,6 +58,9 @@ A read yields 65,536-row batches unless `batch_row_size` bounds them; without a 
     let statistics = media.read_statistics()?;
     assert_eq!(statistics.num_rows, 1_000);
     assert_eq!(statistics.row_groups.len(), 4);
+
+    // Any media that is one Parquet leaf answers the same footer through the free door.
+    assert_eq!(yggdryl::parquet::read_media_statistics(&media)?.num_rows, 1_000);
 
     // The filter rules three row groups out from the footer alone; the last
     // one is decoded and its rows filtered.

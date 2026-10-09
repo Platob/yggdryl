@@ -165,15 +165,25 @@ fn record_options_are_the_excel_options_the_wrapper_holds() {
         .with_sheet("Trades")
         .with_field(trades());
     let options = media.record_options().unwrap();
-    let RecordOptions::Excel(excel) = &options else {
+    let Some(excel) = options.settings::<ExcelOptions>() else {
         panic!("expected Excel options, got {options:?}");
     };
     assert_eq!(excel, media.options());
     assert_eq!(options.field(), Some(trades()));
     assert_eq!(options.mime_type(), MimeType::XLSX);
-    assert_eq!(options.excel_sheet(), Some("Trades"));
+    assert_eq!(
+        options
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::sheet),
+        Some("Trades")
+    );
     assert_eq!(options.header(), Some(false));
-    assert_eq!(options.excel_range(), Some(range));
+    assert_eq!(
+        options
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::range),
+        Some(range)
+    );
 }
 
 #[test]
@@ -883,21 +893,26 @@ fn the_free_overwrite_replaces_the_addressed_sheet_and_carries_the_others_over()
 fn an_xlsx_name_binds_the_excel_medium() {
     assert!(matches!(
         Media::open(named("trades.xlsx")).unwrap(),
-        Media::Excel(_)
+        Media::Registered(wrapper) if wrapper.medium().name() == "excel"
     ));
     match named("trades.xlsx").into_media() {
-        Holder::Media(media) => assert!(matches!(media.as_ref(), Media::Excel(_))),
+        Holder::Media(media) => assert!(matches!(
+            media.as_ref(),
+            Media::Registered(wrapper) if wrapper.medium().name() == "excel"
+        )),
         other => panic!("expected a retained workbook medium, got {other:?}"),
     }
 
-    let explicit = Media::excel(Holder::buffer(Buffer::new())).with_field(trades());
+    let explicit = Media::open_as(Holder::buffer(Buffer::new()), &MimeType::XLSX)
+        .unwrap()
+        .with_field(trades());
     let options = explicit.record_options().unwrap();
-    assert!(matches!(options, RecordOptions::Excel(_)));
+    assert!(options.settings::<ExcelOptions>().is_some());
     assert_eq!(options.field(), Some(trades()));
 
     let mut media = Media::open(named("trades.xlsx")).unwrap();
     let options = media.record_options().unwrap();
-    assert!(matches!(options, RecordOptions::Excel(_)));
+    assert!(options.settings::<ExcelOptions>().is_some());
     media
         .overwrite_arrow_batch(batch(&[1, 2], &[Some("AAPL"), None]), &options)
         .unwrap();
@@ -936,7 +951,7 @@ fn a_coded_workbook_name_is_refused_at_every_door() {
 
         let mut held = named(name).into_declared_media();
         let options = held.record_options().unwrap();
-        assert!(matches!(options, RecordOptions::Excel(_)), "{name}");
+        assert!(options.settings::<ExcelOptions>().is_some(), "{name}");
         codec_refusal(
             held.overwrite_arrow_batch(batch(&[1], &[Some("AAPL")]), &options)
                 .unwrap_err(),
@@ -980,7 +995,10 @@ fn a_local_xlsx_url_is_held_written_and_reopened_as_a_workbook() {
     assert!(matches!(held, Holder::LocalPath(_)));
     let mut held = held.into_declared_media();
     match &held {
-        Holder::Media(media) => assert!(matches!(media.as_ref(), Media::Excel(_))),
+        Holder::Media(media) => assert!(matches!(
+            media.as_ref(),
+            Media::Registered(wrapper) if wrapper.medium().name() == "excel"
+        )),
         other => panic!("expected a workbook medium, got {other:?}"),
     }
     let options = held.record_options().unwrap();

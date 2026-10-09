@@ -60,14 +60,13 @@ use arrow_ipc::reader::StreamReader;
 use arrow_ipc::writer::StreamWriter;
 use arrow_schema::{ArrowError, Schema};
 
-use crate::Field;
-use crate::IOBase;
-use crate::Level;
 use crate::arrow::{
     BatchReader, Result, arrow_schema_from_field, field_from_arrow_schema, from_reader_error,
     projection_indices,
 };
-use crate::media::{IORecordOptions, RecordOptions};
+use crate::holder::Holder;
+use crate::media::{IORecordOptions, Media, MediaCodec, MediumSettings, RecordOptions};
+use crate::{Field, IOBase, Level, MimeType};
 use smol_str::SmolStr;
 
 /// The settings an Arrow IPC read or write takes.
@@ -151,6 +150,12 @@ impl Default for IpcOptions {
 
 impl IORecordOptions for IpcOptions {
     crate::record_options_fields!();
+}
+
+impl MediumSettings for IpcOptions {
+    fn medium() -> &'static dyn MediaCodec {
+        &IPC_CODEC
+    }
 }
 
 /// Read the schema of the stream `handle` holds.
@@ -741,6 +746,74 @@ impl<R: Read + Send + 'static> Read for EmptySafeDecoder<R> {
     }
 }
 
+/// The MIME types Arrow IPC answers, the stream format first.
+static IPC_TYPES: [MimeType; 2] = [MimeType::ARROW_STREAM, MimeType::ARROW_FILE];
+
+/// Arrow IPC as a record medium: [`read_batch_reader`], [`read_field`] and
+/// [`overwrite_arrow_reader`] behind the one contract every medium answers.
+#[derive(Debug)]
+pub struct IpcCodec;
+
+/// The Arrow IPC medium, claimed by the core under its two MIME types.
+pub static IPC_CODEC: IpcCodec = IpcCodec;
+
+impl MediaCodec for IpcCodec {
+    fn name(&self) -> &'static str {
+        "ipc"
+    }
+
+    fn title(&self) -> &'static str {
+        "Arrow IPC"
+    }
+
+    fn rank(&self) -> u8 {
+        0
+    }
+
+    fn mime_types(&self) -> &'static [MimeType] {
+        &IPC_TYPES
+    }
+
+    fn default_options(&self, _base: &MimeType) -> RecordOptions {
+        RecordOptions::Ipc(IpcOptions::new())
+    }
+
+    fn read_batch_reader(
+        &self,
+        handle: &dyn IOBase,
+        declared: Option<&Field>,
+        options: &RecordOptions,
+    ) -> crate::Result<BatchReader> {
+        let ipc = options.require_settings::<IpcOptions>()?;
+        Ok(read_batch_reader(handle, declared, ipc)?)
+    }
+
+    fn row_size(&self, handle: &dyn IOBase, options: &RecordOptions) -> crate::Result<u64> {
+        row_size(handle, options.require_settings::<IpcOptions>()?)
+    }
+
+    fn read_field(&self, handle: &dyn IOBase, options: &RecordOptions) -> crate::Result<Field> {
+        Ok(read_field(
+            handle,
+            options.require_settings::<IpcOptions>()?,
+        )?)
+    }
+
+    fn overwrite_arrow_reader(
+        &self,
+        handle: &mut dyn IOBase,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> crate::Result<()> {
+        let ipc = options.require_settings::<IpcOptions>()?;
+        Ok(overwrite_arrow_reader(handle, batches, ipc)?)
+    }
+
+    fn open(&self, handle: Holder) -> Media {
+        Media::Ipc(Ipc::new(handle))
+    }
+}
+
 /// An Arrow IPC stream bound to one [`IOBase`] handle.
 ///
 /// Every read and write goes through this type, so the handle, the options,
@@ -1176,4 +1249,10 @@ pub mod internals {
     }
 }
 
-crate::media_serie::media_serie!(IpcSerie, Ipc, as_ipc, get_ipc_mut);
+crate::media_serie::media_serie!(
+    IpcSerie,
+    Ipc,
+    as_ipc,
+    get_ipc_mut,
+    accepts = Some(&IPC_TYPES)
+);

@@ -33,7 +33,7 @@ Each `rust/src/<name>.rs` owns one shared trait, enum, value or type (`iobase.rs
 | [Warehouse](warehouse/index.md) | `warehouse/`: the catalog, namespace and table abstraction - the traits `ObjectValue`, `NamespaceValue`, `CatalogValue`, `TableValue` and the enums `Object`, `Catalog`, `Namespace`, `Table`; `Properties`, the one ordered name/value bag a target's `with (...)` clause, `Holder::from_url` and every object read; the path intake `IntoObjectPath`; the lazy `Namespaces` and `Tables` views; `Warehouse` and the process's `SystemWarehouse` - with its generic implementations `MemoryCatalog`, `MemoryNamespace`, `FolderCatalog`, `FolderNamespace` and `MediaTable` |
 | [Media: compression](media/compression.md) | `codec.rs`, `coding/` (transparent coded handles), `gzip.rs`, `zlib.rs` (zlib and raw deflate), `zstd.rs` |
 | [Media: charsets](media/charsets.md) | `charset.rs` + `charset/` (UTF-16, the ISO 8859 and Windows code pages, transparent transcoded handles) and the three charsets with string leaves: `utf8.rs`, `ascii.rs`, `cp1252.rs` |
-| [Media](media/index.md) | `media_type.rs`, `mime_type.rs` and `media/` (record options, inference, magic, merge, partition) on the overview, and one folder per medium, each with its page - `ipc/`, `parquet/`, `avro/`, `csv/` (delimited text: CSV and TSV), `iceberg/`, `text/` (plain-text records), `xmla/` (XML for Analysis rowsets, and the provider serving them), `excel/` (Office Open XML workbooks: one worksheet as records, and the workbook, its sheets and cells for random access), and `http/wire.rs` for HTTP messages |
+| [Media](media/index.md) | `media_type.rs`, `mime_type.rs` and `media/` (the `Media` value, record options, the registers of media and of table formats, inference, magic, merge, partition) on the overview, and one folder per medium, each with its page - `ipc/`, `parquet/`, `avro/`, `csv/` (delimited text: CSV and TSV), `iceberg/`, `text/` (plain-text records), `xmla/` (XML for Analysis rowsets, and the provider serving them), `excel/` (Office Open XML workbooks: one worksheet as records, and the workbook, its sheets and cells for random access), and `http/wire.rs` for HTTP messages |
 | Media: [JSON](media/json.md), [YAML](media/yaml.md), [TOML](media/toml.md), [XML](media/xml.md) | `json/`, `toml/`, `yaml/`, `xml/`: structured `Scalar` codecs over the machinery in `text/`, a page each under [Media](media/index.md) |
 | [URI](uri/index.md) | `uri/`, `scheme.rs`: URI, URL, URN, ARN, path, glob, and partition syntax |
 | [Arrow](arrow/index.md) | `arrow/`: Arrow schema, scalar, array, batch, and reader boundaries |
@@ -54,6 +54,7 @@ Documentation is grouped by these tab names - `docs/<tab>/` for a tab of several
 | Storage is one trait | [`IOBase`](holder/index.md) is positional (`pread`, `pwrite`); construction touches nothing, absent reads are empty, writes create. |
 | Listings are iterators | `ls`, `glob`, and predicate listings yield `Result` items lazily and fuse at the first failure. |
 | Traits say what, enums say which | `Codec`, `MediaType`, `IOKind`, `IOMode` dispatch; `Holder` and `Media` carry one native implementation across bindings. |
+| An extension point is a register | A market kind, a medium, a table format, a catalog factory and a location scheme are each a `static` claimed once with `claim(.., "crate")`; an intake door reads the claim once and a value in hand carries it ([Registering a medium](media/index.md#registering-a-medium)). |
 | Arrow speaks batches | IPC, Parquet, text records, and Iceberg expose bounded `BatchReader` streams, never collected batches. |
 | Text speaks values | JSON, YAML, TOML, and XML parse and render one [`Scalar`](media/json.md); the exact field directs nullability, order, and dictionaries. |
 | A scheme owns a direction, not a surface | Every [Media](media/index.md) scheme answers the same two surfaces, so its page documents them the same way: an Overview, a Read section, a Write section, then one section per feature it alone has. Read and Write each lead with a runnable example in all three languages. |
@@ -231,7 +232,7 @@ No feature is on by default (`default = []`); Arrow arrays, batches, IPC and cas
 | Feature | Adds |
 | --- | --- |
 | `parquet` | the Parquet codec and its compression stack |
-| `iceberg` | Iceberg tables, their metadata serde and validation owned by the official Iceberg 0.10.1 crate; implies `parquet`, needs Rust 1.94 or newer |
+| `iceberg` | Iceberg tables, their metadata serde and validation owned by the official Iceberg 0.10.1 crate, and the `iceberg` table format and the `hadoop` catalog factory the core claims; implies `parquet`, needs Rust 1.94 or newer |
 | `http` | the HTTP/1.1 client, sessions, requests, responses, resumable streams, paginated pages and the `Server`, behind `IOBase` ([HTTP](holder/index.md#http)) |
 | `http2` | HTTP/2 under the same client - ALPN `h2` over TLS, `h2c` by prior knowledge; implies `http` |
 | `http3` | HTTP/3 under the same client, once an origin advertises it in `Alt-Svc`; implies `http2` |

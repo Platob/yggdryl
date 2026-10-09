@@ -11,7 +11,8 @@ fn official_iceberg_failures_keep_their_source_behind_the_core_error() {
     let error = yggdryl::internals::error::invalid_iceberg_metadata("invalid metadata");
     assert!(matches!(
         error,
-        Error::Iceberg {
+        Error::External {
+            origin: "Iceberg",
             source: Some(_),
             ..
         }

@@ -102,8 +102,9 @@ cross-language conventions are in `yggdryl`.
    the levels is a namespace, deeper a table of the rows beneath it
    (`storage == "directory"`); a folder whose store says `IOKind::Table` or
    whose `metadata/` holds a version hint or a metadata document is a table
-   format at any depth (`storage == "table"`, rows need the `iceberg`
-   feature, which answers it as `Table::Iceberg` - Python `IcebergTable`); a leaf is a table when a record medium reads its name's media
+   format at any depth (`storage == "table"`, rows need a claimed table
+   format - the `iceberg` feature claims one - which answers it as
+   `Table::Registered` - Python `IcebergTable`); a leaf is a table when a record medium reads its name's media
    type, named less every extension a media type claims (`trades.arrows.gz`
    is `trades`); a dot-prefixed entry is private; two entries of one name are
    both listed and asking for the name is a conflict.

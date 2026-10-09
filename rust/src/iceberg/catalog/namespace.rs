@@ -1,6 +1,9 @@
 //! A namespace of an Iceberg catalog: a folder under the warehouse, read as
 //! namespaces and tables, nested to any depth.
 
+use std::any::Any;
+use std::hash::{Hash, Hasher};
+
 use smol_str::SmolStr;
 
 use super::{
@@ -8,7 +11,7 @@ use super::{
     update_document,
 };
 use crate::holder::Holder;
-use crate::warehouse::{Handle, Site, path_text};
+use crate::warehouse::{Handle, RegisteredNamespace, Site, path_text};
 use crate::{
     Error, Field, IOBase, IOKind, IntoObjectPath, Namespace, NamespaceValue, Object, ObjectValue,
     Objects, Properties, Result, Table, Url,
@@ -187,5 +190,54 @@ impl NamespaceValue for IcebergNamespace {
             field,
             properties,
         )
+    }
+}
+
+impl RegisteredNamespace for IcebergNamespace {
+    fn implementation_name(&self) -> &'static str {
+        "IcebergNamespace"
+    }
+
+    fn clone_box(&self) -> Box<dyn RegisteredNamespace> {
+        Box::new(self.clone())
+    }
+
+    fn dyn_eq(&self, other: &dyn RegisteredNamespace) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<Self>()
+            .is_some_and(|other| self == other)
+    }
+
+    fn dyn_hash(&self, mut state: &mut dyn Hasher) {
+        Hash::hash(self, &mut state);
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn with_properties(self: Box<Self>, properties: Properties) -> Box<dyn RegisteredNamespace> {
+        Box::new((*self).with_properties(properties))
+    }
+
+    fn inheriting(self: Box<Self>, parent: &Properties) -> Box<dyn RegisteredNamespace> {
+        Box::new((*self).inheriting(parent))
+    }
+}
+
+impl From<IcebergNamespace> for Namespace {
+    fn from(namespace: IcebergNamespace) -> Self {
+        Self::Registered(Box::new(namespace))
+    }
+}
+
+impl From<IcebergNamespace> for Object {
+    fn from(namespace: IcebergNamespace) -> Self {
+        Self::Namespace(Namespace::from(namespace))
     }
 }

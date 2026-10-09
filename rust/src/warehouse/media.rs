@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use smol_str::{SmolStr, format_smolstr};
+use smol_str::SmolStr;
 
 use super::handle::{Handle, Site};
 use super::object::path_text;
@@ -219,15 +219,10 @@ impl MediaTable {
     /// The options every record verb runs with when the caller states none:
     /// the handle's, carrying the declared field and the table's name.
     fn options(&self) -> Result<RecordOptions> {
-        if self.layout == FolderLayout::Format && !reads_table_format() {
-            return Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$.encoding"),
-                reason: format_smolstr!(
-                    "`{}` is laid out as an Iceberg table, which this build does not read; \
-                     the `iceberg` feature is not enabled",
-                    path_text(&self.path)
-                ),
-            });
+        if self.layout == FolderLayout::Format
+            && crate::media::format::format_named(super::folder::TABLE_LAYOUT_FORMAT).is_none()
+        {
+            return Err(crate::media::format::unregistered(path_text(&self.path)));
         }
         let handle = self.handle()?;
         // A leaf's encoding is what its name declares, with no question to
@@ -254,12 +249,6 @@ fn named_path(path: impl IntoObjectPath) -> Result<Vec<SmolStr>> {
         });
     }
     Ok(path)
-}
-
-/// Whether this build reads a folder laid out as a table format: the one
-/// format this crate implements is Iceberg, under its own feature.
-const fn reads_table_format() -> bool {
-    cfg!(feature = "iceberg")
 }
 
 impl ObjectValue for MediaTable {
@@ -517,17 +506,10 @@ impl IOMedia for MediaTable {
         self.options()
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        IOMedia::read_parquet_statistics(self.handle()?)
-    }
-
-    #[cfg(feature = "parquet")]
-    fn read_parquet_geospatial_statistics(
-        &self,
-        column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
-        IOMedia::read_parquet_geospatial_statistics(self.handle()?, column)
+    // A handle that cannot open holds no medium's state; the verb that
+    // reads it next reports why.
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        self.handle().ok().and_then(IOMedia::as_any)
     }
 
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {

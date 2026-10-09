@@ -60,8 +60,8 @@ mod options;
 mod reader;
 mod writer;
 
-pub use media::{Csv, overwrite_arrow_reader, read_batch_reader, read_field};
-pub(crate) use media::{append_arrow_reader, row_size, stated_field, write_target};
+pub use media::{CSV_CODEC, Csv, CsvCodec, overwrite_arrow_reader, read_batch_reader, read_field};
+pub(crate) use media::{append_arrow_reader, write_target};
 pub use options::{CsvOptions, DEFAULT_CSV_INFER_ROW_SIZE};
 
 pub use media::CSVSerie;

@@ -12,18 +12,15 @@ use crate::media::RecordOptions;
 /// What a handle opens as under `options`: a located table format, or the
 /// reader over a folder of leaves or over one leaf.
 enum Opened {
-    // Boxed: a located table carries its whole metadata, a reader a pointer.
-    #[cfg(feature = "iceberg")]
-    Table(Box<crate::iceberg::Located>),
+    Table(Box<dyn crate::media::LocatedTable>),
     Reader(crate::arrow::BatchReader),
 }
 
 /// What a handle already known to be a container opens as: the table format
 /// located in it, or the reader over its leaves.
 fn open_container(handle: &dyn IOBase, options: &RecordOptions) -> Result<Opened> {
-    #[cfg(feature = "iceberg")]
-    if let Some(table) = crate::iceberg::located(handle)? {
-        return Ok(Opened::Table(Box::new(table)));
+    if let Some(table) = crate::media::format::locate(handle)? {
+        return Ok(Opened::Table(table));
     }
     Ok(Opened::Reader(crate::media::partition::folder_reader(
         handle, options,
@@ -38,7 +35,6 @@ fn opened_field(opened: Opened, options: &RecordOptions) -> Result<crate::Field>
     let schema = match opened {
         // A table format states its schema in its metadata: the table
         // answers it as the table it is, and no scan is planned to learn it.
-        #[cfg(feature = "iceberg")]
         Opened::Table(table) => return table.read_arrow_field(options),
         Opened::Reader(reader) => options
             .limit_arrow_reader(options.apply_arrow_expressions(reader)?)?
@@ -246,8 +242,7 @@ pub trait IOMedia: Send {
         // Asked once and reused: on a store an unresolved location answers
         // this with a listing, and the two routes below want the same answer.
         let container = handle.is_container();
-        #[cfg(feature = "iceberg")]
-        if container && let Some(table) = crate::iceberg::located(handle)? {
+        if container && let Some(table) = crate::media::format::locate(handle)? {
             return table.column_size();
         }
         // Preserve the container route: its canonical field may include Hive
@@ -278,8 +273,7 @@ pub trait IOMedia: Send {
     fn record_options(&self) -> Result<RecordOptions> {
         let handle = self.as_io_base();
         if handle.is_container() {
-            #[cfg(feature = "iceberg")]
-            if let Some(table) = crate::iceberg::located(handle)? {
+            if let Some(table) = crate::media::format::locate(handle)? {
                 return table.record_options();
             }
             // The listing is lazy, so a lake costs the walk to its first
@@ -366,47 +360,12 @@ pub trait IOMedia: Send {
         Ok(std::borrow::Cow::Borrowed(options))
     }
 
-    /// Read this Parquet leaf's footer statistics without decoding rows.
-    ///
-    /// The handle's media type selects the encoding first. This refuses an
-    /// IPC, Avro, text, or container handle with a typed record error instead
-    /// of trying to parse unrelated bytes as a Parquet footer.
-    ///
-    /// # Errors
-    ///
-    /// Returns an encoding, footer, or positional-read failure.
-    #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        let handle = parquet_leaf(self)?;
-        Ok(crate::parquet::read_statistics(handle)?)
-    }
-
-    /// Recompute one Parquet geospatial column's statistics from stored WKB.
-    ///
-    /// Unlike [`Self::read_parquet_statistics`], this is a projected column
-    /// scan: it decodes only the named top-level binary column and folds its
-    /// geometries without materializing them.
-    ///
-    /// # Errors
-    ///
-    /// Returns an encoding or read failure, an unknown/non-binary column, or
-    /// malformed WKB.
-    #[cfg(feature = "parquet")]
-    fn read_parquet_geospatial_statistics(
-        &self,
-        column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
-        let handle = parquet_leaf(self)?;
-        Ok(crate::parquet::read_geospatial_statistics(handle, column)?)
-    }
-
-    /// The decoded footer this handle already holds for the Parquet file it
-    /// is, so a record read of it reads no byte of the file's end again: an
-    /// opened [`Parquet`](crate::parquet::Parquet) answers the footer its
-    /// `open` read; every other handle, and a closed one, `None`.
-    #[cfg(feature = "parquet")]
-    #[doc(hidden)]
-    fn parquet_footer(&self) -> Option<std::sync::Arc<::parquet::file::metadata::ParquetMetaData>> {
+    /// The medium's own state, which a caller who knows the medium
+    /// downcasts: what no verb answers. A Parquet wrapper answers its
+    /// `ParquetFooter`, the footer its `open` read, so a record read of it
+    /// reads no byte of the file's end again; a wrapper forwards its inner
+    /// handle's, and every other handle answers `None`.
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
         None
     }
 
@@ -1130,8 +1089,7 @@ pub(crate) fn dimensions(mut options: RecordOptions) -> RecordOptions {
 /// The one container count, shared by the [`IOMedia::row_size`] default and
 /// the media wrappers whose own count reads one leaf's bytes.
 pub(crate) fn container_row_size(handle: &dyn IOBase, options: &RecordOptions) -> Result<u64> {
-    #[cfg(feature = "iceberg")]
-    if let Some(table) = crate::iceberg::located(handle)? {
+    if let Some(table) = crate::media::format::locate(handle)? {
         return table.row_size();
     }
     let mut rows = 0_u64;
@@ -1149,31 +1107,6 @@ fn add_rows(total: u64, rows: u64) -> Result<u64> {
             path: smol_str::SmolStr::new_static("$"),
             reason: smol_str::SmolStr::new_static("logical row count exceeds u64::MAX"),
         })
-}
-
-/// Resolve one media value as a Parquet leaf before a footer or column read.
-#[cfg(feature = "parquet")]
-fn parquet_leaf<M: IOMedia + ?Sized>(media: &M) -> Result<&dyn IOBase> {
-    let options = media.record_options()?;
-    if !matches!(options, RecordOptions::Parquet(_)) {
-        return Err(crate::Error::InvalidRecord {
-            path: smol_str::SmolStr::new_static("$.encoding"),
-            reason: smol_str::format_smolstr!(
-                "expected Parquet media, got {}",
-                options.mime_type()
-            ),
-        });
-    }
-    let handle = media.as_io_base();
-    if handle.is_container() {
-        return Err(crate::Error::InvalidRecord {
-            path: smol_str::SmolStr::new_static("$"),
-            reason: smol_str::SmolStr::new_static(
-                "expected one Parquet leaf for file statistics, got a container",
-            ),
-        });
-    }
-    Ok(handle)
 }
 
 /// Implement the default media contract for an [`IOBase`] value.
@@ -1202,7 +1135,7 @@ macro_rules! impl_default_iomedia {
     };
 }
 
-/// Feature-selected media forwarding bodies used by [`delegate_iomedia!`].
+/// The media forwarding bodies used by [`delegate_iomedia!`].
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __delegate_iomedia_arrow {
@@ -1318,33 +1251,6 @@ macro_rules! __delegate_iomedia_arrow {
     };
 }
 
-/// Parquet-selected media forwarding bodies used by [`delegate_iomedia!`].
-#[cfg(feature = "parquet")]
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __delegate_iomedia_parquet {
-    ($handle:ident) => {
-        fn read_parquet_statistics(&self) -> $crate::Result<$crate::parquet::FileStatistics> {
-            $crate::IOMedia::read_parquet_statistics(&self.$handle)
-        }
-
-        fn read_parquet_geospatial_statistics(
-            &self,
-            column: &str,
-        ) -> $crate::Result<$crate::parquet::GeospatialStatistics> {
-            $crate::IOMedia::read_parquet_geospatial_statistics(&self.$handle, column)
-        }
-    };
-}
-
-/// Parquet-free media forwarding bodies.
-#[cfg(not(feature = "parquet"))]
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __delegate_iomedia_parquet {
-    ($handle:ident) => {};
-}
-
 /// Every [`IOMedia`] verb forwarded to a handle resolved on the first call
 /// that needs one, as `__delegate_resolved_iobase!` forwards the byte verbs;
 /// the two `as_io_base` doors answer `self`.
@@ -1376,17 +1282,12 @@ macro_rules! __delegate_resolved_iomedia {
             $crate::IOMedia::merge_by(self.$get()?)
         }
 
-        #[cfg(feature = "parquet")]
-        fn read_parquet_statistics(&self) -> $crate::Result<$crate::parquet::FileStatistics> {
-            $crate::IOMedia::read_parquet_statistics(self.$get()?)
-        }
-
-        #[cfg(feature = "parquet")]
-        fn read_parquet_geospatial_statistics(
-            &self,
-            column: &str,
-        ) -> $crate::Result<$crate::parquet::GeospatialStatistics> {
-            $crate::IOMedia::read_parquet_geospatial_statistics(self.$get()?, column)
+        // A handle that cannot resolve holds no medium's state; the verb
+        // that reads it next reports why.
+        fn as_any(&self) -> Option<&dyn ::std::any::Any> {
+            self.$get()
+                .ok()
+                .and_then(|held| $crate::IOMedia::as_any(held))
         }
 
         fn read_arrow_field(
@@ -1453,7 +1354,10 @@ macro_rules! delegate_iomedia {
         }
 
         $crate::__delegate_iomedia_arrow!($handle);
-        $crate::__delegate_iomedia_parquet!($handle);
+
+        fn as_any(&self) -> Option<&dyn ::std::any::Any> {
+            $crate::IOMedia::as_any(&self.$handle)
+        }
     };
 }
 
@@ -1484,16 +1388,9 @@ pub(crate) fn read_record_serie<M: IOMedia + ?Sized>(
     let options = own_options(media, options)?;
     let container = handle.is_container();
     if !container {
-        let rows = match options.as_ref() {
-            RecordOptions::Csv(csv) => Some(crate::csv::read_stream(
-                handle,
-                options.field().as_ref(),
-                csv,
-            )?),
-            RecordOptions::Text(text) => Some(crate::text::arrow::read_leaf_stream(handle, text)?),
-            RecordOptions::Avro(avro) => Some(crate::avro::read_stream(handle, avro)?),
-            _ => None,
-        };
+        let rows = options
+            .codec()
+            .read_stream(handle, options.declared(), &options)?;
         if let Some(rows) = rows {
             let rows = options.apply_stream(rows)?;
             if options.batch_row_size().is_some() || options.batch_byte_size().is_some() {
@@ -1513,7 +1410,6 @@ pub(crate) fn read_record_serie<M: IOMedia + ?Sized>(
     let reader = match opened {
         // The table pushes the clauses into its scan plan and wraps the
         // selector and the limit itself: the reader is complete.
-        #[cfg(feature = "iceberg")]
         Opened::Table(table) => table.read(&options)?,
         Opened::Reader(reader) => {
             options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)?

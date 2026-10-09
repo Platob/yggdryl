@@ -891,7 +891,7 @@ mod avro {
             let media = Avro::new(Buffer::new()).with_field(field.clone());
             let options = media.record_options().unwrap();
 
-            assert!(matches!(options, RecordOptions::Avro(_)));
+            assert!(options.settings::<AvroOptions>().is_some());
             assert_eq!(options.field(), Some(field));
         }
 

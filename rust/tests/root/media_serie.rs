@@ -701,7 +701,7 @@ fn parquet_native_rows_keep_the_published_media_root_name() {
         None,
     )
     .unwrap();
-    let source = yggdryl::parquet::ParquetSerie::new(media).unwrap();
+    let source = yggdryl::media::GenericMediaSerie::new(media).unwrap();
     let published = source.field().clone();
     assert_eq!(published.name(), "scan");
     assert_eq!(source.into_stream().unwrap().field(), &published);

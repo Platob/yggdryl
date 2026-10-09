@@ -371,6 +371,7 @@ impl Role {
             Self::Media(Encoding::Xmla) => "Xmla",
             Self::Media(Encoding::Csv) => "Csv",
             Self::Media(Encoding::Excel) => "Excel",
+            Self::Media(Encoding::Other(title)) => title,
             Self::Warehouse(implementation) => implementation.class_name(),
             Self::Held => "IOBase",
         }
@@ -2727,10 +2728,8 @@ impl PyIOBase {
     /// The core validates the handle's inferred media type before parsing its
     /// footer; this boundary only projects the shared `Scalar` into Python.
     fn read_parquet_statistics(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let statistics = self
-            .inner()?
-            .read_parquet_statistics()
-            .map_err(value_error)?;
+        let statistics =
+            yggdryl::parquet::read_media_statistics(self.inner()?).map_err(value_error)?;
         decoded_as_py(py, &yggdryl::Scalar::from(statistics), None)
     }
 
@@ -2739,9 +2738,7 @@ impl PyIOBase {
     /// This is what a table format writes as a data file's split points, so
     /// a reader can divide the file without decoding it.
     fn read_parquet_split_offsets(&self) -> PyResult<Vec<i64>> {
-        Ok(self
-            .inner()?
-            .read_parquet_statistics()
+        Ok(yggdryl::parquet::read_media_statistics(self.inner()?)
             .map_err(value_error)?
             .split_offsets())
     }
@@ -2751,9 +2748,7 @@ impl PyIOBase {
     /// `None` when no row group recorded the statistic, which is not the same
     /// answer as zero: a missing statistic prunes nothing.
     fn read_parquet_null_count(&self, path: &str) -> PyResult<Option<u64>> {
-        Ok(self
-            .inner()?
-            .read_parquet_statistics()
+        Ok(yggdryl::parquet::read_media_statistics(self.inner()?)
             .map_err(value_error)?
             .null_count(path))
     }
@@ -2767,9 +2762,7 @@ impl PyIOBase {
         py: Python<'_>,
         column: &str,
     ) -> PyResult<Py<PyAny>> {
-        let statistics = self
-            .inner()?
-            .read_parquet_geospatial_statistics(column)
+        let statistics = yggdryl::parquet::read_media_geospatial_statistics(self.inner()?, column)
             .map_err(value_error)?;
         decoded_as_py(py, &yggdryl::Scalar::from(statistics), None)
     }

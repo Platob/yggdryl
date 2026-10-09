@@ -348,7 +348,7 @@ mod records {
         for operation in ["overwrite", "append", "merge"] {
             let pulls = Arc::new(AtomicUsize::new(0));
             let mut media = Ipc::new(Buffer::new()).with_field(schema());
-            let mut options = RecordOptions::Avro(yggdryl::avro::AvroOptions::new());
+            let mut options = RecordOptions::from(yggdryl::avro::AvroOptions::new());
             if operation == "merge" {
                 options.set_merge_by(yggdryl::expression::Selector::from_columns(["id"]));
             }

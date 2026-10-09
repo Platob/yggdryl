@@ -265,10 +265,11 @@ pub use uri::{
 };
 pub(crate) use uri::{URL_EXTENSION_NAME, URN_EXTENSION_NAME};
 pub use warehouse::{
-    Catalog, CatalogValue, FolderCatalog, FolderLayout, FolderNamespace, Handle, IntoObjectPath,
-    MediaTable, MemoryCatalog, MemoryNamespace, Names, Namespace, NamespaceValue, Namespaces,
-    Object, ObjectValue, Objects, Properties, SystemWarehouse, Table, TableValue, Tables,
-    Warehouse,
+    Catalog, CatalogFactory, CatalogValue, FolderCatalog, FolderLayout, FolderNamespace, Handle,
+    IntoObjectPath, MediaTable, MemoryCatalog, MemoryNamespace, Names, Namespace, NamespaceValue,
+    Namespaces, Object, ObjectValue, Objects, Properties, RegisteredCatalog, RegisteredNamespace,
+    RegisteredTable, SystemWarehouse, Table, TableValue, Tables, Warehouse, claim_factory,
+    factories,
 };
 pub use window_serie::{WindowSerie, WindowSerieMut, WindowSerieRows};
 pub use xxhash::{DigestFieldNames, DigestFields};

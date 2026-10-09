@@ -13,10 +13,13 @@ use arrow_schema::{ArrowError, SchemaRef};
 
 use yggdryl::IOMedia;
 use yggdryl::arrow::BatchReader;
+use yggdryl::avro::AvroOptions;
 use yggdryl::excel::ExcelOptions;
 use yggdryl::holder::Buffer;
 use yggdryl::ipc::IpcOptions;
 use yggdryl::media::{IORecordOptions, RecordOptions};
+#[cfg(feature = "parquet")]
+use yggdryl::parquet::ParquetOptions;
 use yggdryl::{DataType, Field, StructType, Url};
 
 /// A struct field is the schema of the batches it describes.
@@ -235,7 +238,7 @@ fn record_options_have_complete_value_traits_and_stable_hashes() {
     // The workbook's own settings are part of its value and of its hash.
     let excel = ExcelOptions::new().with_sheet("Trades");
     let options = RecordOptions::from(excel.clone());
-    let equal = RecordOptions::Excel(ExcelOptions::new().with_sheet("Trades"));
+    let equal = RecordOptions::from(ExcelOptions::new().with_sheet("Trades"));
     assert_traits(&excel);
     assert_eq!(options, equal);
     assert_eq!(options.stable_hash(), equal.stable_hash());
@@ -643,7 +646,7 @@ fn a_structured_document_is_refused_as_an_encoding_naming_its_own_doors() {
     // BIFF workbook is not one.
     assert!(matches!(
         RecordOptions::for_mime_type(&yggdryl::MimeType::XLSX),
-        Ok(RecordOptions::Excel(_))
+        Ok(options) if options.settings::<ExcelOptions>().is_some()
     ));
     let message = RecordOptions::for_mime_type(&yggdryl::MimeType::XLS)
         .unwrap_err()
@@ -690,7 +693,7 @@ fn the_enum_mirrors_the_limits_of_the_encoding_it_holds() {
     assert_eq!(options.mime_type(), yggdryl::MimeType::XLSX);
     assert_eq!(options.max_row_size(), Some(7));
     assert_eq!(options.max_byte_size(), Some(1024));
-    let RecordOptions::Excel(inner) = options else {
+    let Some(inner) = options.settings::<ExcelOptions>() else {
         panic!("an xlsx handle names the workbook encoding");
     };
     assert_eq!(inner.max_row_size, Some(7));
@@ -759,31 +762,76 @@ fn avro_only_options_validate_codec_and_sync_marker_in_the_core() {
     let media_type = Url::from_str("file:///t.avro").unwrap().media_type();
     let mut options = RecordOptions::for_media_type(&media_type).unwrap();
 
-    assert_eq!(options.avro_block_codec(), Some("deflate"));
-    assert_eq!(options.avro_sync_marker(), None);
+    assert_eq!(
+        options
+            .settings::<AvroOptions>()
+            .map(AvroOptions::block_codec),
+        Some("deflate")
+    );
+    assert_eq!(
+        options
+            .settings::<AvroOptions>()
+            .and_then(AvroOptions::sync_marker),
+        None
+    );
 
-    options.set_avro_block_codec("null").unwrap();
-    assert_eq!(options.avro_block_codec(), Some("null"));
+    options
+        .require_settings_mut::<AvroOptions>("$.block_codec", "a block codec")
+        .unwrap()
+        .set_block_codec("null")
+        .unwrap();
+    assert_eq!(
+        options
+            .settings::<AvroOptions>()
+            .map(AvroOptions::block_codec),
+        Some("null")
+    );
     let marker = *b"0123456789abcdef";
-    options.set_avro_sync_marker(Some(&marker)).unwrap();
-    assert_eq!(options.avro_sync_marker(), Some(&marker));
+    options
+        .require_settings_mut::<AvroOptions>("$.sync_marker", "a synchronization marker")
+        .unwrap()
+        .set_sync_marker(Some(&marker))
+        .unwrap();
+    assert_eq!(
+        options
+            .settings::<AvroOptions>()
+            .and_then(AvroOptions::sync_marker),
+        Some(&marker)
+    );
 
     let mut handle = Buffer::new().with_media_type(media_type);
     handle.overwrite_arrow_batch(batch(0..2), &options).unwrap();
     assert!(handle.as_slice().ends_with(&marker));
     assert_eq!(rows(handle.read_arrow_reader(&options).unwrap()), 2);
 
-    options.set_avro_sync_marker(None).unwrap();
-    assert_eq!(options.avro_sync_marker(), None);
+    options
+        .require_settings_mut::<AvroOptions>("$.sync_marker", "a synchronization marker")
+        .unwrap()
+        .set_sync_marker(None)
+        .unwrap();
+    assert_eq!(
+        options
+            .settings::<AvroOptions>()
+            .and_then(AvroOptions::sync_marker),
+        None
+    );
 
-    let codec = options.set_avro_block_codec("brotli").unwrap_err();
+    let codec = options
+        .require_settings_mut::<AvroOptions>("$.block_codec", "a block codec")
+        .unwrap()
+        .set_block_codec("brotli")
+        .unwrap_err();
     assert!(matches!(
         codec,
         yggdryl::Error::Codec { format: "avro", .. }
     ));
     assert!(codec.to_string().contains("brotli"));
 
-    let length = options.set_avro_sync_marker(Some(b"short")).unwrap_err();
+    let length = options
+        .require_settings_mut::<AvroOptions>("$.sync_marker", "a synchronization marker")
+        .unwrap()
+        .set_sync_marker(Some(b"short"))
+        .unwrap_err();
     assert!(matches!(length, yggdryl::Error::InvalidRecord { .. }));
     let message = length.to_string();
     assert!(message.contains("$.sync_marker"), "{message}");
@@ -796,11 +844,25 @@ fn avro_only_setters_reject_another_inferred_encoding() {
     let media_type = Url::from_str("file:///t.arrows").unwrap().media_type();
     let mut options = RecordOptions::for_media_type(&media_type).unwrap();
 
-    assert_eq!(options.avro_block_codec(), None);
-    assert_eq!(options.avro_sync_marker(), None);
+    assert_eq!(
+        options
+            .settings::<AvroOptions>()
+            .map(AvroOptions::block_codec),
+        None
+    );
+    assert_eq!(
+        options
+            .settings::<AvroOptions>()
+            .and_then(AvroOptions::sync_marker),
+        None
+    );
     for error in [
-        options.set_avro_block_codec("null").unwrap_err(),
-        options.set_avro_sync_marker(None).unwrap_err(),
+        options
+            .require_settings_mut::<AvroOptions>("$.block_codec", "a block codec")
+            .unwrap_err(),
+        options
+            .require_settings_mut::<AvroOptions>("$.sync_marker", "a synchronization marker")
+            .unwrap_err(),
     ] {
         assert!(matches!(error, yggdryl::Error::InvalidRecord { .. }));
         let message = error.to_string();
@@ -814,18 +876,45 @@ fn excel_only_options_are_owned_by_the_generic_core_variant() {
     let media_type = Url::from_str("file:///t.xlsx").unwrap().media_type();
     let mut options = RecordOptions::for_media_type(&media_type).unwrap();
 
-    assert_eq!(options.excel_sheet(), None);
+    assert_eq!(
+        options
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::sheet),
+        None
+    );
     assert_eq!(options.header(), Some(true));
-    assert_eq!(options.excel_range(), None);
+    assert_eq!(
+        options
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::range),
+        None
+    );
 
-    options.set_excel_sheet(Some("Trades")).unwrap();
+    options
+        .require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")
+        .unwrap()
+        .set_sheet(Some("Trades"))
+        .unwrap();
     options.set_header(false).unwrap();
     let range: yggdryl::excel::CellRange = "B2:D9".parse().unwrap();
-    options.set_excel_range(Some(range)).unwrap();
-    assert_eq!(options.excel_sheet(), Some("Trades"));
+    options
+        .require_settings_mut::<ExcelOptions>("$.range", "a cell range")
+        .unwrap()
+        .set_range(Some(range));
+    assert_eq!(
+        options
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::sheet),
+        Some("Trades")
+    );
     assert_eq!(options.header(), Some(false));
-    assert_eq!(options.excel_range(), Some(range));
-    let RecordOptions::Excel(inner) = &options else {
+    assert_eq!(
+        options
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::range),
+        Some(range)
+    );
+    let Some(inner) = options.settings::<ExcelOptions>() else {
         panic!("an xlsx handle names the workbook encoding");
     };
     assert_eq!(inner.sheet.as_deref(), Some("Trades"));
@@ -853,7 +942,11 @@ fn excel_only_options_are_owned_by_the_generic_core_variant() {
             "expected a sheet name other than the reserved `History`",
         ),
     ] {
-        let error = options.set_excel_sheet(Some(name)).unwrap_err();
+        let error = options
+            .require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")
+            .unwrap()
+            .set_sheet(Some(name))
+            .unwrap_err();
         assert!(
             matches!(error, yggdryl::Error::InvalidRecord { .. }),
             "{error:?}"
@@ -864,14 +957,37 @@ fn excel_only_options_are_owned_by_the_generic_core_variant() {
             "{message}"
         );
         assert!(message.contains(reason), "{name:?}: {message}");
-        assert_eq!(options.excel_sheet(), Some("Trades"), "{name:?}");
+        assert_eq!(
+            options
+                .settings::<ExcelOptions>()
+                .and_then(ExcelOptions::sheet),
+            Some("Trades"),
+            "{name:?}"
+        );
     }
 
     // `None` clears back to the defaults: the first sheet, the whole grid.
-    options.set_excel_sheet(None).unwrap();
-    options.set_excel_range(None).unwrap();
-    assert_eq!(options.excel_sheet(), None);
-    assert_eq!(options.excel_range(), None);
+    options
+        .require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")
+        .unwrap()
+        .set_sheet(None)
+        .unwrap();
+    options
+        .require_settings_mut::<ExcelOptions>("$.range", "a cell range")
+        .unwrap()
+        .set_range(None);
+    assert_eq!(
+        options
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::sheet),
+        None
+    );
+    assert_eq!(
+        options
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::range),
+        None
+    );
 }
 
 #[test]
@@ -879,18 +995,30 @@ fn excel_only_setters_reject_another_inferred_encoding() {
     let media_type = Url::from_str("file:///t.arrows").unwrap().media_type();
     let mut options = RecordOptions::for_media_type(&media_type).unwrap();
 
-    assert_eq!(options.excel_sheet(), None);
+    assert_eq!(
+        options
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::sheet),
+        None
+    );
     assert_eq!(options.header(), None);
-    assert_eq!(options.excel_range(), None);
+    assert_eq!(
+        options
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::range),
+        None
+    );
     for (error, path, setting) in [
         (
-            options.set_excel_sheet(Some("Trades")).unwrap_err(),
+            options
+                .require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")
+                .unwrap_err(),
             "$.sheet",
             "a worksheet",
         ),
         (
             options
-                .set_excel_range(Some("A1:B2".parse().unwrap()))
+                .require_settings_mut::<ExcelOptions>("$.range", "a cell range")
                 .unwrap_err(),
             "$.range",
             "a cell range",
@@ -913,10 +1041,15 @@ fn excel_only_setters_reject_another_inferred_encoding() {
     // The other encodings' setters refuse workbook options the same way.
     let workbook = Url::from_str("file:///t.xlsx").unwrap().media_type();
     let mut options = RecordOptions::for_media_type(&workbook).unwrap();
-    assert_eq!(options.avro_block_codec(), None);
+    assert_eq!(
+        options
+            .settings::<AvroOptions>()
+            .map(AvroOptions::block_codec),
+        None
+    );
     assert_eq!(options.timezone(), None);
     let message = options
-        .set_avro_block_codec("null")
+        .require_settings_mut::<AvroOptions>("$.block_codec", "a block codec")
         .unwrap_err()
         .to_string();
     assert!(message.contains("expected Avro options"), "{message}");
@@ -935,23 +1068,48 @@ fn parquet_only_options_are_owned_by_the_generic_core_variant() {
     let mut options = RecordOptions::for_media_type(&media_type).unwrap();
 
     assert_eq!(
-        options.parquet_compression_name().as_deref(),
+        options
+            .settings::<ParquetOptions>()
+            .map(ParquetOptions::compression_name)
+            .as_deref(),
         Some("zstd(1)")
     );
-    options.set_parquet_compression_name("gzip(4)").unwrap();
+    options
+        .require_settings_mut::<ParquetOptions>("$.compression", "a page compression")
+        .unwrap()
+        .set_compression_name("gzip(4)")
+        .unwrap();
     assert_eq!(
-        options.parquet_compression_name().as_deref(),
+        options
+            .settings::<ParquetOptions>()
+            .map(ParquetOptions::compression_name)
+            .as_deref(),
         Some("gzip(4)")
     );
 
-    options.set_parquet_max_row_group_size(17).unwrap();
-    assert_eq!(options.parquet_max_row_group_size(), Some(17));
     options
-        .set_parquet_key_value_metadata(vec![("source".into(), "test".into())])
-        .unwrap();
-    options.push_parquet_key_value("version", "1").unwrap();
+        .require_settings_mut::<ParquetOptions>("$.max_row_group_size", "a row-group size")
+        .unwrap()
+        .set_max_row_group_size(17);
     assert_eq!(
-        options.parquet_key_value_metadata().unwrap(),
+        options
+            .settings::<ParquetOptions>()
+            .map(|parquet| parquet.max_row_group_size),
+        Some(17)
+    );
+    options
+        .require_settings_mut::<ParquetOptions>("$.key_value_metadata", "footer metadata")
+        .unwrap()
+        .set_key_value_metadata(vec![("source".into(), "test".into())]);
+    options
+        .require_settings_mut::<ParquetOptions>("$.key_value_metadata", "footer metadata")
+        .unwrap()
+        .push_key_value("version", "1");
+    assert_eq!(
+        options
+            .settings::<ParquetOptions>()
+            .map(|parquet| parquet.key_value_metadata.as_slice())
+            .unwrap(),
         [
             ("source".into(), "test".into()),
             ("version".into(), "1".into())
@@ -965,14 +1123,33 @@ fn parquet_only_setters_reject_another_inferred_encoding() {
     let media_type = Url::from_str("file:///t.arrows").unwrap().media_type();
     let mut options = RecordOptions::for_media_type(&media_type).unwrap();
 
-    assert!(options.parquet_compression_name().is_none());
-    assert!(options.parquet_max_row_group_size().is_none());
-    assert!(options.parquet_key_value_metadata().is_none());
-    for error in [
-        options.set_parquet_compression_name("snappy").unwrap_err(),
-        options.set_parquet_max_row_group_size(17).unwrap_err(),
+    assert!(
         options
-            .set_parquet_key_value_metadata(Vec::new())
+            .settings::<ParquetOptions>()
+            .map(ParquetOptions::compression_name)
+            .is_none()
+    );
+    assert!(
+        options
+            .settings::<ParquetOptions>()
+            .map(|parquet| parquet.max_row_group_size)
+            .is_none()
+    );
+    assert!(
+        options
+            .settings::<ParquetOptions>()
+            .map(|parquet| parquet.key_value_metadata.as_slice())
+            .is_none()
+    );
+    for error in [
+        options
+            .require_settings_mut::<ParquetOptions>("$.compression", "a page compression")
+            .unwrap_err(),
+        options
+            .require_settings_mut::<ParquetOptions>("$.max_row_group_size", "a row-group size")
+            .unwrap_err(),
+        options
+            .require_settings_mut::<ParquetOptions>("$.key_value_metadata", "footer metadata")
             .unwrap_err(),
     ] {
         let message = error.to_string();
@@ -1180,13 +1357,11 @@ fn a_full_commit_does_not_read_ahead() {
 #[cfg(all(feature = "internals", feature = "parquet"))]
 #[test]
 fn a_file_takes_its_thread_share_in_every_encoding_that_splits() {
-    use yggdryl::avro::AvroOptions;
     use yggdryl::internals::media_options::{file_threads, set_file_threads};
-    use yggdryl::parquet::ParquetOptions;
 
     for mut options in [
-        RecordOptions::Avro(AvroOptions::new()),
-        RecordOptions::Parquet(ParquetOptions::new()),
+        RecordOptions::from(AvroOptions::new()),
+        RecordOptions::from(ParquetOptions::new()),
     ] {
         assert_eq!(file_threads(&options), None);
         set_file_threads(&mut options, 3);
@@ -1199,7 +1374,7 @@ fn a_file_takes_its_thread_share_in_every_encoding_that_splits() {
     set_file_threads(&mut ipc, 3);
     assert_eq!(file_threads(&ipc), None);
     // A workbook reads its sheet on one thread.
-    let mut excel = RecordOptions::Excel(ExcelOptions::new());
+    let mut excel = RecordOptions::from(ExcelOptions::new());
     set_file_threads(&mut excel, 3);
     assert_eq!(file_threads(&excel), None);
 }
@@ -1351,4 +1526,292 @@ fn a_batch_and_a_stream_split_source_predicates_from_selected_aliases() {
         )
         .unwrap();
     assert_eq!(stream.map(Result::unwrap).collect::<Vec<_>>(), [shaped]);
+}
+
+/// The values `RecordOptions` hashes and orders by, pinned before the media
+/// extension point rebuilds the enum.
+///
+/// A rebuilt `RecordOptions` is byte-identical when every default medium, every
+/// shared section and every medium-own setting still hashes to the number
+/// below, and the variants still sort in the order they were declared - so a
+/// moved number here is a changed identity, never a number to re-pin.
+mod s2_pins {
+    use yggdryl::avro::AvroOptions;
+    use yggdryl::excel::ExcelOptions;
+    use yggdryl::ipc::IpcOptions;
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+    #[cfg(feature = "parquet")]
+    use yggdryl::parquet::ParquetOptions;
+    use yggdryl::xmla::XmlaOptions;
+    use yggdryl::{MimeType, Timezone};
+
+    use super::schema;
+
+    /// Every medium this build reads, with the MIME type
+    /// `RecordOptions::for_mime_type` builds its default options from: `ipc`
+    /// `ARROW_STREAM`, `parquet` `PARQUET` (feature `parquet`), `avro` `AVRO`,
+    /// `text` `PLAIN_TEXT`, `xmla` `XMLA`, `csv` `CSV`, `tsv` `TSV` (the CSV
+    /// variant with a tab) and `excel` `XLSX`.
+    fn media() -> Vec<(&'static str, MimeType)> {
+        let mut media = vec![("ipc", MimeType::ARROW_STREAM)];
+        #[cfg(feature = "parquet")]
+        media.push(("parquet", MimeType::PARQUET));
+        media.extend([
+            ("avro", MimeType::AVRO),
+            ("text", MimeType::PLAIN_TEXT),
+            ("xmla", MimeType::XMLA),
+            ("csv", MimeType::CSV),
+            ("tsv", MimeType::TSV),
+            ("excel", MimeType::XLSX),
+        ]);
+        media
+    }
+
+    /// The default options of the medium a MIME type names.
+    fn default_of(mime_type: &MimeType) -> RecordOptions {
+        RecordOptions::for_mime_type(mime_type).unwrap()
+    }
+
+    /// Each labelled options' hash is the pin of its label.
+    ///
+    /// A pin the build has no medium for (`parquet` without its feature) is
+    /// left unread, and a label without a pin fails, so one table serves both
+    /// feature lanes and a non-parquet medium cannot hash differently in one.
+    fn assert_pinned(actual: &[(&'static str, RecordOptions)], pinned: &[(&str, u64)]) {
+        let actual: Vec<(&str, u64)> = actual
+            .iter()
+            .map(|(label, options)| (*label, options.stable_hash()))
+            .collect();
+        let expected: Vec<(&str, u64)> = actual
+            .iter()
+            .map(|(label, _)| {
+                let pin = pinned
+                    .iter()
+                    .find(|(pinned, _)| pinned == label)
+                    .unwrap_or_else(|| panic!("no pin for {label}"));
+                (*label, pin.1)
+            })
+            .collect();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn every_medium_default_options_hash_to_their_pinned_value() {
+        let options: Vec<_> = media()
+            .into_iter()
+            .map(|(label, mime_type)| (label, default_of(&mime_type)))
+            .collect();
+        assert_pinned(
+            &options,
+            &[
+                ("ipc", 12_422_255_642_484_437_054),
+                ("parquet", 8_840_416_273_347_448_133),
+                ("avro", 6_316_100_862_033_290_799),
+                ("text", 9_086_959_791_203_163_073),
+                ("xmla", 8_486_799_845_904_195_949),
+                ("csv", 12_641_179_747_585_823_142),
+                ("tsv", 13_049_347_064_351_962_713),
+                ("excel", 9_017_146_332_497_625_255),
+            ],
+        );
+    }
+
+    #[test]
+    fn shared_sections_feed_the_hash_the_same_on_every_medium() {
+        let options: Vec<_> = media()
+            .into_iter()
+            .map(|(label, mime_type)| {
+                let default = default_of(&mime_type);
+                let mut options = default.clone();
+                options.set_field(schema());
+                options.set_name("pinned".into());
+                options.set_max_row_size(Some(5));
+                let options = options.with_filter("id > 1").unwrap();
+                assert_eq!(options.name(), "pinned", "{label}");
+                assert_ne!(options.stable_hash(), default.stable_hash(), "{label}");
+                (label, options)
+            })
+            .collect();
+        assert_pinned(
+            &options,
+            &[
+                ("ipc", 3_699_406_654_356_496_144),
+                ("parquet", 9_870_246_672_429_389_253),
+                ("avro", 16_103_427_577_062_353_326),
+                ("text", 7_498_870_975_766_000_812),
+                ("xmla", 11_124_752_632_585_582_100),
+                ("csv", 637_864_656_599_364_788),
+                ("tsv", 2_756_740_722_792_913_074),
+                ("excel", 15_607_496_437_425_493_778),
+            ],
+        );
+    }
+
+    #[test]
+    fn the_variants_order_as_they_are_declared() {
+        // Fed in reverse, so a sort that moved nothing would show.
+        let mut options: Vec<RecordOptions> = media()
+            .iter()
+            .rev()
+            .map(|(_, mime_type)| default_of(mime_type))
+            .collect();
+        options.sort();
+        let order: Vec<String> = options
+            .iter()
+            .map(|options| options.mime_type().to_string())
+            .collect();
+        // `tsv` before `csv`: both are the CSV variant, ordered by their options.
+        let mut pinned = vec!["application/vnd.apache.arrow.stream"];
+        if cfg!(feature = "parquet") {
+            pinned.push("application/vnd.apache.parquet");
+        }
+        pinned.extend([
+            "application/avro",
+            "text/plain",
+            "application/xmla+xml",
+            "text/tab-separated-values",
+            "text/csv",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ]);
+        assert_eq!(order, pinned);
+
+        // The variant decides before any setting does: the most-set options of
+        // an earlier medium still sort before the defaults of a later one.
+        let mut ipc = default_of(&MimeType::ARROW_STREAM);
+        ipc.set_max_row_size(Some(u64::MAX));
+        assert!(ipc < default_of(&MimeType::AVRO));
+        let mut csv = default_of(&MimeType::CSV);
+        csv.set_max_row_size(Some(u64::MAX));
+        assert!(csv < default_of(&MimeType::XLSX));
+        assert!(default_of(&MimeType::XLSX) > default_of(&MimeType::TSV));
+    }
+
+    #[test]
+    fn the_medium_settings_feed_the_hash() {
+        // Each entry is the medium's defaults with exactly one medium-own
+        // setting stated through the typed settings door, or through the
+        // medium's own options value where the setting is the options'
+        // (`ipc` has none; `xmla`'s envelope is its options').
+        let mut stated: Vec<(&'static str, RecordOptions, RecordOptions)> = Vec::new();
+        let mut state = |label, mime_type: &MimeType, set: &dyn Fn(&mut RecordOptions)| {
+            let default = default_of(mime_type);
+            let mut options = default.clone();
+            set(&mut options);
+            assert_ne!(options, default, "{label}");
+            stated.push((label, default, options));
+        };
+
+        state("avro/codec=null", &MimeType::AVRO, &|options| {
+            options
+                .require_settings_mut::<AvroOptions>("$.block_codec", "a block codec")
+                .unwrap()
+                .set_block_codec("null")
+                .unwrap();
+        });
+        state("avro/sync_marker", &MimeType::AVRO, &|options| {
+            options
+                .require_settings_mut::<AvroOptions>("$.sync_marker", "a synchronization marker")
+                .unwrap()
+                .set_sync_marker(Some(b"0123456789abcdef"))
+                .unwrap();
+        });
+        #[cfg(feature = "parquet")]
+        {
+            state(
+                "parquet/compression=gzip(4)",
+                &MimeType::PARQUET,
+                &|options| {
+                    options
+                        .require_settings_mut::<ParquetOptions>(
+                            "$.compression",
+                            "a page compression",
+                        )
+                        .unwrap()
+                        .set_compression_name("gzip(4)")
+                        .unwrap();
+                },
+            );
+            state(
+                "parquet/max_row_group_size=17",
+                &MimeType::PARQUET,
+                &|options| {
+                    options
+                        .require_settings_mut::<ParquetOptions>(
+                            "$.max_row_group_size",
+                            "a row-group size",
+                        )
+                        .unwrap()
+                        .set_max_row_group_size(17);
+                },
+            );
+            state("parquet/key_value", &MimeType::PARQUET, &|options| {
+                options
+                    .require_settings_mut::<ParquetOptions>(
+                        "$.key_value_metadata",
+                        "footer metadata",
+                    )
+                    .unwrap()
+                    .push_key_value("source", "test");
+            });
+        }
+        state("text/timezone=UTC", &MimeType::PLAIN_TEXT, &|options| {
+            options.set_timezone(Some(Timezone::UTC)).unwrap();
+        });
+        state("xmla/without_envelope", &MimeType::XMLA, &|options| {
+            *options = RecordOptions::Xmla(XmlaOptions::new().without_envelope());
+        });
+        state("csv/separator=;", &MimeType::CSV, &|options| {
+            options.set_csv_separator(b';').unwrap();
+        });
+        state("csv/header=false", &MimeType::CSV, &|options| {
+            options.set_header(false).unwrap();
+        });
+        state("excel/sheet=Trades", &MimeType::XLSX, &|options| {
+            options
+                .require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")
+                .unwrap()
+                .set_sheet(Some("Trades"))
+                .unwrap();
+        });
+        state("excel/header=false", &MimeType::XLSX, &|options| {
+            options.set_header(false).unwrap();
+        });
+        // The enum's own constructors reach the same value as the typed door.
+        assert_eq!(
+            RecordOptions::from(ExcelOptions::new().with_sheet("Trades")),
+            stated
+                .iter()
+                .find(|(label, ..)| *label == "excel/sheet=Trades")
+                .unwrap()
+                .2
+        );
+        assert_eq!(
+            RecordOptions::Ipc(IpcOptions::new()),
+            default_of(&MimeType::ARROW_STREAM)
+        );
+
+        for (label, default, options) in &stated {
+            assert_ne!(options.stable_hash(), default.stable_hash(), "{label}");
+        }
+        let options: Vec<_> = stated
+            .into_iter()
+            .map(|(label, _, options)| (label, options))
+            .collect();
+        assert_pinned(
+            &options,
+            &[
+                ("avro/codec=null", 2_341_579_485_644_533_238),
+                ("avro/sync_marker", 10_665_391_877_395_609_766),
+                ("parquet/compression=gzip(4)", 7_904_555_134_641_360_236),
+                ("parquet/max_row_group_size=17", 18_196_550_021_450_903_816),
+                ("parquet/key_value", 6_469_640_053_124_428_298),
+                ("text/timezone=UTC", 16_253_849_957_344_799_104),
+                ("xmla/without_envelope", 2_087_720_147_871_917_823),
+                ("csv/separator=;", 3_263_054_625_663_635_824),
+                ("csv/header=false", 5_228_038_379_540_985_085),
+                ("excel/sheet=Trades", 15_880_239_124_503_455_895),
+                ("excel/header=false", 4_068_267_976_377_555_643),
+            ],
+        );
+    }
 }

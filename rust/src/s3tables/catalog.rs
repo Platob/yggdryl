@@ -4,7 +4,10 @@
 //!
 //! [`S3TablesCatalog`] and [`S3TablesNamespace`] answer the warehouse traits
 //! ([`CatalogValue`], [`NamespaceValue`], [`ObjectValue`]) the way
-//! [`IcebergCatalog`](crate::iceberg::IcebergCatalog) does for a folder. A
+//! [`IcebergCatalog`](crate::iceberg::IcebergCatalog) does for a folder, and
+//! are held as the `Registered` variants ([`RegisteredCatalog`],
+//! [`RegisteredNamespace`]); [`S3TABLES_FACTORY`] is the [`CatalogFactory`]
+//! an `s3tables://<bucket>` location is that bucket's catalog by. A
 //! table either answers is an [`IcebergTable`] over a [`Handle`] on the
 //! table's warehouse location - an `s3://...--table-s3` location reached
 //! through the [`s3`](crate::s3) backend under the catalog's session and
@@ -48,6 +51,7 @@
 //! | a table's first read | 1 `GetTableMetadataLocation` and 1 `GetObject` |
 //! | a commit | its files' `PutObject`s and 1 `UpdateTableMetadataLocation`; a refused one 1 `GetTableMetadataLocation` and 1 `GetObject` more |
 
+use std::any::Any;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -58,7 +62,9 @@ use super::namespace::check_namespace;
 use super::table::{bucket_of, check_table};
 use crate::aws::Session;
 use crate::iceberg::{FormatVersion, IcebergTable, MetadataPointer, PartitionSpec, PointerState};
-use crate::warehouse::{Handle, Site, extended, path_text};
+use crate::warehouse::{
+    CatalogFactory, Handle, RegisteredCatalog, RegisteredNamespace, Site, extended, path_text,
+};
 use crate::{
     Arn, ArnPartition, Catalog, CatalogValue, Error, Field, IOKind, Namespace, NamespaceValue,
     Object, ObjectValue, Objects, Properties, Result, Scheme, Table, Uri, Url,
@@ -231,16 +237,31 @@ pub(crate) fn locate(location: &Uri, properties: &Properties) -> Result<Object> 
     let place = Place::read(location)?;
     let catalog = place.catalog(properties)?;
     match &place.below {
-        Below::Bucket => Ok(Object::Catalog(Catalog::S3Tables(Box::new(catalog)))),
-        Below::Namespace(namespace) => Ok(Object::Namespace(Namespace::S3Tables(Box::new(
-            catalog.namespace(namespace),
-        )))),
+        Below::Bucket => Ok(Object::from(catalog)),
+        Below::Namespace(namespace) => Ok(Object::from(catalog.namespace(namespace))),
         Below::Table(namespace, name) => {
             catalog.namespace(namespace).table(name).map(Object::Table)
         }
-        Below::Identified(arn) => catalog
-            .identified(arn)
-            .map(|table| Object::Table(Table::Iceberg(Box::new(table)))),
+        Below::Identified(arn) => catalog.identified(arn).map(Object::from),
+    }
+}
+
+/// The table `location` names in its table bucket, under `properties`: what
+/// [`IcebergTable::from_url`] answers for a table bucket's location, read as
+/// [`locate`] reads it.
+///
+/// # Errors
+///
+/// Returns [`locate`]'s failures, and [`not_a_table`]'s refusal of a
+/// location naming the bucket or a namespace.
+pub(crate) fn open(location: &Uri, properties: &Properties) -> Result<IcebergTable<Handle>> {
+    let place = Place::read(location)?;
+    let catalog = place.catalog(properties)?;
+    match &place.below {
+        Below::Table(namespace, name) => catalog.namespace(namespace).opened(name),
+        Below::Identified(arn) => catalog.identified(arn),
+        Below::Bucket => Err(not_a_table(location, IOKind::Catalog)),
+        Below::Namespace(_) => Err(not_a_table(location, IOKind::Namespace)),
     }
 }
 
@@ -796,9 +817,11 @@ impl NamespaceValue for S3TablesCatalog {
         );
         Objects::new(self.bucket.client.namespaces(&arn).map(move |summary| {
             let summary = summary?;
-            Ok(Object::Namespace(Namespace::S3Tables(Box::new(
-                namespace_of(&bucket, extended(&path, summary.name()), &effective),
-            ))))
+            Ok(Object::from(namespace_of(
+                &bucket,
+                extended(&path, summary.name()),
+                &effective,
+            )))
         }))
     }
 
@@ -806,9 +829,11 @@ impl NamespaceValue for S3TablesCatalog {
     fn get(&self, name: &str) -> Result<Object> {
         let below = extended(&self.path, name);
         match self.bucket.client.get_namespace(self.bucket.arn()?, name) {
-            Ok(_) => Ok(Object::Namespace(Namespace::S3Tables(Box::new(
-                namespace_of(&self.bucket, below, &self.stated),
-            )))),
+            Ok(_) => Ok(Object::from(namespace_of(
+                &self.bucket,
+                below,
+                &self.stated,
+            ))),
             Err(error) if error.is_absent() => Err(Error::absent("namespace", path_text(&below))),
             Err(error) => Err(error),
         }
@@ -818,9 +843,7 @@ impl NamespaceValue for S3TablesCatalog {
     /// the table below it is asked by name, and a namespace the bucket does
     /// not hold is that table's absence.
     fn descend(&self, name: &str) -> Result<Object> {
-        Ok(Object::Namespace(Namespace::S3Tables(Box::new(
-            self.namespace(name),
-        ))))
+        Ok(Object::from(self.namespace(name)))
     }
 
     /// Create the namespace `name`, one `CreateNamespace`. The service keeps
@@ -839,15 +862,94 @@ impl NamespaceValue for S3TablesCatalog {
             }
             Err(error) => return Err(error),
         }
-        Ok(Namespace::S3Tables(Box::new(
+        Ok(Namespace::from(
             namespace_of(&self.bucket, below, &self.stated).with_properties(properties.clone()),
-        )))
+        ))
     }
 }
 
 impl CatalogValue for S3TablesCatalog {
     fn namespace_levels(&self) -> Option<usize> {
         Some(1)
+    }
+}
+
+impl RegisteredCatalog for S3TablesCatalog {
+    fn implementation_name(&self) -> &'static str {
+        "S3TablesCatalog"
+    }
+
+    fn clone_box(&self) -> Box<dyn RegisteredCatalog> {
+        Box::new(self.clone())
+    }
+
+    fn dyn_eq(&self, other: &dyn RegisteredCatalog) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<Self>()
+            .is_some_and(|other| self == other)
+    }
+
+    fn dyn_hash(&self, mut state: &mut dyn Hasher) {
+        Hash::hash(self, &mut state);
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn with_properties(self: Box<Self>, properties: Properties) -> Box<dyn RegisteredCatalog> {
+        Box::new((*self).with_properties(properties))
+    }
+}
+
+impl From<S3TablesCatalog> for Catalog {
+    fn from(catalog: S3TablesCatalog) -> Self {
+        Self::Registered(Box::new(catalog))
+    }
+}
+
+impl From<S3TablesCatalog> for Object {
+    fn from(catalog: S3TablesCatalog) -> Self {
+        Self::Catalog(Catalog::from(catalog))
+    }
+}
+
+/// What builds an [`S3TablesCatalog`] from a location: the catalog an
+/// `s3tables://<bucket>` location stating no `type` is, read as
+/// `S3TablesCatalog::from_location` reads it.
+#[derive(Debug)]
+pub struct S3TablesFactory;
+
+/// The one [`S3TablesFactory`], claimed under the `s3tables` scheme.
+pub static S3TABLES_FACTORY: S3TablesFactory = S3TablesFactory;
+
+impl CatalogFactory for S3TablesFactory {
+    fn type_word(&self) -> Option<&'static str> {
+        None
+    }
+
+    fn scheme(&self) -> Option<Scheme> {
+        Some(Scheme::S3TABLES)
+    }
+
+    fn catalog(
+        &self,
+        name: SmolStr,
+        url: &Url,
+        arn: Option<&Arn>,
+        properties: &Properties,
+    ) -> Result<Catalog> {
+        Ok(Catalog::from(S3TablesCatalog::from_location(
+            name,
+            url,
+            arn.cloned(),
+            properties,
+        )?))
     }
 }
 
@@ -890,8 +992,7 @@ impl S3TablesNamespace {
 
     /// The table `name`, as the warehouse table it is: one request.
     fn table(&self, name: &str) -> Result<Table> {
-        self.opened(name)
-            .map(|table| Table::Iceberg(Box::new(table)))
+        self.opened(name).map(Table::from)
     }
 
     /// The table `name` as `GetTableMetadataLocation` describes it: one
@@ -1140,7 +1241,56 @@ impl NamespaceValue for S3TablesNamespace {
         let (schema, spec, version) = crate::iceberg::create_layout(field, properties, None, None)?;
         self.register(name)?;
         self.publish_first(name, schema, spec, version, properties)
-            .map(|table| Table::Iceberg(Box::new(table)))
+            .map(Table::from)
+    }
+}
+
+impl RegisteredNamespace for S3TablesNamespace {
+    fn implementation_name(&self) -> &'static str {
+        "S3TablesNamespace"
+    }
+
+    fn clone_box(&self) -> Box<dyn RegisteredNamespace> {
+        Box::new(self.clone())
+    }
+
+    fn dyn_eq(&self, other: &dyn RegisteredNamespace) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<Self>()
+            .is_some_and(|other| self == other)
+    }
+
+    fn dyn_hash(&self, mut state: &mut dyn Hasher) {
+        Hash::hash(self, &mut state);
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn with_properties(self: Box<Self>, properties: Properties) -> Box<dyn RegisteredNamespace> {
+        Box::new((*self).with_properties(properties))
+    }
+
+    fn inheriting(self: Box<Self>, parent: &Properties) -> Box<dyn RegisteredNamespace> {
+        Box::new((*self).inheriting(parent))
+    }
+}
+
+impl From<S3TablesNamespace> for Namespace {
+    fn from(namespace: S3TablesNamespace) -> Self {
+        Self::Registered(Box::new(namespace))
+    }
+}
+
+impl From<S3TablesNamespace> for Object {
+    fn from(namespace: S3TablesNamespace) -> Self {
+        Self::Namespace(Namespace::from(namespace))
     }
 }
 

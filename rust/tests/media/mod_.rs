@@ -4,12 +4,15 @@
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use std::sync::Arc;
 
-use yggdryl::excel::Workbook;
+use yggdryl::avro::AvroOptions;
+use yggdryl::excel::{ExcelOptions, Workbook};
 use yggdryl::holder::Buffer;
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::BufferedOptions;
 use yggdryl::media::Media;
 use yggdryl::media::{IORecordOptions, RecordOptions};
+#[cfg(feature = "parquet")]
+use yggdryl::parquet::ParquetOptions;
 use yggdryl::text::TextOptions;
 use yggdryl::{DataType, Field, MediaType, MimeType, Scalar, StructType, Url};
 use yggdryl::{IOBase, IOMedia};
@@ -63,7 +66,11 @@ fn the_name_picks_the_implementation() {
     #[cfg(feature = "parquet")]
     assert!(matches!(
         Media::open(handle("trades.parquet")).unwrap(),
-        Media::Parquet(_)
+        Media::Registered(wrapper) if wrapper.medium().name() == "parquet"
+    ));
+    assert!(matches!(
+        Media::open(handle("trades.avro")).unwrap(),
+        Media::Registered(wrapper) if wrapper.medium().name() == "avro"
     ));
     assert!(matches!(
         Media::open(handle("events.log")).unwrap(),
@@ -83,7 +90,7 @@ fn the_name_picks_the_implementation() {
     ));
     assert!(matches!(
         Media::open(handle("trades.xlsx")).unwrap(),
-        Media::Excel(_)
+        Media::Registered(wrapper) if wrapper.medium().name() == "excel"
     ));
 }
 
@@ -94,11 +101,15 @@ fn each_explicit_variant_owns_options_over_an_unnamed_buffer() {
     assert!(matches!(options, RecordOptions::Ipc(_)));
     assert_eq!(options.field(), Some(schema()));
 
-    let avro = Media::avro(Holder::buffer(Buffer::new())).with_field(schema());
-    assert!(matches!(
-        avro.record_options().unwrap(),
-        RecordOptions::Avro(_)
-    ));
+    let avro = Media::open_as(Holder::buffer(Buffer::new()), &MimeType::AVRO)
+        .unwrap()
+        .with_field(schema());
+    assert!(
+        avro.record_options()
+            .unwrap()
+            .settings::<AvroOptions>()
+            .is_some()
+    );
 
     let text = Media::text(Holder::buffer(Buffer::new())).with_field(schema());
     assert!(matches!(
@@ -106,18 +117,25 @@ fn each_explicit_variant_owns_options_over_an_unnamed_buffer() {
         RecordOptions::Text(_)
     ));
 
-    let excel = Media::excel(Holder::buffer(Buffer::new())).with_field(schema());
+    let excel = Media::open_as(Holder::buffer(Buffer::new()), &MimeType::XLSX)
+        .unwrap()
+        .with_field(schema());
     let options = excel.record_options().unwrap();
-    assert!(matches!(options, RecordOptions::Excel(_)));
+    assert!(options.settings::<ExcelOptions>().is_some());
     assert_eq!(options.field(), Some(schema()));
 
     #[cfg(feature = "parquet")]
     {
-        let parquet = Media::parquet(Holder::buffer(Buffer::new())).with_field(schema());
-        assert!(matches!(
-            parquet.record_options().unwrap(),
-            RecordOptions::Parquet(_)
-        ));
+        let parquet = Media::open_as(Holder::buffer(Buffer::new()), &MimeType::PARQUET)
+            .unwrap()
+            .with_field(schema());
+        assert!(
+            parquet
+                .record_options()
+                .unwrap()
+                .settings::<ParquetOptions>()
+                .is_some()
+        );
     }
 }
 
@@ -190,18 +208,21 @@ fn generic_media_preserves_commit_cadence_through_variant_redirection() {
 
     for name in names {
         let mut media = Media::open(handle(name)).unwrap().with_field(schema());
+        let registered = matches!(media, Media::Registered(_));
         match &mut media {
             Media::Ipc(ipc) => ipc.options_mut().set_commit_batch_num(Some(1)),
-            #[cfg(feature = "parquet")]
-            Media::Parquet(parquet) => parquet.options_mut().set_commit_batch_num(Some(1)),
-            Media::Avro(avro) => avro.options_mut().set_commit_batch_num(Some(1)),
             Media::Text(text) => text.options_mut().set_commit_batch_num(Some(1)),
             Media::Xmla(xmla) => xmla.options_mut().set_commit_batch_num(Some(1)),
             Media::Csv(csv) => csv.options_mut().set_commit_batch_num(Some(1)),
-            Media::Excel(excel) => excel.options_mut().set_commit_batch_num(Some(1)),
+            // A registered wrapper keeps its options behind the codec's
+            // trait object: its cadence is stated on the options a write takes.
+            Media::Registered(_) => {}
         }
 
-        let options = media.record_options().unwrap();
+        let mut options = media.record_options().unwrap();
+        if registered {
+            options.set_commit_batch_num(Some(1));
+        }
         media
             .overwrite_arrow_reader(reader(), &options)
             .unwrap_or_else(|error| panic!("{name}: {error}"));

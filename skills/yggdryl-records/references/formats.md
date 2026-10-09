@@ -1,6 +1,7 @@
 # Record encodings at a glance
 
-The handle's media type picks the row; nothing else does. Outer codings
+The handle's media type picks the row - the medium the register of media
+claims for it; nothing else does. Outer codings
 (`.gz`, `.zz`, `.zst`) wrap any encoding below except Parquet. Every encoding
 answers the same `IOMedia` calls; this table is what differs.
 
@@ -18,11 +19,14 @@ answers the same `IOMedia` calls; this table is what differs.
 | JSON, JSON Lines, YAML, TOML, XML | `.json`, `.jsonl`, `.yaml`, `.toml`, `.xml` | default | only through `read_serie` (one record column) | only through `overwrite_serie` / `write_serie(.., overwrite)` (one document per row, or one document; written whole, so append is refused; of the options only the declared `field`) |
 
 `application/vnd.apache.orc` and any other type answer `record_options()` with
-a refusal naming the encodings the build implements.
+a refusal naming every media type claimed and the crate to install.
 
 ## Settings each encoding owns
 
 A setting of another encoding reads as `None`/`null`; setting it is an error.
+In Rust a setting is a field or method of the encoding's own options struct,
+reached as `options.settings::<ParquetOptions>()`; `require_settings_mut` refuses
+another encoding's, naming both.
 
 | Encoding | Setting | Default | Spelling |
 | --- | --- | --- | --- |

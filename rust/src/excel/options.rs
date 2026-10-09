@@ -2,8 +2,8 @@
 
 use smol_str::SmolStr;
 
-use crate::media::IORecordOptions;
-use crate::{Field, Filter, Level, Selector};
+use crate::media::{IORecordOptions, MediaCodec, MediumSettings, RecordOptions};
+use crate::{Field, Filter, Level, Result, Selector};
 
 use super::cell::CellRange;
 
@@ -126,6 +126,38 @@ impl ExcelOptions {
         self
     }
 
+    /// The worksheet a read or write addresses, `None` when none is named.
+    #[must_use]
+    pub fn sheet(&self) -> Option<&str> {
+        self.sheet.as_deref()
+    }
+
+    /// Set or clear the worksheet a read or write addresses.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a name Excel refuses
+    /// ([`validate_sheet_name`](super::validate_sheet_name)), leaving the
+    /// options as they were.
+    pub fn set_sheet(&mut self, sheet: Option<&str>) -> Result<()> {
+        if let Some(sheet) = sheet {
+            super::validate_sheet_name(sheet)?;
+        }
+        self.sheet = sheet.map(SmolStr::new);
+        Ok(())
+    }
+
+    /// The cells a read or write addresses, `None` for the whole sheet.
+    #[must_use]
+    pub const fn range(&self) -> Option<CellRange> {
+        self.range
+    }
+
+    /// Set or clear the cells a read or write addresses.
+    pub const fn set_range(&mut self, range: Option<CellRange>) {
+        self.range = range;
+    }
+
     /// The cells a read or write addresses: the range, else the whole grid.
     #[must_use]
     pub fn cells(&self) -> CellRange {
@@ -141,4 +173,25 @@ impl Default for ExcelOptions {
 
 impl IORecordOptions for ExcelOptions {
     crate::record_options_fields!();
+}
+
+impl MediumSettings for ExcelOptions {
+    fn medium() -> &'static dyn MediaCodec {
+        &super::EXCEL_CODEC
+    }
+
+    fn header(&self) -> Option<bool> {
+        Some(self.header)
+    }
+
+    fn set_header(&mut self, header: bool) -> bool {
+        self.header = header;
+        true
+    }
+}
+
+impl From<ExcelOptions> for RecordOptions {
+    fn from(value: ExcelOptions) -> Self {
+        Self::registered(value)
+    }
 }

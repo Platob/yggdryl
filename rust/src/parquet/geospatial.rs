@@ -130,7 +130,10 @@ pub fn read_geospatial_statistics<H: IOBase + ?Sized>(
     source.fetch(handle, Some(&[index]))?;
     let builder = source.builder();
     let mask = ProjectionMask::roots(builder.parquet_schema(), [index]);
-    let reader = builder.with_projection(mask).build()?;
+    let reader = builder
+        .with_projection(mask)
+        .build()
+        .map_err(Error::external)?;
     let mut fold = WkbFold::default();
     for batch in reader {
         let batch: RecordBatch = batch.map_err(from_reader_error)?;
@@ -317,7 +320,9 @@ pub(super) fn extension_schema(schema: &Schema) -> Result<Option<SchemaDescripto
     {
         return Ok(None);
     }
-    let converted = ArrowSchemaConverter::new().convert(schema)?;
+    let converted = ArrowSchemaConverter::new()
+        .convert(schema)
+        .map_err(Error::external)?;
     let root = converted.root_schema_ptr();
     let mut fields = Vec::with_capacity(schema.fields().len());
     for (field, ty) in schema.fields().iter().zip(root.get_fields()) {
@@ -591,7 +596,7 @@ fn geospatial_primitive(field: &ArrowField, ty: &Type, path: &str) -> Result<Typ
     if info.has_repetition() {
         builder = builder.with_repetition(info.repetition());
     }
-    Ok(builder.build()?)
+    builder.build().map_err(Error::external)
 }
 
 /// Rebuild one `arrow.uuid` primitive with the `UUID` logical type, its
@@ -619,7 +624,7 @@ fn uuid_primitive(ty: &Type, path: &str) -> Result<Type> {
     if info.has_repetition() {
         builder = builder.with_repetition(info.repetition());
     }
-    Ok(builder.build()?)
+    builder.build().map_err(Error::external)
 }
 
 /// Rebuild one `arrow.parquet.variant` group with the `VARIANT` logical
@@ -690,7 +695,7 @@ fn variant_child(child: &TypePtr, path: &str) -> Result<TypePtr> {
     if info.has_repetition() {
         builder = builder.with_repetition(info.repetition());
     }
-    Ok(Arc::new(builder.build()?))
+    Ok(Arc::new(builder.build().map_err(Error::external)?))
 }
 
 /// Rebuild one group node, preserving its identity and optionally attaching
@@ -705,7 +710,7 @@ fn rebuilt_group(ty: &Type, fields: Vec<TypePtr>, logical: Option<LogicalType>) 
     if info.has_repetition() {
         builder = builder.with_repetition(info.repetition());
     }
-    Ok(builder.build()?)
+    builder.build().map_err(Error::external)
 }
 
 /// Parse one GeoArrow metadata document into the logical type it declares.

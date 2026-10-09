@@ -8,7 +8,7 @@ The Arrow IPC streaming format: one schema message, then one record-batch messag
 | --- | --- |
 | Declared by | `application/vnd.apache.arrow.stream`, `.arrows` |
 | Build | default |
-| Rust | `yggdryl::ipc`: `Ipc<H>` over any handle, configured by `IpcOptions`, and the free `read_field`, `read_batch_reader` and `overwrite_arrow_reader` over any `IOBase` |
+| Rust | `yggdryl::ipc`: `Ipc<H>` over any handle, configured by `IpcOptions`, `IPC_CODEC`, the medium's [codec](index.md#registering-a-medium), and the free `read_field`, `read_batch_reader` and `overwrite_arrow_reader` over any `IOBase` |
 | Python, JavaScript | any `IOBase` whose name declares the stream, through the [calls every medium answers](index.md#read) |
 | Settings | the shared [`RecordOptions`](index.md#options) and nothing of its own; a coding suffix such as `.arrows.gz` compresses the whole stream ([Compression](compression.md)) |
 | Layouts | a union column crosses as itself, where [Parquet](parquet.md) refuses one by name |
@@ -262,7 +262,7 @@ PyArrow IPC write baseline       1.607 ms   40.8M rows/s
 python/.venv/bin/python python/benchmarks/media.py --filter ipc --filter "PyArrow IPC"
 ```
 
-Through the `Media` enum, which redirects to the same implementation:
+Through the `Media` enum, whose `Ipc` variant redirects to the same implementation:
 
 | operation through `Media::Ipc` | estimate | throughput |
 | --- | ---: | ---: |

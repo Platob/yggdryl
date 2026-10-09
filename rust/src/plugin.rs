@@ -13,6 +13,10 @@ use smol_str::format_smolstr;
 
 use crate::{Error, Result};
 
+/// What the core names itself as when it claims its own kinds, media and
+/// formats: the one claimant no crate outside it may spell.
+pub(crate) const CORE: &str = "yggdryl";
+
 /// One claim: what was registered and the crate that registered it.
 #[derive(Clone, Debug)]
 pub struct Claim<V> {

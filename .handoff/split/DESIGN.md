@@ -1102,6 +1102,322 @@ The compiler's list misses what `cargo check` never compiles: the 42
 doc-comment lines in 29 `rust/src` files that name a deleted variant are
 driven from `cargo test -p yggdryl --doc` and an `rg` over `///` lines, and
 belong to the worker whose files hold them.
+## S2: design
+
+The media extension point, D21 built, with S1's mechanism: a medium states
+what it is once, in its own file, as a `static` implementing one role trait,
+and claims it on `plugin::Register` under a key its intake reads once; past
+intake a value in hand carries its medium and nothing reads the register per
+leaf, per batch or per row. The core claims its own media before a register
+answers anything (`seed()`, as `market::seed()`), until S6 replaces each
+seed with the leaving crate's `install()`. Four roles, four registers, one
+refusal shape: the pinned phrase of the door that refuses today, then
+`install the crate that claims it and call its `install()``. Every figure
+below was counted at `719299cf6` by the seven maps under the scratchpad's
+`s2_map/`; the S2 results table re-counts them at the slice's HEAD.
+
+### D26, the registered options
+
+Decided: `RecordOptions::Registered(RegisteredOptions)` beside the core
+media's variants `Ipc`, `Text`, `Xmla`, `Csv`, which never leave;
+`Parquet`, `Avro` and `Excel` are deleted, so the three leaving media are
+registered in place and S6 moves files. `RegisteredOptions` is a newtype
+over `Box<dyn MediumOptions>`. `MediumOptions` is the object-safe twin of
+`IORecordOptions`: the fourteen shared-section pairs (`declared`, `name`,
+`safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `row_offset`,
+`max_byte_size`, `commit_batch_num`, `num_threads`, `level`, `merge_by`,
+`filter`, `select`, each with its setter), what a trait object owes a
+derive-heavy enum (`clone_box`, `dyn_eq`, `dyn_cmp`, `dyn_hash`, `as_any`,
+`as_any_mut`), the medium (`codec() -> &'static dyn MediaCodec`,
+`mime_type()`), `stable_hash()` and the two hooks a core door shares across
+media - `header`/`set_header` (CSV and Excel; Python's and Node's one
+`header` property) and `file_threads`/`set_file_threads` (Parquet and Avro;
+what a table hands each file). One blanket impl over `T: IORecordOptions +
+MediumSettings + Clone + Eq + Ord + Hash + Debug + Send + Sync + 'static`
+writes it, so a medium adds `MediumSettings` - `const CODEC`, and the two
+hooks with defaults - and nothing else; the core's four options implement
+it too, so one typed door serves every medium.
+
+The settings struct is today's whole options struct, shared fields included,
+held behind the box: `RecordOptions::stable_hash` for a registered medium is
+`stable_hash_of(&(codec.name(), settings))`, byte for byte today's variant
+arm, which the S2 pins in `rust/tests/media/options.rs` (`mod s2_pins`)
+prove - the hash feed is persisted (D19), so the shared sections are never
+split out of the struct. The enum's own `Ord` and `Hash` are hand-written by
+the codec's `rank()`, today's declaration position - `ipc` 0, `parquet` 1,
+`avro` 2, `text` 3, `xmla` 4, `csv` 5, `excel` 6, a medium outside the core
+at or above `EXTERNAL_RANK` (32) - so `arrow.stream < parquet < avro <
+text/plain < xmla < tsv < csv < xlsx` holds as the pin states it, and a
+registered pair of one rank orders by `dyn_cmp`. `Eq` reads the type and
+the value (`dyn_eq`).
+
+The typed door: `settings::<T>()` / `settings_mut::<T>()` (a downcast on
+any variant's payload; `None` on another medium) and
+`require_settings_mut::<T>(path, setting)`, which refuses with today's
+pinned sentence `expected {title} options to set {setting}, got {mime}
+options` from `MediaCodec::title()` - `Parquet`, `Avro`, `Excel`, `CSV`,
+`text` - at `path`; `From<T> for RecordOptions` wraps any `MediumSettings`
+struct. `RecordOptions::parquet_*`, `avro_*`, `excel_*`, `push_parquet_key_value`
+and `set_file_threads`' arms are deleted: their bodies are the structs' own
+methods (`ParquetOptions::compression_name`, `set_compression_name`,
+`set_max_row_group_size`, `set_key_value_metadata`, `push_key_value` exist;
+`AvroOptions::block_codec`/`set_block_codec`/`sync_marker`/`set_sync_marker`
+and `ExcelOptions::sheet`/`set_sheet`/`range`/`set_range` are written from
+the deleted bodies), reached by the bindings' properties, which keep their
+names, through the typed door. The CSV accessors and `timezone` stay on
+`RecordOptions`, their `_ =>` arms refusing every other medium. `mime_type`
+and `header` lose `const`. Refused: `Arc` over the box (a set clones the
+struct either way); a registered variant carrying the fourteen sections
+beside a settings object (D21's first wording), because the hash feeds the
+whole struct in declaration order.
+
+### D27, the codec and the wrapper
+
+Decided: `MediaCodec` in `media/codec.rs`, object-safe, `Debug + Send + Sync
++ 'static`, one `static` per medium in the medium's own file (`IPC_CODEC`,
+`PARQUET_CODEC`, `AVRO_CODEC`, `TEXT_CODEC`, `XMLA_CODEC`, `CSV_CODEC`,
+`EXCEL_CODEC`), the core's four and the leaving three alike:
+
+| method | replaces |
+| --- | --- |
+| `name()` (the hash tag, `"parquet"`), `title()` (`"Parquet"`), `rank()`, `mime_types()` (`ARROW_STREAM` and `ARROW_FILE` for IPC, `CSV` and `TSV` for CSV; the first canonical) | the four MIME chains of `for_mime_type`, `mime_type()`, `Media::open_as` and `Holder::into_media_base` |
+| `default_options(base) -> RecordOptions` | `RecordOptions::for_mime_type`'s arms (CSV picks the TSV dialect by `base`) |
+| `compresses_internally()` - `true` for Parquet and the workbook, `false` for Avro, so `.avro.gz` composes as today | the two outer-coding declines in `holder/mod.rs:747-758` |
+| `has_row_identity()` - `false` for text lines | `merge_leaf`'s text refusal |
+| `read_batch_reader(handle: &dyn IOBase, declared, options)`, `row_size`, `read_field` (Parquet's clears the root's metadata), `overwrite_arrow_reader(handle: &mut dyn IOBase, ..)` | `leaf_reader`, `leaf_row_size`, `leaf_field`, `leaf_writer` (`transfer.rs:1171-1290`) |
+| `stated_field(handle, options) -> Option<Field>` (default: the probe under the medium's default options and the options' name) | `stored_field`'s Text, Xmla, Csv and Excel arms |
+| `read_stream(handle, declared, options) -> Option<StreamSerie>` (default `None`; Csv, Text and Avro answer their native streams) | `read_record_serie`'s arms (`iomedia.rs:1488-1494`) |
+| `open(handle: Holder) -> Media` | `Media::open_as`, `Media::{parquet, avro, excel}`, the `From<Parquet<Holder>>` impls |
+
+`RecordOptions::codec()` is the one dispatcher past intake - a core variant
+its medium's static, the registered box its own - and `transfer.rs`,
+`iomedia.rs` and `media/mod.rs` name no medium: each former match is one
+call through it. Text's and CSV's core rules (`TextLeaf`, the CSV header
+target, the container scan's text-last rule, plain text's `Holder::Text`
+rather than a `Media`) stay on the core variants where they are. The
+register: `media::codec::claim(codec, by)` claims every MIME type the codec
+names, under one lock, all or none, refusing a type claimed already (naming
+the first claimant), the core's own name as `by`, a codec naming no type,
+and a rank below `EXTERNAL_RANK` from outside the core; `codec_for(base)`
+is the one intake lookup, its refusal `expected a record encoding this build
+implements (<every claimed type in rank order>; install the crate that
+claims it and call its `install()`), got <base>` - the phrase Node and the
+skill pin, the ORC and `.xls` texts the Rust and Python tests pin, with the
+`parquet` feature note gone because the list is what is claimed - and
+`for_mime_type` keeps its structured-document sentence after a failed
+lookup; `codecs()` lists the claims in rank order; `seed()` claims the
+core's seven once. `Media::open_as` is `codec_for(base)?.open(handle)` and
+answers the same sentence as an `arrow::Error`.
+
+`Media::Registered(Box<dyn MediaWrapper>)` beside `Ipc`, `Text`, `Xmla`,
+`Csv`; `MediaWrapper: IOBase + Debug` adds `codec()`, `handle()`,
+`into_handle(self: Box<Self>)` and `with_field(self: Box<Self>, field)`;
+`Parquet<Holder>`, `Avro<Holder>` and `Excel<Holder>` implement it, and the
+`Media` match methods gain one arm. `Media::medium()` names the medium, so
+Python picks its handle class (`Parquet`, `Avro`, `Excel`) by the codec's
+name and asks the store nothing; `handle()` loses `const`.
+`Holder::into_media_base` composes through `codec_for`, composing nothing
+for an unregistered type (today's `supported` test) and declining the outer
+coding where `compresses_internally()` says so.
+
+### D28, the serie
+
+Decided: `Serie::Parquet`, `Serie::Avro`, `Serie::Excel` and
+`Serie::IcebergTable` are deleted with `ParquetSerie`, `AvroSerie`,
+`ExcelSerie` and `IcebergTableSerie` - each `media_serie!` invocation passed
+no native read, so each was `GenericMediaSerie` under another name; a
+leaving medium is read as `GenericMediaSerie::new(media)` and
+`Serie::GenericMedia`. `require_kind` takes the MIME types a leaf accepts
+(`media_serie!` gains `accepts = ...`: IPC its two, CSV its two, Text and
+XMLA one, `WarehouseTable`, `Http` and `GenericMedia` every type) in place
+of the variant-name match, its refusal unchanged; the macro's unused
+`$read` arm goes. Nothing outside `rust/tests/root/media_serie.rs` named a
+deleted serie.
+
+### D29, the table format
+
+Decided: `TableFormat` in `media/format.rs` - `name()`, `locate(handle:
+&dyn IOBase) -> Result<Option<Box<dyn LocatedTable>>>` - and
+`LocatedTable: Debug + Send` with today's fifteen `Located` methods
+(`is_whole`, `overwrite_whole`, `clear`, `stored_field`,
+`read_arrow_field`, `read`, `row_size`, `column_size`, `record_options`,
+`overwrite_arrow_reader`/`append_arrow_reader`/`merge_arrow_reader(batches,
+options) -> IOResult`, `overwrite_prepared(batches, threads)`,
+`append_prepared(batches, threads) -> u64` the rows declined,
+`merge_prepared(batches, merge_by, safe, threads)`); the
+`ReplacedPartitions` accumulator moves inside the located table, which a
+write session locates once and holds for its life, so no Iceberg type
+crosses the trait. `media::format::locate(handle)` asks every claimed
+format in name order, answering `None` before touching the handle where
+nothing is claimed, and is what the eleven `crate::iceberg::located` sites
+call (`isin_registry/store.rs` 2, `iobase/hierarchy.rs` 1, `transfer.rs`
+4, `iomedia.rs` 4); `ArrowWriteTarget::Iceberg` becomes `Table { located,
+stored }`, `Opened::Table` holds the box, `WriteCount::skip` loses its
+gate. `Located` implements the trait in `iceberg/mod.rs`, `ICEBERG_FORMAT`
+is the static, claimed by the seed under `cfg(feature = "iceberg")`; the
+ISIN registry store reads `locate` and the three methods it needs. The
+core keeps the layout detection the folder catalog reads (one `metadata/`
+listing: `version-hint.text` or `*.metadata.json`) as routing vocabulary,
+the way `MimeType::PARQUET` stays (D10), and a table met with no format
+claimed is refused at `$.encoding` naming the crate to install - decided
+over a feature-less build reading a table's `data/` leaves as a plain
+folder, which reads a table wrong instead of refusing it by name.
+
+### D30, the warehouse
+
+Decided: `Catalog::Registered(Box<dyn RegisteredCatalog>)`,
+`Namespace::Registered(Box<dyn RegisteredNamespace>)` and
+`Table::Registered(Box<dyn RegisteredTable>)` beside `Memory`/`Folder`,
+`Memory`/`Folder` and `Media`; each trait the role's value contract
+(`CatalogValue`, `NamespaceValue`, `TableValue`, with `IOBase`) plus
+`implementation_name`, `clone_box`, `dyn_eq`, `dyn_hash`, `as_any`,
+`as_any_mut`, `with_properties` and, for a table, `inheriting` and
+`exists`; the Iceberg and S3 Tables catalogs, namespaces and tables land
+there, the `Iceberg`/`S3Tables` variants and `Table::Iceberg` deleted with
+their `From` impls, and each enum gains `downcast_ref::<T>()` /
+`downcast_mut::<T>()` so a binding's `IcebergCatalog` class reaches its
+value. `CatalogFactory` (`warehouse/catalog.rs`), keyed by the `type` word
+(`hadoop`) and by the URL scheme (`s3tables`): `catalog(name, url, arn,
+properties) -> Result<Catalog>`; `Catalog::from_url` reads the explicit
+word first - the `$.with.type` refusals keep their two spellings, the
+listed words computed from the claims (`memory`, `folder` and the claimed
+words) - then the scheme, then `memory`/`folder` as today. `Locator`
+(`holder/locator.rs`), keyed by scheme: `names(location)` (an ARN of the
+service too, read before the identifier is lowered) and `holder(location,
+properties)`; `Holder::from_url` asks the locators first and keeps every
+byte-backend arm (`local`, `zip`, `s3`, `http`), which stay the core's; a
+scheme no backend holds and no locator claims is refused naming the crate
+to install. `Site::Store` is gated to `s3` alone, with a targeted
+`dead_code` allowance until S6's implementer door constructs it from
+outside. The folder catalog's layout detection constructs a located table
+through `TableFormat` and refuses by name without a claim. The Iceberg
+folder names (`metadata/`, `version-hint.text`, `data/`) stay in the core
+as that detection's vocabulary.
+
+### D31, the external error and the capability
+
+Decided: `Error::Iceberg { reason, source }` becomes `Error::External {
+origin: &'static str, reason, source }` - Display `{origin} error:
+{reason}`, so an Iceberg failure prints `Iceberg error: ...` as today, the
+source kept and downcastable (`is_forked`, `is_moved_base` test
+`source.is::<T>()`), `is_source_failure` true - built by
+`Error::external(origin, reason)` and `Error::external_with_source`;
+`Error::iceberg` and `from_iceberg` stay under the gate as its two Iceberg
+spellings. `From<ParquetError> for crate::arrow::Error` is deleted - an
+orphan impl no leaving crate can write - and the Parquet module maps its
+own crate's failures through `arrow::Error::external` at each `?`.
+`IOMedia::as_any(&self) -> Option<&dyn Any>`, default `None`, replaces
+`parquet_footer`: the Parquet wrapper answers its footer cache - a
+non-generic object, because `Parquet<H>` cannot be downcast without naming
+`H` and `IOMedia` is not `'static` - and `Holder`, `Media`, `Buffered`,
+`Coded`, `Table`, `MediaTable` and the two delegating macros forward it;
+`read_parquet_statistics` and `read_parquet_geospatial_statistics` leave
+`IOMedia` for `parquet::read_media_statistics(&dyn IOMedia)` and
+`read_media_geospatial_statistics`, carrying `parquet_leaf`'s pinned
+`expected Parquet media, got ..` refusal, and every forwarder goes (nine
+files and the two macros). The bindings keep their four and two methods
+redirecting to them.
+
+### The review's amendments (S2)
+
+An independent read of the core diff, after the suites passed, changed six
+things, each a defect a passing suite did not catch:
+
+- `RecordOptions::registered` answers the core's own four structs as their
+  variants, so one struct is one value whatever door built it and the enum's
+  `Eq` and `Ord` agree; `RegisteredOptions::new` is crate-private.
+- `media::codec::claim` refuses a second claim of a medium's `name()`, the
+  tag its options hash under and what orders two media of one rank.
+- `media::codec_of(base) -> Option<..>` is the lookup `Holder::into_media`
+  asks, allocating nothing on a miss; `codec_for` builds the refusal only
+  where it is answered.
+- `parquet::read_media_statistics` and `read_media_geospatial_statistics`
+  treat a Parquet wrapper as HEAD's overrides did - the footer it holds,
+  refilled through `ParquetFooter::metadata` where a publication cleared it,
+  at no ask of the store of what it is - and run `parquet_leaf`'s encoding and
+  leaf checks for every other media alone.
+- `TableFormat::table(path, root, inherited) -> Table` is the table object a
+  folder catalog lists for a folder laid out as the format's table;
+  `warehouse/folder.rs` asks the claimed format (`TABLE_LAYOUT_FORMAT`, the
+  one layout the detection reads) and is no longer gated, and a layout no
+  claim reads is a media table refusing by name.
+- The merge refusal of a medium without row identity names that medium and
+  lists the claimed media that have one; the native-stream door borrows the
+  declared field rather than cloning it.
+
+Recorded as decided otherwise: `MediumSettings::medium()` is an associated
+function rather than D26's `const CODEC`; `MediaWrapper::medium()` and
+`Media::medium()` rather than `codec()`, because `codec` is `IOBase`'s
+content coding; the `From<IcebergCatalog>`-style impls stay in the
+implementations' files, answering the `Registered` variants, because every
+call site builds through them; `RecordOptions::require_settings` is the door
+a codec reads its own struct back through; `holder::locators()` and
+`media::format_named` are the registers' listing and lookup doors beside
+`codecs()`/`formats()`; the ISIN store's whole-table refusal reads `expected
+a table whole for the instrument registry, got a partition of one`.
+
+### D32, pushdown, logging, D17
+
+Decided: `filter_phases` is published (`expression::filter_phases`, eight
+callers) beside the already public `Bound`, `Bounds`, `ColumnBounds` and
+`Residual`; `apply_columns` keeps its signature. Logging moves nothing:
+the twenty-nine `log::` sites under `yggdryl::iceberg::{staging,table}`
+keep their module targets and D10's rule covers them when they move in S6
+(`rust/tests/logging/facade.rs:85` pins `yggdryl_cli::shell` as foreign, so
+a `yggdryl_<crate>::` mapping excludes the CLI). D17 confirmed: the default
+core reaches `yggdryl::iceberg` through `iceberg/types.rs` alone, nothing
+outside it reads `PrimitiveType` ungated, and `PrimitiveType::into_official`
+(`cfg(iceberg)`, four callers) becomes a free function when the rest leaves.
+
+## S2: what was built
+
+The media extension point, in place: four claim-once registers on
+`plugin::Register`, each seeded by the core with its own implementations,
+the three leaving media (Parquet, Avro, the workbook), the Iceberg format,
+the `hadoop` and `s3tables` catalogs and the `s3tables` locator claimed where
+they stand, and every dispatch seam in the core reading the claim rather than
+naming a medium. What the slice decided beyond the design is under "The
+review's amendments (S2)" above; the design's D26-D32 hold otherwise.
+
+### S2 results
+
+Counted on the slice's tree (`git grep`, `wc`), checks as the chain logs
+under the scratchpad's `logs/chain_s2*.log` report them.
+
+| figure | value |
+| --- | --- |
+| retired names in `rust/`, the bindings and the CLI (`Media::Parquet`, `RecordOptions::Avro`, `Table::Iceberg`, `Error::Iceberg`, `parquet_footer`, `iceberg::located`, the four series, the eleven accessors, `__delegate_iomedia_parquet`) | 0 (one test *named* after the footer stays) |
+| `RecordOptions` variants | 5: `Ipc`, `Text`, `Xmla`, `Csv`, `Registered` (7 at `719299cf6`) |
+| `Media` variants | 5: the same four and `Registered` (7) |
+| `Serie` variants | 78 (82: `Parquet`, `Avro`, `Excel`, `IcebergTable` gone) |
+| core-variant matches on a medium outside its own file (`RecordOptions::Text`, `::Csv`, `::Ipc` in `rust/src`) | 17, all the Text and CSV core rules the design keeps (the text leaf, the CSV header target, their native appends, the container scan's text-last rule, the ISIN store's text layout, the HTTP and coding defaults) |
+| codec statics / format, factory and locator statics | 7 / 4 |
+| `cfg(feature = "iceberg")` and `cfg(feature = "parquet")` in `rust/src` outside `iceberg/`, `s3tables/`, `parquet/` | 43 (191 at `719299cf6`) |
+| `cfg(feature = "s3tables")` in `rust/src` outside `s3tables/` | 10 (27) |
+| new files | `media/codec.rs` 310 lines, `media/format.rs` 261, `holder/locator.rs` 109, `rust/tests/media_register.rs` 821 (14 tests over five test-only implementations) |
+| the slice | 107 files, +5178 / -2449: `rust/src` 51 files +3290/-2003, `rust/tests` and benchmarks 24 files +892/-195, Python, Node and the CLI 10 files +157/-109, docs, skills, `AGENTS.md`, `README.md` and the inventories 21 files +564/-141 |
+| binding sites through the typed settings door / through `downcast_ref` | 31 / 22 |
+| the S2 pins (`rust/tests/media/options.rs` `mod s2_pins`): every medium's default `stable_hash`, the shared-section feed, the own-setting feed, the variant order | unmoved, green in both lanes |
+| cost pins (`iobase_calls`, `allocations`, the Iceberg `call_counts`, the S3 Tables request counts) | unmoved, green in both lanes; no number re-pinned |
+
+| check | result |
+| --- | --- |
+| `cargo test -p yggdryl --all-targets --all-features --no-fail-fast` | 63 targets, 9170 passed, 0 failed |
+| `cargo test -p yggdryl --all-targets --no-fail-fast` (default features) | 63 targets, 6522 passed, 0 failed |
+| `cargo test -p yggdryl-cli --all-targets --no-fail-fast` | 35 passed |
+| `cargo test -p yggdryl --doc` | 628 passed |
+| `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings`; `cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings` | clean in both lanes (after one `matches!` rewrite in `error.rs`) |
+| `RUSTDOCFLAGS=-D warnings cargo doc -p yggdryl --no-deps --all-features` | clean (after six intra-doc link lints: three links to crate-private items spelled as code, three redundant explicit targets) |
+| `cargo fmt --all -- --check` | clean |
+| `maturin develop`, `pytest python/tests` (Spark interop deselected), `mypy --strict` | 2780 passed, 4 skipped (pyspark, two PEP 649 tests, one free-threaded test); mypy no issues in 70 files |
+| `npm run build:debug`, `cargo build -p yggdryl-cli`, `npm test`, `tsc --noEmit`, generated loader and declarations | 1120 of 1122 pass; the two failures are `node/tests/charset.test.js` decoding windows-1252's C1 range through this sandbox's Node 22.22 `TextDecoder`, which CI's Node passes (as in S1); tsc clean; `node/index.js` and `node/index.d.ts` unchanged |
+| `node scripts/build_docs_fix.js --check`, `build_docs_playground.js --check` | current |
+| `mkdocs build --strict` | clean |
+| `python scripts/check_api_inventory.py`; `generate_internals.py --check` | current (180 source files and 586 `pub` names not described, as before) |
+| `check_docs_examples.py --lang rust` / `python` / `javascript` | 940 passed; 837 run, 3 skipped, 0 failed; 789 run, 2 skipped, 0 failed |
+| local-only checks (charset tables, charset interop, ISIN seed, country and MIC tables) | not run: nothing the slice touches makes them stale |
+| disk | the whole run of one lane holds about 11 GB of test binaries under the session's allowance; the chain cleans the workspace's own artifacts between lanes and before the bindings, after a first chain died on a full disk |
+
 ## The ledger
 
 | D# | decision | evidence | slice |
@@ -1126,10 +1442,17 @@ belong to the worker whose files hold them.
 | D18 | deferred to S8a | the prompt's S8a section | S8a |
 | D19 | nothing moves: ranks, `Shape` positions and feeds as listed | the pins; `scalar.rs:1202`, `datatype.rs:749-844` | S0, held S1 |
 | D20 | `MarketValue` with an owned `from_scalar`; `Value` unchanged; the kind's ZST marker over `MarketType` | `value/mod.rs:78-90` | S0, built S1 |
-| D21 | one trait per role on the register; the pushdown rides the options | `media/options.rs:142, 1343`; `iceberg/mod.rs:146-318` | S0, built S2 |
+| D21 | one trait per role on the register; the pushdown rides the options; refined by D26-D31 (the whole options struct behind the box, `open(handle) -> Media`, `as_any` answering a state object) | `media/options.rs:142, 1343`; `iceberg/mod.rs:146-318` | S0, built S2 |
 | D22 | `pluginside` deleted; the plugin's role is a `Side` read by `fix::plugin_side`; `buyside`/`sellside` spell `BUYS`/`SELL`; byte `0xc6`, `Shape` 72 and rank 32 retired; the dump, the codeset and the dictionary hash moved with it | the user's instruction; `side.rs`, `fix/source.rs`, `fix/crated.rs` | P0 |
 | D23 | the medium holds its `RecordOptions`; the media serie keeps no copy | the user's instruction; `media_serie.rs:18`; the understanding workflow's map | P1 |
 | D24 | `yggdryl-excel`, a seventh crate through the media point, claimed in S2, its own commit after S6; the bindings keep their Excel doors in the one native module | the user's instruction; the 39 core sites and the import lines above; crates.io 404 | S0, built S6b |
+| D26 | `RecordOptions::Registered(RegisteredOptions)`, a `Box<dyn MediumOptions>` holding the medium's whole options struct; `Parquet`/`Avro`/`Excel` variants and accessors deleted; `Ord`/`Hash` by the codec's rank; the typed `settings` door | the S2 pins; `media/options.rs:1344-1360`, `dispatch.rs` | S2 |
+| D27 | `MediaCodec` statics claimed on the register, `RecordOptions::codec()` the one dispatcher; `Media::Registered(Box<dyn MediaWrapper>)`; `codec_for` the one refusal | `transfer.rs:1171-1323`, `media/mod.rs:117-159`, `holder/mod.rs:771-819` | S2 |
+| D28 | `Serie::{Parquet, Avro, Excel, IcebergTable}` deleted, `GenericMediaSerie` serves them; `require_kind` by MIME set | `media_serie.rs:510-533`; the eleven invocations | S2 |
+| D29 | `TableFormat`/`LocatedTable` on the register, `ReplacedPartitions` inside the located table; the layout detection stays core | `iceberg/mod.rs:146-458`; the eleven `located` sites | S2 |
+| D30 | `Catalog`/`Namespace`/`Table::Registered`; `CatalogFactory` by type word and scheme; `Locator` by scheme; `Site::Store` under `s3` | `warehouse/catalog.rs:72-143`, `holder/mod.rs:348-451`, `handle.rs:19-47` | S2 |
+| D31 | `Error::External { origin, reason, source }`; `From<ParquetError>` deleted for `map_err`; `IOMedia::as_any` answering the Parquet footer cache; the statistics as free functions over `&dyn IOMedia` | `error.rs:166-172`, `parquet/mod.rs:2524`, `iomedia.rs:369-411` | S2 |
+| D32 | `filter_phases` published; logging and D17 unchanged | `expression/mod.rs:1036`; `logging/facade.rs:72-76` | S2 |
 | D25 | the seventeen codes stay core and flat; the register holds enum kinds alone (`Code8`/`Code16`), `MarketPayload`, `is_canonical`, `respell` and `CODE_VALUE_RANK` deleted; `yggdryl-market` carries the enums, `graph/` and the ISIN registry | the user's instruction; the S0 pins; one free Code byte | S1 |
 
 ## Review (S0)

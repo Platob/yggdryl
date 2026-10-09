@@ -223,10 +223,15 @@ mod parquet {
             )
             .unwrap();
 
-        assert_eq!(parquet.read_parquet_statistics().unwrap().num_rows, 1);
+        assert_eq!(
+            yggdryl::parquet::read_media_statistics(&parquet)
+                .unwrap()
+                .num_rows,
+            1
+        );
 
         let ipc = handle("redirect.arrows");
-        let error = ipc.read_parquet_statistics().unwrap_err();
+        let error = yggdryl::parquet::read_media_statistics(&ipc).unwrap_err();
         assert!(matches!(error, yggdryl::Error::InvalidRecord { .. }));
         let message = error.to_string();
         assert!(message.contains("expected Parquet media"), "{message}");
@@ -235,7 +240,7 @@ mod parquet {
             "{message}"
         );
 
-        let error = ipc.read_parquet_geospatial_statistics("shape").unwrap_err();
+        let error = yggdryl::parquet::read_media_geospatial_statistics(&ipc, "shape").unwrap_err();
         assert!(matches!(error, yggdryl::Error::InvalidRecord { .. }));
         assert!(error.to_string().contains("expected Parquet media"));
     }

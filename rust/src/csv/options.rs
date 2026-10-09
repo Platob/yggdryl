@@ -506,3 +506,28 @@ impl Default for CsvOptions {
 impl IORecordOptions for CsvOptions {
     crate::record_options_fields!();
 }
+
+impl crate::media::MediumSettings for CsvOptions {
+    fn medium() -> &'static dyn crate::media::MediaCodec {
+        &super::CSV_CODEC
+    }
+
+    /// `text/tab-separated-values` under a tab separator, `text/csv` under
+    /// any other.
+    fn mime_type(&self) -> crate::MimeType {
+        if self.separator == b'\t' {
+            crate::MimeType::TSV
+        } else {
+            crate::MimeType::CSV
+        }
+    }
+
+    fn header(&self) -> Option<bool> {
+        Some(CsvOptions::header(self))
+    }
+
+    fn set_header(&mut self, header: bool) -> bool {
+        CsvOptions::set_header(self, header);
+        true
+    }
+}

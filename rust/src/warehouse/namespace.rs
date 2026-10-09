@@ -2,7 +2,9 @@
 //! which implementation lists it, and the collection views every level of
 //! the hierarchy answers with.
 
+use std::any::Any;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -70,6 +72,61 @@ pub trait NamespaceValue: ObjectValue {
     }
 }
 
+/// A namespace implemented outside the core's memory and folder
+/// namespaces, as [`Namespace::Registered`] holds it: the namespace
+/// contract, the name a refusal calls the implementation by, what a trait
+/// object owes the derive-heavy enum holding it - a copy, equality, a hash
+/// and the downcast [`Namespace::downcast_ref`] reads - and the two
+/// consuming updates every namespace answers.
+pub trait RegisteredNamespace: NamespaceValue + Send + Sync + fmt::Debug {
+    /// The implementation's own name, as a refusal names it:
+    /// `IcebergNamespace`.
+    fn implementation_name(&self) -> &'static str;
+
+    /// A boxed copy.
+    fn clone_box(&self) -> Box<dyn RegisteredNamespace>;
+
+    /// Equality across the trait object: the same implementation holding an
+    /// equal namespace.
+    fn dyn_eq(&self, other: &dyn RegisteredNamespace) -> bool;
+
+    /// The implementation's own hash, into any hasher.
+    fn dyn_hash(&self, state: &mut dyn Hasher);
+
+    /// The namespace as `Any`, for [`Namespace::downcast_ref`].
+    fn as_any(&self) -> &dyn Any;
+
+    /// The namespace as `Any`, mutably, for [`Namespace::downcast_mut`].
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+
+    /// The namespace with stated properties, which its storage and every
+    /// object under it open with.
+    fn with_properties(self: Box<Self>, properties: Properties) -> Box<dyn RegisteredNamespace>;
+
+    /// The namespace with its parent's effective properties pushed into it.
+    fn inheriting(self: Box<Self>, parent: &Properties) -> Box<dyn RegisteredNamespace>;
+}
+
+impl Clone for Box<dyn RegisteredNamespace> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
+
+impl PartialEq for dyn RegisteredNamespace {
+    fn eq(&self, other: &Self) -> bool {
+        self.dyn_eq(other)
+    }
+}
+
+impl Eq for dyn RegisteredNamespace {}
+
+impl Hash for dyn RegisteredNamespace {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.dyn_hash(state);
+    }
+}
+
 /// The implementation a namespace is listed by.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -81,13 +138,10 @@ pub enum Namespace {
     /// Boxed: a located namespace carries its location and two property
     /// bags, several times the size of a memory one.
     Folder(Box<FolderNamespace>),
-    /// A folder of an Iceberg warehouse, nested to any depth.
-    #[cfg(feature = "iceberg")]
-    Iceberg(Box<crate::iceberg::IcebergNamespace>),
-    /// A namespace of an Amazon S3 Tables table bucket: the Iceberg tables
-    /// it holds.
-    #[cfg(feature = "s3tables")]
-    S3Tables(Box<crate::s3tables::S3TablesNamespace>),
+    /// A namespace an implementation outside the core answers - a folder of
+    /// an Iceberg warehouse, a namespace of an Amazon S3 Tables table
+    /// bucket - held through the contract every such namespace answers.
+    Registered(Box<dyn RegisteredNamespace>),
 }
 
 impl Namespace {
@@ -96,12 +150,32 @@ impl Namespace {
     pub fn as_namespace(&self) -> &dyn NamespaceValue {
         match self {
             Self::Memory(namespace) => namespace,
-            Self::Folder(namespace) => namespace.as_ref(),
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg(namespace) => namespace.as_ref(),
-            #[cfg(feature = "s3tables")]
-            Self::S3Tables(namespace) => namespace.as_ref(),
+            Self::Folder(namespace) => &**namespace,
+            Self::Registered(namespace) => &**namespace,
         }
+    }
+
+    /// The implementation as the type it is, when it is a `T`: a
+    /// [`MemoryNamespace`], a [`FolderNamespace`], or a registered
+    /// namespace's own type.
+    #[must_use]
+    pub fn downcast_ref<T: 'static>(&self) -> Option<&T> {
+        let any: &dyn Any = match self {
+            Self::Memory(namespace) => namespace,
+            Self::Folder(namespace) => &**namespace,
+            Self::Registered(namespace) => namespace.as_any(),
+        };
+        any.downcast_ref()
+    }
+
+    /// The implementation as the type it is, mutably, when it is a `T`.
+    pub fn downcast_mut<T: 'static>(&mut self) -> Option<&mut T> {
+        let any: &mut dyn Any = match self {
+            Self::Memory(namespace) => namespace,
+            Self::Folder(namespace) => &mut **namespace,
+            Self::Registered(namespace) => namespace.as_any_mut(),
+        };
+        any.downcast_mut()
     }
 
     /// The object a path of parts below this namespace names, descending
@@ -131,15 +205,12 @@ impl Namespace {
     }
 
     /// The implementation's own name: `MemoryNamespace`, `FolderNamespace`,
-    /// `IcebergNamespace`, `S3TablesNamespace`.
-    pub(crate) const fn implementation_name(&self) -> &'static str {
+    /// or what a registered namespace calls itself.
+    pub(crate) fn implementation_name(&self) -> &'static str {
         match self {
             Self::Memory(_) => "MemoryNamespace",
             Self::Folder(_) => "FolderNamespace",
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg(_) => "IcebergNamespace",
-            #[cfg(feature = "s3tables")]
-            Self::S3Tables(_) => "S3TablesNamespace",
+            Self::Registered(namespace) => namespace.implementation_name(),
         }
     }
 
@@ -148,10 +219,7 @@ impl Namespace {
         match self {
             Self::Memory(namespace) => Self::Memory(namespace.inheriting(parent)),
             Self::Folder(namespace) => Self::Folder(Box::new(namespace.inheriting(parent))),
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg(namespace) => Self::Iceberg(Box::new(namespace.inheriting(parent))),
-            #[cfg(feature = "s3tables")]
-            Self::S3Tables(namespace) => Self::S3Tables(Box::new(namespace.inheriting(parent))),
+            Self::Registered(namespace) => Self::Registered(namespace.inheriting(parent)),
         }
     }
 }
@@ -258,20 +326,6 @@ impl From<MemoryNamespace> for Namespace {
 impl From<FolderNamespace> for Namespace {
     fn from(namespace: FolderNamespace) -> Self {
         Self::Folder(Box::new(namespace))
-    }
-}
-
-#[cfg(feature = "iceberg")]
-impl From<crate::iceberg::IcebergNamespace> for Namespace {
-    fn from(namespace: crate::iceberg::IcebergNamespace) -> Self {
-        Self::Iceberg(Box::new(namespace))
-    }
-}
-
-#[cfg(feature = "s3tables")]
-impl From<crate::s3tables::S3TablesNamespace> for Namespace {
-    fn from(namespace: crate::s3tables::S3TablesNamespace) -> Self {
-        Self::S3Tables(Box::new(namespace))
     }
 }
 

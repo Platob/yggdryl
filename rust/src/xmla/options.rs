@@ -118,3 +118,9 @@ impl Default for XmlaOptions {
 impl IORecordOptions for XmlaOptions {
     crate::record_options_fields!();
 }
+
+impl crate::media::MediumSettings for XmlaOptions {
+    fn medium() -> &'static dyn crate::media::MediaCodec {
+        &super::XMLA_CODEC
+    }
+}

@@ -39,11 +39,13 @@ use arrow_buffer::{IntervalMonthDayNano, NullBufferBuilder, OffsetBuffer, Scalar
 use arrow_schema::{ArrowError, DataType as ArrowDataType, FieldRef, SchemaRef};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::IOBase;
 use crate::arrow::{BatchReader, Result, arrow_schema_from_field, field_from_arrow_schema};
 use crate::cast::{ArrowCastPlan, Deferred, PlanCache};
-use crate::media::{IORecordOptions, RecordOptions};
-use crate::{ArrowCastOptions, Field, Level, Limits};
+use crate::holder::Holder;
+use crate::media::{
+    IORecordOptions, Media, MediaCodec, MediaWrapper, MediumSettings, RecordOptions,
+};
+use crate::{ArrowCastOptions, Field, IOBase, Level, Limits, MimeType};
 
 use super::arrow::{field_from_schema, schema_json_from_field};
 use super::container::{
@@ -153,6 +155,53 @@ impl AvroOptions {
         self.sync_marker = Some(sync_marker);
         self
     }
+
+    /// The Avro codec name blocks are written with.
+    #[must_use]
+    pub fn block_codec(&self) -> &str {
+        self.codec.as_str()
+    }
+
+    /// Validate and set the Avro block codec.
+    ///
+    /// Validation uses the codec vocabulary the container encoder itself
+    /// dispatches through, so a binding can reject a bad name before it pulls
+    /// a one-shot record source.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a codec this build does not implement, leaving
+    /// the options as they were.
+    pub fn set_block_codec(&mut self, codec: &str) -> crate::Result<()> {
+        BlockCoding::from_name(codec)?;
+        self.codec = SmolStr::new(codec);
+        Ok(())
+    }
+
+    /// Borrow the fixed synchronization marker; `None` writes a fresh one.
+    #[must_use]
+    pub const fn sync_marker(&self) -> Option<&[u8; 16]> {
+        self.sync_marker.as_ref()
+    }
+
+    /// Set or clear the fixed synchronization marker.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error at `$.sync_marker` for a marker whose length is not
+    /// exactly sixteen bytes, leaving the options as they were.
+    pub fn set_sync_marker(&mut self, marker: Option<&[u8]>) -> crate::Result<()> {
+        let marker = marker
+            .map(|marker| {
+                marker.try_into().map_err(|_| crate::Error::InvalidRecord {
+                    path: SmolStr::new_static("$.sync_marker"),
+                    reason: format_smolstr!("expected exactly 16 bytes, got {}", marker.len()),
+                })
+            })
+            .transpose()?;
+        self.sync_marker = marker;
+        Ok(())
+    }
 }
 
 impl Default for AvroOptions {
@@ -163,6 +212,26 @@ impl Default for AvroOptions {
 
 impl IORecordOptions for AvroOptions {
     crate::record_options_fields!();
+}
+
+impl MediumSettings for AvroOptions {
+    fn medium() -> &'static dyn MediaCodec {
+        &AVRO_CODEC
+    }
+
+    fn file_threads(&self) -> Option<usize> {
+        self.threads.0
+    }
+
+    fn set_file_threads(&mut self, threads: usize) {
+        self.threads = crate::media::options::FileThreads(Some(threads.max(1)));
+    }
+}
+
+impl From<AvroOptions> for RecordOptions {
+    fn from(value: AvroOptions) -> Self {
+        Self::registered(value)
+    }
 }
 
 /// How many rows one batch carries when the caller does not say.
@@ -2388,6 +2457,85 @@ fn locate_column(error: crate::Error, column: &str) -> crate::Error {
     }
 }
 
+/// The MIME type an Avro object container answers.
+static AVRO_TYPES: [MimeType; 1] = [MimeType::AVRO];
+
+/// Avro object containers as a record medium: [`read_batch_reader`],
+/// [`read_stream`], [`read_field`] and [`overwrite_arrow_reader`] behind the
+/// one contract every medium answers.
+#[derive(Debug)]
+pub struct AvroCodec;
+
+/// The Avro container medium, claimed under its MIME type.
+pub static AVRO_CODEC: AvroCodec = AvroCodec;
+
+impl MediaCodec for AvroCodec {
+    fn name(&self) -> &'static str {
+        "avro"
+    }
+
+    fn title(&self) -> &'static str {
+        "Avro"
+    }
+
+    fn rank(&self) -> u8 {
+        2
+    }
+
+    fn mime_types(&self) -> &'static [MimeType] {
+        &AVRO_TYPES
+    }
+
+    fn default_options(&self, _base: &MimeType) -> RecordOptions {
+        RecordOptions::registered(AvroOptions::new())
+    }
+
+    fn read_batch_reader(
+        &self,
+        handle: &dyn IOBase,
+        declared: Option<&Field>,
+        options: &RecordOptions,
+    ) -> crate::Result<BatchReader> {
+        let avro = options.require_settings::<AvroOptions>()?;
+        Ok(read_batch_reader(handle, declared, avro)?)
+    }
+
+    fn row_size(&self, handle: &dyn IOBase, options: &RecordOptions) -> crate::Result<u64> {
+        row_size(handle, options.require_settings::<AvroOptions>()?)
+    }
+
+    fn read_field(&self, handle: &dyn IOBase, options: &RecordOptions) -> crate::Result<Field> {
+        Ok(read_field(
+            handle,
+            options.require_settings::<AvroOptions>()?,
+        )?)
+    }
+
+    fn read_stream(
+        &self,
+        handle: &dyn IOBase,
+        _declared: Option<&Field>,
+        options: &RecordOptions,
+    ) -> crate::Result<Option<crate::StreamSerie>> {
+        let avro = options.require_settings::<AvroOptions>()?;
+        Ok(Some(read_stream(handle, avro)?))
+    }
+
+    fn overwrite_arrow_reader(
+        &self,
+        handle: &mut dyn IOBase,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> crate::Result<()> {
+        let avro = options.require_settings::<AvroOptions>()?;
+        Ok(overwrite_arrow_reader(handle, batches, avro)?)
+    }
+
+    fn open(&self, handle: Holder) -> Media {
+        Media::Registered(Box::new(Avro::new(handle)))
+    }
+}
+
 /// An Avro object container bound to one [`IOBase`] handle.
 ///
 /// Every read and write goes through this type, so the handle, the options,
@@ -2468,13 +2616,12 @@ impl<H: IOBase> Avro<H> {
         &self,
         options: &'a RecordOptions,
     ) -> crate::Result<&'a AvroOptions> {
-        match options {
-            RecordOptions::Avro(options) => Ok(options),
-            _ => Err(crate::Error::InvalidRecord {
+        options
+            .settings::<AvroOptions>()
+            .ok_or_else(|| crate::Error::InvalidRecord {
                 path: SmolStr::new_static("$.encoding"),
                 reason: crate::text::expected_got("Avro record options", options.mime_type()),
-            }),
-        }
+            })
     }
 
     /// Borrow the underlying handle.
@@ -2610,7 +2757,7 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
     /// Return this wrapper's Avro options even when the wrapped byte handle
     /// has no informative media type of its own.
     fn record_options(&self) -> crate::Result<RecordOptions> {
-        Ok(RecordOptions::Avro(self.options.clone()))
+        Ok(self.options.clone().into())
     }
 
     fn read_arrow_field(&self, options: &RecordOptions) -> crate::Result<Field> {
@@ -2791,4 +2938,20 @@ impl<H: IOBase> IOBase for Avro<H> {
     }
 }
 
-crate::media_serie::media_serie!(AvroSerie, Avro, as_avro, get_avro_mut);
+impl MediaWrapper for Avro<Holder> {
+    fn medium(&self) -> &'static dyn MediaCodec {
+        &AVRO_CODEC
+    }
+
+    fn handle(&self) -> &Holder {
+        &self.handle
+    }
+
+    fn into_handle(self: Box<Self>) -> Holder {
+        self.handle
+    }
+
+    fn with_field(self: Box<Self>, field: Field) -> Box<dyn MediaWrapper> {
+        Box::new(Avro::with_field(*self, field))
+    }
+}

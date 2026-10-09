@@ -28,7 +28,7 @@ Holder::folder(path) / Holder::file(path)      // commit to a role up front
 Holder::buffer(Buffer) -> Holder               // in memory
 Holder::from_url(location, properties)         // a Url, or any identifier that locates one: the scheme picks the backend
 holder.into_declared_media() -> Holder         // compose what the name declares, reading nothing
-holder.open() -> Result<()>                    // into_media, then open; keeps schema and footer caches
+holder.open() -> Result<()>                    // into_media, then open; keeps the schema and the medium's own caches
 holder.as_io() -> &dyn IOBase                  // the variant as the trait object
 ```
 
@@ -39,9 +39,9 @@ holder.as_io() -> &dyn IOBase                  // the variant as the trait objec
 | `file:` | a `LocalPath`, its role decided when an operation needs it; with a fragment, a member of a [ZIP archive](#zip) |
 | `s3:`, `gs:`, `az:` and their aliases, an Amazon S3 bucket's ARN | the [object store](#object-stores)'s location, under the `s3` feature and the store's own properties |
 | `http:`, `https:` | the [HTTP](#http) request that reads and writes the resource, under the `http` feature and the `HttpOptions` properties |
-| `s3tables://<bucket>[/<namespace>[/<table>]]`, a table bucket's ARN, a table's ARN | what it names in an [Amazon S3 Tables](../media/iceberg.md#a-table-by-its-location) table bucket, under the `s3tables` feature: the catalog or a namespace - a description, no request - or the Iceberg table, at one `GetTableMetadataLocation` after the one `ListTableBuckets` per page a location stating neither the bucket's ARN nor its account pays (one `GetTable` for a table's ARN, read as the ARN rather than as the location it locates); more than a namespace and a table below the bucket is refused at `$.url` |
+| `s3tables://<bucket>[/<namespace>[/<table>]]`, a table bucket's ARN, a table's ARN | what it names in an [Amazon S3 Tables](../media/iceberg.md#a-table-by-its-location) table bucket, through the `Locator` the `s3tables` feature claims: the catalog or a namespace - a description, no request - or the Iceberg table, at one `GetTableMetadataLocation` after the one `ListTableBuckets` per page a location stating neither the bucket's ARN nor its account pays (one `GetTable` for a table's ARN, read as the ARN rather than as the location it locates); more than a namespace and a table below the bucket is refused at `$.url` |
 
-`media_type` and `codec` are read here whatever the byte backend; a catalog, a namespace and a table declare neither. An identifier that names no location, and a scheme no backend of the build holds, are refused by name.
+`media_type` and `codec` are read here whatever the byte backend; a catalog, a namespace and a table declare neither. A location a claimed `Locator` names is asked before the identifier is lowered and answered as the object it names ([Registering](../warehouse/index.md#registering)); the local, ZIP, object-store and HTTP backends are `from_url`'s own arms. An identifier that names no location is refused by name, and so is a scheme no backend of the build holds and no locator claims, naming the crate to install.
 
 === "Rust"
 
@@ -97,11 +97,11 @@ holder.as_io() -> &dyn IOBase                  // the variant as the trait objec
 | `S3Folder`, `S3Path`, `S3File` | a prefix or container, an undecided location, one object on an [object store](#object-stores) | `holder.S3Folder`, `holder.S3Path`, `holder.S3File` |
 | `HttpSession`, `HttpRequest`, `HttpResponse`, `HttpStream` | a session over a base URL, the resource a URL names, one answer's body, a body left on the wire, over [HTTP](#http) | `http.Session`, `http.Request`, `http.Response`, `http.Stream` |
 | `ZipNode`, `ZipPath`, `ZipLeaf` | the archive root or a member prefix, an undecided member location, one member of a [ZIP archive](#zip) | Rust only |
-| `Catalog`, `Namespace`, `Table` | a [warehouse](../warehouse/index.md) object held as the handle it is - a catalog or a namespace a container whose `ls` yields its children as handles and whose byte verbs are refused, a table the rows its own handle holds; what `Holder::from_url` answers for a location in an [Amazon S3 Tables](../media/iceberg.md#a-table-by-its-location) table bucket | `warehouse.Catalog`, `warehouse.Namespace`, `warehouse.Table`; JavaScript `IOBase.from(object)` |
+| `Catalog`, `Namespace`, `Table` | a [warehouse](../warehouse/index.md) object held as the handle it is - a catalog or a namespace a container whose `ls` yields its children as handles and whose byte verbs are refused, a table the rows its own handle holds; what a claimed `Locator` answers in `Holder::from_url`, for a location in an [Amazon S3 Tables](../media/iceberg.md#a-table-by-its-location) table bucket | `warehouse.Catalog`, `warehouse.Namespace`, `warehouse.Table`; JavaScript `IOBase.from(object)` |
 | `Buffered` | any of the others behind the [page cache](#buffered) | `holder.Buffered` |
 | `Coded` | any of the others, presenting the decoded bytes of a content coding | `coding.Identity`, `Gzip`, `Zlib`, `Zstd` |
 | `Text` | any handle retained as plain-text records | `media.Text` |
-| `Media` | any handle retained behind its record encoding | `media.Ipc`, `media.Parquet`, `media.Avro` |
+| `Media` | any handle retained behind its record encoding, the medium the [register](../media/index.md#registering-a-medium) claims for its media type | `media.Ipc`, `media.Parquet`, `media.Avro` |
 | `Uri` | an identifier - `Uri`, `Url`, `Urn`, `Arn` through `Holder::from` - holding what it names, resolved through `Holder::from_url` on first use ([as a handle](../uri/index.md#as-a-handle)) | Rust only; `IOBase(uri)` answers the backend's own class |
 
 The last four own the `Holder` they wrap; `repr` renders that stack outermost first and `into_handle` descends one layer. `into_text`, `into_coded`, `buffered`, `into_media` and `into_declared_media` never stack. JavaScript has one `IOBase` class over the whole enum.
@@ -1226,7 +1226,7 @@ A handle works without `open`; opening moves materialization to a known point an
 | [`LocalFile`](#local) | descriptor and memory mapping |
 | [`Coded`](../media/compression.md) | the decoded value |
 | [IPC](../media/ipc.md) | schema and dimensions |
-| [Parquet](../media/parquet.md) | the footer |
+| [Parquet](../media/parquet.md) | the footer, which `IOMedia::as_any` answers as a `ParquetFooter` |
 | [Avro](../media/avro.md) | header and block metadata |
 | [Text](../media/text.md) | resolved field, coding plan, dimensions |
 
@@ -1685,7 +1685,7 @@ cargo bench --bench media --features parquet -- io_scalar
 
 ## Records
 
-One Arrow batch read and three explicit write intents on every handle. The handle's media type picks the encoding through `record_options()`; one [`RecordOptions`](../media/index.md#options) is the only settings argument - Rust requires it, Python takes keyword-only `options=` and each of its properties by keyword, JavaScript a trailing `options?` and a plain object of its properties ([settings by name](../media/index.md#settings-by-name)). A write completes its rows onto the field the resource already stores by the [declared-column rule](../types/cast.md): a required stored column refuses a value it cannot hold, a null or a missing column by name, and the resource is left as it was.
+One Arrow batch read and three explicit write intents on every handle. The handle's media type picks the encoding through `record_options()`, the medium the [register](../media/index.md#registering-a-medium) claims for it; one [`RecordOptions`](../media/index.md#options) is the only settings argument - Rust requires it, Python takes keyword-only `options=` and each of its properties by keyword, JavaScript a trailing `options?` and a plain object of its properties ([settings by name](../media/index.md#settings-by-name)). A write completes its rows onto the field the resource already stores by the [declared-column rule](../types/cast.md): a required stored column refuses a value it cannot hold, a null or a missing column by name, and the resource is left as it was.
 
 === "Rust"
 
@@ -2503,7 +2503,7 @@ A limit stops pulling, so the rows past it were never read and count nowhere. A 
 
 ### Absent and unknown
 
-An absent resource reads as no batches; an encoding this build does not implement is named, never guessed.
+An absent resource reads as no batches; an encoding no claim answers is named, with the crate to install, never guessed.
 
 === "Rust"
 
@@ -2519,10 +2519,11 @@ An absent resource reads as no batches; an encoding this build does not implemen
         0
     );
 
-    // An encoding this build does not implement is named rather than guessed.
+    // An encoding no claim answers is named rather than guessed.
     let orc = Buffer::new().with_media_type(MimeType::ORC.into());
     let message = orc.record_options().unwrap_err().to_string();
     assert!(message.contains("application/vnd.apache.orc"), "{message}");
+    assert!(message.contains("install the crate that claims it"), "{message}");
     ```
 
 === "Python"
@@ -2541,7 +2542,7 @@ An absent resource reads as no batches; an encoding this build does not implemen
     empty = IOBase(root / "absent.arrows")
     assert empty.read_arrow_reader().read_all().num_rows == 0
 
-    # An encoding this build does not implement is named rather than guessed.
+    # An encoding no claim answers is named rather than guessed.
     orc = IOBase(root / "trades.orc")
     with pytest.raises(ValueError, match="application/vnd.apache.orc"):
         orc.record_options()
@@ -2558,7 +2559,7 @@ An absent resource reads as no batches; an encoding this build does not implemen
     empty.mediaType = MimeType.ARROW_STREAM
     assert.equal([...empty.readArrowReader()].length, 0)
 
-    // An encoding this build does not implement is named rather than guessed.
+    // An encoding no claim answers is named rather than guessed.
     const orc = IOBase.fromBytes()
     orc.mediaType = MimeType.ORC
     assert.throws(() => orc.recordOptions(), /application\/vnd\.apache\.orc/)

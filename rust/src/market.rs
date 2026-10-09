@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use arrow_schema::DataType as ArrowDataType;
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::plugin::Register;
+use crate::plugin::{CORE, Register};
 use crate::serie::{UInt8Serie, UInt16Serie};
 use crate::{DataType, DataTypeId, DataTypeKind, Error, Field, Result, Scalar};
 
@@ -520,9 +520,6 @@ pub trait MarketValue:
 // The register: one claim per byte, per name and per extension name, read
 // by every intake door and by nothing that already holds a kind.
 // ------------------------------------------------------------------------
-
-/// What a crate names itself as when it claims its kinds.
-const CORE: &str = "yggdryl";
 
 static BY_NAME: Register<&'static str, &'static MarketDescriptor> = Register::new("market kind");
 static BY_EXTENSION: Register<&'static str, &'static MarketDescriptor> =

@@ -1742,7 +1742,8 @@ impl JsIOBase {
     /// Read one Parquet leaf's footer statistics without decoding rows.
     #[napi(js_name = "_readParquetStatisticsNative", skip_typescript)]
     pub fn read_parquet_statistics_native(&self) -> Result<serde_json::Value> {
-        let statistics = self.inner.read_parquet_statistics().map_err(napi_error)?;
+        let statistics =
+            yggdryl::parquet::read_media_statistics(&self.inner).map_err(napi_error)?;
         value_to_transport_for_field(&yggdryl::Scalar::from(statistics), None, DEFAULT_JS_DEPTH)
     }
 
@@ -1752,9 +1753,7 @@ impl JsIOBase {
         &self,
         column: String,
     ) -> Result<serde_json::Value> {
-        let statistics = self
-            .inner
-            .read_parquet_geospatial_statistics(&column)
+        let statistics = yggdryl::parquet::read_media_geospatial_statistics(&self.inner, &column)
             .map_err(napi_error)?;
         value_to_transport_for_field(&yggdryl::Scalar::from(statistics), None, DEFAULT_JS_DEPTH)
     }

@@ -7,9 +7,12 @@
 
 use napi::bindgen_prelude::{Buffer, Either, Null, Result};
 use napi_derive::napi;
+use yggdryl::avro::AvroOptions;
+use yggdryl::excel::ExcelOptions;
 use yggdryl::media::{
     DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions as CoreRecordOptions,
 };
+use yggdryl::parquet::ParquetOptions;
 use yggdryl::{IOMode, Level};
 
 use crate::enums::{
@@ -545,14 +548,18 @@ impl JsRecordOptions {
     /// first worksheet - or for another encoding.
     #[napi(getter)]
     pub fn sheet(&self) -> Option<String> {
-        self.inner.excel_sheet().map(ToOwned::to_owned)
+        self.inner
+            .settings::<ExcelOptions>()
+            .and_then(|options| options.sheet())
+            .map(ToOwned::to_owned)
     }
 
     /// Address the worksheet `sheet`, or the first worksheet for `null`.
     #[napi(setter)]
     pub fn set_sheet(&mut self, sheet: Option<String>) -> Result<()> {
         self.inner
-            .set_excel_sheet(sheet.as_deref())
+            .require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")
+            .and_then(|options| options.set_sheet(sheet.as_deref()))
             .map_err(napi_error)
     }
 
@@ -561,7 +568,8 @@ impl JsRecordOptions {
     #[napi(getter)]
     pub fn range(&self) -> Option<crate::excel::JsCellRange> {
         self.inner
-            .excel_range()
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::range)
             .map(|inner| crate::excel::JsCellRange { inner })
     }
 
@@ -569,7 +577,10 @@ impl JsRecordOptions {
     #[napi(setter)]
     pub fn set_range(&mut self, range: Option<crate::excel::CellRangeInput<'_>>) -> Result<()> {
         let range = range.map(crate::excel::cell_range_from).transpose()?;
-        self.inner.set_excel_range(range).map_err(napi_error)
+        self.inner
+            .require_settings_mut::<ExcelOptions>("$.range", "a cell range")
+            .map(|options| options.set_range(range))
+            .map_err(napi_error)
     }
 
     /// These options addressing the sheet `sheet`.
@@ -591,14 +602,17 @@ impl JsRecordOptions {
     /// The Avro block codec name, or `null` for another encoding.
     #[napi(getter)]
     pub fn block_codec(&self) -> Option<String> {
-        self.inner.avro_block_codec().map(ToOwned::to_owned)
+        self.inner
+            .settings::<AvroOptions>()
+            .map(|options| options.block_codec().to_owned())
     }
 
     /// Validate and set the Avro block codec name.
     #[napi(setter)]
     pub fn set_block_codec(&mut self, block_codec: String) -> Result<()> {
         self.inner
-            .set_avro_block_codec(&block_codec)
+            .require_settings_mut::<AvroOptions>("$.block_codec", "a block codec")
+            .and_then(|options| options.set_block_codec(&block_codec))
             .map_err(napi_error)
     }
 
@@ -606,7 +620,8 @@ impl JsRecordOptions {
     #[napi(getter)]
     pub fn sync_marker(&self) -> Option<Buffer> {
         self.inner
-            .avro_sync_marker()
+            .settings::<AvroOptions>()
+            .and_then(|options| options.sync_marker())
             .map(|marker| marker.to_vec().into())
     }
 
@@ -614,7 +629,8 @@ impl JsRecordOptions {
     #[napi(setter)]
     pub fn set_sync_marker(&mut self, marker: Option<Buffer>) -> Result<()> {
         self.inner
-            .set_avro_sync_marker(marker.as_deref())
+            .require_settings_mut::<AvroOptions>("$.sync_marker", "a synchronization marker")
+            .and_then(|options| options.set_sync_marker(marker.as_deref()))
             .map_err(napi_error)
     }
 
@@ -625,14 +641,17 @@ impl JsRecordOptions {
     /// handle instead.
     #[napi(getter)]
     pub fn compression(&self) -> Option<String> {
-        self.inner.parquet_compression_name()
+        self.inner
+            .settings::<ParquetOptions>()
+            .map(ParquetOptions::compression_name)
     }
 
     /// Set the page compression applied inside a Parquet file.
     #[napi(setter)]
     pub fn set_compression(&mut self, compression: String) -> Result<()> {
         self.inner
-            .set_parquet_compression_name(&compression)
+            .require_settings_mut::<ParquetOptions>("$.compression", "a page compression")
+            .and_then(|options| options.set_compression_name(&compression))
             .map_err(napi_error)
     }
 
@@ -640,15 +659,16 @@ impl JsRecordOptions {
     #[napi(getter)]
     pub fn max_row_group_size(&self) -> Option<u32> {
         self.inner
-            .parquet_max_row_group_size()
-            .and_then(|rows| u32::try_from(rows).ok())
+            .settings::<ParquetOptions>()
+            .and_then(|options| u32::try_from(options.max_row_group_size).ok())
     }
 
     /// Set the maximum rows per row group of a Parquet file.
     #[napi(setter)]
     pub fn set_max_row_group_size(&mut self, rows: u32) -> Result<()> {
         self.inner
-            .set_parquet_max_row_group_size(rows as usize)
+            .require_settings_mut::<ParquetOptions>("$.max_row_group_size", "a row-group size")
+            .map(|options| options.set_max_row_group_size(rows as usize))
             .map_err(napi_error)
     }
 
@@ -656,8 +676,8 @@ impl JsRecordOptions {
     #[napi(getter)]
     pub fn key_value_metadata(&self) -> Vec<MetadataEntry> {
         self.inner
-            .parquet_key_value_metadata()
-            .unwrap_or_default()
+            .settings::<ParquetOptions>()
+            .map_or(&[][..], |options| options.key_value_metadata.as_slice())
             .iter()
             .map(|(key, value)| MetadataEntry {
                 key: key.clone(),
@@ -816,7 +836,8 @@ impl JsRecordOptions {
         let mut options = self.clone();
         options
             .inner
-            .push_parquet_key_value(key, value)
+            .require_settings_mut::<ParquetOptions>("$.key_value_metadata", "footer metadata")
+            .map(|options| options.push_key_value(key, value))
             .map_err(napi_error)?;
         Ok(options)
     }

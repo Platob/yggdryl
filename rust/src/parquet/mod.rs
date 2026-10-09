@@ -15,6 +15,15 @@
 //! the casting, merging, and partition routing a caller sees belong to
 //! [`IOBase`]'s three record methods above them.
 //!
+//! The medium is [`PARQUET_CODEC`], claimed on the record register under
+//! `application/vnd.apache.parquet`: a Parquet handle is
+//! [`Media::Registered`] holding a [`Parquet`] over a [`Holder`], and its
+//! options are
+//! [`RecordOptions::registered`] over [`ParquetOptions`], read back with
+//! [`RecordOptions::settings`]. The footer statistics of any media that is one
+//! Parquet leaf read through [`read_media_statistics`] and
+//! [`read_media_geospatial_statistics`].
+//!
 //! Yggdryl field identifiers survive the round trip. A [`Field`] carrying
 //! `PARQUET:field_id` writes that id into the Parquet schema and reads it back,
 //! which is what lets a downstream Iceberg or Delta layer resolve columns by
@@ -98,7 +107,8 @@ use crate::arrow::arrow_schema_from_field;
 use crate::arrow::{
     BatchReader, Error, Result, field_from_arrow_schema, from_reader_error, projection_indices,
 };
-use crate::media::{IORecordOptions, RecordOptions};
+use crate::holder::Holder;
+use crate::media::{IORecordOptions, Media, RecordOptions};
 use crate::{Error as CoreError, Field};
 
 pub(crate) mod geospatial;
@@ -392,6 +402,103 @@ impl IORecordOptions for ParquetOptions {
     crate::record_options_fields!();
 }
 
+impl crate::media::MediumSettings for ParquetOptions {
+    fn medium() -> &'static dyn crate::media::MediaCodec {
+        &PARQUET_CODEC
+    }
+
+    fn file_threads(&self) -> Option<usize> {
+        self.threads
+    }
+
+    fn set_file_threads(&mut self, threads: usize) {
+        self.threads = Some(threads.max(1));
+    }
+}
+
+impl From<ParquetOptions> for RecordOptions {
+    fn from(value: ParquetOptions) -> Self {
+        Self::registered(value)
+    }
+}
+
+/// The Parquet medium as the record register holds it: the free functions of
+/// this module behind the one contract every record door reaches a leaf
+/// through.
+#[derive(Debug)]
+pub struct ParquetCodec;
+
+/// The one [`ParquetCodec`], claimed under `application/vnd.apache.parquet`.
+pub static PARQUET_CODEC: ParquetCodec = ParquetCodec;
+
+/// The MIME types the Parquet medium answers.
+static PARQUET_TYPES: [crate::MimeType; 1] = [crate::MimeType::PARQUET];
+
+impl crate::media::MediaCodec for ParquetCodec {
+    fn name(&self) -> &'static str {
+        "parquet"
+    }
+
+    fn title(&self) -> &'static str {
+        "Parquet"
+    }
+
+    fn rank(&self) -> u8 {
+        1
+    }
+
+    fn mime_types(&self) -> &'static [crate::MimeType] {
+        &PARQUET_TYPES
+    }
+
+    fn default_options(&self, _base: &crate::MimeType) -> RecordOptions {
+        RecordOptions::registered(ParquetOptions::new())
+    }
+
+    fn compresses_internally(&self) -> bool {
+        true
+    }
+
+    fn read_batch_reader(
+        &self,
+        handle: &dyn IOBase,
+        declared: Option<&Field>,
+        options: &RecordOptions,
+    ) -> crate::Result<BatchReader> {
+        let parquet = options.require_settings::<ParquetOptions>()?;
+        Ok(read_batch_reader(handle, declared, parquet)?)
+    }
+
+    fn row_size(&self, handle: &dyn IOBase, options: &RecordOptions) -> crate::Result<u64> {
+        row_size(handle, options.require_settings::<ParquetOptions>()?)
+    }
+
+    fn read_field(&self, handle: &dyn IOBase, options: &RecordOptions) -> crate::Result<Field> {
+        let parquet = options.require_settings::<ParquetOptions>()?;
+        // The Parquet reader lands its rows under a root stating no
+        // metadata - neither the file's key-value pairs nor the root's own
+        // the Arrow schema message carries - so the schema answers that
+        // same root, and a schema read and the rows never disagree.
+        let mut field = read_field(handle, parquet)?;
+        field.clear_metadata();
+        Ok(field)
+    }
+
+    fn overwrite_arrow_reader(
+        &self,
+        handle: &mut dyn IOBase,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> crate::Result<()> {
+        let parquet = options.require_settings::<ParquetOptions>()?;
+        Ok(overwrite_arrow_reader(handle, batches, parquet)?)
+    }
+
+    fn open(&self, handle: Holder) -> Media {
+        Media::Registered(Box::new(Parquet::new(handle)))
+    }
+}
+
 /// Reject a handle whose media type declares a content coding.
 ///
 /// Parquet compresses internally, so an outer coding would produce a file no
@@ -506,12 +613,17 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     field: Option<&Field>,
     options: &ParquetOptions,
 ) -> Result<BatchReader> {
-    read_batch_reader_with(
-        handle,
-        field,
-        options,
-        crate::IOMedia::parquet_footer(handle),
-    )
+    read_batch_reader_with(handle, field, options, held_footer(handle))
+}
+
+/// The decoded footer `handle` already holds for the Parquet file it is: an
+/// opened [`Parquet`]'s, asked through
+/// [`IOMedia::as_any`](crate::IOMedia::as_any) as its [`ParquetFooter`];
+/// every other handle's, and a closed one's, `None`.
+fn held_footer<H: IOBase + ?Sized>(handle: &H) -> Option<Arc<ParquetMetaData>> {
+    crate::IOMedia::as_any(handle)
+        .and_then(|any| any.downcast_ref::<ParquetFooter>())
+        .and_then(ParquetFooter::footer)
 }
 
 /// [`read_batch_reader`] over `footer`, the file's decoded footer when the
@@ -581,7 +693,7 @@ pub(crate) fn read_batch_reader_with<H: IOBase + ?Sized>(
         }
         None => builder,
     };
-    Ok(Box::new(builder.build()?))
+    Ok(Box::new(builder.build().map_err(Error::external)?))
 }
 
 /// Replace the file `handle` holds with every batch `batches` yields.
@@ -639,8 +751,9 @@ where
         writer_options = writer_options.with_parquet_schema(descriptor);
     }
     let (mut file, columns) =
-        ArrowWriter::try_new_with_options(&mut encoded, Arc::clone(&schema), writer_options)?
-            .into_serialized_writer()?;
+        ArrowWriter::try_new_with_options(&mut encoded, Arc::clone(&schema), writer_options)
+            .and_then(ArrowWriter::into_serialized_writer)
+            .map_err(Error::external)?;
     let group_rows = options.max_row_group_size.max(1);
     let threads = options.column_threads();
     let mut group: Option<RowGroupEncoder> = None;
@@ -709,7 +822,7 @@ where
     if let Some(encoder) = group.take() {
         encoder.close(&mut file, &schema)?;
     }
-    let metadata = file.close()?;
+    let metadata = file.close().map_err(Error::external)?;
     handle.write_all_bytes(&encoded)?;
     Ok((metadata, encoded.len() as u64))
 }
@@ -764,7 +877,9 @@ impl RowGroupEncoder {
         threads: usize,
         buffer: usize,
     ) -> Result<Self> {
-        let writers = columns.create_column_writers(file.flushed_row_groups().len())?;
+        let writers = columns
+            .create_column_writers(file.flushed_row_groups().len())
+            .map_err(Error::external)?;
         let descriptor = file.schema_descr();
         let roots = descriptor.root_schema().get_fields().len();
         let mut leaves = vec![0; roots];
@@ -883,10 +998,9 @@ impl RowGroupEncoder {
         match failure.into_inner() {
             Ok(None) => Ok(()),
             Ok(Some(error)) => Err(error),
-            Err(_) => Err(parquet::errors::ParquetError::General(
+            Err(_) => Err(Error::external(parquet::errors::ParquetError::General(
                 "expected every column encoder to finish, got a poisoned failure".to_owned(),
-            )
-            .into()),
+            ))),
         }
     }
 
@@ -897,11 +1011,14 @@ impl RowGroupEncoder {
         schema: &Schema,
     ) -> Result<()> {
         self.feed(schema)?;
-        let mut row_group = file.next_row_group()?;
+        let mut row_group = file.next_row_group().map_err(Error::external)?;
         for writer in self.writers {
-            writer.close()?.append_to_row_group(&mut row_group)?;
+            writer
+                .close()
+                .and_then(|chunk| chunk.append_to_row_group(&mut row_group))
+                .map_err(Error::external)?;
         }
-        row_group.close()?;
+        row_group.close().map_err(Error::external)?;
         Ok(())
     }
 }
@@ -926,18 +1043,19 @@ fn write_root(
     column: &arrow_array::ArrayRef,
     writers: &mut [ArrowColumnWriter],
 ) -> Result<()> {
-    let leaves = compute_leaves(field.as_ref(), column)?;
+    let leaves = compute_leaves(field.as_ref(), column).map_err(Error::external)?;
     if leaves.len() != writers.len() {
-        return Err(parquet::errors::ParquetError::General(format!(
-            "expected {} leaf columns under {:?}, got {}",
-            writers.len(),
-            field.name(),
-            leaves.len()
-        ))
-        .into());
+        return Err(Error::external(parquet::errors::ParquetError::General(
+            format!(
+                "expected {} leaf columns under {:?}, got {}",
+                writers.len(),
+                field.name(),
+                leaves.len()
+            ),
+        )));
     }
     for (leaf, writer) in leaves.iter().zip(writers) {
-        writer.write(leaf)?;
+        writer.write(leaf).map_err(Error::external)?;
     }
     Ok(())
 }
@@ -954,6 +1072,84 @@ pub fn read_statistics<H: IOBase + ?Sized>(handle: &H) -> Result<FileStatistics>
     Ok(FileStatistics::from_metadata(
         load_metadata(handle)?.as_ref(),
     ))
+}
+
+/// Read the footer statistics of the Parquet leaf `media` is, decoding no
+/// row.
+///
+/// A [`Parquet`] wrapper answers as its own [`Parquet::read_statistics`]
+/// does, asking the store nothing of what it is: an opened one from the
+/// footer its `open` read, refilled from one footer read where a publication
+/// cleared it, a closed one from one fresh footer read. Any other media's
+/// record options name its encoding first, so an Arrow IPC, Avro, text or
+/// container handle is refused with a typed record error rather than its
+/// bytes parsed as a footer, and a Parquet leaf is [`read_statistics`].
+///
+/// # Errors
+///
+/// Returns [`crate::Error::InvalidRecord`] at `$.encoding` for media of
+/// another encoding and at `$` for a container, or a footer or
+/// positional-read failure.
+pub fn read_media_statistics(media: &dyn crate::IOMedia) -> crate::Result<FileStatistics> {
+    if let Some(footer) = footer_of(media) {
+        let handle = crate::IOMedia::as_io_base(media);
+        return match footer.metadata(handle)? {
+            Some(metadata) => Ok(FileStatistics::from_metadata(metadata.as_ref())),
+            None => Ok(read_statistics(handle)?),
+        };
+    }
+    Ok(read_statistics(parquet_leaf(media)?)?)
+}
+
+/// The session state of the [`Parquet`] wrapper `media` is, if it is one.
+fn footer_of(media: &dyn crate::IOMedia) -> Option<&ParquetFooter> {
+    crate::IOMedia::as_any(media).and_then(|any| any.downcast_ref::<ParquetFooter>())
+}
+
+/// Recompute one geospatial column's statistics of the Parquet leaf `media`
+/// is from its stored WKB.
+///
+/// Unlike [`read_media_statistics`], this is a projected column scan: it
+/// decodes only the named top-level binary column and folds its geometries
+/// without materializing them, as [`read_geospatial_statistics`] does.
+///
+/// # Errors
+///
+/// Returns [`crate::Error::InvalidRecord`] at `$.encoding` for media of
+/// another encoding and at `$` for a container, a read failure, an unknown
+/// or non-binary column, or malformed WKB.
+pub fn read_media_geospatial_statistics(
+    media: &dyn crate::IOMedia,
+    column: &str,
+) -> crate::Result<GeospatialStatistics> {
+    // A Parquet wrapper is the leaf it wraps, asked nothing of what it is.
+    let handle = if footer_of(media).is_some() {
+        crate::IOMedia::as_io_base(media)
+    } else {
+        parquet_leaf(media)?
+    };
+    Ok(read_geospatial_statistics(handle, column)?)
+}
+
+/// Resolve one media value as a Parquet leaf before a footer or column read.
+fn parquet_leaf(media: &dyn crate::IOMedia) -> crate::Result<&dyn IOBase> {
+    let mime_type = crate::IOMedia::record_options(media)?.mime_type();
+    if mime_type != crate::MimeType::PARQUET {
+        return Err(CoreError::InvalidRecord {
+            path: smol_str::SmolStr::new_static("$.encoding"),
+            reason: smol_str::format_smolstr!("expected Parquet media, got {mime_type}"),
+        });
+    }
+    let handle = crate::IOMedia::as_io_base(media);
+    if handle.is_container() {
+        return Err(CoreError::InvalidRecord {
+            path: smol_str::SmolStr::new_static("$"),
+            reason: smol_str::SmolStr::new_static(
+                "expected one Parquet leaf for file statistics, got a container",
+            ),
+        });
+    }
+    Ok(handle)
 }
 
 /// Return the whole file's logical row count from its footer.
@@ -1016,17 +1212,18 @@ fn read_footer<H: IOBase + ?Sized>(handle: &H) -> Result<(Option<Arc<ParquetMeta
         return Ok((None, 0));
     }
     let footer = match closing(size, &end)? {
-        Closing::Held(footer) => ParquetMetaDataReader::decode_metadata(footer)?,
+        Closing::Held(footer) => {
+            ParquetMetaDataReader::decode_metadata(footer).map_err(Error::external)?
+        }
         Closing::At { start, length } => {
             let footer = handle.read_range_bytes(start, length)?;
             if footer.len() != length {
-                return Err(ParquetError::EOF(format!(
+                return Err(Error::external(ParquetError::EOF(format!(
                     "expected {length} Parquet footer bytes, got {} bytes",
                     footer.len()
-                ))
-                .into());
+                ))));
             }
-            ParquetMetaDataReader::decode_metadata(&footer)?
+            ParquetMetaDataReader::decode_metadata(&footer).map_err(Error::external)?
         }
     };
     Ok((Some(Arc::new(footer)), size))
@@ -1035,10 +1232,9 @@ fn read_footer<H: IOBase + ?Sized>(handle: &H) -> Result<(Option<Arc<ParquetMeta
 /// The refusal of a file whose last bytes cannot hold the footer length and
 /// the closing magic.
 fn short_tail(bytes: u64) -> Error {
-    parquet::errors::ParquetError::EOF(format!(
+    Error::external(parquet::errors::ParquetError::EOF(format!(
         "expected an eight-byte Parquet footer tail, got {bytes} bytes"
-    ))
-    .into()
+    )))
 }
 
 /// Recover the embedded Arrow schema from a footer already in hand.
@@ -1055,17 +1251,19 @@ pub(crate) fn schema_from_metadata(metadata: Arc<ParquetMetaData>) -> Result<Arc
 /// *foreign* file: the annotation is what says the two binaries are one
 /// variant, and reading it is what makes the column import as one.
 fn reader_metadata(metadata: Arc<ParquetMetaData>) -> Result<ArrowReaderMetadata> {
-    let read = ArrowReaderMetadata::try_new(Arc::clone(&metadata), ArrowReaderOptions::new())?;
+    let read = ArrowReaderMetadata::try_new(Arc::clone(&metadata), ArrowReaderOptions::new())
+        .map_err(Error::external)?;
     let Some(schema) = geospatial::annotated_schema(
         metadata.file_metadata().schema_descr(),
         read.schema().as_ref(),
     ) else {
         return Ok(read);
     };
-    Ok(ArrowReaderMetadata::try_new(
+    ArrowReaderMetadata::try_new(
         metadata,
         ArrowReaderOptions::new().with_schema(Arc::new(schema)),
-    )?)
+    )
+    .map_err(Error::external)
 }
 
 /// The bytes one read decodes, the footer they end in, and the row groups it
@@ -1616,7 +1814,9 @@ fn open_footer<H: IOBase + ?Sized>(
                     } else {
                         Bytes::from(handle.read_all_bytes()?)
                     };
-                    let metadata = ParquetMetaDataReader::new().parse_and_finish(&bytes)?;
+                    let metadata = ParquetMetaDataReader::new()
+                        .parse_and_finish(&bytes)
+                        .map_err(Error::external)?;
                     (Arc::new(metadata), FetchedRanges::whole(bytes), None)
                 }
             }
@@ -1674,10 +1874,9 @@ fn closing(size: u64, end: &[u8]) -> Result<Closing<'_>> {
     };
     let closing = &end[at..];
     if &closing[4..] != b"PAR1" {
-        return Err(ParquetError::General(
+        return Err(Error::external(ParquetError::General(
             "expected Parquet magic at the end of the file".to_owned(),
-        )
-        .into());
+        )));
     }
     let length = u64::from(u32::from_le_bytes([
         closing[0], closing[1], closing[2], closing[3],
@@ -1685,12 +1884,12 @@ fn closing(size: u64, end: &[u8]) -> Result<Closing<'_>> {
     let start = (size.saturating_sub(FOOTER_TAIL as u64))
         .checked_sub(length)
         .ok_or_else(|| {
-            Error::from(ParquetError::EOF(format!(
+            Error::external(ParquetError::EOF(format!(
                 "footer declares {length} metadata bytes in a {size}-byte file"
             )))
         })?;
     let length = usize::try_from(length).map_err(|_| {
-        Error::from(ParquetError::General(
+        Error::external(ParquetError::General(
             "Parquet footer length does not fit this address space".to_owned(),
         ))
     })?;
@@ -1703,7 +1902,7 @@ fn closing(size: u64, end: &[u8]) -> Result<Closing<'_>> {
         .and_then(|from| end.get(from..at))
         .map(Closing::Held)
         .ok_or_else(|| {
-            Error::from(ParquetError::EOF(format!(
+            Error::external(ParquetError::EOF(format!(
                 "expected {length} Parquet footer bytes, got {} bytes",
                 end.len()
             )))
@@ -1867,7 +2066,8 @@ impl ParallelRead {
             .with_batch_size(batch_rows)
             .with_projection(ProjectionMask::roots(parquet_schema, roots.iter().copied()))
             .build()
-            .map(|reader| arrow_array::RecordBatchReader::schema(&reader))?;
+            .map(|reader| arrow_array::RecordBatchReader::schema(&reader))
+            .map_err(Error::external)?;
         let mut sorted = roots;
         sorted.sort_unstable();
         let layout = sorted
@@ -1925,7 +2125,8 @@ impl ParallelRead {
                     self.source.metadata.parquet_schema(),
                     members.iter().copied(),
                 ))
-                .build()?;
+                .build()
+                .map_err(Error::external)?;
             let (sender, receiver) = std::sync::mpsc::sync_channel(READ_AHEAD_BATCHES);
             // Deliberately detached: see the type docs for why drop does not join.
             let _ = std::thread::spawn(move || decode_unit(reader, &sender));
@@ -2040,18 +2241,15 @@ impl arrow_array::RecordBatchReader for ParallelRead {
     }
 }
 
-/// An Apache Parquet file bound to one [`IOBase`] handle.
+/// What a [`Parquet`] session holds of its file: whether it is open, and the
+/// footer and length its `open` read.
 ///
-/// Every read and write goes through this type, so the handle, the options,
-/// and the cached footer live in one place instead of being repeated at each
-/// call. [`IOBase::open`] materializes the handle and caches the footer and
-/// the file's length, read together by one [`IOBase::read_tail_bytes`], so
-/// repeated schema or statistics reads do not re-parse it and a record read
-/// fetches only the column chunks it keeps; [`IOBase::close`] releases both.
+/// The object an opened wrapper answers
+/// [`IOMedia::as_any`](crate::IOMedia::as_any) with, so a record read of a
+/// handle known only as `&dyn IOBase` finds the footer it already holds:
+/// `Parquet<H>` names its handle's type and cannot be downcast to, this can.
 #[derive(Debug)]
-pub struct Parquet<H: IOBase> {
-    handle: H,
-    options: ParquetOptions,
+pub struct ParquetFooter {
     /// Explicit lifecycle state. An opened empty file has no footer, so cache
     /// presence cannot truthfully answer whether the wrapper is open.
     opened: bool,
@@ -2061,6 +2259,72 @@ pub struct Parquet<H: IOBase> {
     /// The footer and the length of the file it closes; `Some((None, 0))` is
     /// the stable opened-session answer for an empty handle.
     cached: OnceLock<(Option<Arc<ParquetMetaData>>, u64)>,
+}
+
+impl ParquetFooter {
+    /// A closed session, holding nothing.
+    const fn new() -> Self {
+        Self {
+            opened: false,
+            container: false,
+            cached: OnceLock::new(),
+        }
+    }
+
+    /// Whether this session caches what it reads: an opened leaf's does, a
+    /// closed handle's and a container's never do.
+    const fn caches(&self) -> bool {
+        self.opened && !self.container
+    }
+
+    /// The decoded footer the opened session holds, which a record read then
+    /// reads no byte of the file's end for; a closed wrapper's, a
+    /// container's and an empty file's none.
+    #[must_use]
+    pub fn footer(&self) -> Option<Arc<ParquetMetaData>> {
+        if !self.caches() {
+            return None;
+        }
+        self.cached.get().and_then(|(footer, _)| footer.clone())
+    }
+
+    /// The footer of the file `handle` holds, as the session reads it: the
+    /// opened session's cache, refilled from one footer read where a
+    /// publication cleared it; a closed or container session's one fresh
+    /// uncached read.
+    fn metadata(&self, handle: &dyn IOBase) -> Result<Option<Arc<ParquetMetaData>>> {
+        if !self.caches() {
+            return Ok(read_footer(handle)?.0);
+        }
+        if let Some((cached, _)) = self.cached.get() {
+            return Ok(cached.clone());
+        }
+        let loaded = read_footer(handle)?;
+        // Concurrent immutable asks may race to refill an invalidated cache;
+        // whichever answer wins defines this opened session consistently.
+        let _ = self.cached.set(loaded.clone());
+        Ok(self
+            .cached
+            .get()
+            .map_or(loaded.0, |(cached, _)| cached.clone()))
+    }
+}
+
+/// An Apache Parquet file bound to one [`IOBase`] handle.
+///
+/// Every read and write goes through this type, so the handle, the options,
+/// and the cached footer live in one place instead of being repeated at each
+/// call. [`IOBase::open`] materializes the handle and caches the footer and
+/// the file's length, read together by one [`IOBase::read_tail_bytes`], so
+/// repeated schema or statistics reads do not re-parse it and a record read
+/// fetches only the column chunks it keeps; [`IOBase::close`] releases both.
+/// The session's state is its [`ParquetFooter`].
+#[derive(Debug)]
+pub struct Parquet<H: IOBase> {
+    handle: H,
+    options: ParquetOptions,
+    /// The open state, and the footer the opened session cached.
+    footer: ParquetFooter,
     /// The schema conversion is also metadata-only, but materially more
     /// expensive than returning its result. Cache the derived width only for
     /// the explicitly opened session, under the same invalidation rules as
@@ -2074,9 +2338,7 @@ impl<H: IOBase> Parquet<H> {
         Self {
             handle,
             options: ParquetOptions::new(),
-            opened: false,
-            container: false,
-            cached: OnceLock::new(),
+            footer: ParquetFooter::new(),
             cached_column_size: OnceLock::new(),
         }
     }
@@ -2138,7 +2400,7 @@ impl<H: IOBase> Parquet<H> {
     /// Discard footer metadata after an in-place mutation while retaining the
     /// explicit open state. The next metadata ask repopulates an open cache.
     fn invalidate_metadata(&mut self) {
-        self.cached.take();
+        self.footer.cached.take();
         self.cached_column_size.take();
     }
 
@@ -2146,20 +2408,20 @@ impl<H: IOBase> Parquet<H> {
     /// every dimension ask with no call - and which a container's session
     /// never holds.
     fn warm(&self) -> bool {
-        self.caches() && self.cached.get().is_some()
+        self.caches() && self.footer.cached.get().is_some()
     }
 
     /// Whether this session caches what it reads: an opened leaf's does, a
     /// closed handle's and a container's never do.
     const fn caches(&self) -> bool {
-        self.opened && !self.container
+        self.footer.caches()
     }
 
     /// Whether a dimension ask goes to the leaves: a container, known from
     /// `open` in a session and asked of the handle otherwise.
     fn reads_leaves(&self) -> bool {
-        if self.opened {
-            self.container
+        if self.footer.opened {
+            self.footer.container
         } else {
             self.handle.is_container()
         }
@@ -2167,20 +2429,7 @@ impl<H: IOBase> Parquet<H> {
 
     /// Return opened-session footer metadata, or a fresh uncached closed read.
     fn metadata(&self) -> Result<Option<Arc<ParquetMetaData>>> {
-        if !self.caches() {
-            return Ok(read_footer(&self.handle)?.0);
-        }
-        if let Some((cached, _)) = self.cached.get() {
-            return Ok(cached.clone());
-        }
-        let loaded = read_footer(&self.handle)?;
-        // Concurrent immutable asks may race to refill an invalidated cache;
-        // whichever answer wins defines this opened session consistently.
-        let _ = self.cached.set(loaded.clone());
-        Ok(self
-            .cached
-            .get()
-            .map_or(loaded.0, |(cached, _)| cached.clone()))
+        self.footer.metadata(&self.handle)
     }
 
     /// Refresh the footer after publication without implicitly opening a
@@ -2188,7 +2437,7 @@ impl<H: IOBase> Parquet<H> {
     fn refresh_metadata(&mut self) -> crate::Result<()> {
         self.invalidate_metadata();
         if self.caches() {
-            let _ = self.cached.set(read_footer(&self.handle)?);
+            let _ = self.footer.cached.set(read_footer(&self.handle)?);
         }
         Ok(())
     }
@@ -2200,7 +2449,7 @@ impl<H: IOBase> Parquet<H> {
         if self.caches()
             && let Ok(loaded) = read_footer(&self.handle)
         {
-            let _ = self.cached.set(loaded);
+            let _ = self.footer.cached.set(loaded);
         }
     }
 
@@ -2210,13 +2459,12 @@ impl<H: IOBase> Parquet<H> {
         &self,
         options: &'a RecordOptions,
     ) -> crate::Result<&'a ParquetOptions> {
-        match options {
-            RecordOptions::Parquet(options) => Ok(options),
-            _ => Err(crate::Error::InvalidRecord {
+        options
+            .settings::<ParquetOptions>()
+            .ok_or_else(|| crate::Error::InvalidRecord {
                 path: smol_str::SmolStr::new_static("$.encoding"),
                 reason: crate::text::expected_got("Parquet record options", options.mime_type()),
-            }),
-        }
+            })
     }
 
     /// Read the file's Arrow schema without decoding any rows.
@@ -2319,7 +2567,7 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
     /// Return this wrapper's Parquet options even when the wrapped byte handle
     /// has no informative media type of its own.
     fn record_options(&self) -> crate::Result<RecordOptions> {
-        Ok(RecordOptions::Parquet(self.options.clone()))
+        Ok(RecordOptions::from(self.options.clone()))
     }
 
     fn read_arrow_field(&self, options: &RecordOptions) -> crate::Result<Field> {
@@ -2334,25 +2582,10 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
         Ok(field_from_arrow_schema(options.name(), schema.as_ref())?)
     }
 
-    fn read_parquet_statistics(&self) -> crate::Result<FileStatistics> {
-        Ok(self.read_statistics()?)
-    }
-
-    fn read_parquet_geospatial_statistics(
-        &self,
-        column: &str,
-    ) -> crate::Result<GeospatialStatistics> {
-        Ok(self.read_geospatial_statistics(column)?)
-    }
-
-    /// The footer the opened session holds, which the record read then reads
-    /// no byte of the file's end for; a closed wrapper's, a container's and
-    /// an empty file's none.
-    fn parquet_footer(&self) -> Option<Arc<ParquetMetaData>> {
-        if !self.caches() {
-            return None;
-        }
-        self.cached.get().and_then(|(footer, _)| footer.clone())
+    /// The session's [`ParquetFooter`], which a record read of this wrapper
+    /// asks for the footer it then reads no byte of the file's end for.
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(&self.footer)
     }
 
     fn overwrite_serie(
@@ -2429,7 +2662,7 @@ impl<H: IOBase> IOBase for Parquet<H> {
     /// The length the opened session read with its footer, asked of nothing;
     /// the handle's otherwise.
     fn size(&self) -> u64 {
-        match self.cached.get() {
+        match self.footer.cached.get() {
             Some((_, size)) if self.caches() => *size,
             _ => self.handle.size(),
         }
@@ -2464,30 +2697,30 @@ impl<H: IOBase> IOBase for Parquet<H> {
 
     /// Materialize the handle and cache the footer.
     fn open(&mut self) -> crate::Result<()> {
-        if self.opened {
+        if self.footer.opened {
             return Ok(());
         }
         self.handle.open()?;
         self.invalidate_metadata();
         // A container's leaves answer for it on every ask, so its session
         // caches nothing one leaf's footer would answer.
-        self.container = self.handle.is_container();
-        if !self.container {
-            let _ = self.cached.set(read_footer(&self.handle)?);
+        self.footer.container = self.handle.is_container();
+        if !self.footer.container {
+            let _ = self.footer.cached.set(read_footer(&self.handle)?);
         }
-        self.opened = true;
+        self.footer.opened = true;
         Ok(())
     }
 
     /// Return explicit lifecycle state, including for an empty file.
     fn opened(&self) -> bool {
-        self.opened
+        self.footer.opened
     }
 
     /// Flush the handle and drop the cached footer.
     fn close(&mut self) -> crate::Result<()> {
-        self.opened = false;
-        self.container = false;
+        self.footer.opened = false;
+        self.footer.container = false;
         self.invalidate_metadata();
         self.handle.close()
     }
@@ -2502,7 +2735,7 @@ impl<H: IOBase> IOBase for Parquet<H> {
         let result = self.handle.clear();
         if self.caches() {
             if result.is_ok() {
-                let _ = self.cached.set((None, 0));
+                let _ = self.footer.cached.set((None, 0));
             } else {
                 self.refresh_metadata_after_error();
             }
@@ -2515,15 +2748,27 @@ impl<H: IOBase> IOBase for Parquet<H> {
     /// A media handle removes what it wraps, not merely its own view: the
     /// resource behind the handle goes, and the footer cache goes with it.
     fn remove(&mut self, recursive: bool) -> crate::Result<()> {
-        self.opened = false;
+        self.footer.opened = false;
         self.invalidate_metadata();
         self.handle.remove(recursive)
     }
 }
 
-impl From<parquet::errors::ParquetError> for Error {
-    fn from(value: parquet::errors::ParquetError) -> Self {
-        Self::external(value)
+impl crate::media::MediaWrapper for Parquet<Holder> {
+    fn medium(&self) -> &'static dyn crate::media::MediaCodec {
+        &PARQUET_CODEC
+    }
+
+    fn handle(&self) -> &Holder {
+        &self.handle
+    }
+
+    fn into_handle(self: Box<Self>) -> Holder {
+        Parquet::into_handle(*self)
+    }
+
+    fn with_field(self: Box<Self>, field: Field) -> Box<dyn crate::media::MediaWrapper> {
+        Box::new(Parquet::with_field(*self, field))
     }
 }
 
@@ -2558,8 +2803,9 @@ pub mod internals {
     ) -> Result<ParquetRecordBatchReaderBuilder<Bytes>> {
         super::reject_outer_coding(handle)?;
         let bytes = Bytes::from(handle.read_all_bytes()?);
-        let metadata =
-            parquet::file::metadata::ParquetMetaDataReader::new().parse_and_finish(&bytes)?;
+        let metadata = parquet::file::metadata::ParquetMetaDataReader::new()
+            .parse_and_finish(&bytes)
+            .map_err(crate::arrow::Error::external)?;
         Ok(ParquetRecordBatchReaderBuilder::new_with_metadata(
             bytes,
             super::reader_metadata(std::sync::Arc::new(metadata))?,
@@ -2593,5 +2839,3 @@ pub mod internals {
         options
     }
 }
-
-crate::media_serie::media_serie!(ParquetSerie, Parquet, as_parquet, get_parquet_mut);

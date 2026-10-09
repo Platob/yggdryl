@@ -675,6 +675,12 @@ impl IORecordOptions for TextOptions {
     crate::record_options_fields!();
 }
 
+impl crate::media::MediumSettings for TextOptions {
+    fn medium() -> &'static dyn crate::media::MediaCodec {
+        &super::TEXT_CODEC
+    }
+}
+
 /// Compile a strip sequence whole, so one bad pattern installs none of it.
 fn compile_strips<I, S>(patterns: I, at: &'static str) -> Result<Vec<Expression>>
 where

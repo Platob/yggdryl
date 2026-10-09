@@ -507,19 +507,14 @@ pub trait MediaSerieValue<T: IOMedia + Send + 'static>: SerieValue {
     }
 }
 
-pub(crate) fn require_kind(options: &RecordOptions, kind: &str) -> Result<()> {
-    let accepted = match kind {
-        "Ipc" => matches!(options, RecordOptions::Ipc(_)),
-        #[cfg(feature = "parquet")]
-        "Parquet" | "IcebergTable" => matches!(options, RecordOptions::Parquet(_)),
-        "Avro" => matches!(options, RecordOptions::Avro(_)),
-        "Csv" => matches!(options, RecordOptions::Csv(_)),
-        "Text" => matches!(options, RecordOptions::Text(_)),
-        "Excel" => matches!(options, RecordOptions::Excel(_)),
-        "Xmla" => matches!(options, RecordOptions::Xmla(_)),
-        _ => true,
-    };
-    if accepted {
+/// Refuse options of a medium the `kind` leaf does not read: `accepts` the
+/// MIME types it reads, `None` every type.
+pub(crate) fn require_kind(
+    options: &RecordOptions,
+    kind: &str,
+    accepts: Option<&[crate::MimeType]>,
+) -> Result<()> {
+    if accepts.is_none_or(|types| types.contains(&options.mime_type())) {
         return Ok(());
     }
     Err(crate::Error::InvalidRecord {
@@ -533,7 +528,7 @@ pub(crate) fn require_kind(options: &RecordOptions, kind: &str) -> Result<()> {
 
 /// Define the media's leaf in its own module; defaults have one owner here.
 macro_rules! media_serie {
-    ($name:ident, $variant:ident, $access:ident, $access_mut:ident $(, $read:path)?) => {
+    ($name:ident, $variant:ident, $access:ident, $access_mut:ident, accepts = $accepts:expr) => {
         /// A lazy series over this medium, reading under the medium's own
         /// options and the clauses its verbs state.
         #[derive(Clone, Debug)]
@@ -557,8 +552,7 @@ macro_rules! media_serie {
             fn from_media_state(state: $crate::MediaSerieState<Box<dyn $crate::IOBase>>) -> $crate::Result<Self> {
                 state.bound(<Self as $crate::MediaSerieValue<Box<dyn $crate::IOBase>>>::read_native, <Self as $crate::MediaSerieValue<Box<dyn $crate::IOBase>>>::require_media_options).map(|state| Self { state })
             }
-            fn require_media_options(options: &$crate::media::RecordOptions) -> $crate::Result<()> { $crate::media_serie::require_kind(options, stringify!($variant)) }
-            $(fn read_native(media: &Box<dyn $crate::IOBase>, options: &$crate::media::RecordOptions) -> $crate::Result<$crate::Serie> { $read(media.as_ref(), options) })?
+            fn require_media_options(options: &$crate::media::RecordOptions) -> $crate::Result<()> { $crate::media_serie::require_kind(options, stringify!($variant), $accepts) }
         }
         $crate::serie::serie_leaf!($name);
         impl From<$name> for $crate::Serie {
@@ -600,15 +594,9 @@ impl Serie {
     pub(crate) fn media_state(&self) -> Option<&MediaSerieState<Box<dyn crate::IOBase>>> {
         match self {
             Self::Ipc(value) => Some(value.media_state()),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(value) => Some(value.media_state()),
-            Self::Avro(value) => Some(value.media_state()),
             Self::Csv(value) => Some(value.media_state()),
             Self::Text(value) => Some(value.media_state()),
-            Self::Excel(value) => Some(value.media_state()),
             Self::Xmla(value) => Some(value.media_state()),
-            #[cfg(feature = "iceberg")]
-            Self::IcebergTable(value) => Some(value.media_state()),
             Self::WarehouseTable(value) => Some(value.media_state()),
             #[cfg(feature = "http")]
             Self::Http(value) => Some(value.media_state()),
@@ -624,15 +612,9 @@ impl Serie {
     ) -> Result<()> {
         match self {
             Self::Ipc(value) => Arc::make_mut(value).splice(range, rows),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(value) => Arc::make_mut(value).splice(range, rows),
-            Self::Avro(value) => Arc::make_mut(value).splice(range, rows),
             Self::Csv(value) => Arc::make_mut(value).splice(range, rows),
             Self::Text(value) => Arc::make_mut(value).splice(range, rows),
-            Self::Excel(value) => Arc::make_mut(value).splice(range, rows),
             Self::Xmla(value) => Arc::make_mut(value).splice(range, rows),
-            #[cfg(feature = "iceberg")]
-            Self::IcebergTable(value) => Arc::make_mut(value).splice(range, rows),
             Self::WarehouseTable(value) => Arc::make_mut(value).splice(range, rows),
             #[cfg(feature = "http")]
             Self::Http(value) => Arc::make_mut(value).splice(range, rows),

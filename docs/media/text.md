@@ -8,7 +8,7 @@ StreamSerie cut from text: one record per line, or per framed chain under `frami
 | --- | --- |
 | Declared by | `text/plain`, `.txt`, `.log` |
 | Build | default |
-| Rust | `yggdryl::text`: `Text<H>` over any handle with `TextOptions`, `read_text_lines` and the `TextLine` it yields, and `into_arrow_batch`, `into_arrow_reader`, `from_arrow_batch`, `from_arrow_reader` between lines and Arrow |
+| Rust | `yggdryl::text`: `Text<H>` over any handle with `TextOptions`, `TEXT_CODEC`, the medium's [codec](index.md#registering-a-medium), `read_text_lines` and the `TextLine` it yields, and `into_arrow_batch`, `into_arrow_reader`, `from_arrow_batch`, `from_arrow_reader` between lines and Arrow |
 | Python | any `IOBase` whose name declares text, `into_text(options)`, `read_text_lines`, `TextOptions`, `TextLine` |
 | JavaScript | any `IOBase` whose name declares text, `intoText(options)`, `readTextLines`, `TextOptions`, `TextLine` |
 | Settings | `TextOptions`: `rowheader`, `framing`, `leading_fragment`, `max_record_byte_size`, `lstrip`, `rstrip`, `linesep`, `autotype`, `timezone`, `start_rownum`, `parse_mtime` and `rename_columns`, and the Rust-only `parse_mimetype` and `dedup_adjacent`, beside the shared batch, row and plan sections |

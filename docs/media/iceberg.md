@@ -8,7 +8,7 @@ Apache Iceberg tables in a folder: `metadata/` and `data/`, no catalog required,
 | --- | --- |
 | Declared by | a table folder - `metadata/` and `data/` beneath it |
 | Build | the `iceberg` feature, which implies `parquet` |
-| Rust | `yggdryl::iceberg`: `IcebergTable` (`create`, `open`, `open_or_create`, and by location alone `from_url`, `create_from_url`, `open_or_create_from_url`, `scan`, `scan_matching`, `plan_matching`, `commit_append`, `commit_overwrite`, `commit_merge`, `update_schema`, `compact`), `PartitionSpec`, `PartitionField`, `Transform`, `SortOrder`, `SchemaUpdate`, `IcebergOptions`; `IcebergCatalog` and `IcebergNamespace`, the [warehouse](../warehouse/index.md) implementations over a folder of namespaces of tables, `IcebergTable` the `Table` they answer |
+| Rust | `yggdryl::iceberg`: `IcebergTable` (`create`, `open`, `open_or_create`, and by location alone `from_url`, `create_from_url`, `open_or_create_from_url`, `scan`, `scan_matching`, `plan_matching`, `commit_append`, `commit_overwrite`, `commit_merge`, `update_schema`, `compact`), `PartitionSpec`, `PartitionField`, `Transform`, `SortOrder`, `SchemaUpdate`, `IcebergOptions`; `IcebergCatalog` and `IcebergNamespace`, the [warehouse](../warehouse/index.md) implementations over a folder of namespaces of tables, `IcebergTable` the `Table` they answer; `ICEBERG_FORMAT` the [table format](#registering-a-table-format) and `HADOOP_FACTORY` the catalog factory the core claims |
 | Python | `yggdryl.iceberg`: `IcebergTable` (`create`, `open_or_create`, the constructor `IcebergTable(root, **properties)` that opens one - `root` a container handle or the table's location - `scan`, `scan_matching`, `plan_matching`, `append`, `overwrite`, `merge`, `update_schema`, `compact`), `PartitionSpec`, `SchemaUpdate`, `IcebergOptions`; `IcebergCatalog`, `IcebergNamespace` and `IcebergTable` the `Catalog`, `Namespace` and `Table` subclasses a warehouse folder answers |
 | JavaScript | `iceberg`: `IcebergTable` (`create`, `open`, `openOrCreate` - `root` a container handle or the table's location, `properties` beside a location - `scan`, `scanMatching`, `planMatching`, `append`, `overwrite`, `merge`, `updateSchema`, `compact`), `PartitionSpec`, `IcebergOptions`; `IcebergCatalog` and `IcebergNamespace` over a warehouse folder, `IcebergTable.from(table)` the Iceberg table a `warehouse.Table` holds |
 | Declarations kept | an Iceberg schema states a column's identifier, name, type, nullability and `doc` and nothing else, so the table keeps a derived column's term as `yggdryl.transform.<column>` ([Declared partitioning](#declared-partitioning-and-sort-order)) and the columns whose integers are bits as `yggdryl.representation.bits` ([Integers stated as bits](#integers-stated-as-bits)), each declared back on the schema wherever the metadata is read |
@@ -23,6 +23,49 @@ nullability. A list's or map's string carries no element id or element
 nullability, so its child is the grammar's nullable `item`. A v3 `variant` and a v3 `unknown` both read as [`variant`](../types/variant.md); only a table's schema declares a column `unknown`, which it keeps out of its data files and reads back as nulls. A v1 or v2 table refuses both.
 
 A column's description is its Iceberg `doc`, both ways: a schema written from a field states each column's `description` as that column's `doc`, at every depth, so a catalog over the table - a table bucket's console, Athena, Spark - shows what the field says it holds; a schema read states the `doc` back as the description, a line break or any other control character another writer left in one read as a space and an empty one as none; and `SchemaUpdate`'s `update_doc` sets it, an empty text clearing it. No `ICEBERG:` property holds a doc.
+
+### Registering a table format
+
+Rust only. A table format is claimed the way a [medium](index.md#registering-a-medium) is: Iceberg is `ICEBERG_FORMAT`, a `TableFormat` the core claims as `iceberg` before the register answers anything, and a crate that brings another claims its own from its `install()` with `media::format::claim(&FORMAT, "my-crate")`. A format names itself and answers `locate(handle)` - the table a container handle addresses, the whole table or one of its partition directories, or `None` - as a `LocatedTable`: the stored field, the schema under the options' root name, the row and column counts, the rows, the three writes (`overwrite_arrow_reader`, `append_arrow_reader`, `merge_arrow_reader`) and the prepared cadences one write session publishes (`overwrite_prepared`, `append_prepared` answering the rows it declined, `merge_prepared`). A write session locates once and holds the answer for its life, so what its earlier cadences replaced is the located table's own state, and no Iceberg type crosses the trait.
+
+Every record door asks `media::format::locate` once before it treats a container as a folder of leaves, and drives the answer; with no format claimed it answers `None` without touching the handle. A folder laid out as a table that no claimed format reads is refused at `$.encoding` naming the crate to install. A name is claimed once: a second claim is refused as `Error::Conflict` naming the first claimant, and a claim in the core's own name is refused. `format_named` and `formats` read the register.
+
+```rust
+use smol_str::SmolStr;
+use yggdryl::holder::Holder;
+use yggdryl::media::format::{claim, format_named, formats, LocatedTable, TableFormat};
+use yggdryl::{IOBase, MediaTable, Properties, Table};
+
+/// A format that locates nothing: every container stays a folder of leaves.
+#[derive(Debug)]
+struct Tiled;
+
+static TILED: Tiled = Tiled;
+
+impl TableFormat for Tiled {
+    fn name(&self) -> &'static str {
+        "docs-tiled"
+    }
+
+    fn locate(&self, _handle: &dyn IOBase) -> yggdryl::Result<Option<Box<dyn LocatedTable>>> {
+        Ok(None)
+    }
+
+    // What a folder catalog lists for a folder laid out as one of its tables.
+    fn table(&self, path: Vec<SmolStr>, root: Holder, _: &Properties) -> yggdryl::Result<Table> {
+        Ok(Table::Media(Box::new(MediaTable::bound(path, root)?)))
+    }
+}
+
+claim(&TILED, "my-crate")?;
+assert_eq!(format_named("docs-tiled").map(|format| format.name()), Some("docs-tiled"));
+assert!(formats().iter().any(|format| format.name() == "iceberg"));
+
+// A second claim is refused, naming the first claimant.
+let refusal = claim(&TILED, "another-crate").unwrap_err();
+assert!(refusal.is_conflict());
+assert!(refusal.to_string().contains("my-crate"), "{refusal}");
+```
 
 ## Read
 
@@ -1181,7 +1224,7 @@ A `SchemaUpdate` records column operations - add, rename, drop, promote - and on
 
 ## Catalog
 
-A warehouse folder is a catalog on the [warehouse](../warehouse/index.md) abstraction, laid out the way `HadoopCatalog` lays one out: `IcebergCatalog` is the `Catalog` implementation, a folder under the warehouse an `IcebergNamespace`, a folder laid out as a table the `IcebergTable` a generic `Table` holds, so `lake.nyc.taxis` is the folder `nyc/taxis` under the warehouse registered as `lake`. The views, the dotted descent, the registry and a plan's `from lake.nyc.taxis` are the generic ones; what the implementation adds is the storage. Namespaces nest to any depth, so a catalog states no `namespace_levels`. Each level keeps its stored properties in its own document - `metadata/catalog.json` under the warehouse, `metadata/namespace.json` under a namespace - read beneath what was stated and written by `update_properties`, which refuses the reserved `ICEBERG:` prefix; a table's properties ride its metadata document, so its `update_properties` is refused in favour of `commit_metadata_changes`, and what was stated for it at creation is answered over them and written nowhere. Constructing any of the three touches nothing, and every verb runs against the folder when it is asked, so two catalogs over one folder see the same tables. `Catalog::from_url` answers one under `type = hadoop`, PyIceberg's spelling.
+A warehouse folder is a catalog on the [warehouse](../warehouse/index.md) abstraction, laid out the way `HadoopCatalog` lays one out: `IcebergCatalog` is the `Catalog` implementation, a folder under the warehouse an `IcebergNamespace`, a folder laid out as a table the `IcebergTable` a generic `Table` holds, so `lake.nyc.taxis` is the folder `nyc/taxis` under the warehouse registered as `lake`. The views, the dotted descent, the registry and a plan's `from lake.nyc.taxis` are the generic ones; what the implementation adds is the storage. Namespaces nest to any depth, so a catalog states no `namespace_levels`. Each level keeps its stored properties in its own document - `metadata/catalog.json` under the warehouse, `metadata/namespace.json` under a namespace - read beneath what was stated and written by `update_properties`, which refuses the reserved `ICEBERG:` prefix; a table's properties ride its metadata document, so its `update_properties` is refused in favour of `commit_metadata_changes`, and what was stated for it at creation is answered over them and written nowhere. Constructing any of the three touches nothing, and every verb runs against the folder when it is asked, so two catalogs over one folder see the same tables. `Catalog::from_url` answers one under `type = hadoop`, PyIceberg's spelling: `HADOOP_FACTORY`, the `CatalogFactory` the core claims under that word, builds it, and a catalog is held as `Catalog::Registered` (`catalog.downcast_ref::<IcebergCatalog>()` reaches the value).
 
 A listing classifies each entry with one listing of its `metadata/` and no read: a folder holding a `version-hint.text` or a `*.metadata.json` is a table, every other folder a namespace, the reserved `metadata` name skipped and refused as a name. A table answered is described at its folder and reads its current document on the first verb that needs it. `create_namespace` writes the namespace document; `create_table` is `IcebergTable::create` under `PartitionSpec::from_schema` at the format version the create's `format-version` property states - else the lowest that states the schema, 3 where it holds a nanosecond timestamp, a variant or an unknown column and 2 otherwise - over the schema as Iceberg expresses it (`into_scheme_compat`): a dictionary layout is stored as the string it encodes and the rows cast to it on the way in, `float16` is widened to `float`, and a type Iceberg lacks - an interval - is refused by path with nothing created. A create descends through existing namespaces only: `tables().create("sales.eu.orders", ..)` under a missing `sales` is the absence of `sales`, never a namespace made on the way, and the view's `append` and `overwrite` create the table from the rows' own schema under the same rule.
 
@@ -1192,10 +1235,10 @@ A listing classifies each entry with one listing of its `metadata/` and no read:
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::holder::Holder;
-    use yggdryl::iceberg::IcebergCatalog;
+    use yggdryl::iceberg::{IcebergCatalog, IcebergTable};
     use yggdryl::local::LocalFolder;
     use yggdryl::{
-        arrow, Catalog, DataType, IOMedia, ObjectValue, Properties, StructType, Table, TableValue, Warehouse,
+        arrow, Catalog, DataType, Handle, IOMedia, ObjectValue, Properties, StructType, Table, TableValue, Warehouse,
     };
 
     let root = LocalFolder::temporary()?.path()?.join(format!("yggdryl-docs-iceberg-catalog-{}", std::process::id()));
@@ -1219,7 +1262,8 @@ A listing classifies each entry with one listing of its `metadata/` and no read:
     let mut taxis = catalog.tables().create("nyc.taxis", &schema, &Properties::new())?;
     assert_eq!(taxis.to_string(), "lake.nyc.taxis");
     assert_eq!(taxis.storage(), "table");
-    assert!(matches!(taxis, Table::Iceberg(_)));
+    assert!(matches!(taxis, Table::Registered(_)));
+    assert!(taxis.downcast_ref::<IcebergTable<Handle>>().is_some());
     assert_eq!(nyc.properties()?.get("owner"), Some("ops"));
     assert_eq!(taxis.properties()?.get("owner"), Some("ops"));
 
@@ -1371,11 +1415,11 @@ A pointed table reads the one document the pointer names, its location taken rel
 
 ### Iceberg on Amazon S3 Tables
 
-An Amazon S3 Tables table bucket is a catalog on the [warehouse](../warehouse/index.md) abstraction, behind the `s3tables` feature (which implies `s3` and `iceberg`): `S3TablesCatalog` is the bucket, its namespaces one level below it (`namespace_levels` is `Some(1)`), each an `S3TablesNamespace` holding Iceberg tables, and each table the `IcebergTable` a generic `Table::Iceberg` holds, rooted on a `Handle` on the warehouse `s3:` location the service chose (`s3://<id>--table-s3`), opened through the [S3 backend](../holder/index.md#object-stores) under the catalog's session, in the bucket's region and under the catalog's properties - so the store's own names (`s3.endpoint`, `s3.region`, ...) stated on the catalog reach every table's files. The service names a table's current document, so every table is [pointed](#a-table-a-catalog-service-names) at it: `GetTableMetadataLocation` is `current()` and `UpdateTableMetadataLocation` is `publish`, whose `409 ConflictException` - a version token the table moved past - is the commit conflict. The warehouse location takes `PutObject` and `GetObject`, and nothing here asks it for more: no listing, no hint, no delete - a failed commit's files are the bucket's unreferenced-file removal's to collect, and a table's `remove` deletes none of its files: it is one `DeleteTable`, the bucket dropping the table it keeps.
+An Amazon S3 Tables table bucket is a catalog on the [warehouse](../warehouse/index.md) abstraction, behind the `s3tables` feature (which implies `s3` and `iceberg`): `S3TablesCatalog` is the bucket, its namespaces one level below it (`namespace_levels` is `Some(1)`), each an `S3TablesNamespace` holding Iceberg tables, and each table the `IcebergTable` a generic `Table::Registered` holds, rooted on a `Handle` on the warehouse `s3:` location the service chose (`s3://<id>--table-s3`), opened through the [S3 backend](../holder/index.md#object-stores) under the catalog's session, in the bucket's region and under the catalog's properties - so the store's own names (`s3.endpoint`, `s3.region`, ...) stated on the catalog reach every table's files. The service names a table's current document, so every table is [pointed](#a-table-a-catalog-service-names) at it: `GetTableMetadataLocation` is `current()` and `UpdateTableMetadataLocation` is `publish`, whose `409 ConflictException` - a version token the table moved past - is the commit conflict. The warehouse location takes `PutObject` and `GetObject`, and nothing here asks it for more: no listing, no hint, no delete - a failed commit's files are the bucket's unreferenced-file removal's to collect, and a table's `remove` deletes none of its files: it is one `DeleteTable`, the bucket dropping the table it keeps.
 
 `create_table` runs the steps `IcebergCatalog`'s runs, against the control plane: the schema as Iceberg states it (`into_scheme_compat`), numbered above the highest identifier it carries, partitioned by `PartitionSpec::from_schema` - a derived `PARTITION:by` entry included - and sorted by its `SORT:by`; then `CreateTable` registers the table with no schema, `GetTableMetadataLocation` answers its warehouse and token, and its first document is written and published under that token, so the document the table keeps is the crate's own rather than one the service wrote. A first document that is not published removes the registration again under its token, which a publication that took has moved past. Both catalogs create at the format version the create's `format-version` property states, else the lowest that states the schema: 3 where it holds a nanosecond timestamp, a variant or an unknown column, 2 otherwise. The service keeps no properties for a bucket or a namespace, so theirs are what was stated; a table's ride its metadata, as on any Iceberg table.
 
-`Catalog::from_url` answers one for the table bucket's ARN, or for the `s3tables://<bucket>` location the ARN locates. Who signs is `Session::from_properties` over the properties, PyIceberg's `s3tables.`-prefixed names (`s3tables.profile-name`, `s3tables.access-key-id`, ...) read after the bare ones; `s3tables.region` and `s3tables.endpoint` are the client's region and endpoint. The bucket's ARN is the one the location was given as - read once, its region and account kept - else the `s3tables.warehouse` or `warehouse` property where one names it, else built from the `account_id` property and the client's region, else found by name among the caller's own table buckets in that region by one `ListTableBuckets` on first use, since a bare `s3tables://<bucket>` states neither. `Catalog::from_url` is the bucket's door alone - a location naming a namespace or a table below a bucket is refused at `$.url` there, and named by [the doors that take one](#a-table-by-its-location) - a `warehouse` ARN naming another bucket, or another ARN than the one the location was given as, at `$.with.warehouse`; creating a namespace under a namespace, or a table directly under the catalog, is refused by implementation name. The catalog keeps, and hands every namespace and table under it, the properties less the ones the session read: who signs is the session from there on, so `properties` lists no credential.
+`Catalog::from_url` answers one for the table bucket's ARN, or for the `s3tables://<bucket>` location the ARN locates: `S3TABLES_FACTORY`, the `CatalogFactory` the core claims under the `s3tables` scheme, builds it, and `S3TABLES_LOCATOR`, the `Locator` it claims beside it, is what `Holder::from_url` asks for an `s3tables:` location or an ARN of the service before the identifier is lowered. Who signs is `Session::from_properties` over the properties, PyIceberg's `s3tables.`-prefixed names (`s3tables.profile-name`, `s3tables.access-key-id`, ...) read after the bare ones; `s3tables.region` and `s3tables.endpoint` are the client's region and endpoint. The bucket's ARN is the one the location was given as - read once, its region and account kept - else the `s3tables.warehouse` or `warehouse` property where one names it, else built from the `account_id` property and the client's region, else found by name among the caller's own table buckets in that region by one `ListTableBuckets` on first use, since a bare `s3tables://<bucket>` states neither. `Catalog::from_url` is the bucket's door alone - a location naming a namespace or a table below a bucket is refused at `$.url` there, and named by [the doors that take one](#a-table-by-its-location) - a `warehouse` ARN naming another bucket, or another ARN than the one the location was given as, at `$.with.warehouse`; creating a namespace under a namespace, or a table directly under the catalog, is refused by implementation name. The catalog keeps, and hands every namespace and table under it, the properties less the ones the session read: who signs is the session from there on, so `properties` lists no credential.
 
 | Operation | Requests |
 | --- | --- |
@@ -1447,9 +1491,11 @@ The control plane's requests did not move - 39, 7, 6 and 15 a run in both scenar
     let properties = Properties::new()
         .with_property("access_key_id", "AKIAIOSFODNN7EXAMPLE")
         .with_property("secret_access_key", "a-secret");
-    let Catalog::S3Tables(bucket) = Catalog::from_url(&lake, &properties)? else {
-        unreachable!("a table bucket's ARN is an S3 Tables catalog");
-    };
+    let named = Catalog::from_url(&lake, &properties)?;
+    assert!(matches!(named, Catalog::Registered(_)));
+    let bucket = named
+        .downcast_ref::<S3TablesCatalog>()
+        .expect("a table bucket's ARN is an S3 Tables catalog");
     assert_eq!(bucket.bucket_arn()?, &lake);
     assert!(!format!("{bucket:?}").contains("a-secret"));
     ```

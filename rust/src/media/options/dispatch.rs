@@ -1,3 +1,6 @@
+//! `RecordOptions` as the shared settings every medium's options answer, each
+//! verb one call through the object-safe contract the held struct implements.
+
 use smol_str::SmolStr;
 
 use super::{IORecordOptions, RecordOptions};
@@ -6,386 +9,121 @@ use crate::{Field, Filter, Level, Selector};
 
 impl IORecordOptions for RecordOptions {
     fn name(&self) -> &str {
-        match self {
-            Self::Ipc(options) => options.name(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.name(),
-            Self::Avro(options) => options.name(),
-            Self::Text(options) => options.name(),
-            Self::Xmla(options) => options.name(),
-            Self::Csv(options) => options.name(),
-            Self::Excel(options) => options.name(),
-        }
+        self.as_medium().name()
     }
 
     fn set_name(&mut self, name: SmolStr) {
-        match self {
-            Self::Ipc(options) => options.set_name(name),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_name(name),
-            Self::Avro(options) => options.set_name(name),
-            Self::Text(options) => options.set_name(name),
-            Self::Xmla(options) => options.set_name(name),
-            Self::Csv(options) => options.set_name(name),
-            Self::Excel(options) => options.set_name(name),
-        }
+        self.as_medium_mut().set_name(name);
     }
 
     fn declared(&self) -> Option<&Field> {
-        match self {
-            Self::Ipc(options) => options.declared(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.declared(),
-            Self::Avro(options) => options.declared(),
-            Self::Text(options) => options.declared(),
-            Self::Xmla(options) => options.declared(),
-            Self::Csv(options) => options.declared(),
-            Self::Excel(options) => options.declared(),
-        }
+        self.as_medium().declared()
     }
 
     fn set_declared(&mut self, field: Option<Field>) {
-        match self {
-            Self::Ipc(options) => options.set_declared(field),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_declared(field),
-            Self::Avro(options) => options.set_declared(field),
-            Self::Text(options) => options.set_declared(field),
-            Self::Xmla(options) => options.set_declared(field),
-            Self::Csv(options) => options.set_declared(field),
-            Self::Excel(options) => options.set_declared(field),
-        }
+        self.as_medium_mut().set_declared(field);
     }
 
     fn merge_by(&self) -> &Selector {
-        match self {
-            Self::Ipc(options) => options.merge_by(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.merge_by(),
-            Self::Avro(options) => options.merge_by(),
-            Self::Text(options) => options.merge_by(),
-            Self::Xmla(options) => options.merge_by(),
-            Self::Csv(options) => options.merge_by(),
-            Self::Excel(options) => options.merge_by(),
-        }
+        self.as_medium().merge_by()
     }
 
     fn set_merge_by(&mut self, merge_by: Selector) {
-        match self {
-            Self::Ipc(options) => options.set_merge_by(merge_by),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_merge_by(merge_by),
-            Self::Avro(options) => options.set_merge_by(merge_by),
-            Self::Text(options) => options.set_merge_by(merge_by),
-            Self::Xmla(options) => options.set_merge_by(merge_by),
-            Self::Csv(options) => options.set_merge_by(merge_by),
-            Self::Excel(options) => options.set_merge_by(merge_by),
-        }
+        self.as_medium_mut().set_merge_by(merge_by);
     }
 
     fn filter(&self) -> &Filter {
-        match self {
-            Self::Ipc(options) => options.filter(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.filter(),
-            Self::Avro(options) => options.filter(),
-            Self::Text(options) => options.filter(),
-            Self::Xmla(options) => options.filter(),
-            Self::Csv(options) => options.filter(),
-            Self::Excel(options) => options.filter(),
-        }
+        self.as_medium().filter()
     }
 
     fn set_filter(&mut self, filter: Filter) {
-        match self {
-            Self::Ipc(options) => options.set_filter(filter),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_filter(filter),
-            Self::Avro(options) => options.set_filter(filter),
-            Self::Text(options) => options.set_filter(filter),
-            Self::Xmla(options) => options.set_filter(filter),
-            Self::Csv(options) => options.set_filter(filter),
-            Self::Excel(options) => options.set_filter(filter),
-        }
+        self.as_medium_mut().set_filter(filter);
     }
 
     fn select(&self) -> &Selector {
-        match self {
-            Self::Ipc(options) => options.select(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.select(),
-            Self::Avro(options) => options.select(),
-            Self::Text(options) => options.select(),
-            Self::Xmla(options) => options.select(),
-            Self::Csv(options) => options.select(),
-            Self::Excel(options) => options.select(),
-        }
+        self.as_medium().select()
     }
 
     fn set_select(&mut self, select: Selector) {
-        match self {
-            Self::Ipc(options) => options.set_select(select),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_select(select),
-            Self::Avro(options) => options.set_select(select),
-            Self::Text(options) => options.set_select(select),
-            Self::Xmla(options) => options.set_select(select),
-            Self::Csv(options) => options.set_select(select),
-            Self::Excel(options) => options.set_select(select),
-        }
+        self.as_medium_mut().set_select(select);
     }
 
     fn safe(&self) -> bool {
-        match self {
-            Self::Ipc(options) => options.safe(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.safe(),
-            Self::Avro(options) => options.safe(),
-            Self::Text(options) => options.safe(),
-            Self::Xmla(options) => options.safe(),
-            Self::Csv(options) => options.safe(),
-            Self::Excel(options) => options.safe(),
-        }
+        self.as_medium().safe()
     }
 
     fn set_safe(&mut self, safe: bool) {
-        match self {
-            Self::Ipc(options) => options.set_safe(safe),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_safe(safe),
-            Self::Avro(options) => options.set_safe(safe),
-            Self::Text(options) => options.set_safe(safe),
-            Self::Xmla(options) => options.set_safe(safe),
-            Self::Csv(options) => options.set_safe(safe),
-            Self::Excel(options) => options.set_safe(safe),
-        }
+        self.as_medium_mut().set_safe(safe);
     }
 
     fn batch_byte_size(&self) -> Option<u64> {
-        match self {
-            Self::Ipc(options) => options.batch_byte_size(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.batch_byte_size(),
-            Self::Avro(options) => options.batch_byte_size(),
-            Self::Text(options) => options.batch_byte_size(),
-            Self::Xmla(options) => options.batch_byte_size(),
-            Self::Csv(options) => options.batch_byte_size(),
-            Self::Excel(options) => options.batch_byte_size(),
-        }
+        self.as_medium().batch_byte_size()
     }
 
     fn batch_row_size(&self) -> Option<usize> {
-        match self {
-            Self::Ipc(options) => options.batch_row_size(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.batch_row_size(),
-            Self::Avro(options) => options.batch_row_size(),
-            Self::Text(options) => options.batch_row_size(),
-            Self::Xmla(options) => options.batch_row_size(),
-            Self::Csv(options) => options.batch_row_size(),
-            Self::Excel(options) => options.batch_row_size(),
-        }
+        self.as_medium().batch_row_size()
     }
 
     fn set_batch_byte_size(&mut self, batch_byte_size: Option<u64>) {
-        match self {
-            Self::Ipc(options) => options.set_batch_byte_size(batch_byte_size),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_batch_byte_size(batch_byte_size),
-            Self::Avro(options) => options.set_batch_byte_size(batch_byte_size),
-            Self::Text(options) => options.set_batch_byte_size(batch_byte_size),
-            Self::Xmla(options) => options.set_batch_byte_size(batch_byte_size),
-            Self::Csv(options) => options.set_batch_byte_size(batch_byte_size),
-            Self::Excel(options) => options.set_batch_byte_size(batch_byte_size),
-        }
+        self.as_medium_mut().set_batch_byte_size(batch_byte_size);
     }
 
     fn set_batch_row_size(&mut self, batch_row_size: Option<usize>) {
-        match self {
-            Self::Ipc(options) => options.set_batch_row_size(batch_row_size),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_batch_row_size(batch_row_size),
-            Self::Avro(options) => options.set_batch_row_size(batch_row_size),
-            Self::Text(options) => options.set_batch_row_size(batch_row_size),
-            Self::Xmla(options) => options.set_batch_row_size(batch_row_size),
-            Self::Csv(options) => options.set_batch_row_size(batch_row_size),
-            Self::Excel(options) => options.set_batch_row_size(batch_row_size),
-        }
+        self.as_medium_mut().set_batch_row_size(batch_row_size);
     }
 
     fn max_row_size(&self) -> Option<u64> {
-        match self {
-            Self::Ipc(options) => options.max_row_size(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.max_row_size(),
-            Self::Avro(options) => options.max_row_size(),
-            Self::Text(options) => options.max_row_size(),
-            Self::Xmla(options) => options.max_row_size(),
-            Self::Csv(options) => options.max_row_size(),
-            Self::Excel(options) => options.max_row_size(),
-        }
+        self.as_medium().max_row_size()
     }
 
     fn set_max_row_size(&mut self, max_row_size: Option<u64>) {
-        match self {
-            Self::Ipc(options) => options.set_max_row_size(max_row_size),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_max_row_size(max_row_size),
-            Self::Avro(options) => options.set_max_row_size(max_row_size),
-            Self::Text(options) => options.set_max_row_size(max_row_size),
-            Self::Xmla(options) => options.set_max_row_size(max_row_size),
-            Self::Csv(options) => options.set_max_row_size(max_row_size),
-            Self::Excel(options) => options.set_max_row_size(max_row_size),
-        }
+        self.as_medium_mut().set_max_row_size(max_row_size);
     }
 
     fn row_offset(&self) -> Option<u64> {
-        match self {
-            Self::Ipc(options) => options.row_offset(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.row_offset(),
-            Self::Avro(options) => options.row_offset(),
-            Self::Text(options) => options.row_offset(),
-            Self::Xmla(options) => options.row_offset(),
-            Self::Csv(options) => options.row_offset(),
-            Self::Excel(options) => options.row_offset(),
-        }
+        self.as_medium().row_offset()
     }
 
     fn set_row_offset(&mut self, row_offset: Option<u64>) {
-        match self {
-            Self::Ipc(options) => options.set_row_offset(row_offset),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_row_offset(row_offset),
-            Self::Avro(options) => options.set_row_offset(row_offset),
-            Self::Text(options) => options.set_row_offset(row_offset),
-            Self::Xmla(options) => options.set_row_offset(row_offset),
-            Self::Csv(options) => options.set_row_offset(row_offset),
-            Self::Excel(options) => options.set_row_offset(row_offset),
-        }
+        self.as_medium_mut().set_row_offset(row_offset);
     }
 
     fn max_byte_size(&self) -> Option<u64> {
-        match self {
-            Self::Ipc(options) => options.max_byte_size(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.max_byte_size(),
-            Self::Avro(options) => options.max_byte_size(),
-            Self::Text(options) => options.max_byte_size(),
-            Self::Xmla(options) => options.max_byte_size(),
-            Self::Csv(options) => options.max_byte_size(),
-            Self::Excel(options) => options.max_byte_size(),
-        }
+        self.as_medium().max_byte_size()
     }
 
     fn set_max_byte_size(&mut self, max_byte_size: Option<u64>) {
-        match self {
-            Self::Ipc(options) => options.set_max_byte_size(max_byte_size),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_max_byte_size(max_byte_size),
-            Self::Avro(options) => options.set_max_byte_size(max_byte_size),
-            Self::Text(options) => options.set_max_byte_size(max_byte_size),
-            Self::Xmla(options) => options.set_max_byte_size(max_byte_size),
-            Self::Csv(options) => options.set_max_byte_size(max_byte_size),
-            Self::Excel(options) => options.set_max_byte_size(max_byte_size),
-        }
+        self.as_medium_mut().set_max_byte_size(max_byte_size);
     }
 
     fn commit_batch_num(&self) -> Option<usize> {
-        match self {
-            Self::Ipc(options) => options.commit_batch_num(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.commit_batch_num(),
-            Self::Avro(options) => options.commit_batch_num(),
-            Self::Text(options) => options.commit_batch_num(),
-            Self::Xmla(options) => options.commit_batch_num(),
-            Self::Csv(options) => options.commit_batch_num(),
-            Self::Excel(options) => options.commit_batch_num(),
-        }
+        self.as_medium().commit_batch_num()
     }
 
     fn set_commit_batch_num(&mut self, commit_batch_num: Option<usize>) {
-        match self {
-            Self::Ipc(options) => options.set_commit_batch_num(commit_batch_num),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_commit_batch_num(commit_batch_num),
-            Self::Avro(options) => options.set_commit_batch_num(commit_batch_num),
-            Self::Text(options) => options.set_commit_batch_num(commit_batch_num),
-            Self::Xmla(options) => options.set_commit_batch_num(commit_batch_num),
-            Self::Csv(options) => options.set_commit_batch_num(commit_batch_num),
-            Self::Excel(options) => options.set_commit_batch_num(commit_batch_num),
-        }
+        self.as_medium_mut().set_commit_batch_num(commit_batch_num);
     }
 
     fn num_threads(&self) -> Option<usize> {
-        match self {
-            Self::Ipc(options) => options.num_threads(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.num_threads(),
-            Self::Avro(options) => options.num_threads(),
-            Self::Text(options) => options.num_threads(),
-            Self::Xmla(options) => options.num_threads(),
-            Self::Csv(options) => options.num_threads(),
-            Self::Excel(options) => options.num_threads(),
-        }
+        self.as_medium().num_threads()
     }
 
     fn set_num_threads(&mut self, num_threads: Option<usize>) {
-        match self {
-            Self::Ipc(options) => options.set_num_threads(num_threads),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_num_threads(num_threads),
-            Self::Avro(options) => options.set_num_threads(num_threads),
-            Self::Text(options) => options.set_num_threads(num_threads),
-            Self::Xmla(options) => options.set_num_threads(num_threads),
-            Self::Csv(options) => options.set_num_threads(num_threads),
-            Self::Excel(options) => options.set_num_threads(num_threads),
-        }
+        self.as_medium_mut().set_num_threads(num_threads);
     }
 
     fn level(&self) -> Level {
-        match self {
-            Self::Ipc(options) => options.level(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.level(),
-            Self::Avro(options) => options.level(),
-            Self::Text(options) => options.level(),
-            Self::Xmla(options) => options.level(),
-            Self::Csv(options) => options.level(),
-            Self::Excel(options) => options.level(),
-        }
+        self.as_medium().level()
     }
 
     fn set_level(&mut self, level: Level) {
-        match self {
-            Self::Ipc(options) => options.set_level(level),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_level(level),
-            Self::Avro(options) => options.set_level(level),
-            Self::Text(options) => options.set_level(level),
-            Self::Xmla(options) => options.set_level(level),
-            Self::Csv(options) => options.set_level(level),
-            Self::Excel(options) => options.set_level(level),
-        }
+        self.as_medium_mut().set_level(level);
     }
 }
 
 impl From<IpcOptions> for RecordOptions {
     fn from(value: IpcOptions) -> Self {
         Self::Ipc(value)
-    }
-}
-
-#[cfg(feature = "parquet")]
-impl From<crate::parquet::ParquetOptions> for RecordOptions {
-    fn from(value: crate::parquet::ParquetOptions) -> Self {
-        Self::Parquet(value)
-    }
-}
-
-impl From<crate::avro::AvroOptions> for RecordOptions {
-    fn from(value: crate::avro::AvroOptions) -> Self {
-        Self::Avro(value)
     }
 }
 
@@ -404,11 +142,5 @@ impl From<crate::xmla::XmlaOptions> for RecordOptions {
 impl From<crate::csv::CsvOptions> for RecordOptions {
     fn from(value: crate::csv::CsvOptions) -> Self {
         Self::Csv(value)
-    }
-}
-
-impl From<crate::excel::ExcelOptions> for RecordOptions {
-    fn from(value: crate::excel::ExcelOptions) -> Self {
-        Self::Excel(value)
     }
 }

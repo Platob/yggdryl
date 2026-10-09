@@ -38,7 +38,12 @@ pub(crate) enum Site {
     /// over all of it. The knobs are the site's and never the object's:
     /// nothing lists or prints them, and a bag stated on the object later
     /// leaves them in place.
-    #[cfg(feature = "s3tables")]
+    ///
+    /// The object store's own variant, held under `s3`: a catalog service's
+    /// implementation constructs it - the core's own under `s3tables` - and
+    /// a build with no such implementation never does.
+    #[cfg(feature = "s3")]
+    #[cfg_attr(not(feature = "s3tables"), allow(dead_code))]
     Store {
         url: Url,
         session: crate::aws::Session,
@@ -55,7 +60,7 @@ impl fmt::Debug for Site {
             Self::Url(url) => formatter.debug_tuple("Url").field(url).finish(),
             Self::Native { url, .. } => formatter.debug_tuple("Native").field(url).finish(),
             Self::Bound(bound) => formatter.debug_tuple("Bound").field(bound).finish(),
-            #[cfg(feature = "s3tables")]
+            #[cfg(feature = "s3")]
             Self::Store {
                 url,
                 session,
@@ -104,7 +109,7 @@ impl Site {
         match self {
             Self::Url(url) | Self::Native { url, .. } => url,
             Self::Bound(bound) => bound.diagnostic_url(),
-            #[cfg(feature = "s3tables")]
+            #[cfg(feature = "s3")]
             Self::Store { url, .. } => url,
         }
     }
@@ -121,7 +126,7 @@ impl Site {
                 Holder::from_handle_with(held, &properties)
             }
             Self::Bound(bound) => Ok(crate::fs::located(bound.clone())),
-            #[cfg(feature = "s3tables")]
+            #[cfg(feature = "s3")]
             Self::Store {
                 url,
                 session,
@@ -148,7 +153,7 @@ impl PartialEq for Site {
             (Self::Url(left), Self::Url(right))
             | (Self::Native { url: left, .. }, Self::Native { url: right, .. }) => left == right,
             (Self::Bound(left), Self::Bound(right)) => left.same_location(right),
-            #[cfg(feature = "s3tables")]
+            #[cfg(feature = "s3")]
             (Self::Store { url: left, .. }, Self::Store { url: right, .. }) => left == right,
             _ => false,
         }
@@ -165,7 +170,7 @@ impl Hash for Site {
                 bound.diagnostic_url().hash(state);
                 bound.path().hash(state);
             }
-            #[cfg(feature = "s3tables")]
+            #[cfg(feature = "s3")]
             Self::Store { url, .. } => url.hash(state),
         }
     }

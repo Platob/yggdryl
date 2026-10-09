@@ -1465,10 +1465,13 @@ mod write {
             RecordOptions::Ipc(_)
         ));
         #[cfg(feature = "parquet")]
-        assert!(matches!(
-            handle("t.parquet").record_options().unwrap(),
-            RecordOptions::Parquet(_)
-        ));
+        assert!(
+            handle("t.parquet")
+                .record_options()
+                .unwrap()
+                .settings::<yggdryl::parquet::ParquetOptions>()
+                .is_some()
+        );
 
         // An encoding with no implementation is named rather than guessed.
         let message = handle("t.orc").record_options().unwrap_err().to_string();
@@ -1483,12 +1486,17 @@ mod write {
     #[test]
     fn a_parquet_leaf_answers_the_root_its_rows_land_under() {
         let mut handle = handle("t.parquet");
-        let RecordOptions::Parquet(parquet) = handle.record_options().unwrap() else {
+        let Some(parquet) = handle
+            .record_options()
+            .unwrap()
+            .settings::<yggdryl::parquet::ParquetOptions>()
+            .cloned()
+        else {
             panic!("a .parquet name reads as Parquet");
         };
         let mut declared = schema();
         declared.set_metadata([("comment", "trades")]).unwrap();
-        let options = RecordOptions::Parquet(parquet.with_key_value("writer", "rust"))
+        let options = RecordOptions::from(parquet.with_key_value("writer", "rust"))
             .with_field(declared)
             .with_safe(true);
         handle.overwrite_arrow_reader(reader(), &options).unwrap();

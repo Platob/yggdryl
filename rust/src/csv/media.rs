@@ -15,11 +15,12 @@ use arrow_array::RecordBatchIterator;
 use smol_str::SmolStr;
 
 use crate::arrow::{BatchReader, arrow_schema_from_field};
-use crate::media::{IORecordOptions, RecordOptions};
+use crate::holder::Holder;
+use crate::media::{IORecordOptions, Media, MediaCodec, RecordOptions};
 use crate::text::transport::{
     borrowed_decoded, decoded_over, encoded_terminator, ends_with, fetched, update_suffix,
 };
-use crate::{Charset, Codec, Error, Field, IOBase, IOMedia, Result};
+use crate::{Charset, Codec, Error, Field, IOBase, IOMedia, MimeType, Result, StreamSerie};
 
 use super::options::CsvOptions;
 use super::reader;
@@ -292,6 +293,97 @@ pub(crate) fn append_arrow_reader<H: IOBase + ?Sized>(
         encoder.finish()?;
     }
     handle.write_all_bytes(&encoded)
+}
+
+/// The MIME types a delimited document answers, the comma dialect first.
+static CSV_TYPES: [MimeType; 2] = [MimeType::CSV, MimeType::TSV];
+
+/// A CSV or TSV document as a record medium: [`read_batch_reader`],
+/// [`read_stream`], [`read_field`] and [`overwrite_arrow_reader`] behind the
+/// one contract every medium answers.
+#[derive(Debug)]
+pub struct CsvCodec;
+
+/// The delimited-text medium, claimed by the core under its two MIME types.
+pub static CSV_CODEC: CsvCodec = CsvCodec;
+
+impl MediaCodec for CsvCodec {
+    fn name(&self) -> &'static str {
+        "csv"
+    }
+
+    fn title(&self) -> &'static str {
+        "CSV"
+    }
+
+    fn rank(&self) -> u8 {
+        5
+    }
+
+    fn mime_types(&self) -> &'static [MimeType] {
+        &CSV_TYPES
+    }
+
+    /// The tab dialect under `text/tab-separated-values`, the comma one
+    /// otherwise.
+    fn default_options(&self, base: &MimeType) -> RecordOptions {
+        RecordOptions::Csv(if base == &MimeType::TSV {
+            CsvOptions::tsv()
+        } else {
+            CsvOptions::new()
+        })
+    }
+
+    fn read_batch_reader(
+        &self,
+        handle: &dyn IOBase,
+        declared: Option<&Field>,
+        options: &RecordOptions,
+    ) -> Result<BatchReader> {
+        let csv = options.require_settings::<CsvOptions>()?;
+        Ok(read_batch_reader(handle, declared, csv)?)
+    }
+
+    fn row_size(&self, handle: &dyn IOBase, options: &RecordOptions) -> Result<u64> {
+        row_size(handle, options.require_settings::<CsvOptions>()?)
+    }
+
+    fn read_field(&self, handle: &dyn IOBase, options: &RecordOptions) -> Result<Field> {
+        read_field(handle, options.require_settings::<CsvOptions>()?)
+    }
+
+    /// The header and the sample, read under the dialect the options state:
+    /// a probe under the default separator would read a `;`-separated
+    /// header as one column. That is a reading, which a folder's schema is
+    /// derived from; a write completes onto the header alone.
+    fn stated_field(&self, handle: &dyn IOBase, options: &RecordOptions) -> Result<Option<Field>> {
+        stated_field(handle, options.require_settings::<CsvOptions>()?)
+    }
+
+    fn read_stream(
+        &self,
+        handle: &dyn IOBase,
+        declared: Option<&Field>,
+        options: &RecordOptions,
+    ) -> Result<Option<StreamSerie>> {
+        let csv = options.require_settings::<CsvOptions>()?;
+        Ok(Some(read_stream(handle, declared, csv)?))
+    }
+
+    fn overwrite_arrow_reader(
+        &self,
+        handle: &mut dyn IOBase,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        let csv = options.require_settings::<CsvOptions>()?;
+        overwrite_arrow_reader(handle, batches, csv)
+    }
+
+    /// The dialect the handle's own name picks, as [`Csv::new`] picks it.
+    fn open(&self, handle: Holder) -> Media {
+        Media::Csv(Csv::new(handle))
+    }
 }
 
 /// A byte handle retained with one CSV configuration.
@@ -643,7 +735,13 @@ impl<H: IOBase> IOBase for Csv<H> {
     }
 }
 
-crate::media_serie::media_serie!(CSVSerie, Csv, as_csv, get_csv_mut);
+crate::media_serie::media_serie!(
+    CSVSerie,
+    Csv,
+    as_csv,
+    get_csv_mut,
+    accepts = Some(&CSV_TYPES)
+);
 
 /// Decode only the native row scan's source columns, without forming batches.
 ///

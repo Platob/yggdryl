@@ -1988,4 +1988,4 @@ fn poisoned() -> Error {
     ))
 }
 
-crate::media_serie::media_serie!(HttpSerie, Http, as_http, get_http_mut);
+crate::media_serie::media_serie!(HttpSerie, Http, as_http, get_http_mut, accepts = None);

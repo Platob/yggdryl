@@ -3,14 +3,18 @@
 //! [`Buffer`] owns in-memory bytes, [`crate::local`], [`crate::fs`], and [`crate::zip`] supply the
 //! location/container/leaf backend roles - a local tree, a foreign filesystem,
 //! and the members one archive holds inside a single file - and [`buffered`]
-//! adds a page cache over any [`IOBase`] implementation.
+//! adds a page cache over any [`IOBase`] implementation. A [`Locator`] is what
+//! a crate claims a location scheme with, which [`Holder::from_url`] asks
+//! before any byte backend.
 
 mod buffer;
 pub mod buffered;
 pub mod counted;
+mod locator;
 
 pub use buffer::Buffer;
 pub(crate) use buffer::memory_identity;
+pub use locator::{Locator, claim as claim_locator, locators};
 
 use crate::coding::Coded;
 use crate::holder::buffered::{Buffered, BufferedOptions};
@@ -294,11 +298,13 @@ impl Holder {
     /// by the properties the store's own tooling names, read the way the
     /// object store options read them; an `http:` or `https:` URL is held
     /// through the `http` feature as the request that reads and writes the
-    /// resource, configured by the `HttpOptions` properties; an `s3tables:`
-    /// URL is held through the `s3tables` feature as what it names in an
-    /// Amazon S3 Tables table bucket - `s3tables://<bucket>` the bucket's
-    /// catalog, `s3tables://<bucket>/<namespace>` a namespace, each a
-    /// description costing no request, and
+    /// resource, configured by the `HttpOptions` properties. A location a
+    /// claimed [`Locator`] names is held as what it answers, asked before the
+    /// identifier is lowered: an `s3tables:` URL, under the `s3tables`
+    /// feature, as what it names in an Amazon S3 Tables table bucket -
+    /// `s3tables://<bucket>` the bucket's catalog,
+    /// `s3tables://<bucket>/<namespace>` a namespace, each a description
+    /// costing no request, and
     /// `s3tables://<bucket>/<namespace>/<table>` the Iceberg table, one
     /// `GetTableMetadataLocation` after the one `ListTableBuckets` per page
     /// that finds the bucket where neither a `warehouse` property nor
@@ -342,9 +348,10 @@ impl Holder {
     /// # Errors
     ///
     /// Returns the identifier's own refusal when it names no location, an
-    /// error when the scheme is one no backend of this build holds, a
-    /// property this method reads does not parse, or an object-store
-    /// location's query names a parameter no store reads.
+    /// error naming the crate to install when the scheme is one no backend
+    /// of this build holds and no locator claims, a property this method
+    /// reads does not parse, or an object-store location's query names a
+    /// parameter no store reads.
     pub fn from_url<K, V>(
         location: impl AsRef<Uri>,
         properties: impl IntoIterator<Item = (K, V)>,
@@ -358,25 +365,13 @@ impl Holder {
             .into_iter()
             .map(|(name, value)| (name.as_ref().to_owned(), value.as_ref().to_owned()))
             .collect();
-        // An object of a catalog service, not bytes: it declares no media
-        // type and takes no coding - and it is read before the identifier is
-        // lowered, because a table's ARN says what its location cannot.
-        #[cfg(feature = "s3tables")]
-        if location.names_s3_tables() {
-            let properties: crate::Properties = properties
-                .iter()
-                .map(|(name, value)| (name.as_str(), value.as_str()))
-                .collect();
-            return Ok(crate::s3tables::locate(location, &properties)?.into_holder());
+        // An object a locator names - a catalog service's, not bytes - declares
+        // no media type and takes no coding, and it is asked before the
+        // identifier is lowered, because an ARN says what its location cannot.
+        if let Some(holder) = locator::locate(location, &properties)? {
+            return Ok(holder);
         }
         let url = &location.locator()?;
-        #[cfg(not(feature = "s3tables"))]
-        if url.scheme().is_s3_tables() {
-            return Err(crate::Error::unsupported(
-                "holding an S3 Tables location without the s3tables feature",
-                url.scheme().as_str(),
-            ));
-        }
         let held = if url.is_local() {
             if url
                 .fragment(false)?
@@ -442,7 +437,8 @@ impl Holder {
             }
         } else {
             return Err(crate::Error::unsupported(
-                "holding a location of this scheme",
+                "holding a location of this scheme; install the crate that claims it and call its \
+                 `install()`",
                 url.scheme().as_str(),
             ));
         };
@@ -649,8 +645,9 @@ impl Holder {
     /// Retain the record implementation inferred from this handle's media type.
     ///
     /// The conversion is lazy: it only adds the stateful wrapper and reads no
-    /// bytes. IPC, Parquet (when enabled), and Avro are held through
-    /// [`Self::Media`]; plain text is retained through [`Self::Text`].
+    /// bytes. Every medium the register claims is held through
+    /// [`Self::Media`] but plain text, which is retained through
+    /// [`Self::Text`].
     /// A page cache remains the outermost wrapper, so promotion followed by
     /// repeated buffering cannot stack caches.
     ///
@@ -744,16 +741,16 @@ impl Holder {
 
         let codec = crate::Codec::from_media_type(media_type);
 
-        // Parquet compresses internally, so `trades.parquet.gz` names a file no
-        // other Parquet reader can open. Composing it would hide that behind a
-        // decoded view; leaving the name alone keeps the writer's refusal,
-        // which is the answer a caller needs before the file exists.
-        #[cfg(feature = "parquet")]
-        if !codec.is_identity() && *media_type.base() == crate::MimeType::PARQUET {
-            return self;
-        }
-        // A workbook is a ZIP package, deflated inside: the same rule.
-        if !codec.is_identity() && *media_type.base() == crate::MimeType::XLSX {
+        // A medium that compresses inside its own container - Parquet, a
+        // workbook's deflated ZIP package - names under an outer coding a file
+        // no reader of it opens: `trades.parquet.gz`. Composing it would hide
+        // that behind a decoded view; leaving the name alone keeps the
+        // writer's refusal, which is the answer a caller needs before the
+        // file exists.
+        if !codec.is_identity()
+            && crate::media::codec_of(media_type.base())
+                .is_some_and(|medium| medium.compresses_internally())
+        {
             return self;
         }
 
@@ -773,18 +770,10 @@ impl Holder {
             return self;
         }
 
-        let supported = *base == crate::MimeType::ARROW_STREAM
-            || *base == crate::MimeType::ARROW_FILE
-            || *base == crate::MimeType::AVRO
-            || *base == crate::MimeType::PLAIN_TEXT
-            || *base == crate::MimeType::XMLA
-            || *base == crate::MimeType::CSV
-            || *base == crate::MimeType::TSV
-            || *base == crate::MimeType::XLSX
-            || cfg!(feature = "parquet") && *base == crate::MimeType::PARQUET;
-        if !supported {
+        // A type no medium claims composes nothing.
+        let Some(codec) = crate::media::codec_of(base) else {
             return self;
-        }
+        };
 
         // Keep an existing page cache outside the media wrapper. Besides
         // preserving the cache's one-layer invariant, this lets its
@@ -795,27 +784,11 @@ impl Holder {
             return Self::Buffered(Box::new(Buffered::new(held, options)));
         }
 
-        if *base == crate::MimeType::ARROW_STREAM || *base == crate::MimeType::ARROW_FILE {
-            return Self::Media(Box::new(crate::media::Media::ipc(self)));
-        }
-        #[cfg(feature = "parquet")]
-        if *base == crate::MimeType::PARQUET {
-            return Self::Media(Box::new(crate::media::Media::parquet(self)));
-        }
+        // Plain text is retained as the text handle itself, never a media.
         if *base == crate::MimeType::PLAIN_TEXT {
             return self.into_text();
         }
-        if *base == crate::MimeType::XMLA {
-            return Self::Media(Box::new(crate::media::Media::xmla(self)));
-        }
-        if *base == crate::MimeType::CSV || *base == crate::MimeType::TSV {
-            return Self::Media(Box::new(crate::media::Media::csv(self)));
-        }
-        if *base == crate::MimeType::XLSX {
-            return Self::Media(Box::new(crate::media::Media::excel(self)));
-        }
-        debug_assert_eq!(*base, crate::MimeType::AVRO);
-        Self::Media(Box::new(crate::media::Media::avro(self)))
+        Self::Media(Box::new(codec.open(self)))
     }
 
     /// Materialize this holder and retain any record metadata the inferred
@@ -1106,17 +1079,8 @@ impl crate::IOMedia for Holder {
         crate::IOMedia::merge_by(self.as_media())
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        crate::IOMedia::read_parquet_statistics(self.as_media())
-    }
-
-    #[cfg(feature = "parquet")]
-    fn read_parquet_geospatial_statistics(
-        &self,
-        column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
-        crate::IOMedia::read_parquet_geospatial_statistics(self.as_media(), column)
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        crate::IOMedia::as_any(self.as_media())
     }
 
     fn read_arrow_field(&self, options: &crate::media::RecordOptions) -> Result<crate::Field> {

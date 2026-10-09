@@ -218,7 +218,7 @@ fn a_table_bucket_is_a_catalog_whose_tables_commit_through_the_control_plane() {
         .strip_prefix("s3://")
         .expect("an s3 location")
         .to_owned();
-    let Table::Iceberg(iceberg) = &table else {
+    let Some(iceberg) = table.downcast_ref::<IcebergTable<yggdryl::Handle>>() else {
         panic!("expected an Iceberg table, got {table:?}");
     };
     assert_eq!(
@@ -384,7 +384,7 @@ fn racing_handles_publish_every_append_once_through_the_control_plane() {
     let tables: Vec<Table> = (0..HANDLES)
         .map(|_| {
             let mut table = catalog.table("desk.quotes").expect("the table");
-            let Table::Iceberg(iceberg) = &mut table else {
+            let Some(iceberg) = table.downcast_mut::<IcebergTable<yggdryl::Handle>>() else {
                 panic!("expected an Iceberg table, got {table:?}");
             };
             iceberg.set_options(racing.clone());
@@ -488,9 +488,9 @@ fn a_create_states_its_format_version_or_takes_the_lowest_the_schema_needs() {
         StructType::from_fields([DataType::Int64.required_field("id")]).expect("a column"),
     )
     .required_field("row");
-    let version = |table: &Table| match table {
-        Table::Iceberg(table) => table.metadata().expect("its document").format_version(),
-        other => panic!("expected an Iceberg table, got {other:?}"),
+    let version = |table: &Table| match table.downcast_ref::<IcebergTable<yggdryl::Handle>>() {
+        Some(iceberg) => iceberg.metadata().expect("its document").format_version(),
+        None => panic!("expected an Iceberg table, got {table:?}"),
     };
 
     let plain = desk
@@ -586,7 +586,7 @@ fn a_table_bucket_location_is_its_catalog_under_the_properties_stated() {
     assert_eq!(catalog.name(), "lake");
     assert_eq!(catalog.namespace_levels(), Some(1));
     assert_eq!(fake.request_count(), 0);
-    let Catalog::S3Tables(bucket) = &catalog else {
+    let Some(bucket) = catalog.downcast_ref::<S3TablesCatalog>() else {
         panic!("expected an S3 Tables catalog");
     };
     assert_eq!(bucket.bucket_arn().expect("the ARN").to_string(), arn);
@@ -620,7 +620,7 @@ fn a_table_bucket_location_is_its_catalog_under_the_properties_stated() {
         Catalog::from_url(yggdryl::Arn::from_str(&arn).expect("an ARN"), &properties)
             .expect("a catalog"),
     ] {
-        let Catalog::S3Tables(bucket) = named else {
+        let Some(bucket) = named.downcast_ref::<S3TablesCatalog>() else {
             panic!("expected an S3 Tables catalog");
         };
         assert_eq!(bucket.bucket_arn().expect("the ARN").to_string(), arn);
@@ -653,8 +653,8 @@ fn a_table_bucket_location_is_its_catalog_under_the_properties_stated() {
             .clone()
             .with_property("s3tables.warehouse", arn.as_str()),
     ] {
-        let Catalog::S3Tables(bucket) = Catalog::from_url(&location, &stated).expect("a catalog")
-        else {
+        let held = Catalog::from_url(&location, &stated).expect("a catalog");
+        let Some(bucket) = held.downcast_ref::<S3TablesCatalog>() else {
             panic!("expected an S3 Tables catalog");
         };
         assert_eq!(bucket.bucket_arn().expect("the ARN").to_string(), arn);
@@ -1523,7 +1523,7 @@ fn an_arn_is_read_as_the_arn_it_is_and_never_as_the_location_it_lowers_to() {
         let Holder::Catalog(named) = &held else {
             panic!("expected a catalog, got {held:?}");
         };
-        let Catalog::S3Tables(named) = named.as_ref() else {
+        let Some(named) = named.as_ref().downcast_ref::<S3TablesCatalog>() else {
             panic!("expected an S3 Tables catalog");
         };
         assert_eq!(named.bucket_arn().expect("the ARN"), &bucket);

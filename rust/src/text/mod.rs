@@ -45,7 +45,7 @@ pub(crate) use display::{elide_display, elide_to, expected_got};
 pub use entry::{TextEntries, TextEntry};
 pub use format::Format;
 pub use formatting::{Formatting, Indent};
-pub use handle::Text;
+pub use handle::{PlainTextCodec, TEXT_CODEC, Text};
 pub use io::{
     Plan, from_io, from_io_all, from_io_all_with_limits, from_io_with, from_io_with_field,
     from_io_with_field_and_limits, from_io_with_limits, into_io, into_io_all,

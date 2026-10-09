@@ -4,7 +4,7 @@
 
 ## Which encoding will this handle use?
 
-The suffix or media type decides; `recordOptions()` answers that encoding's settings and throws for one the build does not implement; an absent resource reads as no batches.
+The suffix or media type decides; `recordOptions()` answers that encoding's settings and throws for a type no medium claims (naming the claimed ones and the crate to install); an absent resource reads as no batches.
 
 ```javascript
 const assert = require('node:assert/strict')

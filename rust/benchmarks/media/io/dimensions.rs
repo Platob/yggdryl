@@ -125,8 +125,7 @@ fn parquet_statistics_cases(
     group.bench_function("parquet/read_statistics/fresh", |bencher| {
         bencher.iter(|| {
             black_box(
-                black_box(&fresh)
-                    .read_parquet_statistics()
+                yggdryl::parquet::read_media_statistics(black_box(&fresh))
                     .expect("fresh footer statistics"),
             );
         });
@@ -134,30 +133,27 @@ fn parquet_statistics_cases(
     group.bench_function("parquet/read_statistics/opened", |bencher| {
         bencher.iter(|| {
             black_box(
-                black_box(&opened)
-                    .read_parquet_statistics()
+                yggdryl::parquet::read_media_statistics(black_box(&opened))
                     .expect("cached footer statistics"),
             );
         });
     });
-    let statistics = opened
-        .read_parquet_statistics()
-        .expect("binding projection fixture");
+    let statistics =
+        yggdryl::parquet::read_media_statistics(&opened).expect("binding projection fixture");
     group.bench_function("parquet/statistics_into_value", |bencher| {
         bencher.iter(|| black_box(yggdryl::Scalar::from(black_box(statistics.clone()))));
     });
     group.bench_function("parquet/read_geospatial_statistics", |bencher| {
         bencher.iter(|| {
             black_box(
-                black_box(&geospatial)
-                    .read_parquet_geospatial_statistics("shape")
+                yggdryl::parquet::read_media_geospatial_statistics(black_box(&geospatial), "shape")
                     .expect("projected WKB statistics"),
             );
         });
     });
-    let geospatial_statistics = geospatial
-        .read_parquet_geospatial_statistics("shape")
-        .expect("binding geospatial projection fixture");
+    let geospatial_statistics =
+        yggdryl::parquet::read_media_geospatial_statistics(&geospatial, "shape")
+            .expect("binding geospatial projection fixture");
     group.bench_function("parquet/geospatial_statistics_into_value", |bencher| {
         bencher.iter(|| {
             black_box(yggdryl::Scalar::from(black_box(
@@ -209,7 +205,7 @@ pub(crate) fn dimension_benchmarks(criterion: &mut Criterion) {
     let geospatial = geospatial_fixture();
     let avro = stored_with("bench-dimensions.avro", &source);
     let text = text_fixture();
-    let mut avro_options = RecordOptions::Avro(yggdryl::avro::AvroOptions::new());
+    let mut avro_options = RecordOptions::from(yggdryl::avro::AvroOptions::new());
     let sync_marker = *b"0123456789abcdef";
 
     let mut group = criterion.benchmark_group("io_dimensions");
@@ -229,15 +225,31 @@ pub(crate) fn dimension_benchmarks(criterion: &mut Criterion) {
     );
     media_cases(&mut group, "avro", Avro::new(avro.clone()), Avro::new(avro));
     group.bench_function("avro/options/read_block_codec", |bencher| {
-        bencher.iter(|| black_box(black_box(&avro_options).avro_block_codec()));
+        bencher.iter(|| {
+            black_box(
+                black_box(&avro_options)
+                    .settings::<yggdryl::avro::AvroOptions>()
+                    .map(yggdryl::avro::AvroOptions::block_codec),
+            )
+        });
     });
     group.bench_function("avro/options/set_block_codec_and_sync_marker", |bencher| {
         bencher.iter(|| {
             black_box(&mut avro_options)
-                .set_avro_block_codec(black_box("deflate"))
+                .require_settings_mut::<yggdryl::avro::AvroOptions>(
+                    "$.block_codec",
+                    "a block codec",
+                )
+                .expect("these are Avro options")
+                .set_block_codec(black_box("deflate"))
                 .expect("the core Avro codec vocabulary accepts deflate");
             black_box(&mut avro_options)
-                .set_avro_sync_marker(Some(black_box(&sync_marker)))
+                .require_settings_mut::<yggdryl::avro::AvroOptions>(
+                    "$.sync_marker",
+                    "a synchronization marker",
+                )
+                .expect("these are Avro options")
+                .set_sync_marker(Some(black_box(&sync_marker)))
                 .expect("the marker has exactly sixteen bytes");
         });
     });

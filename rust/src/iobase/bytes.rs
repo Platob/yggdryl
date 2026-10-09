@@ -696,17 +696,8 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::merge_by(self.as_ref())
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        IOMedia::read_parquet_statistics(self.as_ref())
-    }
-
-    #[cfg(feature = "parquet")]
-    fn read_parquet_geospatial_statistics(
-        &self,
-        column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
-        IOMedia::read_parquet_geospatial_statistics(self.as_ref(), column)
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        IOMedia::as_any(self.as_ref())
     }
 
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field> {

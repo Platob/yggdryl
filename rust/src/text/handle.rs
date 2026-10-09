@@ -2,11 +2,105 @@
 
 use smol_str::SmolStr;
 
-use crate::media::{IORecordOptions as _, RecordOptions};
-use crate::{Field, Result};
+use crate::arrow::BatchReader;
+use crate::holder::Holder;
+use crate::media::{IORecordOptions as _, Media, MediaCodec, RecordOptions};
+use crate::{Field, MimeType, Result, StreamSerie};
 use crate::{IOBase, IOMedia};
 
 use super::TextOptions;
+
+/// The MIME type plain-text rows answer.
+static TEXT_TYPES: [MimeType; 1] = [MimeType::PLAIN_TEXT];
+
+/// Plain-text lines as a record medium: the line decode and the body
+/// render behind the one contract every medium answers.
+///
+/// Named apart from [`TextCodec`](super::TextCodec), the structured
+/// document codec contract this module already names.
+#[derive(Debug)]
+pub struct PlainTextCodec;
+
+/// The plain-text medium, claimed by the core under `text/plain`.
+pub static TEXT_CODEC: PlainTextCodec = PlainTextCodec;
+
+impl MediaCodec for PlainTextCodec {
+    fn name(&self) -> &'static str {
+        "text"
+    }
+
+    fn title(&self) -> &'static str {
+        "text"
+    }
+
+    fn rank(&self) -> u8 {
+        3
+    }
+
+    fn mime_types(&self) -> &'static [MimeType] {
+        &TEXT_TYPES
+    }
+
+    fn default_options(&self, _base: &MimeType) -> RecordOptions {
+        RecordOptions::Text(Box::default())
+    }
+
+    /// A line has no identity a merge could match a stored one on.
+    fn has_row_identity(&self) -> bool {
+        false
+    }
+
+    fn read_batch_reader(
+        &self,
+        handle: &dyn IOBase,
+        _declared: Option<&Field>,
+        options: &RecordOptions,
+    ) -> Result<BatchReader> {
+        super::arrow::read_arrow_reader(handle, options.require_settings::<TextOptions>()?)
+    }
+
+    fn row_size(&self, handle: &dyn IOBase, options: &RecordOptions) -> Result<u64> {
+        super::arrow::row_size(handle, options.require_settings::<TextOptions>()?)
+    }
+
+    fn read_field(&self, _handle: &dyn IOBase, options: &RecordOptions) -> Result<Field> {
+        options.require_settings::<TextOptions>()?.source_field()
+    }
+
+    /// Text lines store no record shape of their own: any row shape writes,
+    /// rendered line by line, so there is nothing to complete a cast onto.
+    fn stated_field(
+        &self,
+        _handle: &dyn IOBase,
+        _options: &RecordOptions,
+    ) -> Result<Option<Field>> {
+        Ok(None)
+    }
+
+    fn read_stream(
+        &self,
+        handle: &dyn IOBase,
+        _declared: Option<&Field>,
+        options: &RecordOptions,
+    ) -> Result<Option<StreamSerie>> {
+        let text = options.require_settings::<TextOptions>()?;
+        Ok(Some(super::arrow::read_leaf_stream(handle, text)?))
+    }
+
+    fn overwrite_arrow_reader(
+        &self,
+        handle: &mut dyn IOBase,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        let text = options.require_settings::<TextOptions>()?;
+        super::arrow::write_arrow_reader(handle, batches, text)
+    }
+
+    fn open(&self, handle: Holder) -> Media {
+        Media::Text(Text::new(handle))
+    }
+}
 
 /// A byte handle retained with one flat plain-text record configuration.
 ///
@@ -230,4 +324,10 @@ impl<H: IOBase> IOBase for Text<H> {
     }
 }
 
-crate::media_serie::media_serie!(TextSerie, Text, as_text, get_text_mut);
+crate::media_serie::media_serie!(
+    TextSerie,
+    Text,
+    as_text,
+    get_text_mut,
+    accepts = Some(&TEXT_TYPES)
+);

@@ -359,8 +359,10 @@ pub enum EdgeAlgorithm
 pub static HOSTNAME: LazyLock<SmolStr>
 
 ### yggdryl::error  [rust/src/error.rs]
-pub enum Error
-  pub fn is_source_failure(&self) -> bool  (the source's failure rather than the data's: `Io`, `Remote`, `Arrow` and, under `iceberg`, `Iceberg` - a reader, a store or a runtime that could not answer)
+pub enum Error  (External { origin: &'static str, reason: SmolStr, source: Option<Box<dyn std::error::Error + Send + Sync>> } holds a failure an implementation outside the core's own vocabulary reported - a table format's official parser, a medium's dependency - its dependency erased behind the origin and kept as the source; Display `{origin} error: {reason}`)
+  pub fn external(origin: &'static str, reason: impl Into<SmolStr>) -> Self  (an `External` failure with no source behind it: `Error::external("Iceberg", "concurrent Iceberg metadata commit")` displays `Iceberg error: concurrent Iceberg metadata commit`)
+  pub fn external_with_source(origin: &'static str, reason: impl Into<SmolStr>, source: impl std::error::Error + Send + Sync + 'static) -> Self  (the dependency's own error kept as `source`, downcastable)
+  pub fn is_source_failure(&self) -> bool  (the source's failure rather than the data's: `Io`, `Remote`, `Arrow` and `External` - a reader, a store, a runtime or a dependency that could not answer)
   pub type Result<T> = std::result::Result<T, Error>;
 
 ### yggdryl::expression::arrow  [rust/src/expression/arrow.rs]
@@ -438,6 +440,7 @@ pub const RECURSION_LIMIT: usize = 32
   pub fn apply_field(&self, root: &Field) -> Result<Field>
   pub fn apply_datatype(&self, dtype: &crate::DataType) -> Result<crate::DataType>
   fn into_expression(self) -> Result<Expression>
+pub fn filter_phases<'filter, 'name>(filter: &'filter Filter, select: &Selector, input: impl IntoIterator<Item = &'name str>) -> (std::borrow::Cow<'filter, Filter>, std::borrow::Cow<'filter, Filter>)  (each conjunction of filter placed at the schema its columns belong to: the early phase, over the stored columns input names, which a medium pushes into its read and prunes by, and the late phase, over the rows select publishes, for a conjunction naming an alias or a column only the projection lays out; a filter nothing in it reads from the projection is the early phase whole, the late one always true; what a medium outside the core reads to split a `where` the way the core's media do, beside IORecordOptions::apply_columns and the Bounds and Residual of yggdryl::expression::pushdown)
 
 ### yggdryl::expression::parser  [rust/src/expression/parser.rs]
 pub fn needs_quoting(name: &str) -> bool
@@ -2238,8 +2241,12 @@ pub struct ZipPath
   pub fn bucket_arn(&self) -> Result<&Arn>  (as stated, else built from `account_id` and the region, else one `ListTableBuckets` on first use, kept)
   pub const PROPERTY_NAMES: [&'static str; 5]  (the names a table bucket's catalog reads beside the session's and the store's: `account_id`, `warehouse`, `name`, `s3tables.region`, `s3tables.endpoint`)
   pub fn is_property(name: &str) -> bool  (one of `PROPERTY_NAMES`, or any name under the `s3tables.` prefix the session reads, case and `-`/`_` folded; what a location door keeps for the catalog)
-  pub struct S3TablesNamespace  [rust/src/s3tables/catalog.rs]  (one namespace of a table bucket; Clone, Debug, Eq, Hash over the description; ObjectValue - `properties` the catalog's then the stated; NamespaceValue - `children` 1 `ListTables` per page and 1 `GetTableMetadataLocation` per table, `get` 1 `GetTableMetadataLocation`, `create_table` `CreateTable` with no schema, `GetTableMetadataLocation`, `IcebergTable::create_pointed` under `PartitionSpec::from_schema` at the `format-version` property else 3 for a nanosecond timestamp, a variant or an unknown column else 2, the registration removed under its token when the first document is not published; each table `Table::Iceberg` over a `Handle` on its warehouse location, pointed at `GetTableMetadataLocation`/`UpdateTableMetadataLocation`, a `ConflictException` the commit conflict, its `remove` 1 `DeleteTable` under no version token)
+  pub struct S3TablesNamespace  [rust/src/s3tables/catalog.rs]  (one namespace of a table bucket; Clone, Debug, Eq, Hash over the description; ObjectValue - `properties` the catalog's then the stated; NamespaceValue - `children` 1 `ListTables` per page and 1 `GetTableMetadataLocation` per table, `get` 1 `GetTableMetadataLocation`, `create_table` `CreateTable` with no schema, `GetTableMetadataLocation`, `IcebergTable::create_pointed` under `PartitionSpec::from_schema` at the `format-version` property else 3 for a nanosecond timestamp, a variant or an unknown column else 2, the registration removed under its token when the first document is not published; each table `Table::Registered` over a `Handle` on its warehouse location, pointed at `GetTableMetadataLocation`/`UpdateTableMetadataLocation`, a `ConflictException` the commit conflict, its `remove` 1 `DeleteTable` under no version token)
   pub fn with_properties(mut self, properties: Properties) -> Self
+  pub struct S3TablesFactory  [rust/src/s3tables/catalog.rs]  (the CatalogFactory for an `s3tables://<bucket>` location: no `type` word, the scheme `s3tables`; builds the bucket's S3TablesCatalog from the location, the ARN it was given as and the properties, held as Catalog::Registered; Debug)
+  pub static S3TABLES_FACTORY: S3TablesFactory  [rust/src/s3tables/catalog.rs]  (claimed by the core under the `s3tables` scheme before the factory register answers anything)
+  pub struct S3TablesLocator  (the Locator for an `s3tables:` location or an ARN of the service, read before it is lowered: the catalog, the namespace or the table it names, as the handle it is; Debug)
+  pub static S3TABLES_LOCATOR: S3TablesLocator  (claimed by the core under the `s3tables` scheme before the locator register answers anything)
 
   pub struct TableBuckets / NamespaceSummaries / TableSummaries  [rust/src/s3tables/listing.rs]  (lazy Iterator<Item = Result<TableBucket>> / Result<NamespaceSummary> / Result<TableSummary>, FusedIterator: nothing sent when built, one request per page as it is drained; an entry that does not read, or a continuation token answered twice, is the one refusal in its place after the entries before it, and the walk over; an address the model refuses is the one item)
 
@@ -2736,7 +2743,7 @@ pub enum Holder
   pub fn folder(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn file(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn local(path: impl AsRef<std::path::Path>) -> Result<Self>
-  pub fn from_url<K, V>(location: impl AsRef<Uri>, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self> where  (a Url, or any identifier read through `Uri::locator` once - a relative path, a URN, an ARN; the scheme picks the backend: `file:` a LocalPath or a ZIP member, an object store under `s3`, `http:`/`https:` under `http`, and under `s3tables` what `s3tables://<bucket>[/<namespace>[/<table>]]` names - the bucket's catalog or a namespace at no request, the table at 1 `GetTableMetadataLocation` after the 1 `ListTableBuckets` per page a location stating neither the bucket's ARN nor its account pays, more than two segments refused at `$.url` - an ARN of that service read as the ARN: a bucket's the catalog, a table's the table at 1 `GetTable`; `media_type` and `codec` read for a byte backend)
+  pub fn from_url<K, V>(location: impl AsRef<Uri>, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self> where  (a Url, or any identifier read through `Uri::locator` once - a relative path, a URN, an ARN; the scheme picks the backend: `file:` a LocalPath or a ZIP member, an object store under `s3`, `http:`/`https:` under `http`, and what a claimed `Locator` names, asked first, before the identifier is lowered - under `s3tables` what `s3tables://<bucket>[/<namespace>[/<table>]]` names - the bucket's catalog or a namespace at no request, the table at 1 `GetTableMetadataLocation` after the 1 `ListTableBuckets` per page a location stating neither the bucket's ARN nor its account pays, more than two segments refused at `$.url` - an ARN of that service read as the ARN: a bucket's the catalog, a table's the table at 1 `GetTable`; `media_type` and `codec` read for a byte backend; a scheme no backend holds and no locator claims refused naming the crate to install)
   pub fn from_handle(holder: &Self) -> Result<Self>  (a second handle on the resource `holder` addresses, over the same store, sending nothing. The plain handle beneath every wrapper is held again: a local role over its path; an object-store role on its own client (an `S3Folder` cloned, an `S3Path`/`S3File` as its parent's child, its role kept); an HTTP session or request cloned; a bound location on its filesystem; an archive member through its archive; an identifier or a warehouse object cloned. An in-memory buffer and one HTTP answer are refused as `Error::Unsupported`)
   pub fn zip(handle: Self) -> Self
   pub fn buffered(self, options: BufferedOptions) -> Self
@@ -2750,6 +2757,14 @@ pub enum Holder
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
 
+
+### yggdryl::holder::locator  [rust/src/holder/locator.rs]  (the locations a catalog service keeps, and the register Holder::from_url reads them from: a Locator is one static in its crate, claimed once under its scheme and asked before the identifier is lowered and before any byte backend - the local, ZIP, object-store and HTTP backends stay the core's; with none claimed the question costs nothing and reads no property; re-exported from yggdryl::holder)
+pub trait Locator: fmt::Debug + Send + Sync + 'static
+  fn scheme(&self) -> Scheme  (the scheme the service's locations spell, the key the locator is claimed under: `s3tables`)
+  fn names(&self, location: &Uri) -> bool  (whether location names something the service keeps: a location of its scheme, or an identifier of the service in another - an ARN - read as given, before it is lowered)
+  fn holder(&self, location: &Uri, properties: &Properties) -> Result<Holder>  (the handle of what location names - a catalog, a namespace or a table - which declares no media type and takes no coding)
+pub fn claim(locator: &'static dyn Locator, by: &'static str) -> Result<()>  (re-exported as yggdryl::holder::claim_locator; the scheme once for the life of the process, Error::Conflict naming the first claimant, Error::InvalidRecord at `$.url` for a claim in the core's own name; the core claims S3TABLES_LOCATOR under `s3tables` before the register answers anything)
+pub fn locators() -> Vec<&'static dyn Locator>  (every claim, in scheme order)
 
 ### yggdryl::warehouse  [rust/src/warehouse/mod.rs]  (one abstraction for every place that answers "which tables are there, and how do I read one": the four traits, the four enums, the registry and its process-wide instance; every name re-exported at the crate root)
 pub struct Warehouse  (the catalogs, in registration order; Clone, Default, Eq, Hash)
@@ -2794,9 +2809,25 @@ pub struct Objects  (the children of a namespace, one at a time, fused after the
 ### yggdryl::warehouse::catalog  [rust/src/warehouse/catalog.rs]
 pub trait CatalogValue: NamespaceValue  (the first namespace layer)
   fn namespace_levels(&self) -> Option<usize>
-pub enum Catalog  (Memory(MemoryCatalog), Folder(Box<FolderCatalog>), Iceberg(Box<IcebergCatalog>) under `iceberg`, S3Tables(Box<S3TablesCatalog>) under `s3tables`; non_exhaustive; ObjectValue, NamespaceValue, CatalogValue by delegation; IOBase and IOMedia as a container of handles; Display the name)
-  pub fn from_url(location: impl AsRef<Uri>, properties: &Properties) -> Result<Self>  (a URL, or an identifier read through `Uri::locator` once - a table bucket's ARN kept beside the `s3tables://<bucket>` it locates; the `type` property first - `memory`, `folder`, or `hadoop` under `iceberg` - then the scheme, an `s3tables://<bucket>` location the bucket's `S3TablesCatalog` under `s3tables` and refused without it; named by the `name` property else the location's last segment, else its host)
+pub trait RegisteredCatalog: CatalogValue + Send + Sync + fmt::Debug  (a catalog an implementation outside the core answers, as Catalog::Registered holds it: the catalog contract, the name a refusal calls the implementation by, and what a trait object owes the derive-heavy enum holding it - a copy, equality, a hash and the downcast Catalog::downcast_ref reads; re-exported at the crate root)
+  fn implementation_name(&self) -> &'static str  (as a refusal names it: `IcebergCatalog`)
+  fn clone_box(&self) -> Box<dyn RegisteredCatalog>
+  fn dyn_eq(&self, other: &dyn RegisteredCatalog) -> bool  (the same implementation holding an equal catalog)
+  fn dyn_hash(&self, state: &mut dyn Hasher)
+  fn as_any(&self) -> &dyn Any
+  fn as_any_mut(&mut self) -> &mut dyn Any
+  fn with_properties(self: Box<Self>, properties: Properties) -> Box<dyn RegisteredCatalog>  (the stated properties its storage and every object under it open with)
+pub trait CatalogFactory: fmt::Debug + Send + Sync + 'static  (what builds a catalog an implementation outside the core answers, from a location: claimed once under the `type` word a `with (...)` clause states for it and under the URL scheme its locations spell, whichever it names; re-exported at the crate root)
+  fn type_word(&self) -> Option<&'static str>  (`hadoop`)
+  fn scheme(&self) -> Option<Scheme>  (`s3tables`)
+  fn catalog(&self, name: SmolStr, url: &Url, arn: Option<&Arn>, properties: &Properties) -> Result<Catalog>  (touching no storage; arn the ARN the location was given as, when it was one)
+pub fn claim_factory(factory: &'static dyn CatalogFactory, by: &'static str) -> Result<()>  (the type word and the scheme, each once for the life of the process; Error::Conflict naming the first claimant, Error::InvalidRecord at `$.with.type` for a claim in the core's own name, a factory naming neither a word nor a scheme, or a word the core answers itself - `memory`, `folder`)
+pub fn factories() -> Vec<&'static dyn CatalogFactory>  (every claimed factory once, in the order of its first key - the `type` words alphabetically, then the schemes; the core claims HADOOP_FACTORY under `iceberg` and S3TABLES_FACTORY under `s3tables` before the register answers anything)
+pub enum Catalog  (Memory(MemoryCatalog), Folder(Box<FolderCatalog>), Registered(Box<dyn RegisteredCatalog>) - every catalog an implementation outside the core answers; non_exhaustive; ObjectValue, NamespaceValue, CatalogValue by delegation; IOBase and IOMedia as a container of handles; Display the name)
+  pub fn from_url(location: impl AsRef<Uri>, properties: &Properties) -> Result<Self>  (a URL, or an identifier read through `Uri::locator` once - a table bucket's ARN kept beside the `s3tables://<bucket>` it locates; the `type` property first - `memory`, `folder` or a word a factory is claimed under, `hadoop` under `iceberg`, the words listed in a refusal computed from the claims - then the scheme through the factory claimed for it, an `s3tables://<bucket>` location the bucket's `S3TablesCatalog` under `s3tables` and, where no factory claims it, refused as `Holder::from_url` refuses a scheme no backend or locator holds (`filesystem "s3tables" does not support holding a location of this scheme; install the crate that claims it and call its `install()``); named by the `name` property else the location's last segment, else its host)
   pub fn as_catalog(&self) -> &dyn CatalogValue
+  pub fn downcast_ref<T: 'static>(&self) -> Option<&T>  (the implementation as the type it is: a MemoryCatalog, a FolderCatalog, or a registered catalog's own type)
+  pub fn downcast_mut<T: 'static>(&mut self) -> Option<&mut T>
   pub fn resolve(&self, path: impl IntoObjectPath) -> Result<Object>
   pub fn table(&self, path: impl IntoObjectPath) -> Result<Table>
   pub fn namespace(&self, path: impl IntoObjectPath) -> Result<Namespace>
@@ -2810,8 +2841,19 @@ pub trait NamespaceValue: ObjectValue  (a container of namespaces and tables)
   fn descend(&self, name: &str) -> Result<Object>  (the child as the step of a path that goes on below it: `get` by default; an `S3TablesCatalog` describes the namespace with no request, the table below proving it)
   fn create_namespace(&self, name: &str, properties: &Properties) -> Result<Namespace>  (the default refuses by name)
   fn create_table(&self, name: &str, field: &Field, properties: &Properties) -> Result<Table>  (the default refuses by name)
-pub enum Namespace  (Memory(MemoryNamespace), Folder(Box<FolderNamespace>), Iceberg(Box<IcebergNamespace>) under `iceberg`, S3Tables(Box<S3TablesNamespace>) under `s3tables`; non_exhaustive; ObjectValue and NamespaceValue by delegation; IOBase and IOMedia as a container of handles; Display the dotted path)
+pub trait RegisteredNamespace: NamespaceValue + Send + Sync + fmt::Debug  (a namespace an implementation outside the core answers, as Namespace::Registered holds it: the namespace contract, the name a refusal calls the implementation by, the copy, equality, hash and downcast the enum owes, and the two consuming updates every namespace answers; re-exported at the crate root)
+  fn implementation_name(&self) -> &'static str  (as a refusal names it: `IcebergNamespace`)
+  fn clone_box(&self) -> Box<dyn RegisteredNamespace>
+  fn dyn_eq(&self, other: &dyn RegisteredNamespace) -> bool
+  fn dyn_hash(&self, state: &mut dyn Hasher)
+  fn as_any(&self) -> &dyn Any
+  fn as_any_mut(&mut self) -> &mut dyn Any
+  fn with_properties(self: Box<Self>, properties: Properties) -> Box<dyn RegisteredNamespace>
+  fn inheriting(self: Box<Self>, parent: &Properties) -> Box<dyn RegisteredNamespace>  (the parent's effective properties pushed into it)
+pub enum Namespace  (Memory(MemoryNamespace), Folder(Box<FolderNamespace>), Registered(Box<dyn RegisteredNamespace>) - every namespace an implementation outside the core answers; non_exhaustive; ObjectValue and NamespaceValue by delegation; IOBase and IOMedia as a container of handles; Display the dotted path)
   pub fn as_namespace(&self) -> &dyn NamespaceValue
+  pub fn downcast_ref<T: 'static>(&self) -> Option<&T>  (the implementation as the type it is: a MemoryNamespace, a FolderNamespace, or a registered namespace's own type)
+  pub fn downcast_mut<T: 'static>(&mut self) -> Option<&mut T>
   pub fn resolve(&self, path: impl IntoObjectPath) -> Result<Object>
   pub fn namespaces(&self) -> Namespaces<'_>
   pub fn tables(&self) -> Tables<'_>
@@ -2845,8 +2887,20 @@ pub struct Tables<'a>  (the tables one level below, the same shape; the write he
 pub trait TableValue: ObjectValue + IOBase  (a table: rows any record read and write reaches)
   fn field(&self) -> Result<Field>
   fn storage(&self) -> String
-pub enum Table  (Media(Box<MediaTable>), Iceberg(Box<IcebergTable<Handle>>) under `iceberg`; non_exhaustive; ObjectValue and TableValue by delegation; IOBase and IOMedia delegated whole; Display the dotted path)
+pub trait RegisteredTable: TableValue + IOBase + Send + Sync + fmt::Debug  (a table an implementation outside the core answers, as Table::Registered holds it: the table contract and the byte and record surface every table answers, the name a refusal calls the implementation by, the copy, equality, hash and downcast the enum owes, and the consuming updates and the presence question every table answers; IOMedia::as_any is the medium's state a record read downcasts, RegisteredTable::as_any the table itself; re-exported at the crate root)
+  fn implementation_name(&self) -> &'static str  (as a refusal names it: `IcebergTable`)
+  fn clone_box(&self) -> Box<dyn RegisteredTable>
+  fn dyn_eq(&self, other: &dyn RegisteredTable) -> bool
+  fn dyn_hash(&self, state: &mut dyn Hasher)
+  fn as_any(&self) -> &dyn Any
+  fn as_any_mut(&mut self) -> &mut dyn Any
+  fn with_properties(self: Box<Self>, properties: Properties) -> Box<dyn RegisteredTable>
+  fn inheriting(self: Box<Self>, parent: &Properties) -> Box<dyn RegisteredTable>
+  fn exists(&self) -> bool  (whether anything is at the table's location now)
+pub enum Table  (Media(Box<MediaTable>), Registered(Box<dyn RegisteredTable>) - an IcebergTable<Handle> under `iceberg`, what a folder catalog answers for a table-format folder; non_exhaustive; ObjectValue and TableValue by delegation; IOBase and IOMedia delegated whole; Display the dotted path)
   pub fn as_table(&self) -> &dyn TableValue
+  pub fn downcast_ref<T: 'static>(&self) -> Option<&T>  (the implementation as the type it is: a MediaTable, or a registered table's own type)
+  pub fn downcast_mut<T: 'static>(&mut self) -> Option<&mut T>
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
   pub fn with_properties(self, properties: Properties) -> Self  (the stated properties the handle opens with: what a target's `with (...)` clause states for the table it names)
@@ -3008,9 +3062,7 @@ pub trait IOMedia: Send
   fn record_options(&self) -> Result<RecordOptions>
   fn merge_by(&self) -> Result<crate::Selector>  (the key this resource states for its own rows, which a merge whose options name none matches on: an Iceberg table's identity partition columns then the columns its schema's identifier-field-ids name, a column below structs by its path, read off the metadata with no data file opened; empty for every other handle; forwarded by Holder, warehouse Table, Handle, Uri, Box<dyn IOBase>, Buffered, Coded, Media and delegate_iomedia!)
   fn write_options<'o>(&self, mode: crate::IOMode, options: &'o RecordOptions) -> Result<std::borrow::Cow<'o, RecordOptions>>  (#[doc(hidden)], what every generic write door and the bindings' preflight resolve their options through: the options as they stand, refused as require_write_mode refuses them - a merge into a structured text document refused naming $.mode before any key is asked for - but a merge naming no key keyed by merge_by() where it is non-empty - resolved once, before a source is pulled; borrows the options, never self)
-  fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics>
-  fn read_parquet_geospatial_statistics( &self, column: &str, ) -> Result<crate::parquet::GeospatialStatistics>
-  fn parquet_footer(&self) -> Option<std::sync::Arc<::parquet::file::metadata::ParquetMetaData>>  (#[doc(hidden)], under `parquet`: the decoded footer this handle already holds for the Parquet file it is - an opened `Parquet` the one its `open` read, every other handle and a closed one `None` - which a record read through it takes so it reads none of the file's end again and fetches only the column chunks)
+  fn as_any(&self) -> Option<&dyn std::any::Any>  (the medium's own state, which a caller who knows the medium downcasts: a Parquet wrapper answers its `ParquetFooter`, the footer its `open` read, so a record read of it reads none of the file's end again; forwarded by Holder, Media, Buffered, Coded, Table, MediaTable, Handle and delegate_iomedia!, `None` for every other handle)
   fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field>
   fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader>
   fn read_serie(&self, options: Option<&RecordOptions>) -> Result<Serie>  (the generic Serie: a record encoding one record Serie per batch; None the handle's own record_options() - a container the table its leaves hold; a structured text document is the one column its rows parse into, reading only the declared field off the options; forwarded by Holder, Uri, Box<dyn IOBase> and delegate_iomedia!, the HTTP request walking its pages)
@@ -3103,9 +3155,15 @@ pub const DEFAULT_ROOT_NAME: &str = "row";
   pub fn new() -> Self
   pub fn with_codec(mut self, codec: impl Into<SmolStr>) -> Self
   pub fn with_sync_marker(mut self, sync_marker: [u8; 16]) -> Self
+  pub fn block_codec(&self) -> &str  (the codec name blocks are written with)
+  pub fn set_block_codec(&mut self, codec: &str) -> Result<()>  (validated through the container encoder's own codec vocabulary, so a binding rejects a bad name before it pulls a one-shot source; the options as they were on refusal)
+  pub const fn sync_marker(&self) -> Option<&[u8; 16]>
+  pub fn set_sync_marker(&mut self, marker: Option<&[u8]>) -> Result<()>  (refused at `$.sync_marker` unless sixteen bytes)
   pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &AvroOptions) -> Result<Field>
   pub fn read_batch_reader<H: IOBase + ?Sized>( handle: &H, field: Option<&Field>, options: &AvroOptions, ) -> Result<BatchReader>
   pub fn overwrite_arrow_reader<H>( handle: &mut H, batches: BatchReader, options: &AvroOptions, ) -> Result<()> where H: IOBase + ?Sized,
+  pub struct AvroCodec  (Avro as the record register holds it - behind MediaCodec, with the native row stream read_stream answers; Debug)
+  pub static AVRO_CODEC: AvroCodec  (claimed by the core under `application/avro`, rank 2, named `avro`, titled `Avro`; options held as RecordOptions::Registered)
   pub struct Avro<H: IOBase>
   pub fn new(handle: H) -> Self
   pub fn with_options(mut self, options: AvroOptions) -> Self
@@ -3167,7 +3225,9 @@ pub const DEFAULT_CSV_INFER_ROW_SIZE: usize = 1024  (the records sampled to infe
 pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &CsvOptions) -> Result<Field>  (the declared field as is, else the header's columns - an empty name `column_<i>`, 1-based - typed by the sample, one rung per column over its non-null cells: Boolean (`true`/`false` in any case), Int64, Float64, Date32 (`YYYY-MM-DD`), DateTime64(ns, UTC) (ISO 8601, a naive text read as UTC), else Utf8, all nulls Utf8, every inferred column nullable, the root `required_field(options.name())`; a header naming a column twice refused at `$.header`, an empty document refused because it declares no schema)
 pub fn read_batch_reader<H: IOBase + ?Sized>( handle: &H, field: Option<&Field>, options: &CsvOptions, ) -> crate::arrow::Result<BatchReader>  (one owned decoded transport - the handle's codings peeled, its charset transcribed, a leading UTF-8 byte-order mark skipped - records cut one at a time and batched under `batch_row_size`/`batch_byte_size`; a declared field with a header matches columns by exact name (an extra CSV column ignored, a missing nullable one null, a missing required one refused at `$.header`), without one positionally; the sampled rows are emitted first and the rest streamed under the inferred field; an empty or absent handle is the empty reader; a ragged record is `InvalidRecord` at `$[row]` as `expected N cells, got M in row L of <url>`, a cell its column refuses at `$[row].<column>`, a nullable column taking it as null under `safe`)
 pub fn overwrite_arrow_reader<H: IOBase + ?Sized>( handle: &mut H, batches: BatchReader, options: &CsvOptions, ) -> Result<()>  (the header - under `header` - then one record per row through the handle's coding and charset: text and code leaves as their text, numbers, booleans, temporals and uuids through the canonical `Display`, a byte leaf base64, a nested value compact JSON, null the first `null_values` spelling; a cell quoted when it holds the separator, the quote, CR or LF, opens or closes with a blank, spells a null value, or is a first cell opening with the comment byte, a quote inside doubled or escaped; refused by name under `quote` None; nothing reaches the handle until the last batch is encoded)
-pub struct Csv<H: IOBase>  (the medium over one handle: `IOMedia` and `IOBase` through `delegate_iobase!`, `is_tabular` true, `is_atomic` false, `open` caching the schema until `close`, a read publishing the `select`ed shape of an inferred field; `RecordOptions::Csv` is how a `Holder` reaches it; Debug)
+pub struct CsvCodec  (the CSV medium as the record register holds it - behind MediaCodec, with the native row stream read_stream answers; Debug)
+pub static CSV_CODEC: CsvCodec  (claimed by the core under `text/csv` and `text/tab-separated-values`, rank 5, named `csv`, titled `CSV`)
+pub struct Csv<H: IOBase>  (the medium over one handle: `IOMedia` and `IOBase` through `delegate_iobase!`, `is_tabular` true, `is_atomic` false, `open` caching the schema until `close`, a read publishing the `select`ed shape of an inferred field; `RecordOptions::Csv` and `Media::Csv` are how a `Holder` reaches it; Debug)
   pub fn new(handle: H) -> Self  (`CsvOptions::tsv()` under a `text/tab-separated-values` media type, `CsvOptions::new()` otherwise)
   pub fn with_options(mut self, options: CsvOptions) -> Self
   pub fn with_field(mut self, field: Field) -> Self
@@ -3208,6 +3268,10 @@ pub struct CsvOptions  (the shared record sections - `name`, `field`, `filter`, 
   pub fn with_linesep(mut self, linesep: LineSep) -> Self
   impl IORecordOptions for CsvOptions  (`record_options_fields!`)
 
+### yggdryl::iceberg  [rust/src/iceberg/mod.rs]  (the table format: the core claims ICEBERG_FORMAT as `iceberg` on the register yggdryl::media::format reads, so every record door reads and writes a container laid out as an Iceberg table as the table it is rather than as a folder of leaves)
+pub struct IcebergFormat  (the TableFormat of a container whose folder - or an ancestor of it, through `column=value` directories and the table's own `data` - holds an Iceberg table's metadata: locate answers the Located table, the whole or one partition directory, one child lookup per level; Debug)
+pub static ICEBERG_FORMAT: IcebergFormat  (claimed by the core under `iceberg` before the format register answers anything)
+
 ### yggdryl::iceberg::catalog  [rust/src/iceberg/catalog/mod.rs]  (a warehouse folder as a catalog of namespaces of Iceberg tables, laid out as `HadoopCatalog` lays one out; the warehouse traits answered, the views, the dotted descent and the registry the generic ones; cost pinned in `rust/tests/iceberg/catalog/mod_.rs` `mod call_counts`)
 pub struct IcebergCatalog  (Clone, Eq, Hash over the description; ObjectValue - `properties` the stated over `metadata/catalog.json`, `update_properties` writing it with the `ICEBERG:` prefix refused; NamespaceValue - `children` one listing plus one listing of each entry's `metadata/` and no read, `create_namespace` writing `metadata/namespace.json`, `create_table` `IcebergTable::create` under `PartitionSpec::from_schema` over the schema as Iceberg expresses it, both through existing namespaces only; CatalogValue - `namespace_levels` None, namespaces nest to any depth)
   pub fn new(name: impl Into<SmolStr>, url: impl Into<crate::Uri>) -> Result<Self>  (touches nothing)
@@ -3216,6 +3280,8 @@ pub struct IcebergCatalog  (Clone, Eq, Hash over the description; ObjectValue - 
   pub fn open_or_create(name: impl Into<SmolStr>, warehouse: Holder) -> Result<Self>  (the conflict absorbed; a table or a file at the folder refused)
   pub fn with_description(mut self, description: impl Into<String>) -> Self
   pub fn with_properties(mut self, properties: Properties) -> Self  (stated: what every handle under the catalog opens with, written nowhere)
+pub struct HadoopFactory  (the CatalogFactory a `type` of `hadoop` - PyIceberg's spelling - asks Catalog::from_url for: an IcebergCatalog over the location, held as Catalog::Registered; no scheme; Debug)
+pub static HADOOP_FACTORY: HadoopFactory  (claimed by the core under the `type` word `hadoop` before the factory register answers anything)
 
 ### yggdryl::iceberg::catalog::namespace  [rust/src/iceberg/catalog/namespace.rs]
 pub struct IcebergNamespace  (one namespace of an Iceberg catalog - a folder under the warehouse, `metadata/namespace.json` its stored properties; Clone, Eq, Hash; ObjectValue and NamespaceValue as the catalog's)
@@ -3476,7 +3542,7 @@ pub fn tag(snapshot_id: i64) -> Self
   pub fn with_max_ref_age_ms(mut self, age_ms: i64) -> Result<Self>
 
 ### yggdryl::iceberg::table  [rust/src/iceberg/table.rs]
-pub struct IcebergTable<H: IOBase>  (the root eager, the current metadata document read on the first verb that needs it; Clone where H: Clone, opening afresh; Eq, Hash over the path; ObjectValue, TableValue, IOBase, IOMedia, so a warehouse `Table::Iceberg` holds one over a `Handle`; a pointed table's IOBase `ls` refused as Error::Unsupported, touching nothing, and its `remove(recursive)` the pointer's `remove` whatever `recursive` says - its catalog keeps it, and drops it)
+pub struct IcebergTable<H: IOBase>  (the root eager, the current metadata document read on the first verb that needs it; Clone where H: Clone, opening afresh; Eq, Hash over the path; ObjectValue, TableValue, IOBase, IOMedia, so a warehouse `Table::Registered` holds one over a `Handle` (RegisteredTable, reached by `Table::downcast_ref`); a pointed table's IOBase `ls` refused as Error::Unsupported, touching nothing, and its `remove(recursive)` the pointer's `remove` whatever `recursive` says - its catalog keeps it, and drops it)
   pub fn create(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec) -> Result<Self>
   pub fn create_sorted(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec, order: SortOrder) -> Result<Self>
   pub fn open(root: H) -> Result<Self>
@@ -3561,6 +3627,8 @@ pub const DEFAULT_ROOT_NAME: &str = "row";
   pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &IpcOptions) -> Result<Field>
   pub fn read_batch_reader<H: IOBase + ?Sized>( handle: &H, field: Option<&Field>, options: &IpcOptions, ) -> Result<BatchReader>
   pub fn overwrite_arrow_reader<H>( handle: &mut H, batches: BatchReader, options: &IpcOptions, ) -> Result<()> where H: IOBase + ?Sized,
+  pub struct IpcCodec  (Arrow IPC as the record register holds it - read_batch_reader, read_field and overwrite_arrow_reader behind MediaCodec; Debug)
+  pub static IPC_CODEC: IpcCodec  (claimed by the core under `application/vnd.apache.arrow.stream` and `application/vnd.apache.arrow.file`, rank 0, named `ipc`, titled `Arrow IPC`)
   pub struct Ipc<H: IOBase>
   pub fn new(handle: H) -> Self
   pub fn with_options(mut self, options: IpcOptions) -> Self
@@ -3652,6 +3720,8 @@ pub struct Cell
 pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &ExcelOptions) -> Result<Field>
 pub fn read_batch_reader<H: IOBase + ?Sized>( handle: &H, field: Option<&Field>, options: &ExcelOptions, ) -> crate::arrow::Result<BatchReader>
 pub fn overwrite_arrow_reader<H: IOBase + ?Sized>( handle: &mut H, batches: BatchReader, options: &ExcelOptions, ) -> Result<()>
+pub struct ExcelCodec  (a workbook as the record register holds it - behind MediaCodec; Debug)
+pub static EXCEL_CODEC: ExcelCodec  (claimed by the core under the spreadsheetml sheet MIME type, rank 6, named `excel`, titled `Excel`, compresses internally; options held as RecordOptions::Registered)
 pub struct Excel<H: IOBase>
   pub fn new(handle: H) -> Self
   pub fn with_options(mut self, options: ExcelOptions) -> Self
@@ -3669,6 +3739,10 @@ pub struct ExcelOptions  (the shared record sections, then `sheet: Option<SmolSt
   pub fn with_sheet(mut self, sheet: impl Into<SmolStr>) -> Self
   pub const fn with_header(mut self, header: bool) -> Self
   pub const fn with_range(mut self, range: CellRange) -> Self
+  pub fn sheet(&self) -> Option<&str>
+  pub fn set_sheet(&mut self, sheet: Option<&str>) -> Result<()>  (a name the workbook format refuses is refused at `$.sheet`)
+  pub const fn range(&self) -> Option<CellRange>
+  pub const fn set_range(&mut self, range: Option<CellRange>)
   pub fn cells(&self) -> CellRange
 
 ### yggdryl::excel::package  [rust/src/excel/package.rs]
@@ -3771,21 +3845,69 @@ pub struct Workbook
 
 ### yggdryl::media  [rust/src/media/mod.rs]
   pub const DEFAULT_VALUE_NAME: &str = "value"  (the child name a value wraps into a struct under when none is declared)
-pub enum Media
+pub enum Media  (Ipc(Ipc<Holder>), Text(Text<Holder>), Xmla(Xmla<Holder>), Csv(Csv<Holder>), Registered(Box<dyn MediaWrapper>) - the core's four media as variants of their own and every other medium, Parquet, Avro and a workbook among them, the wrapper its codec's `open` built)
   pub fn open(handle: Holder) -> Result<Self>
-  pub fn open_as(handle: Holder, base: &MimeType) -> Result<Self>
+  pub fn open_as(handle: Holder, base: &MimeType) -> Result<Self>  (`codec_for(base)?.open(handle)`: a type no claim answers refused naming the claimed types and the crate to install; a `text/csv` or `text/tab-separated-values` base states the dialect whatever the handle's name picks)
   pub fn ipc(handle: Holder) -> Self
-  pub fn parquet(handle: Holder) -> Self
-  pub fn avro(handle: Holder) -> Self
   pub fn with_field(self, field: Field) -> Self
   pub fn text(handle: Holder) -> Self
   pub fn xmla(handle: Holder) -> Self
   pub fn csv(handle: Holder) -> Self  (the `Csv(crate::csv::Csv<Holder>)` variant, which `open`/`open_as` bind `text/csv` and `text/tab-separated-values` to and `Holder::into_media` composes for a `.csv`, `.tsv` or `.csv.gz` name; `impl From<crate::csv::Csv<Holder>> for Media`)
-  pub fn excel(handle: Holder) -> Self
-  pub const fn handle(&self) -> &Holder
+  pub fn medium(&self) -> &'static dyn MediaCodec  (the medium this media encodes: a core variant's own codec, a registered wrapper's the one it names; `medium`, not `codec`, because `codec` is the content coding every IOBase answers)
+  pub fn handle(&self) -> &Holder
   pub fn into_handle(self) -> Holder
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
+
+### yggdryl::media::codec  [rust/src/media/codec.rs]  (the medium extension point: what every record medium states about itself once, as a static in its own file, and the register every intake door reads it from - claimed under each MIME type the codec names, all or none, once for the life of the process; Media::open, RecordOptions::for_mime_type and Holder::into_media ask it once and a RecordOptions in hand answers its medium through RecordOptions::codec; the core claims its own seven before the register answers anything, until they move to the crates that hold them; the types re-exported from yggdryl::media, claim as yggdryl::media::codec::claim)
+pub const EXTERNAL_RANK: u8 = 32  (the rank a medium outside the core takes at least; the core's seven hold the positions below it, in the order their options sort: ipc 0, parquet 1, avro 2, text 3, xmla 4, csv 5, excel 6)
+pub trait MediaCodec: fmt::Debug + Send + Sync + 'static
+  fn name(&self) -> &'static str  (the medium's name and the tag its options hash under: `parquet`)
+  fn title(&self) -> &'static str  (how a refusal names the medium: `Parquet`)
+  fn rank(&self) -> u8
+  fn mime_types(&self) -> &'static [MimeType]  (the types the medium answers, the first canonical)
+  fn default_options(&self, base: &MimeType) -> RecordOptions  (the default options of the medium under base, one of mime_types)
+  fn compresses_internally(&self) -> bool  (provided, false: an outer content coding names a file no reader of the medium opens - true for Parquet and a workbook)
+  fn has_row_identity(&self) -> bool  (provided, true: a stored row has an identity a merge can match on; plain text lines have none)
+  fn read_batch_reader(&self, handle: &dyn IOBase, declared: Option<&Field>, options: &RecordOptions) -> Result<BatchReader>
+  fn row_size(&self, handle: &dyn IOBase, options: &RecordOptions) -> Result<u64>  (from the leaf's metadata, decoding no row)
+  fn read_field(&self, handle: &dyn IOBase, options: &RecordOptions) -> Result<Field>
+  fn stated_field(&self, handle: &dyn IOBase, options: &RecordOptions) -> Result<Option<Field>>  (provided: the probe under the medium's default options and the options' root name; None where the leaf holds no shape yet)
+  fn read_stream(&self, handle: &dyn IOBase, declared: Option<&Field>, options: &RecordOptions) -> Result<Option<StreamSerie>>  (provided None: the medium's native row stream over one leaf)
+  fn overwrite_arrow_reader(&self, handle: &mut dyn IOBase, batches: BatchReader, options: &RecordOptions) -> Result<()>
+  fn open(&self, handle: Holder) -> Media  (the stateful wrapper over handle)
+pub trait MediaWrapper: IOBase + Sync + fmt::Debug  (the stateful wrapper a registered medium holds a Holder in, as Media::Registered carries it)
+  fn medium(&self) -> &'static dyn MediaCodec  (the medium this wrapper encodes)
+  fn handle(&self) -> &Holder
+  fn into_handle(self: Box<Self>) -> Holder
+  fn with_field(self: Box<Self>, field: Field) -> Box<dyn MediaWrapper>
+pub fn claim(codec: &'static dyn MediaCodec, by: &'static str) -> Result<()>  (every MIME type the codec names, all or none; Error::Conflict naming the first claimant where one is claimed already, Error::InvalidRecord at `$.encoding` for a claim in the core's own name, a codec naming no MIME type, or a rank below EXTERNAL_RANK)
+pub fn codec_for(base: &MimeType) -> Result<&'static dyn MediaCodec>  (the one intake lookup; a type no claim answers is refused at `$` as `expected a record encoding this build implements (<every claimed type in rank order>; install the crate that claims it and call its `install()`), got <type>`)
+pub fn codecs() -> Vec<&'static dyn MediaCodec>  (every claimed medium once, in rank order)
+
+### yggdryl::media::format  [rust/src/media/format.rs]  (the table-format extension point: a TableFormat is one static in its crate, claimed once under its name; locate is the one question the record doors ask before they treat a container as a folder of leaves, answering None before touching the handle where nothing is claimed; the core claims ICEBERG_FORMAT under `iceberg` before the register answers anything; the types re-exported from yggdryl::media, claim as yggdryl::media::format::claim)
+pub trait TableFormat: fmt::Debug + Send + Sync + 'static
+  fn name(&self) -> &'static str  (the key it is claimed under: `iceberg`)
+  fn locate(&self, handle: &dyn IOBase) -> Result<Option<Box<dyn LocatedTable>>>  (the table handle addresses - the whole table or one of its partition directories - if it addresses one of this format)
+pub trait LocatedTable: fmt::Debug + Send  (a table a container handle addresses, as the record doors drive it; what a write's cadences replaced so far is its own state, held for the life of the write session that located it, so no format's type crosses the trait)
+  fn is_whole(&self) -> bool  (the location addresses the table whole rather than one of its partitions)
+  fn overwrite_whole(&mut self, batches: BatchReader) -> Result<()>  (every row replaced in one publication, whatever its partitions)
+  fn clear(&mut self) -> Result<()>  (the table emptied in one publication that keeps it a table)
+  fn stored_field(&self) -> Result<Field>  (shapes every chunk of one write)
+  fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field>  (from the metadata, no scan planned)
+  fn read(&self, options: &RecordOptions) -> Result<BatchReader>  (the rows the options ask for within the addressed scope, the options' clauses applied: the reader is complete)
+  fn row_size(&self) -> Result<u64>
+  fn column_size(&self) -> Result<usize>
+  fn record_options(&self) -> Result<RecordOptions>
+  fn overwrite_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<IOResult>
+  fn append_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<IOResult>
+  fn merge_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<IOResult>
+  fn overwrite_prepared(&mut self, batches: BatchReader, threads: Option<usize>) -> Result<()>  (one already-shaped cadence: the first to reach a partition replaces it, every later one appends)
+  fn append_prepared(&mut self, batches: BatchReader, threads: Option<usize>) -> Result<u64>  (the rows declined - a key the table already held)
+  fn merge_prepared(&mut self, batches: BatchReader, merge_by: &Selector, safe: bool, threads: Option<usize>) -> Result<()>
+pub fn claim(format: &'static dyn TableFormat, by: &'static str) -> Result<()>  (the name once for the life of the process; Error::Conflict naming the first claimant, Error::InvalidRecord at `$.encoding` for a claim in the core's own name)
+pub fn format_named(name: &str) -> Option<&'static dyn TableFormat>
+pub fn formats() -> Vec<&'static dyn TableFormat>  (every claim, in name order)
 
 ### yggdryl::media::options  [rust/src/media/options.rs]
 pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
@@ -3858,26 +3980,27 @@ pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024  (the cadence a push-
   fn limit_arrow_reader( &self, reader: crate::arrow::BatchReader, ) -> Result<crate::arrow::BatchReader>
   fn require_write_limits(&self) -> Result<()>
   fn write_limit_is_zero(&self) -> bool
-  pub enum RecordOptions
+  pub trait MediumSettings  (what a medium's options struct states about its medium; implemented beside IORecordOptions, and the blanket MediumOptions does the rest, so a medium adds nothing else to be held as RecordOptions::Registered)
+    fn medium() -> &'static dyn MediaCodec  (the codec these options drive)
+    fn mime_type(&self) -> MimeType  (provided: the codec's canonical type unless a setting picks another, as a tab picks `text/tab-separated-values`)
+    fn header(&self) -> Option<bool>  (provided None: whether the first record names the columns, where the medium has a header)
+    fn set_header(&mut self, header: bool) -> bool  (provided false: whether the medium took the setting)
+    fn file_threads(&self) -> Option<usize>  (provided None: the thread share one file decodes or encodes on, when one was handed down)
+    fn set_file_threads(&mut self, threads: usize)  (provided: nothing; Parquet splits its row groups and columns across the share and Avro its blocks)
+  pub trait MediumOptions: fmt::Debug + Send + Sync + 'static  (the object-safe twin of IORecordOptions, written once by the blanket impl over every IORecordOptions + MediumSettings + Clone + Eq + Ord + Hash + Debug + Send + Sync + 'static struct: the fourteen shared sections with their setters, codec, mime_type, stable_hash, header, file_threads, and what a trait object owes a derive-heavy enum - clone_box, dyn_eq, dyn_cmp, dyn_hash, as_any, as_any_mut)
+  pub struct RegisteredOptions(Box<dyn MediumOptions>)  (a registered medium's whole options struct, shared sections included, so its hash and its order are the struct's; Clone, Debug, Eq, Ord, Hash; Deref and DerefMut to the object-safe contract)
+    pub fn new<T: MediumOptions>(settings: T) -> Self
+  pub enum RecordOptions  (Ipc(IpcOptions), Text(Box<TextOptions>), Xmla(XmlaOptions), Csv(CsvOptions), Registered(RegisteredOptions) - the core's four media as variants of their own and every other medium's options held whole; Clone, Debug, Eq, Ord by the medium's rank then the options, Hash)
+  pub fn registered<T: MediumOptions>(settings: T) -> Self  (impl From<T> for RecordOptions on each medium's own options struct wraps it)
+  pub fn codec(&self) -> &'static dyn MediaCodec  (the medium the options drive: the one dispatcher past intake)
+  pub fn settings<T: 'static>(&self) -> Option<&T>  (one medium's own options struct, a core variant's as well as a registered one's; None for another medium)
+  pub fn settings_mut<T: 'static>(&mut self) -> Option<&mut T>
+  pub fn require_settings<T: MediumSettings + 'static>(&self) -> Result<&T>  (refused at `$.encoding` as `expected Parquet options, got text/csv options`)
+  pub fn require_settings_mut<T: MediumSettings + 'static>(&mut self, path: &'static str, setting: &'static str) -> Result<&mut T>  (refused at path as `expected Parquet options to set a page compression, got text/csv options`; the one door a binding's per-medium property sets through)
   pub fn stable_hash(&self) -> u64
   pub const fn timezone(&self) -> Option<&crate::Timezone>
   pub fn set_timezone(&mut self, timezone: Option<crate::Timezone>) -> Result<()>
-  pub fn avro_block_codec(&self) -> Option<&str>
-  pub fn set_avro_block_codec(&mut self, codec: &str) -> Result<()>
-  pub const fn avro_sync_marker(&self) -> Option<&[u8; 16]>
-  pub fn set_avro_sync_marker(&mut self, marker: Option<&[u8]>) -> Result<()>
-  pub fn parquet_compression_name(&self) -> Option<String>
-  pub fn set_parquet_compression_name(&mut self, compression: &str) -> Result<()>
-  pub fn excel_sheet(&self) -> Option<&str>
-  pub fn set_excel_sheet(&mut self, sheet: Option<&str>) -> Result<()>
-  pub fn excel_range(&self) -> Option<crate::excel::CellRange>
-  pub fn set_excel_range(&mut self, range: Option<crate::excel::CellRange>) -> Result<()>
-  pub const fn parquet_max_row_group_size(&self) -> Option<usize>
-  pub fn set_parquet_max_row_group_size(&mut self, rows: usize) -> Result<()>
-  pub fn parquet_key_value_metadata(&self) -> Option<&[(String, String)]>
-  pub fn set_parquet_key_value_metadata( &mut self, metadata: Vec<(String, String)>, ) -> Result<()>
-  pub fn push_parquet_key_value( &mut self, key: impl Into<String>, value: impl Into<String>, ) -> Result<()>
-  pub const fn csv_separator(&self) -> Option<u8>  (the `Csv(crate::csv::CsvOptions)` variant's dialect, `impl From<CsvOptions> for RecordOptions`; each reader `None` for another encoding, each setter refusing another encoding at its own path - `$.separator: expected CSV options to set a separator, got application/vnd.apache.arrow.stream options` - and otherwise refusing what `CsvOptions`'s own setter does)
+  pub const fn csv_separator(&self) -> Option<u8>  (the `Csv(crate::csv::CsvOptions)` variant's dialect, which stays on RecordOptions with `timezone` and `header`, `impl From<CsvOptions> for RecordOptions`; each reader `None` for another encoding, each setter refusing another encoding at its own path - `$.separator: expected CSV options to set a separator, got application/vnd.apache.arrow.stream options` - and otherwise refusing what `CsvOptions`'s own setter does)
   pub fn set_csv_separator(&mut self, separator: u8) -> Result<()>
   pub const fn csv_quote(&self) -> Option<Option<u8>>
   pub fn set_csv_quote(&mut self, quote: Option<u8>) -> Result<()>
@@ -3885,7 +4008,7 @@ pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024  (the cadence a push-
   pub fn set_csv_escape(&mut self, escape: Option<u8>) -> Result<()>
   pub const fn csv_comment(&self) -> Option<Option<u8>>
   pub fn set_csv_comment(&mut self, comment: Option<u8>) -> Result<()>
-  pub const fn header(&self) -> Option<bool>
+  pub fn header(&self) -> Option<bool>  (CSV's and Excel's: MediumSettings::header through the medium; None on every other)
   pub fn set_header(&mut self, header: bool) -> Result<()>
   pub fn csv_null_values(&self) -> Option<&[SmolStr]>
   pub fn set_csv_null_values<I, S>(&mut self, null_values: I) -> Result<()> where I: IntoIterator<Item = S>, S: Into<SmolStr>
@@ -3897,8 +4020,8 @@ pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024  (the cadence a push-
   pub fn require_commit_batch_num(&self) -> Result<Option<usize>>
   pub fn require_num_threads(&self) -> Result<Option<usize>>  (#[doc(hidden)], for the bindings: zero refused naming $.num_threads before a write pulls its source)
   pub fn for_media_type(media_type: &MediaType) -> Result<Self>
-  pub fn for_mime_type(base: &MimeType) -> Result<Self>  (`text/csv` -> `Csv(CsvOptions::new())`, `text/tab-separated-values` -> `Csv(CsvOptions::tsv())`)
-  pub const fn mime_type(&self) -> MimeType  (a `Csv` under a tab separator `TSV`, else `CSV`)
+  pub fn for_mime_type(base: &MimeType) -> Result<Self>  (the default options of the medium claimed under base, `codec_for(base)?.default_options(base)`: `text/csv` -> `Csv(CsvOptions::new())`, `text/tab-separated-values` -> `Csv(CsvOptions::tsv())`; a type no claim answers refused naming the crate to install, and a structured text document's refusal keeps its own sentence)
+  pub fn mime_type(&self) -> MimeType  (the medium's, through MediumSettings: a `Csv` under a tab separator `TSV`, else `CSV`)
 
 ### yggdryl::parquet::metadata  [rust/src/parquet/metadata.rs]
 pub struct ColumnStatistics
@@ -3913,11 +4036,22 @@ pub struct ParquetOptions
   pub fn with_compression(mut self, compression: Compression) -> Self
   pub fn with_max_row_group_size(mut self, rows: usize) -> Self
   pub fn with_key_value(mut self, key: impl Into<String>, value: impl Into<String>) -> Self
+  pub fn compression_name(&self) -> String  (the page compression in the spelling `set_compression_name` accepts: `snappy`, `zstd(3)`)
+  pub fn set_compression_name(&mut self, compression: &str) -> Result<()>  (refused at `$.compression` for a spelling the writer does not accept)
+  pub const fn set_max_row_group_size(&mut self, rows: usize)
+  pub fn set_key_value_metadata(&mut self, metadata: Vec<(String, String)>)
+  pub fn push_key_value(&mut self, key: impl Into<String>, value: impl Into<String>)
   pub fn read_arrow_schema<H: IOBase + ?Sized>(handle: &H) -> Result<Arc<Schema>>
   pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &ParquetOptions) -> Result<Field>
   pub fn read_batch_reader<H: IOBase + ?Sized>( handle: &H, field: Option<&Field>, options: &ParquetOptions, ) -> Result<BatchReader>
   pub fn overwrite_arrow_reader<H>( handle: &mut H, batches: BatchReader, options: &ParquetOptions, ) -> Result<()> where H: IOBase + ?Sized,
   pub fn read_statistics<H: IOBase + ?Sized>(handle: &H) -> Result<FileStatistics>
+  pub fn read_media_statistics(media: &dyn crate::IOMedia) -> crate::Result<FileStatistics>  (the footer statistics of any media that is one Parquet leaf, decoding no row: an opened `Parquet` answers from the footer its `open` read at no call; `expected Parquet media, got {mime}` at `$.encoding` for another encoding and `expected one Parquet leaf for file statistics, got a container` at `$`)
+  pub fn read_media_geospatial_statistics(media: &dyn crate::IOMedia, column: &str) -> crate::Result<GeospatialStatistics>  (a projected column scan of the named top-level binary column's WKB, the refusals of `read_media_statistics`)
+  pub struct ParquetCodec  (Parquet as the record register holds it - the free functions of this module behind MediaCodec; Debug)
+  pub static PARQUET_CODEC: ParquetCodec  (claimed by the core under `application/vnd.apache.parquet`, rank 1, named `parquet`, titled `Parquet`, compresses internally; options held as RecordOptions::Registered)
+  pub struct ParquetFooter  (the decoded footer an opened `Parquet` holds, what IOMedia::as_any answers for it; Debug)
+  pub fn footer(&self) -> Option<Arc<ParquetMetaData>>
   pub struct Parquet<H: IOBase>
   pub fn new(handle: H) -> Self
   pub fn with_options(mut self, options: ParquetOptions) -> Self
@@ -4081,6 +4215,8 @@ pub struct TextLines
   pub fn from_arrow_reader(batches: BatchReader, options: &TextOptions) -> Result<impl FusedIterator<Item = Result<TextLine>> + Send + 'static>  (one resolved intake, one batch and row cursor; schema/row/source error fuses; the six element and nine event columns restated on the line where the batch carries them, so the identity and observation instants a later step named survive the round trip; rownum subtracts configured start, absent rownum uses continuous stream ordinal; typed captures render canonically and retain index holes)
 
 ### yggdryl::text::handle  [rust/src/text/handle.rs]
+pub struct PlainTextCodec  (plain-text rows as the record register holds them - behind MediaCodec, without row identity, with the native line stream read_stream answers; Debug)
+pub static TEXT_CODEC: PlainTextCodec  (claimed by the core under `text/plain`, rank 3, named `text`, titled `text`)
 pub struct Text<H: IOBase>
   pub fn new(handle: H) -> Self
   pub fn with_options(self, options: TextOptions) -> Self
@@ -4923,6 +5059,8 @@ pub fn definition_of(request_type: &RequestType) -> Option<&'static Definition>
 pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &XmlaOptions) -> Result<Field>
 pub fn read_batch_reader<H: IOBase + ?Sized>( handle: &H, field: Option<&Field>, options: &XmlaOptions, ) -> crate::arrow::Result<BatchReader>
 pub fn overwrite_arrow_reader<H: IOBase + ?Sized>( handle: &mut H, batches: BatchReader, options: &XmlaOptions, ) -> Result<()>
+pub struct XmlaCodec  (an XML for Analysis rowset document as the record register holds it - behind MediaCodec; Debug)
+pub static XMLA_CODEC: XmlaCodec  (claimed by the core under `application/xmla+xml`, rank 4, named `xmla`, titled `XMLA`)
 pub struct Xmla<H: IOBase>
   pub fn new(handle: H) -> Self
   pub fn with_options(mut self, options: XmlaOptions) -> Self

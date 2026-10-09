@@ -25,7 +25,11 @@
 //! [`MemoryNamespace`] keep registered objects in order, [`FolderCatalog`]
 //! and [`FolderNamespace`] read a container as namespaces and tables, and
 //! [`MediaTable`] is a table over any location a record medium reads. Every
-//! other implementation lives in the root folder of its own name.
+//! other implementation lives in the root folder of its own name and is
+//! held as the `Registered` variant of its enum, through
+//! [`RegisteredCatalog`], [`RegisteredNamespace`] or [`RegisteredTable`];
+//! [`Catalog::from_url`] reaches one through the [`CatalogFactory`] claimed
+//! for its `type` word or its scheme ([`claim_factory`], [`factories`]).
 //!
 //! ```
 //! use yggdryl::holder::Holder;
@@ -64,16 +68,18 @@ mod properties;
 mod system;
 mod table;
 
-pub use catalog::{Catalog, CatalogValue};
+pub use catalog::{
+    Catalog, CatalogFactory, CatalogValue, RegisteredCatalog, claim_factory, factories,
+};
 pub use folder::{FolderCatalog, FolderLayout, FolderNamespace};
 pub use handle::Handle;
 pub use media::MediaTable;
 pub use memory::{MemoryCatalog, MemoryNamespace};
-pub use namespace::{Names, Namespace, NamespaceValue, Namespaces, Tables};
+pub use namespace::{Names, Namespace, NamespaceValue, Namespaces, RegisteredNamespace, Tables};
 pub use object::{IntoObjectPath, Object, ObjectValue, Objects};
 pub use properties::Properties;
 pub use system::SystemWarehouse;
-pub use table::{Table, TableValue};
+pub use table::{RegisteredTable, Table, TableValue};
 
 pub(crate) use catalog::no_catalog;
 #[cfg(feature = "iceberg")]

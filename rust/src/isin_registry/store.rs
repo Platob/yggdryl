@@ -2,7 +2,6 @@
 //! and is committed back to as one snapshot, under the holder's own record
 //! options resolved once at the binding.
 
-#[cfg(feature = "iceberg")]
 use smol_str::format_smolstr;
 
 use crate::holder::Holder;
@@ -42,24 +41,23 @@ impl Store {
     /// files' - a folder listing no record leaf, or plain text alone (a
     /// README beside the parts), laid out as Arrow IPC by the first commit.
     /// A leaf names its encoding by its name, so one this build has no
-    /// record encoding for is refused by it; a location inside an Iceberg
-    /// table - one partition of it - is refused by name, since a registry
-    /// is replaced whole.
+    /// record encoding for is refused by it; a location inside a table a
+    /// format lays out - one partition of an Iceberg table - is refused by
+    /// name, since a registry is replaced whole.
     fn bind(holder: Holder) -> Result<Self> {
         let native_table = matches!(&holder, Holder::Table(_));
         let container = holder.is_container();
-        #[cfg_attr(not(feature = "iceberg"), allow(unused_mut))]
         let mut keeps_row = native_table || !container;
-        #[cfg(feature = "iceberg")]
         if !native_table
             && container
-            && let Some(located) = crate::iceberg::located(&holder)?
+            && let Some(located) = crate::media::format::locate(&holder)?
         {
             if !located.is_whole() {
                 return Err(Error::InvalidRecord {
                     path: smol_str::SmolStr::new_static("$.holder"),
                     reason: format_smolstr!(
-                        "expected an Iceberg table whole for the instrument registry, got a partition of one at {}",
+                        "expected a table whole for the instrument registry, got a partition \
+                         of one at {}",
                         location(&holder)
                     ),
                 });
@@ -397,8 +395,7 @@ impl IsinRegistry {
             self.dirty = false;
             return Ok(written);
         }
-        #[cfg(feature = "iceberg")]
-        if container && let Some(mut located) = crate::iceberg::located(&store.holder)? {
+        if container && let Some(mut located) = crate::media::format::locate(&store.holder)? {
             if self.table.is_empty() {
                 located.clear()?;
             } else {
