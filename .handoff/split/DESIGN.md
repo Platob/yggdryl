@@ -700,6 +700,10 @@ One commit in dependency order inside it (avro, parquet, iceberg). The
 reversed S6a-c is the only buildable split and is put to the user by the S5
 handoff if S6's diff is too large; it is not taken without the user.
 
+Decided by the user (2026-10-09, "Do what's recommended"): excel and xmla each a commit
+under one push, then avro, parquet, s3 and iceberg (+s3tables) as one dependency-closed commit
+(the order `scratch/regroup.md` "S6 order amended" proved); the reversed split is not taken.
+
 ## Risks
 
 - D19: a stored hash moves if S1's `Hash` impls feed one byte differently;
@@ -2163,6 +2167,28 @@ renamed.
 
 Slice: P4, in place, after S3 lands and before P5 (D37); one commit.
 
+### P4 results
+
+What the tree is: `4e46b5ab7` "Name the event's instants transunix and sendunix and drop curr from the element's own names" (D38) - `currunix` -> `transunix`, `recdunix` -> `sendunix`, `curruuid` -> `uuid`, `currhashcode` -> `hashcode` at every door, column, crate field, binding, page and test; 191 files; precedences, values, derivations, positions and tag numbers unmoved.
+
+| pin | moved | sentence |
+| --- | --- | --- |
+| the dictionary hash (`rust/tests/fix/store.rs`) | `14542711836201211247` -> `12613356107921639431`, once | crate fields 65_001, 65_004, 65_007 and 65_009 re-spelled with their descriptions; the dump written again; the census unmoved |
+| the equivalence snapshot | 1283 key lines re-spelled, 0 values moved (normalized multiset equal) | the keys carry the new names; no digest line moved |
+| the 912-byte `MarketData` pin, every cost row, the content-code pin | unmoved | - |
+
+| check | result |
+| --- | --- |
+| the sweep `scratchpad/p4_sweep.py` on `ef4e241a4` | 186 files, +3883/-3950, 0 refusals, idempotent; residue the define's (generated files, `refrecdunix`, the hash rustdoc's history sentences) |
+| `cargo check -p yggdryl --all-targets`; `--workspace --all-targets` | clean; clean |
+| phase suites | fix 900/900 (the crated wording list re-sorted by hand: `hashcode` sorts after `exprunix`), graph 389, text 212, root 1728, root `--features internals` 1900, fix `--features internals` 1022, allocations (the 7 rows the sweep touched) 7 |
+| `maturin develop`; pytest over the re-spelled files; mypy | 0; 640 passed; 0 |
+| Node: 401 tests over the 15 re-spelled files; tsc; mkdocs strict | 401/401; 0; 0 |
+| the chain (`logs/chain_p4.sh`): `cargo fmt --check`; `cargo test -p yggdryl --all-targets --all-features --no-fail-fast`; clippy workspace all features; `cargo doc -D warnings` | 0; 63 targets, 9379 passed, 0 failed, 3 ignored; 0; 0 - the chain's later steps (rustdoc, the default-feature run, the CLI tests, the Python and Node pre-push blocks, the docs runners) were not re-run before the session ended |
+| CI | P4's own run `37963214879` was cancelled by the handoff push `7b566b3` (the concurrency group); run `37963283466` on `7b566b3` - `.handoff/**` alone over P4's tree, an inert path, the ledger holding no green run at P4's fingerprint - ran every job: 32 green (Changes 10s, Core build (all features) 109s, Core tests (all features, rest) 312s, Python binding wheel 320s, Documentation examples (Python) 303s, Python binding (free-threaded 3.14t, abi3t 3.15) 500s, CI result 12s), the empty `Leaf` matrix and `API inventories` skipped as planned; docs run `37963283458` green |
+
+Not run: every `cargo bench` and `npm run bench:*`, the Python boundary benchmarks, the scale run, the charset tables and interop, the ISIN seed, the country and MIC tables (nothing the slice touches makes them stale).
+
 ## P5: design
 
 ### D37 - `MarketMessage`, the market side's own message, and the FIX codec's doors onto it
@@ -2585,6 +2611,311 @@ commit, one chain and one push for the batch - then, after S6d has landed
 `yggdryl-s3` (D15, D36). `iceberg` is `after = ["avro", "parquet", "s3"]` in
 the CI leaf table.
 
+## P6: the market book service deleted
+
+The user's instruction (2026-10-09): "Delete also the market served service its useless". A deletion is a slice:
+everything the service was - `BookService` and its routes, `yggdryl market serve`, the Node.js display, the page,
+the CI steps that built the command for the book tests, the allocations row that named it - goes in one commit,
+no alias, no stub; candles, books, snapshots, the audit doors, the HTTP server and `yggdryl xmla serve` stay.
+The contract is the slice's commit message and the deletion list above; nothing of it remains to run.
+
+### P6 results
+
+What the tree is: `1ad29bfa6` "Delete the market book service" (the user's instruction: "Delete also the market served service its useless"), 59 files, +109/-11267: `BookService`, `BookServiceOptions`, `BookTable` and `BookQuery` (`graph/serve.rs`, under `http`) with their routes; `yggdryl market serve` and the CLI's `market` namespace (`cli/src/market.rs`, `cli/tests/market.rs`, `location::file`/`file_of` which only it called); the Node.js display `node/book/` with `book.js`, `book.d.ts`, their tests and types, the package's `./book` export and `files` entries, the audit's book section; the page `docs/graph/serve.md`, its nav line and every mention in the pages, the skills, README.md, AGENTS.md and the inventories; the CI steps that built the command for the book tests (the `cli-bin` artifact, the node job's need on the cli job; `[rows.node]` extends `addon` alone, `[rows.cli]` reads `cli/**` alone, `cli` joins `[leaf] jobs` so a leaf change still runs the CLI tests it ran through the node job before); the docs runner's `yggdryl/book` alias; the helpers only the service used (`book::states_on`, the `implementer::parse_capture` door - `text::arrow::parse_capture` back to `pub(crate)` - and the `implementer::normalize_path`/`format_timestamp` doors, which no market or FIX code reaches once the service is gone: the XMLA move script `s6_xmla_move.py` adds them back for the crate that does reach them, and its map says so). Candles, books, snapshots, the audit doors, the HTTP server and `yggdryl xmla serve` stay.
+
+| pin | moved | sentence |
+| --- | --- | --- |
+| `rust/tests/allocations.rs` | none: the one row the contract named (`a_service_rebuild_allocates_per_delta_not_per_level`) pins the kept `Element::with_previous`, not the service, so it stays as `a_delta_book_rebuild_allocates_per_delta_not_per_level` with its doc reworded, body and bound byte-identical; 184 items as at HEAD | - |
+| every other pin | unmoved | - |
+
+| check | result |
+| --- | --- |
+| `cargo check --workspace --all-targets --all-features --keep-going --message-format=short --locked`; the default lane `-p yggdryl --all-targets` | clean; clean |
+| `cargo test --locked -p yggdryl --test graph`; `--test root implementer` (both lanes); `--all-features --test allocations` | 389 passed; 34 passed; 184 passed |
+| `cargo test --locked -p yggdryl-cli --all-targets --no-fail-fast` | fix 14, quality 1, style 1, xmla 7 (4 ignored); the fix benchmark smoke ran |
+| `npm run --prefix node build:debug`; `git diff -- node/index.js node/index.d.ts`; `npm test --prefix node`; `tsc --noEmit`; `check-package-files.js` | built; the generated loader and declarations unchanged; 1083 tests, 1081 passed, the two sandbox `TextDecoder` charset tests failing as at every slice; 0; 29 files, 1 native module |
+| the planner suite; `plan.py plan --base origin/main` | 51 OK; runs, 20 rows |
+| `check_api_inventory.py`; `generate_internals.py --check`; `mkdocs build --strict`; `build_docs_fix.js --check`; `build_docs_playground.js --check` | current; current; clean; current; current |
+| the greps (`BookService`, `market serve`, `node/book`, `book.test`, `/api/...`, `book.js`, `graph/serve`, `yggdryl/book`, ...) outside `.handoff/` and history; test code under `src/`; model identifiers | empty; empty; the two pre-existing lines of AGENTS.md's Pace rule (on `origin/main` too) and nothing else |
+| `cargo fmt --all -- --check` | clean |
+| verification | three independent read-only lenses (leftover sweep, contract coverage, checks re-run) over the tree: no blocking finding; five minor ones, four fixed (the two unreachable implementer doors dropped, the CLI's "every serving command" prose, the allocations row restored under its surface's name) and one left (AGENTS.md's Pace rule) |
+
+Not run before the commit: the three docs example runners (the chain's; the greps prove no block names the service).
+
+## S4: what was built
+
+`yggdryl-market` (`rust/market/`) and `yggdryl-fix` (`rust/fix/`), moved by `s4_move.py` on the P6 tree and
+settled by the compiler loop, the nine S4 decisions of `scratch/regroup.md` (decision 7 reversed: P5 is not
+landed, so `OperationEventFacts` is reached through a constructor door of the market implementer), the Excel
+answers and D39; the lane ran as one workflow - the move, one settle round, four decision agents on disjoint file
+sets, one suites round, three read-only review lenses - then a residue step of thirty-one foreground decisions
+(`scratch/s4_decisions.md`, kept as the worked example of a settle's residue) applied by three agents and verified by two lenses each. The one
+spelling of every verb survives the move: a core item `yggdryl::X`, a core-private one `yggdryl::implementer::X`,
+a market item `yggdryl_market::X`, a market-private one FIX reaches `yggdryl_market::implementer::X`.
+
+### S4 results
+
+What the tree is: the commit "Move the market vocabulary into yggdryl-market and FIX into yggdryl-fix" over P6 `1ad29bfa6`: `rust/market/` (`yggdryl-market`: the four enum kinds, `idkey`, `identifier`, `idtype`, `idsource`, `securityid`, `eusipa`, `limit`, the ISIN registry and its seed, `graph/` less the event vocabulary - `mod.rs`, `element.rs`, `column.rs`, `element_column.rs` stay core - the three `delegate_*` macros exported, `#[doc(hidden)] pub mod implementer`, `install()` claiming the kinds at the bytes, names, extension names and ranks `HELD` keeps and registering the `side`/`timeinforce` listings) and `rust/fix/` (`yggdryl-fix`: all of `fix/`, `fix_category.rs`, `install()` installing market then claiming the FIX Latest logical names); the script `s4_move.py` ran clean on the first attempt (165 git moves, the two `rust/examples/fix_*.rs` deleted, 380 status entries; 1099 use statements and 1937 paths re-owned; 32 core test files split by item; 21 harnesses, 1838 tests, the benches' mains, every moved rustdoc example and 204 page blocks installing); the compiler loop closed its 56 errors (27 E0624, 13 E0603, 8 E0432, 4 E0599, 2 E0616, 1 E0433, 1 E0425) by the implementer routes (F forwarders, A `<type>_<item>` free functions, R raises inside crate-private modules; `OperationEventFacts` through a constructor door, decision 7 reversed), the lost trait imports restored, the core benches and rustdoc examples re-fixtured on `State`, `TextLine` and core logical names; the decisions: (2) `StringEnum::register_prebuilt(name, values, by)` - a claim-once register on `plugin.rs` - and `StringEnum::prebuilt()`, the core table keeping its own listings, both bindings reading `prebuilt()`; (3) about 25 core test files restored from HEAD and re-fixtured onto `State`, a code or `TextLine` (the core's `graph/{element,column,element_column}` tests back in a new `rust/tests/graph.rs`; a new `rust/tests/root/market.rs`; only market facts moved; every core source file has its test file again); (4) AGENTS.md's crate map and `## Crates` section with `### yggdryl-market` and `### yggdryl-fix`, the Layout rows re-homed, docs/contributing.md, docs/architecture.md, the READMEs; (5) `rust/examples/` gone, `docs/fix/capture.md` on its own block, `rows.core` without `rust/examples/**`; (10) the claimant `yggdryl-market`, the refusal reworded, the held-kind pair check yielding to the register's conflict once claimed, the whole-register listing and order pins in `cli/tests/market_register.rs`, the grammar-word fixture `price` -> `exchange` (`price` is a FIX name now); (12) the `market` and `fix` leaves on, `[shards.yggdryl-market]`/`[shards.yggdryl-fix]`, a leaf line's new `paths` naming the core-tree files its sources include (the capture, `bench_profile.rs`, `counting_filesystem.rs`, `allocation_measurement.rs`) with a planner test holding it to the sources, `rows.core` without `config/**`; the CLI's `fix` tests and bench install market then fix (D7); the logging facade's table already naming both crates (verified).
+
+| pin | moved | sentence |
+| --- | --- | --- |
+| the dictionary hash `12613356107921639431`, the census, the crate dump (`config/fix/`), the equivalence snapshot, the 912-byte `MarketData` size, every `allocations`/`iobase_calls` row, every request count, the S0/S2 hashes and orders | unmoved | S4 moves no crate field and re-spells no value |
+| `rust/tests/arrow/extension.rs` the names-per-extension count | 35 -> 31 in the core process | the market crate's four names are listed only once it claims them; 35 with the four names checked is pinned after install in `rust/market/tests/arrow/extension.rs` |
+| `rust/tests/root/datatype_id.rs`, `root/uuid.rs`: `DataTypeId::all().len()` | 96 -> 92 | the core's own ids; the market crate pins 98 with its two test kinds and that the kinds sit right after `state` |
+| `rust/tests/root/compatibility.rs` enum floor | `>= 5` -> `>= 1` | the core holds one enum leaf, `state`; `rust/market/tests/root/compatibility.rs` pins the four kinds' int32 answer |
+| `rust/tests/root/datatype.rs` structural hash rows; `root/scalar.rs` value-rank sweep; `root/datatype_id.rs` discriminant list | 101 -> 99 rows; 38 -> 37; the four bytes `0xc2`-`0xc5` leave the core list | the `side`/`timeinforce` rows and Side's rank 29 and the four bytes are pinned byte-identical in the market crate's root files and `cli/tests/market_register.rs`; no hash, rank or byte value changed |
+
+| check | result |
+| --- | --- |
+| `cargo check --workspace --all-targets --all-features --keep-going --message-format=short` (first without `--locked`, then `--locked`); the default lane | 56 errors -> 0, 0 warnings; 0 |
+| `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings`; the default lane per crate | clean (two CLI test findings fixed) |
+| `cargo test --locked -p yggdryl-market --all-targets --no-fail-fast`, and `--all-features` | green: allocations 38, graph 366, root 205, market_register 7, isin_registry 33, xxhash 5, arrow 2, expression 1, iobase_calls 1 |
+| `cargo test --locked -p yggdryl-fix --all-targets --no-fail-fast`, and `--all-features` | green: fix 900 / 1026, allocations 20, graph 12, iobase_calls 2, root 5, scale_ulbridge 3 + 1 ignored; the hash, the census and the snapshot unedited |
+| the core harnesses, all-features lane (`root`, `graph`, `allocations`, `iobase_calls`, `media_register`, `logging`, `arrow`, `expression`, `json`, `serie`, `value`, `xmla`, `xxhash`, `text`, `iceberg`); default lane (`root`, `graph`, `text`, `allocations`) | green: allocations 126, arrow 35, expression 244, graph 35, iceberg 528, iobase_calls 64, json 33, logging 89, media_register 14, root 1715, serie 344, text 236, value 25, xmla 761, xxhash 82; root 1539, graph 34, text 212, allocations 118 |
+| `cargo test --locked -p yggdryl-cli --all-targets --no-fail-fast` | green: fix 14, market_register 2, quality 1, style 1, xmla 7 + 4 ignored |
+| `cargo test --doc -p yggdryl` / `-p yggdryl-market` / `-p yggdryl-fix --all-features` | 614 / 76 / 52 passed |
+| `cargo package --locked --list -p yggdryl --allow-dirty` | 1292 files, none under `market/` or `fix/` |
+| the planner suite; `plan.py plan --base origin/main` | 53 OK; lists the market and fix leaf jobs |
+| `maturin develop`; **`pytest python/tests/test_fix.py -k medallion`** (the user's named validation); `pytest python/tests` whole; mypy | installed; **1 passed (65.6 s)** - the medallion pipeline over two local Iceberg warehouse folders; 2784 passed, 4 skipped (as at HEAD); no issues in 70 files |
+| `npm run --prefix node build:debug`; `git diff -- node/index.js node/index.d.ts`; `npm test`; `tsc --noEmit`; the two docs manifests | built; unchanged; 1083 tests, 1081 passed, the two sandbox `TextDecoder` charset tests failing as at every slice; 0; current |
+| `generate_internals.py --check`; `check_api_inventory.py`; `mkdocs build --strict`; `cargo fmt --all -- --check` | current (one block per crate); current; clean; clean |
+| the greps: test code under `src/`; old paths (`yggdryl::fix::`, `yggdryl::graph::Order*`, `yggdryl::Side`, ...); model identifiers | empty; empty; AGENTS.md's pre-existing Pace sentence alone |
+| review (read-only lenses over the settled tree) | back-compat: no re-export from an old path, no silencing attribute, no lazy install, no visibility raise outside a crate-private module, no public core API beyond `register_prebuilt`/`prebuilt`; its findings judged in the foreground - three defects fixed in the residue step (the core's `graph/element.rs` intra-doc links to moved items, a `use yggdryl_fix as fix` alias in a doc example, the market implementer with no test file), the FIX crate's tests re-laid under `tests/root/` per the mirror rule (`--test root`), the move-narration headers re-spelled to the mirror-rule form, and the reserved-kind table (`RESERVED_KINDS`, as D39's `RESERVED_RANKS`) and S3's logger-name rule kept as the contracts they are with their prose stating the rule rather than the history; pins: the dump untouched, the cost files HEAD minus whole moved blocks, the hash and census unmoved, the listing counts split by crate with every value byte-identical, one dropped market pin (the kinds' Iceberg int bounds and the `Side::SellUnd` cast-out) re-pinned in the market crate; medallion: the pipeline green again (1 passed, 68.7 s) on the settled tree |
+| a defect found while re-laying the FIX tests, fixed in this commit | the three process-global tests of `rust/fix/tests/root/global.rs` (the default registry from the environment, the home and an install) spawned their child under names that matched no test path (`global_env::…`, `global_home::…`, `global_install::…` - at HEAD too), so the child ran nothing and the parent took its exit as success: their bodies had never run. The names are the real paths, the two isolated runners (`rust/fix/tests/root.rs`, `rust/fix/tests/isin_registry.rs`) now refuse a child that reports anything but `1 passed`, and the three bodies pass (`cargo test --locked -p yggdryl-fix --test root global`: 4 passed) |
+| the residue step (the foreground's 31 decisions on the agents' and lenses' residue) | applied by two agents then one, each proven narrowly: the one shared install sentence spelled only for a reserved kind's name (the core's table knows the four names and their owner), the listing-claim pins, `StringEnum::DIRECTIONS` (dead at HEAD) deleted, the FIX crate's root tests merged into `rust/fix/tests/root/lib.rs`, the market implementer's test file, the core's `graph/element.rs` links as code spans, the reserved-kind table `RESERVED_KINDS` with its owner enforced at every key (a re-claim the conflict naming `yggdryl-market`), the logger-name rule and the reserved table documented as contracts, the move-narration headers in the mirror-rule form, the dropped market pins re-pinned, the stale prose in the pages, skills, inventories and READMEs re-homed; `cargo doc --workspace -D warnings` clean after it |
+
+## P7: design
+
+# P7: design (D40) - the FIX row named by the registry, the lifted band last, one hold map, the simple cross identity, the book's sources
+
+The user's instruction (2026-10-09, `$S/p7/user_instruction.md`), six items, designed as one slice.
+Lands after S4 (inside `yggdryl-market` and `yggdryl-fix`) and before P5R, whose parked patch is
+re-targeted onto these names. One commit, one push, CI read; the dump, the dictionary hash, the
+equivalence snapshot's keys and the book identities move once each, with their sentence.
+
+## D40.1 - the FIX row's column for a fact FIX states is the registry's field
+
+Today the fixed row opens with the crate's bands - the element's, the event's, the market's and the
+operation's facts under the names every `marketdata` row states them by - and for a fact FIX states
+under a name of its own the crate defines a *derived* column stated a second time beside the
+registry's field: `transunix` (65_007) beside `TransactTime(60)`, `sendunix` (65_009) beside
+`SendingTime(52)`, `strikepx` (65_036) beside `StrikePrice(202)`, `ordqty` (65_038) beside
+`OrderQty(38)`, `askpx`/`bidqty`/`askqty` beside `OfferPx(133)`/`BidSize(134)`/`OfferSize(135)`,
+`ticker` beside `Symbol(55)`, `unit` beside `UnitOfMeasure(996)`, `spotrate`/`forwardpoints` beside
+`LastSpotRate(194)`/`LastForwardPoints(195)`. A fact FIX names alike - `Price(44)`, `Side(54)`,
+`CFICode(461)`, `TimeInForce(59)` and the twelve others `dictionary_market_tag` lists - is already
+that field and never tagged twice.
+
+Decided: the rule the named-alike set already follows covers every fact one FIX field states whole.
+The FIX row's column for such a fact is the registry's field - its tag, its folded name, its code
+set - holding the message's settled fact, as `price` (44) holds the settled price today; the
+derived crate definition is retired. The pairing is one table, `fix/schema.rs`'s
+`dictionary_market_tag`/`dictionary_operation_tag` grown by a `dictionary_event_tag`
+(`transunix` -> 60, `sendunix` -> 52) and the market pairs (`strikepx` -> 202, `askpx` -> 133,
+`bidqty` -> 134, `askqty` -> 135, `ticker` -> 55, `unit` -> 996, `spotrate` -> 194,
+`forwardpoints` -> 195) and the operation pair (`ordqty` -> 38); `shared_tags()` reads it as it
+reads the named-alike set, so the row still opens with every element, event, market and operation
+column, each under one tag. A fact no single FIX field states whole keeps its crate definition:
+`hiddenqty` (the quantity past the shown part, two fields), `prevpx`/`prevqty` (a predecessor's
+word first), `execunix`, `origccy`, `bidccy`/`askccy`, `fxrates`, `securityids`, `identifiers`,
+`partyids`, `tradable`, `marketdatakind`, `marketdatatype`, `metadata`, and every element and
+event column FIX does not state (`uuid`, `crossuuid`, `crosscode`, `hashcode`, `crosshashcode`,
+`srcuuids`, `creaunix`, `exprunix`, `prevunix`, `snapunix`, `prevuuid`, `seqnum`, `state`).
+
+The round trip holds as it does for `price` today: the row's column states the settled fact; the
+wire text of the field where it differs from the settled fact (a `TransactTime(60)` outside the
+sending delay, an `OrderQty(38)` the walk restated) is conflicting content and stays in
+`fixentries` under its `tag:name`, so a message read back re-emits the wire and digests as the
+parse did. The retired definitions leave their numbers unused for good (`is_derived_tag` answers
+false for them and nothing else, then is deleted when no derived definition remains); a retired
+number is never given to another definition - the sentence "a retired definition leaves no gap"
+in `crated.rs`/`capture.md` is replaced by "a retired number is never reused", because a stored
+capture fills its columns by `FIX:tag`.
+
+What moves: the crate dump (the retired definitions gone), the dictionary hash (once, its
+sentence: "the eleven derived definitions FIX states under a name of its own left the dictionary,
+D40"), the census (eleven definitions fewer), the equivalence snapshot's keys (`transunix` ->
+`transacttime` and the ten others on FIX rows; no value, no digest line), `fix_schema_tags`'
+count (152 -> 141 + the lifted band's new tag), `docs/graph/schemas.md`'s FIX row listing. The
+`marketdata` row keeps every market name: `transunix`, `sendunix`, `strikepx`, `ordqty`, `askpx`,
+`ticker` are the graph's vocabulary; the pairing table is where a reader joins the two rows.
+
+Consequence stated to the user: a FIX-row table (the medallion pipeline's `bronze.fix_messages`
+and `silver.fix_messages`) is windowed and partitioned by `transacttime` where it was by
+`transunix`; `python/tests/medallion.py` reads the window column per stage (`transunix` on the
+line, book and event tables, `transacttime` on the FIX tables), its `PRIMARY_KEY` and `PARTUNIX`
+spelled per table. The alternative - keep `transunix` on the FIX row and retire the registry's
+`transacttime` column instead - was refused: the instruction names the registry's spelling, and a
+FIX row that spells FIX's own field by another name is what the instruction removes.
+
+## D40.2 - the crate's bands in order, the lifted band last
+
+Every generated schema keeps its opening order - element (6), event (9), market, operation (5) -
+and the lifted instrument identities close the flat columns as one band, in this order:
+`instuuid`, `isin`, `cfi`, `mic`, then on the FIX row alone `bbg`, `figi`, `forex`. On the FIX
+row the band stands after the groups and the frame and before `fixentries`; `cfi` there is
+`CFICode(461)` itself (D40.1), moved into the band from the instrument band. On the `marketdata`
+row the band stands after the book controls and before the six nested columns, so the row is
+6 + 9 + 33 + 5 + 3 + 4 + 6 = 66 columns: `isincode`, `cficode` and `miccode` leave the market
+band (`MarketColumn` loses the three; a `LiftedColumn` enum of the four names them, read through
+one `fact`/`record` pair like the other column enums). The crate tags keep their numbers (D40.1):
+`isin` 65_022, `mic` 65_023, `forex` 65_049, `bbg` 65_050, `figi` 65_051, and `instuuid` takes
+65_054, the next unused; the fixed row's order is `fix_schema_tags`' bands, never the numbering,
+and `crated.rs`'s "numbered in the fixed row's order" says so.
+
+## D40.3 - `securityids` the one hold map; `isin` and `cfi` lifted from it; `instuuid`
+
+`MarketFacts` drops `cficode: Option<Cfi>`: the CFI is held in `securityids` under `IdType::Cfi`
+(`cfi`, already a security type of the vocabulary), as the ISIN is under `IdType::Isin`, and the
+market columns `isin` and `cfi` are views of the map - `Market::get_isin()` (was `get_isincode`)
+and `Market::get_cfi()` (was `get_cficode`) read the base key, `set_cfi(code, overwrite)` writes it
+through `insert_securityid` with the refinement rule `set_cficode` has today (`Cfi::refined`, a
+compatible code refined, a conflicting one replaced under `overwrite`). The MIC is no security
+identifier (`IdType` has no venue word, `is_listing` names a listing's code, not the venue), so
+`mic: Option<Mic>` stays a market holder, renamed, and its column is lifted by position alone.
+`instuuid` is the instrument's identity, `Uuid::from_u128(xxh3_128(isin))` of the element's real
+ISIN (`Isin::is_real`), none where it states none - the reading every later instrument
+centralization replaces with the registry's answer, which is why it is a column now and derived
+from the one key the registry is keyed by; `Market::instuuid()` is the provided reading, no
+holder, no setter; on the FIX row the crate tag 65_054 `instuuid` (`uuid`, nullable) states it,
+read back as the row's word like every lifted column.
+
+## D40.4 - the renames
+
+The registered-code columns and holders drop their `code` suffix, one spelling each: `isincode`
+-> `isin`, `cficode` -> `cfi`, `miccode` -> `mic`, `bloombergcode` -> `bbg`, `figicode` -> `figi`,
+`forexcode` -> `forex` on the FIX row and the market row (`FixMsg`'s `get_isincode`/`get_miccode`
+and the Python/JavaScript properties `isincode`, `cficode`, `miccode`, `bloombergcode`, `figicode`,
+`forexcode` follow: `msg.isin`, `msg.cfi`, `msg.mic`, `msg.bbg`, `msg.figi`, `msg.forex`); the ISIN
+registry's columns `cficode` -> `cfi`, `countrycode` -> `country`, `forexcode` -> `forex`,
+`eusipacode` -> `eusipa`, `miccode` -> `mic` with `IsinEntry`'s fields, its `SORT:by`
+(`["isin","mic"]`), the seed's JSON keys (`config/isin/instruments.json` and the embedded copy,
+`scripts/check_isin_seed.py --sync`), the golden-file readers (the six EUSIPA spellings keep
+reading a foreign file's `eusipacode` column: they are intake spellings, not ours), and a store
+written before the rename is not read (no back-compat: a registry store is rebuilt from the seed
+and the stream it learned from). `crosscode`, `hashcode` and `crosshashcode` keep their names:
+they are the element's identity vocabulary (D38), not a registered code; `detailedcficode` is the
+dictionary's own name of `CFICode(461)` and keeps it.
+
+## D40.5 - `crossuuid` is the XXH3-128 of the cross code
+
+`Element::cross_uuid` answers `Uuid::from_u128(xxh3_128(crosscode))` where the cross code is not
+empty - the raw 128-bit digest as the UUID, no version bits - and the element's own identity where
+it is empty (an element in no chain is a chain of one, as today). `crosshashcode` stays the
+XXH3-64 of the same bytes, the key the pipeline and the FIX row carry; `sync_cross` writes both.
+Every pinned `crossuuid` moves once (the equivalence snapshot's `crossuuid` cells, the graph and
+FIX tests naming one); no `uuid` moves, since `time_uuid` reads the cross hash code and not the
+cross UUID.
+
+## D40.6 - a book states its sources, and its content code is its instant over them
+
+`BookEvent::get_srcuuids` answers the unique, sorted UUIDs of the events constituting the book at
+its instant: every entry of its `delta`, every item of its `events`, and - where the book was
+rebuilt over the one before it (`with_previous`) - that previous book's own `uuid`, one identity
+and never its sources, so the list is what this instant brought plus one link back and no book
+accumulates the UUIDs of every cycle before it; the alive entries a complete book carries forward
+are not sources (they are the earlier cycles' events, each already a source of the book that
+applied it). Computed when the book is built or re-finalized and held; `set_srcuuids` keeps
+nothing (the sources are derived, and a row read back rebuilds them from its `prevuuid` and its
+nested `delta` and `events` columns, so the `srcuuids` column of a `BOOK` row states them and
+`MarketData::from_arrow_reader` reads past the cell). The book's content code is
+`XXH3-64(transunix as eight big-endian bytes, then the XXH3-64 of the sorted source UUIDs' bytes
+as eight big-endian bytes)` - "the transunix with the hash of srcuuids" - replacing
+`finalize_book_event`'s digest over the market facts, the sides' digests, the delta words and the
+event kinds; since the previous book's uuid is a source, every book's code chains through the one
+before it. The book's `uuid` derives from it through `Event::finalized` as before, so every book
+identity moves once (the books' rows in the equivalence snapshot and the book tests' pinned UUIDs
+and hash codes, each with the sentence). Two books of one instant over the same events after the
+same predecessor are one book whatever facts they settled on, which is what makes the code a
+content code of a book rather than of a fold.
+
+The user's refinement (2026-10-09, after the six items): "on the with previous add also the
+previous uuid in it, but ensure srcuuids dont accumulate all uuids of all cycle events" - taken as
+above: the previous book's `uuid` joins the sources, the previous book's sources never do.
+
+## What does not move
+
+The `DataTypeId` bytes, the ranks, the `Shape` positions, the hash feeds of every leaf but the
+book's, the value-stream bytes, the Arrow extension names, every cost pin (`allocations`,
+`iobase_calls`, the benches) - a lifted column read off `securityids` costs the one binary search
+`get` costs today; the FIX allocation rows stay - and the S0/S2 pins. The 912-byte `MarketData`
+size pin: `MarketFacts` loses one `Option<Cfi>` (the size falls or stays; a fall is re-pinned with
+its sentence, a rise a defect).
+
+## Order and checks
+
+After S4 (the files under `rust/market/src/graph/`, `rust/market/src/`, `rust/fix/src/`) and
+before P5R. One commit: the core's `crated.rs`/`schema.rs`/`identity.rs`/`msg.rs`/`build.rs`
+(the lifted tags grown by the eleven, the derived definitions deleted, the band order), the
+market crate's `element.rs`, `book.rs`, `arrow.rs`, `market_column.rs` + the `LiftedColumn`,
+`facts.rs`, `market.rs`, `isin_registry.rs` and the seed, the bindings' properties, the pipeline
+(`python/tests/medallion.py`), the pages (`docs/fix/capture.md` the crate's columns table and the
+derived-column section, `docs/graph/schemas.md`, `docs/graph/{event,market,book,isin-registry}.md`,
+`docs/types/codes/*.md` where a column is named), the skills, the inventories. Checks: the fix
+and market crates' suites both lanes with every unmoved pin green without edit, the dump written
+once and the hash re-pinned once with its sentence, the snapshot's keys re-spelled and its value
+lines moved only where D40.5/D40.6 say, `pytest python/tests` whole with the medallion pipeline
+green, Node's suite, the three docs runners, `mkdocs build --strict`.
+
+## Put to the user (interpretations taken; say if another was meant)
+
+1. `transunix`/`sendunix` on FIX-row tables become `transacttime`/`sendingtime` (D40.1), so the
+   pipeline windows FIX tables by `transacttime`.
+2. `crosscode`, `hashcode`, `crosshashcode` keep their names; only registered-code columns drop
+   `code` (D40.4).
+3. `instuuid` derives from the real ISIN until a registry assigns it (D40.3).
+4. The book's sources are its delta, its events and the previous book's uuid - never the alive
+   entries carried forward, never the previous book's sources; its hash code is one digest over
+   the instant and the digest of those sources (D40.6).
+5. `crossuuid` keeps "its own identity where the cross code is empty" (D40.5).
+
+## P8: the lifecycle matching on one common identifier (D41, to design)
+
+# P8 - the user's instruction (2026-10-09 ~22:25 UTC), verbatim
+
+Once done ensure le fix lifecycle match previous alive and current in lifecycle by matching one common identifier optimizely and propage values
+
+(Reading taken: once the split has landed, the FIX lifecycle walk matches a current event to the
+previous alive event of its lifecycle by any one identifier the two share - a chain identity
+such as orderid, clordid, secondaryorderid, quoteid, tradeid, whichever one both state - found
+through an index keyed by identifier value rather than a scan (optimally), and the predecessor's
+values propagate onto the follower (the facts it states nothing of). Design in the foreground
+(DESIGN.md D41) after S4 is pushed; order relative to P7 and P5R to decide - the lifecycle walk is
+`rust/market/src/graph/iterator.rs` + `rust/fix/src/enrich.rs` after S4.)
+
+## Foreground notes (22:30 UTC) - what the walk does today, and the design questions D41 answers
+
+Today (`rust/market/src/graph/iterator.rs`, `docs/fix/lifecycle.md` "A chain is named by its cross
+code"): the walk keys live chains by `(crossuuid, marketdatakind)`; it indexes every name a live chain
+goes by - its chain identities (`IdType::is_chain_identity`: orderid, clordid, secondaryorderid,
+secondaryclordid, quoteid, secondaryquoteid, tradeid, secondarytradeid, secondaryfirmtradeid,
+tradereportid) and the chain's first value a lineage field names - in `named: HashMap<IdType,
+HashMap<String, Vec<(Side, Chain)>>>` (an index, no scan) and the sided bases in `bases`; a message
+cites its own live chain, the one side its base is alive on where it states no side, and each chain
+a name it states is held by; one chain cited -> it follows (values propagate: `following_market`,
+`follow_parents`, metadata, identifiers under the `FIX:idmap` follow flags); none -> a chain of its
+own; two -> a conflict, standing alone with a `FixAnomaly`; "nothing merges two chains".
+
+Open for D41 (decide on evidence, never by assumption):
+1. Which identifier types count as "one common identifier": the ten chain identities alone (today),
+   or every type two statements share (`execid` and a twin, `mdentryid`/`mdentryrefid` for book
+   entries, a bridge's `oms:orderid`)? Evidence: over `rust/tests/support/ulbridge.log`'s lifecycle,
+   count the messages that share an identifier of any type with a live element of their kind and
+   did not join it, by type.
+2. The two-chains case: a message bridging two live chains (one identifier in common with each)
+   stands alone today; D41 may let it join the chain it shares the most recent statement with and
+   carry the other's values, or keep the conflict. Evidence: the conflicts the capture's walk
+   records (`FixAnomaly` under `crosscode`), what each cited.
+3. "optimizely": the index is per name already; what costs a scan today is `bases` (a Vec per
+   base) and `Cited`'s per-name slot filter; measure with the `fix` bench (`lifecycle` rows) and
+   the allocations rows before and after.
+4. "propagate values": which facts a follower takes today and which it does not (a stated `NEW`
+   over a live one, the legs of a quote, the identifiers whose idmap entry does not follow); the
+   instruction may want every fact the predecessor states and the follower lacks to propagate.
+Plan: after S4 is pushed, an evidence workflow (sonnet readers over the capture's lifecycle output
+and the walk's code) -> the design D41 in the foreground -> implementation inside the crates, with
+P7 (D40) before it where the two touch the same files (the FIX row's columns), and P5R after both.
+
 ## The ledger
 
 | D# | decision | evidence | slice |
@@ -2600,9 +2931,9 @@ the CI leaf table.
 | D9 | a market trait for a message that splits; `MarketKind::Fix` stays; a protocol-view builder | `graph/market_data.rs:44`, `protocol.rs:2078` | S3, built S3 |
 | D10 | the table above | `scheme.rs:27-420`, `mime_type/line.rs:80-100`, `logging/facade.rs:72-76`, the 59 `warned!` and about 120 `log` sites counted there | S3, built S3 |
 | D11 | option (d); sizes recorded; namespace proven in S5; FIX inside the market packages | pyo3 `type_object.rs:88-89`; napi `type_tag.rs:7-15`; the registry reads above | S0, built S5 |
-| D12 | the five crate names, `yggdryl-market` on PyPI and npm (npm put to the user) | the availability reads above | S0, published never by a session |
-| D13 | one `AGENTS.md`, one site, docs runner into `cli/tests/docs_examples.rs` | `check_docs_examples.py:46, 207-213`, `.gitignore:40` | S4 |
-| D14 | a test-only kind re-fixtures the core; `ulbridge.log` to `support/` | the 90-line grep | S4 |
+| D12 | the five crate names, `yggdryl-market` on PyPI and npm (the user decided `yggdryl-market` on 2026-10-09; `yggdryl.market` not used) | the availability reads above | S0, published never by a session |
+| D13 | one `AGENTS.md`, one site, docs runner into `cli/tests/docs_examples.rs` | `check_docs_examples.py:46, 207-213`, `.gitignore:40` | S4, built S4 |
+| D14 | a test-only kind re-fixtures the core; `ulbridge.log` to `support/` | the 90-line grep | S4, built S4 (the test-only kind, `State`, a code or `TextLine` as the fixture; 32 split files judged item by item) |
 | D15 | `s3tables` a feature of `yggdryl-iceberg` | `iceberg/table.rs` location doors | S6 |
 | D16 | no Avro in the core; `yggdryl-avro` carries `snap` | `rust/Cargo.toml` features | S6 |
 | D17 | the core keeps the Iceberg type-string spelling | `lib.rs:79-81` | S2 confirms |
@@ -2623,11 +2954,13 @@ the CI leaf table.
 | D34 | the medium holds its origin (`read_origin_field`), one schema answer, one projection rule (declared ∩ the columns the select and early filter read), one composer in `media_serie.rs` that `read_record_serie` also calls, `source_field` and the five residual copies gone; S8 amended | the user's instruction; `pushdown_map/design_inputs.md`; "P2 results" | S2b, built P2 |
 | D35 | `MediaCache` on every wrapper under `cache_ttl` (milliseconds, 0 realtime, outside the hash feed as `file_threads`), served while open or younger than the TTL, every write door updating or invalidating it | the user's instruction; `pushdown_map/metadata_caches.md`; "P2 results" | S2b, built P2 |
 | D33 | `yggdryl-xmla`, an eighth crate through the media point, `soap/` with it; registered in place in S2b (the core's own media three: `RecordOptions::Xmla`, `Media::Xmla`, `Serie::Xmla` deleted), moved in S6c; the Python `Xmla` class stays in the one native module; the CLI's `xmla serve` depends on it | the user's instruction; the 32 core sites and the 26 import lines above; crates.io 404 | S2b, built S6c |
-| D39 | a leaving medium keeps its rank: `media::codec::RESERVED_RANKS` (`parquet` 1, `avro` 2, `xmla` 4, `excel` 6) admitted by `claim` under the codec's own name, every other medium at or above `EXTERNAL_RANK`, so the `s2_pins` hashes and the order pins are byte-identical through S6; `implementer` grows once per move by S3's routes, Avro and Parquet carry their own hidden `implementer` for what Iceberg reaches; the Iceberg field view built by `protocol_field_types!` in `yggdryl-iceberg` (`IcebergField::new`), `as_iceberg` gone; core tests building a leaving crate's objects move to that crate's tests; `install()` at every init; order avro, parquet, excel, xmla, then iceberg after `yggdryl-s3` | the five media maps | S6 |
+| D39 | a leaving medium keeps its rank: `media::codec::RESERVED_RANKS` (`parquet` 1, `avro` 2, `xmla` 4, `excel` 6) admitted by `claim` under the codec's own name, every other medium at or above `EXTERNAL_RANK`, so the `s2_pins` hashes and the order pins are byte-identical through S6; `implementer` grows once per move by S3's routes, Avro and Parquet carry their own hidden `implementer` for what Iceberg reaches; the Iceberg field view built by `protocol_field_types!` in `yggdryl-iceberg` (`IcebergField::new`), `as_iceberg` gone; core tests building a leaving crate's objects move to that crate's tests; `install()` at every init; order avro, parquet, excel, xmla, then iceberg after `yggdryl-s3` | the five media maps | S6; the batch shape decided by the user (2026-10-09): excel and xmla their own commits, then avro, parquet, s3 and iceberg one dependency-closed commit |
 | D38 | `currunix` -> `transunix` (the transaction instant, required, the identity and order axis), `recdunix` -> `sendunix` (the technical wire clock, optional, the merge reference), and the element's own `curruuid` -> `uuid`, `currhashcode` -> `hashcode` (`prevuuid`, `crossuuid`, `crosshashcode`, `srcuuids` keep their prefix); precedences, values, derivations, positions and tags unchanged - the carrier's clock first, else `SendingTime(52)`; crate fields 65_001, 65_004, 65_007 and 65_009 re-spelled, so the dump, the dictionary hash (once, with its sentence), the snapshot's keys and `fix.json` move and the census does not | the instants map | P4 |
-| D37 | `MarketMessage` a concrete public struct in `graph/message.rs` - boxed facts, `StatedFacts`, the entries as an `Arc<Field>` root and a `Scalar` row, `children`, `Metadata`, `Vec<Anomaly>`, `InstrumentStatement` - the four traits implemented once on it; `MarketData::Message`, `MarketKind::Message` (`message`); `FixMsg` the codec's handle over a message (`into_message`, `from_message`), an idmap-mapped tag never an entry, a native message rendered by the inverse idmap else its crate tags; S3's trait, `as_message::<T>()` and `Box<dyn MarketMessage>` deleted | the message map, `message_map/design_inputs.md` | P5 |
+| D37 | `MarketMessage` a concrete public struct in `graph/message.rs` - boxed facts, `StatedFacts`, the entries as an `Arc<Field>` root and a `Scalar` row, `children`, `Metadata`, `Vec<Anomaly>`, `InstrumentStatement` - the four traits implemented once on it; `MarketData::Message`, `MarketKind::Message` (`message`); `FixMsg` the codec's handle over a message (`into_message`, `from_message`), an idmap-mapped tag never an entry, a native message rendered by the inverse idmap else its crate tags; S3's trait, `as_message::<T>()` and `Box<dyn MarketMessage>` deleted | the message map, `message_map/design_inputs.md` | P5R: after S4 and P7, re-targeted into the crates |
 | D36 | `yggdryl-s3` through a storage-backend extension point: `StorageBackend` claimed per scheme on the register (`claim_backend`, `backend_for`, `backends`), asked by `Holder::from_url` after lowering, its answer described; `Holder::Registered(Box<dyn RegisteredHandle>)`; the verbs the wildcards specialized on S3 (`upload_from`, `discard`, `as_leaf`, `as_container`, `set_known_size`) as `IOBase` defaults and `into_byte_stream` over `owned_stream_bytes`; `Site::Opened` with an opener; `aws/` and `auth/` stay core under `aws`; `yggdryl-iceberg[s3tables]` depends on `yggdryl-s3`; CI leaf `s3` with the three exchanges | the backend map, `s3_backend_map/design_inputs.md` | built in place P3; S6d moves |
 | D25 | the seventeen codes stay core and flat; the register holds enum kinds alone (`Code8`/`Code16`), `MarketPayload`, `is_canonical`, `respell` and `CODE_VALUE_RANK` deleted; `yggdryl-market` carries the enums, `graph/` and the ISIN registry | the user's instruction; the S0 pins; one free Code byte | S1 |
+| D40 | the FIX row's column for a fact one FIX field states whole is the registry's field (`transacttime`, `sendingtime`, `strikeprice`, `orderqty`, `offerpx`, `bidsize`, `offersize`, `symbol`, `unitofmeasure`, `lastspotrate`, `lastforwardpoints`), the eleven derived crate definitions retired, numbers never reused; the lifted band last - `instuuid`, `isin`, `cfi`, `mic` (+ `bbg`, `figi`, `forex` on the FIX row); `securityids` the one hold map (`cfi` under `IdType::Cfi`), `instuuid` the XXH3-128 of the real ISIN; the code columns renamed (`isin`, `cfi`, `mic`, `bbg`, `figi`, `forex`; the registry's `cfi`, `country`, `forex`, `eusipa`, `mic`); `crossuuid` the XXH3-128 of the cross code; a book's sources its delta, its events and the previous book's uuid, its code the instant over their digest | the user's instruction, `scratch/p7/`; "## P7: design" | P7, after S4 |
+| D41 | the lifecycle matches the previous alive and the current element on one common identifier through an index and propagates the predecessor's values; which identifier types and what the two-chains case does are decided on the capture's evidence | the user's instruction, `scratch/p8/`; "## P8" | P8, after P7 |
 
 ## Review (S0)
 
@@ -2744,3 +3077,15 @@ features `fix` 3m47s, `rest` 3m44s). The exchanges took 30s to 1m18s,
 their cargo finishing in under a second over the lane, where each spent
 about 80s compiling before; the free-threaded build, 7m56s, runs beside
 the critical path. The gate proved 20 rows into the ledger.
+
+Since S4 (`9f69d7141`): a leaf line under `[leaves]` takes `paths`, the files of the core's
+tree the leaf's sources include - the capture `rust/tests/support/ulbridge.log`,
+`rust/benchmarks/bench_profile.rs`, `rust/benchmarks/allocation_measurement.rs`,
+`rust/tests/support/counting_filesystem.rs` - so a change to one runs that leaf, and
+`scripts/tests/test_ci_plan.py` holds every line to the sources it includes (the S6d `FakeS3`
+fixture under `rust/tests/support/` needs the `s3` leaf line to name it); `rows.core` no longer
+reads `config/**` (no core test, bench or source reads it), so a `config/` change runs the leaves,
+the bindings and the CLI and not the core test shards; `cli` joined `[leaf] jobs` when the node
+job stopped needing the CLI (P6), so a leaf change still runs the CLI tests it ran through the
+node job before; `[shards.yggdryl-market]` and `[shards.yggdryl-fix]` (`test:root`, `bench:fix`,
+`test:allocations`, `test:scale_ulbridge`) shard the leaves' lanes.

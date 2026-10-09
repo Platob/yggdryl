@@ -1,5 +1,5 @@
 import sys, re, pathlib, collections
-S = pathlib.Path("/tmp/claude-0/-home-user-yggdryl/09ea5bac-ef2f-52ce-b6c3-cfd3a196ec17/scratchpad")
+S = pathlib.Path("/tmp/s")
 sys.path.insert(0, str(S))
 import s4_move as s4
 root = pathlib.Path(sys.argv[1])

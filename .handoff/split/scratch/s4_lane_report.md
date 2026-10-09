@@ -1,8 +1,0 @@
-# S4 lane report (yggdryl-market, yggdryl-fix) - lane manager log
-
-## Log
-- 16:39 UTC started; read the brief, regroup.md, s4_report/residue, avro finding 4, DESIGN D13/D14/D16/D17/D19, MARKET_SPLIT_PROMPT. No subagent tool in this session: the lane manager does the residue itself. p5_state.md absent so far. Waiting on $S/p4_landed.
-- 16:39 s4_move.py patched (backup $S/s4/s4_move.before_lane.py): the avro script's TRAIT_METHODS/load_trait_methods/traits_called ported into prune_imports (a trait imported only for method calls kept), macro_names called by item_owners (a macro invocation's names travel with their items), load_trait_methods before the split. Coordinator addition: P6 (delete the book service, $S/p6_contract.md) lands FIRST in this lane, S4 second, one push.
-- 16:41 Coordinator addition 2: the results commit is "Record the P6 and S4 results" and records $S/user_decisions.md (S6 batch, npm yggdryl-market, sendunix carrier-first, CLI links yggdryl-s3) in MARKET_SPLIT_NEXT.md questions and DESIGN.md (S6's shape, D12/D38/D39); release rehearsal and registry setup stay open. P45 chain running (cargo lock held).
-- 16:53 Prep in scratch tree $S/p6/tree (P4+P6 dry run+s4 script, commits base/p6/s4script): P6 script $S/p6/p6_delete.py dry-run clean (33 files); 8 market forwarders + FIX sites; StringEnum SIDES/TIMESINFORCE -> yggdryl_market::{SIDES,TIMESINFORCE}, core gains StringEnum::register_prebuilt + prebuilt(), PREBUILT = core's four; bindings read prebuilt().
-- 16:56 Coordinator addition 3: after the results commit is pushed+read and s4_landed: run handoff_pack.sh, commit .handoff with handoff_commit_message.txt, push, read, touch handoff_landed, then return. P6 script fixed (graph.rs cfg attribute; parse_capture back to pub(crate)).

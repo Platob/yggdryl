@@ -2,7 +2,7 @@
 multiset, and per test the integer and string literals of its body, the
 install line and the path spellings normalized."""
 import collections, pathlib, re, sys
-sys.path.insert(0, "/tmp/claude-0/-home-user-yggdryl/09ea5bac-ef2f-52ce-b6c3-cfd3a196ec17/scratchpad")
+sys.path.insert(0, "/tmp/s")
 import s4_move as s4
 
 before, after = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])

@@ -100,7 +100,7 @@ import sys
 SCRATCH = pathlib.Path(
     os.environ.get(
         "S",
-        "/tmp/claude-0/-home-user-yggdryl/09ea5bac-ef2f-52ce-b6c3-cfd3a196ec17/scratchpad",
+        "/tmp/s",
     )
 )
 sys.path.insert(0, str(SCRATCH))

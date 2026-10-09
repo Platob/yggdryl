@@ -62,138 +62,28 @@ live AWS resource touched.
 | Fact | Value |
 | --- | --- |
 | Program branch | `ccr-0fe6f9d0-ruymat` |
-| HEAD | the commit holding this file, P3: "Register the object-store backend on the holder in place" (D36), on `a46a2177b` (S3, "Settle the remaining seams before the crates leave") |
+| HEAD | the results commit over S4 `9f69d7141` "Move the market vocabulary into yggdryl-market and FIX into yggdryl-fix", over P6 `1ad29bfa6` "Delete the market book service", over the handoff `7b566b3b2` and P4 `4e46b5ab7` |
 | Draft PR | #209, draft |
-| Base | `origin/main` at `2ae975674`; no merge of `origin/main` was needed this session (nothing landed on `main` since) |
-| Slices done | P0 `3d8bf84d9` (D22), P1 `08ae4c6b7` (D23), S0 `6d71a36ee` (the pins), S1 `eeb4ec14d` (the market extension point), S1's handoff `719299cf6`, S2 `f9f665198` (the media extension point), S2's handoff `2d800d51b`, S2b `c015226b6` (the XMLA medium registered in place, D33) and `2048b4681` (its CI's red census race fixed in the test), the CI structure `1f909739b` and its handoff `b656e765b`, the S3 design `d100439d3`, P2 `f7c3c1b58` (the medium holds its origin and its cache, the serie composes the pushdown, D34 and D35), the D36-D38 record `49bcab3e3`, S3 `a46a2177b` (the remaining seams in place, D5, D6, D9, D10; run 37932670478 green - 33 jobs, the empty `Leaf` matrix skipped as planned - proving P2 and S3 together), P3 (this commit: the storage-backend extension point in place, D36) - each pushed alone, its CI read green before the next but P2's, whose run 37923405641 the record push cancelled |
-| CI structure | `1f909739b`, "Build the core first and run only the CI jobs a change reaches": run 37904365402 success, 33 jobs green and the empty `Leaf` matrix skipped as planned; 10m41s wall against 18m09s before (the old workflow's last run, 37902279246, 18m57s); the critical path `Changes` 12s, `Python binding wheel` 5m12s, `Documentation examples (Python)` 4m57s, `CI result` 9s; the core path `Core build (all features)` 1m40s then its slowest shard, `rest`, 5m37s; the exchanges 30s to 1m18s, compiling nothing; the gate proved 20 rows into the ledger; docs run 37904365351 success |
-| Next | P4 (D38), then P5 (D37) and S4, as "## Next" orders them |
+| Base | `origin/main` at `2ae975674`; nothing landed on `main` since, no merge needed |
+| Slices done | P0 `3d8bf84d9`, P1 `08ae4c6b7`, S0 `6d71a36ee`, S1 `eeb4ec14d` (+ `719299cf6`), S2 `f9f665198` (+ `2d800d51b`), S2b `c015226b6` (+ `2048b4681`), the CI structure `1f909739b` (+ `b656e765b`), the S3 design `d100439d3`, P2 `f7c3c1b58`, the D36-D38 record `49bcab3e3`, S3 `a46a2177b`, P3 `ef4e241a4`, P4 `4e46b5ab7` (proven green by run `37963283466` on the handoff commit `7b566b3b2` over it, 32 jobs), P6 `1ad29bfa6` and S4 `9f69d7141` (one push, run RUN_ID) |
+| Crates | `yggdryl` (`rust/`), `yggdryl-market` (`rust/market/`), `yggdryl-fix` (`rust/fix/`); the CLI and both bindings link and install both; `cargo package --list -p yggdryl` lists nothing under `market/` or `fix/` |
+| Next | P7 (D40, the user's 2026-10-09 instruction: the FIX row named by the registry, the lifted band last, `securityids` the one hold map with `instuuid`, the code columns renamed, `crossuuid` the XXH3-128 of the cross code, a book's sources and its code over them), then P8 (D41, the lifecycle matching on one common identifier with propagation - evidence first), then P5R, M6, B5, S7, S8 |
 
-What S1 built is the "S1: what was built" section of DESIGN.md. What S2
-built is its "S2: design" (D26-D32), "The review's amendments (S2)" and "S2:
-what was built" sections: `MediaCodec` statics claimed under their MIME types
-(`media/codec.rs`; `codec_of`/`codec_for` the intake lookups,
-`RecordOptions::codec()` the one dispatcher past them), `RecordOptions::
-Registered(RegisteredOptions)` over `MediumOptions`/`MediumSettings` with the
-typed `settings`/`require_settings(_mut)` doors replacing the Parquet, Avro
-and Excel variants and accessors, `Media::Registered(Box<dyn MediaWrapper>)`
-and `Media::medium()`, the four media series deleted for `GenericMediaSerie`,
-`TableFormat`/`LocatedTable` (`media/format.rs`, `ICEBERG_FORMAT`,
-`TableFormat::table` for the folder catalog), `Catalog`/`Namespace`/`Table::
-Registered` with `downcast_ref`, `CatalogFactory` (`HADOOP_FACTORY`,
-`S3TABLES_FACTORY`), `Locator` (`holder/locator.rs`, `S3TABLES_LOCATOR`),
-`Site::Store` under `s3`, `Error::External`, `IOMedia::as_any` with
-`ParquetFooter`, `parquet::read_media_statistics`/`read_media_geospatial_statistics`,
-`filter_phases` public; the bindings keep every name; the S2 pins and every
-cost pin unmoved; `rust/tests/media_register.rs` pins the four registers.
-What S2b built is DESIGN.md's D33 and "S2b results": XMLA a registered
-medium in place - `RecordOptions::Xmla`, `Media::Xmla`, `Media::xmla`,
-`Serie::Xmla` and `XmlaSerie` deleted, `Xmla<Holder>` a `MediaWrapper`,
-the core's own media three (`Ipc`, `Text`, `Csv`).
-What P2 built is DESIGN.md's D34, D35 and "P2 results":
-`IOMedia::read_origin_field` (the whole root the origin holds) and
-`read_arrow_field` one rule in the trait default; one projection rule (the
-declared children, else the origin's, that the `select` and the early
-`where` read, handed whole to a headerless medium); `compose` and
-`Residual` in `media_serie.rs`, the one composition every record read
-takes, the five residual copies and `RecordOptions::apply_stream` gone;
-`media/cache.rs` `MediaCache` on the seven wrappers under the options'
-`cache_ttl` (milliseconds, `0` realtime, outside the options' identity),
-every write door updating or dropping it; Python's `cache_ttl` property;
-Node gains no door.
-What S3 built is DESIGN.md's "S3: what was built": each market kind's own
-`dtype()`/`field(name)` (the four `DataType::<kind>()` deleted),
-`fix/state.rs` with State's FIX doors, `fix::LOGICAL_NAMES`, the logging
-facade's per-crate table and the `warned!` key by logger name,
-`MarketMessage` behind `MarketData::Fix` with `as_message::<T>()`,
-`protocol_field_types!` exported and `FixField::new(&field)` the one
-spelling, and `implementer.rs` - 114 names by route, `#[doc(hidden)]` -
-every market and FIX reach of a crate-private core item spelled through it.
-What P3 built is DESIGN.md's "P3 results": `holder/backend.rs` -
-`StorageBackend`, one `static` per byte backend claimed per scheme on the one
-register (`claim_backend`, `backend_for`, `backends`), asked by
-`Holder::from_url` after the identifier is lowered and the local and ZIP
-arms, before HTTP, its answer described as every backend's is;
-`Holder::Registered(Box<dyn RegisteredHandle>)` in place of the three S3
-variants, with `downcast_ref`/`downcast_mut`; the `IOBase` capability verbs
-`upload_from`, `discard`, `as_leaf`, `as_container` and `set_known_size`
-with defaults, forwarded by `delegate_iobase!` and `Holder`, so the Iceberg
-staging, the folder catalog and Python's roles match no backend's type;
-`S3_BACKEND` claimed by the core itself under the `s3` feature until
-`yggdryl-s3` does; `Site::Opened`, an opener `s3tables/` builds, in place of
-`Site::Store`; Python's S3 classes picked by `downcast_ref`; Node gains no
-door.
-
-## Checks
-
-Every command below ran from `/home/user/yggdryl` on the tree committed as
-P3, with `CARGO_INCREMENTAL=0` and the debug info off, unless the row names
-the worktree: the settle in `/home/user/yggdryl-p3` under a target directory
-of its own while S3 chained, the phase suites on the squashed tree, the
-review's fixes and their suites, then `logs/chain_p3.sh` under the
-scratchpad, whose whole run filled the disk on its last bench target and
-which resumed as `logs/chain_p3b.sh` after the workspace's artifacts were
-cleaned.
-
-| check | result |
-| --- | --- |
-| `cargo check --workspace --all-targets --all-features --keep-going --message-format=short` (the worktree, then the merged tree) | 1 error (the test backend's `IOMedia` missing the required `overwrite_serie`), then clean; `cargo check -p yggdryl --all-targets` with none, `iceberg`, `s3`, `s3tables`, `http`: clean |
-| phase suites, `--features "s3 s3tables iceberg http"`: `--test holder` (and default), `--test root iobase`, `--test s3`, `--test iceberg -- staging catalog`, `--test s3tables`, `--test s3tables_handle`, `--test iobase_calls`, `--test warehouse` | 61 default; 100 (99 before the one wrong test assumption was corrected), 42, 149 (with the review's new pin), 36, 117 (2 ignored), 1, 66, 139; no request-count pin edited or moved |
-| `cargo test -p yggdryl --all-targets --all-features --no-fail-fast` | 63 targets, 9379 passed, 0 failed, 3 ignored; the `holder` bench target panicked on "No space left on device" (11G free at the run's start, 232M at its end), re-run alone after the clean: `cargo test -p yggdryl --bench holder --all-features` exit 0 |
-| `cargo test -p yggdryl --all-targets --no-fail-fast` (default features) | 63 targets, 6648 passed, 0 failed |
-| `cargo test -p yggdryl-cli --all-targets --no-fail-fast` | 6 targets, 35 passed, 0 failed, 6 ignored |
-| `cargo test -p yggdryl --doc`; `cargo test -p yggdryl --doc --all-features -- S3Backend backend` | 635 passed; 3 passed (the two register examples and `S3Backend`'s, which the default lane does not compile) |
-| `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings`; `cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings` | exit 0 both |
-| `RUSTDOCFLAGS="-D warnings" cargo doc -p yggdryl --no-deps --all-features` | exit 0 (one redundant link of the slice's, `s3/mod.rs`, fixed in the settle) |
-| `cargo fmt --all -- --check` | clean |
-| `maturin develop`, `pytest python/tests --deselect python/tests/test_spark_interop.py`, `mypy --strict` | installed; 2784 passed, 4 skipped; no issues in 70 files |
-| `npm run --prefix node test:package:debug`, `cargo build --locked -p yggdryl-cli`, `npm test --prefix node`, `tsc --noEmit`, `git diff -- node/index.js node/index.d.ts` | the package audit passed; 1122 tests, 1120 passed, the two sandbox `TextDecoder` tests failing as at every slice; tsc clean; the generated files unchanged |
-| `node scripts/build_docs_fix.js --check`, `build_docs_playground.js --check` | current |
-| `mkdocs build --strict` | clean |
-| `check_api_inventory.py`; `generate_internals.py --check` | current (180 source files and 569 `pub` names not described yet); `internals` current |
-| `check_docs_examples.py --lang python` / `javascript` / `rust` | 837 run, 3 skipped, 0 failed; 789 run, 2 skipped, 0 failed; 941 passed |
-| `grep -rn '#\[cfg(test)\]\|#\[test\]\|mod tests' rust/src python/src node/src cli/src` | empty |
-| the review: the `code-review` skill at high effort over the squashed diff | eight findings: four fixed, four kept with their reason ("P3 results" in DESIGN.md) |
-| local-only checks (charset tables and interop, ISIN seed, country and MIC tables), benches | not run: nothing the slice touches makes them stale |
-
-Not run, as the slice made nothing of theirs stale: every `cargo bench` and
-`npm run bench:*`, the Python boundary benchmarks, the scale run and the
-free-threaded lane, and the three object-store exchange scripts (CI's jobs).
-The two Node charset tests that compare the package to the runtime's
-`TextDecoder` (`node/tests/charset.test.js`: `decoding agrees with
-TextDecoder over the same names`, `iso-8859-1 is not a spelling of
-windows-1252 here`) fail in this sandbox alone, whose Node 22.22 decodes the
-C1 range of `windows-1252` as ISO 8859-1 does; they failed at every slice
-the same way and CI's Node proves them. The CI run of this push is read to
-its `CI result` and recorded by the next handoff.
+## Checks (S4, on the tree committed as `9f69d7141`)
+See DESIGN.md "### S4 results" - the whole table - and "### P6 results". The user's named validation: `pytest python/tests/test_fix.py -k medallion` 1 passed (65.6 s, and 68.7 s on the settled tree), the pipeline over two local Iceberg warehouse folders; `pytest python/tests` 2784 passed, 4 skipped, as at HEAD.
 
 ## Blockers
-
 None.
 
 ## Next
 
 The slices, in the order they land, each one commit on the program branch:
 
-1. **S3** - done (`a46a2177b`): the remaining seams in place (D5, D6, D9,
-   D10); DESIGN.md "S3: what was built".
-2. **P4** (D38) - `transunix` and `sendunix` at every door; the dump, the
-   dictionary hash, the snapshot's keys and `fix.json` regenerated once each.
-   Design: "## P4: design" in DESIGN.md; contract `scratchpad/p4_contract.md`;
-   the sweep `scratchpad/p4_sweep.py` applied to a worktree cut after S3 lands.
-3. **P5** (D37) - `MarketMessage` the concrete generic message, `FixMsg` the
-   codec's handle over it, both doors (`into_message`, `from_message`, the
-   render of a native message), `MarketData::Message`; after P4 so it speaks
-   the new names. Design: "## P5: design"; contract `scratchpad/p5_contract.md`.
-4. **P3** (D36) - done (this commit): the storage-backend extension point in
-   place - the register, `Holder::Registered`, the `IOBase` capabilities,
-   `Site::Opened`, the S3 trio claimed by the core itself; DESIGN.md "P3
-   results". It landed before P4 and P5, whose files it does not touch.
-5. **S4** - `yggdryl-market` (the `graph/` vocabulary, the four enum kinds,
-   the identifiers, `isin_registry.rs`) and `yggdryl-fix` move out, as the
-   prompt's S4 section says, over the `implementer` door S3 opened.
-6. S5, S6 (a-d: Avro, Parquet, Iceberg with `s3tables`, XMLA, the object
-   stores), S7-S9 as the prompt states them.
+1. **P7** (D40) - the FIX row named by the registry, the lifted band last, `securityids` the one hold map with `instuuid`, the code columns renamed, `crossuuid` the XXH3-128 of the cross code, a book's sources and its code over them; inside the crates; the dump, the hash, the snapshot keys and the book identities move once with their sentences. Design: DESIGN.md "## P7: design"; the instruction `scratch/p7/user_instruction.md`.
+2. **P8** (D41) - the lifecycle matching on one common identifier, indexed, with propagation: an evidence workflow over the capture's lifecycle first, then the design in the foreground, then the implementation. `scratch/p8/user_instruction.md`.
+3. **P5R** (D37) - `MarketMessage` finished inside the crates, the parked patch `scratch/p5_on_p4.patch` re-targeted onto S4's paths and P7's names (`scratch/p5r_manager_prompt.md`, `scratch/p5_state.md`).
+4. **M6** - excel and xmla each a commit under one push, then the avro+parquet+s3+iceberg batch (`scratch/m6_manager_prompt.md`; every script re-derived on the tree it runs on).
+5. **B5** (S5), **S7**, **S8** (designed in the foreground first), **S9** on the user's go.
 
 The first command of every slice, from a fresh checkout of the program branch:
 
@@ -234,40 +124,21 @@ rows decided or changed this session:
 | D39 | a leaving medium keeps its rank: `media::codec::RESERVED_RANKS` (`parquet` 1, `avro` 2, `xmla` 4, `excel` 6) admitted by `claim` under the codec's own name, every other medium at or above `EXTERNAL_RANK`, so the `s2_pins` hashes and the order pins are byte-identical through S6; `implementer` grows once per move by S3's routes, Avro and Parquet carry their own hidden `implementer` for what Iceberg reaches; the Iceberg field view built by `protocol_field_types!` in `yggdryl-iceberg` (`IcebergField::new`), `as_iceberg` gone; core tests building a leaving crate's objects move to that crate's tests; `install()` at every init; order avro, parquet, excel, xmla, then iceberg after `yggdryl-s3` | the five media maps | S6 |
 | D38 | `currunix` -> `transunix` (the transaction instant, required, the identity and order axis), `recdunix` -> `sendunix` (the technical wire clock, optional, the merge reference), and the element's own `curruuid` -> `uuid`, `currhashcode` -> `hashcode` (`prevuuid`, `crossuuid`, `crosshashcode`, `srcuuids` keep their prefix); precedences, values, derivations, positions and tags unchanged - the carrier's clock first, else `SendingTime(52)`; crate fields 65_001, 65_004, 65_007 and 65_009 re-spelled, so the dump, the dictionary hash (once, with its sentence), the snapshot's keys and `fix.json` move and the census does not | the instants map | P4 |
 | D37 | `MarketMessage` a concrete public struct in `graph/message.rs` - boxed facts, `StatedFacts`, the entries as an `Arc<Field>` root and a `Scalar` row, `children`, `Metadata`, `Vec<Anomaly>`, `InstrumentStatement` - the four traits implemented once on it; `MarketData::Message`, `MarketKind::Message` (`message`); `FixMsg` the codec's handle over a message (`into_message`, `from_message`), an idmap-mapped tag never an entry, a native message rendered by the inverse idmap else its crate tags; S3's trait, `as_message::<T>()` and `Box<dyn MarketMessage>` deleted | the message map, `message_map/design_inputs.md` | P5 |
+| D40 | the FIX row named by the registry where one field states the fact whole, the lifted band last, `securityids` the one hold map with `instuuid`, the code columns renamed, `crossuuid` the XXH3-128 of the cross code, a book's sources (its delta, its events, the previous book's uuid) and its code over them | the user's instruction, DESIGN.md "## P7: design" | P7 |
+| D41 | the lifecycle matches the previous alive and the current element on one common identifier through an index and propagates values; the identifier types and the two-chains case decided on the capture's evidence | the user's instruction, DESIGN.md "## P8" | P8 |
 
-## Questions for the user
+## Questions for the user - decided 2026-10-09 ("Do what's recommended", `.handoff/split/scratch/user_decisions.md`)
+1. D12 npm name: `yggdryl-market` on all three registries (`yggdryl.market` not used).
+2. D11 artifact sizes: option (d), one native module per runtime linking every crate, the sizes unchanged.
+3. S6 landing shape: excel and xmla each a commit under one push, then avro, parquet, s3 and iceberg (+s3tables) one dependency-closed commit (the reversed split not taken).
+8. D38: `sendunix` keeps the carrier-first precedence.
+The CLI links `yggdryl-s3` always (S6d; its `s3` feature goes). Still open, on the user's explicit go: the manual `release.yml` rehearsal and the registry configuration a real publish needs (a PyPI pending trusted publisher for `yggdryl-market`, the npm bootstrap publish, `CARGO_REGISTRY_TOKEN` with `publish-new` over `yggdryl-*`).
 
-1. The npm name (D12): `yggdryl-market` is recommended (one string
-   preflight checks on all three registries); `yggdryl.market`, the user's
-   spelling, is valid on npm and the alternative. Decide before S5 publishes.
-2. The artifact sizes (D11): option (d) - one native module per runtime
-   linking every crate - leaves the `yggdryl` wheels at 41-50 MB each
-   (PyPI 0.1.21: 32 files, 1.40 GB in all) and the npm package at 337 MB
-   unpacked. Is the unchanged size acceptable?
-3. S6 as one commit (Avro, Parquet, Iceberg with `s3tables`, in that order),
-   or the reversed order S6a-c if its diff is too large to review.
-4. A persisted std hash: not needed - D19's plan held through S1 with no
-   pin moved.
-5. The go for S5's rehearsal and the repository configuration it needs
-   (crates.io, PyPI trusted publishing and npm tokens for the new names).
-6. Registry and network checks skipped: none - D11's and D12's reads were
-   made on 2026-10-08 (crates.io, PyPI and npm all answered).
-7. Branch protection: `main` has none today. When it gets some, require
-   `CI result` alone - the old job names ("Rust quality (...)",
-   "Documentation examples") are gone, and the gate fails unless every
-   planned job passed and every other was skipped (DESIGN.md "The CI
-   structure").
-8. D38: `sendunix` keeps `recdunix`'s precedence - the carrier's clock (the
-   capture's write time) first, else the stated `SendingTime(52)` - because
-   `SendingTime(52)` already has its own fixed-row column and the capture's
-   clock has no other. If "the technical sending time" means the sender's
-   clock first, say so: it is one precedence line (`fix/build.rs`'s carrier
-   fill and `fix/msg.rs`'s `record_at_sending`) and its tests, and the
-   snapshot's `sendunix` values would move with it.
+## New since the handoff (the user's instructions of 2026-10-09, recorded verbatim under `.handoff/split/scratch/p7/` and `p8/`)
+- P6: "Delete also the market served service its useless" - landed (`1ad29bfa6`).
+- "Focus on landing market and fix split validated by medaillon python test" - landed (`9f69d7141`), the medallion test green.
+- P7 (D40): the six items on the FIX row, the market row, the cross identity and the book's sources, plus the refinement on `with_previous` (the previous book's uuid among the sources, never its sources). Designed; next.
+- P8 (D41): the lifecycle matches the previous alive and the current element on one common identifier, through an index, and propagates values. Evidence first, then the design.
 
-## State at the handoff (2026-10-09, end of the session)
-P4 (4e46b5ab7) is pushed and its CI run is unread; P6 (the book service deletion, the user's
-instruction) and S4 (`yggdryl-market`, `yggdryl-fix`) are defined and not landed; P5 is parked as
-`.handoff/split/scratch/p5_on_p4.patch`. `.handoff/next/MARKET_SPLIT_CONTINUE.md` is the prompt
-the next session starts from; `.handoff/split/scratch/` the former scratchpad it runs the lanes
-from.
+## State at the handoff (2026-10-09, after S4)
+P6 (`1ad29bfa6`) and S4 (`9f69d7141`) are pushed together; their CI run is RUN_ID (read to `CI result`: RUN_RESULT). P7 (D40) is designed in DESIGN.md "## P7: design" and is next; P8 (D41) is recorded under "## P8" with the evidence to gather first; P5R follows them, then M6, B5, S7, S8 and S9 on the user's go. The former scratchpad is `.handoff/split/scratch/` (the S4 lane's log, notes, decisions and residue under `s4_lane/`, the results tables under `results/`, the user's P7 and P8 instructions under `p7/` and `p8/`).

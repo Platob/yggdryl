@@ -1,6 +1,6 @@
 # S6a residue
 
-Tree: `/tmp/claude-0/-home-user-yggdryl/09ea5bac-ef2f-52ce-b6c3-cfd3a196ec17/scratchpad/s6_excel/avrosim`
+Tree: `/tmp/s/s6_excel/avrosim`
 
 ## Done
 

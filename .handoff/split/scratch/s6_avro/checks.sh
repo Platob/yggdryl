@@ -12,7 +12,7 @@ echo "src test code: $(grep -rn '#\[cfg(test)\]\|#\[test\]\|mod tests' rust/src 
 python3 scripts/generate_internals.py --check; echo "generate_internals exit=$?"
 python3 scripts/check_api_inventory.py; echo "check_api_inventory exit=$?"
 python3 -m unittest discover -s scripts/tests -p test_ci_plan.py 2>&1 | tail -3
-python3 /tmp/claude-0/-home-user-yggdryl/09ea5bac-ef2f-52ce-b6c3-cfd3a196ec17/scratchpad/s6_avro/plan_check.py .
+python3 /tmp/s/s6_avro/plan_check.py .
 echo "model ids: $(git grep -n -i -E 'claude-(opus|sonnet|haiku|fable)|opus [0-9]|sonnet [0-9]|fable [0-9]' -- . ':!*.lock' | wc -l) tracked; untracked: $(git ls-files --others --exclude-standard | xargs grep -l -i -E 'claude-(opus|sonnet|haiku|fable)|opus [0-9]|sonnet [0-9]|fable [0-9]' 2>/dev/null | wc -l)"
 echo "status lines: $(git status --short | wc -l)"
 echo "diff: $(git diff HEAD -M --stat | tail -1)"

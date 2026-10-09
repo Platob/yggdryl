@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Usage: checks.sh <tree> <base-rev>   (no cargo)
-T="$1"; BASE="${2:-HEAD}"; S=/tmp/claude-0/-home-user-yggdryl/09ea5bac-ef2f-52ce-b6c3-cfd3a196ec17/scratchpad
+T="$1"; BASE="${2:-HEAD}"; S=/tmp/s
 cd "$T" || exit 1
 echo "== generate_internals --check"; python3 -I scripts/generate_internals.py --check; echo "rc=$?"
 echo "== check_api_inventory"; python3 -I scripts/check_api_inventory.py 2>&1 | tail -1; echo "rc=${PIPESTATUS[0]}"
@@ -35,6 +35,6 @@ for p in list(root.glob('rust/**/*.rs'))+list(root.glob('cli/**/*.rs'))+list(roo
 print('before', sum(before.values()), 'after', sum(after.values()), 'lost', dict(before-after), 'gained', sorted((after-before).elements()))
 PY
 echo "== status"; git status --short | wc -l; git diff HEAD -M --stat | tail -1
-echo "== rustfmt parse"; git diff HEAD --name-only --diff-filter=AMR -M | grep '\.rs$' > /tmp/claude-0/-home-user-yggdryl/09ea5bac-ef2f-52ce-b6c3-cfd3a196ec17/scratchpad/s6_iceberg/_changed.txt
+echo "== rustfmt parse"; git diff HEAD --name-only --diff-filter=AMR -M | grep '\.rs$' > /tmp/s/s6_iceberg/_changed.txt
 fails=0; n=0; while read f; do n=$((n+1)); out=$(rustfmt --edition 2024 --check "$f" 2>&1 >/dev/null); if echo "$out" | grep -q '^error'; then echo "PARSE: $f"; echo "$out" | head -3; fails=$((fails+1)); fi; done < $S/s6_iceberg/_changed.txt; echo "parse failures: $fails of $n"
 echo "== moved-crate paths"; git grep -nE 'yggdryl::(avro|parquet|s3|iceberg|s3tables)::' -- . ':!.handoff' | grep -v 'yggdryl::iceberg::PrimitiveType' | cut -c1-160

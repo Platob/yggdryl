@@ -1,7 +1,7 @@
 #!/bin/bash
 # The define's checks over one tree: $1 the moved tree. No cargo.
 T=$1
-D=/tmp/claude-0/-home-user-yggdryl/09ea5bac-ef2f-52ce-b6c3-cfd3a196ec17/scratchpad
+D=/tmp/s
 cd $T
 files=$( (git diff HEAD --name-only --diff-filter=AMR -M; git ls-files --others --exclude-standard) | grep '\.rs$' | sort -u)
 n=0; perr=0; fdiff=0

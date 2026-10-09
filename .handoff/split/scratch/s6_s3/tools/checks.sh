@@ -1,6 +1,6 @@
 #!/bin/bash
 # checks.sh <tree> <before-tree-or-git-ref-root>
-T=$1; B=$2; S=/tmp/claude-0/-home-user-yggdryl/09ea5bac-ef2f-52ce-b6c3-cfd3a196ec17/scratchpad
+T=$1; B=$2; S=/tmp/s
 cd $T
 files=$(git status --porcelain | awk '{print $NF}' | grep '\.rs$')
 n=0; perr=0; fmt=0

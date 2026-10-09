@@ -1,5 +1,5 @@
 import sys, pathlib
-S = pathlib.Path("/tmp/claude-0/-home-user-yggdryl/09ea5bac-ef2f-52ce-b6c3-cfd3a196ec17/scratchpad")
+S = pathlib.Path("/tmp/s")
 sys.path.insert(0, str(S))
 import s4_move as s4
 s4.CRATE_NAME["s3"] = "yggdryl_s3"

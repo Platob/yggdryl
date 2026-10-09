@@ -1,6 +1,6 @@
 """Every #[test] fn's numeric literals before (HEAD) and after (worktree), by name."""
 import re, subprocess, collections, pathlib, sys
-sys.path.insert(0, '/tmp/claude-0/-home-user-yggdryl/09ea5bac-ef2f-52ce-b6c3-cfd3a196ec17/scratchpad')
+sys.path.insert(0, '/tmp/s')
 import s4_move as s4
 root = pathlib.Path(sys.argv[1]); base = sys.argv[2] if len(sys.argv) > 2 else 'HEAD'
 def fns(text):

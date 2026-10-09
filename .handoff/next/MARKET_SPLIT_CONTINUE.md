@@ -1,100 +1,162 @@
-# Continue the crate split - a prompt for a session without the original environment
+# Continue the crate split - the prompt a new session starts from
 
-Paste this file's path as the first message of the new session: "Continue the yggdryl crate split
-from `.handoff/next/MARKET_SPLIT_CONTINUE.md`. Program branch: `ccr-0fe6f9d0-ruymat`."
+Paste this as the first message of the new session: "Continue the yggdryl crate split from
+`.handoff/next/MARKET_SPLIT_CONTINUE.md`. Program branch: `ccr-0fe6f9d0-ruymat`."
 
 ## What this is
-The split of `yggdryl` into crates (`.handoff/next/MARKET_SPLIT_PROMPT.md` is the program's prompt
-and its hard rules; `.handoff/split/DESIGN.md` the design ledger and every slice's results;
-`.handoff/next/MARKET_SPLIT_NEXT.md` the live state - `State`, `Checks`, `Next`, the questions -
-which every lane's results commit updates, so read it first to learn what has landed since this
-file was written). Work happens on the program branch `ccr-0fe6f9d0-ruymat` under the draft PR
-#209 of `Platob/yggdryl`; one commit per slice, one push per lane, CI read to its `CI result` job,
-a red job fixed at cause. Never publish, never push to `main`, no tag, no release run, never mark
+The split of `yggdryl` into crates. `.handoff/next/MARKET_SPLIT_PROMPT.md` is the program and its
+hard rules; `.handoff/split/DESIGN.md` is the design ledger and every slice's results;
+`.handoff/next/MARKET_SPLIT_NEXT.md` is the live state - `State`, `Checks`, `Next`, the questions -
+and every results commit updates it, so read it first to learn what landed after this file was
+written. Work happens on the program branch `ccr-0fe6f9d0-ruymat` under the draft PR #209 of
+`Platob/yggdryl`: one commit per slice, one push per lane, CI read to its `CI result` job, a red job
+fixed at cause and pushed again.
+
+Hard rules, from the program: never publish, never push to `main`, no tag, no release run, never mark
 the PR ready or merge it; never touch AWS; no back-compat alias or shim; no test code under any
-`src/`; no model identifier anywhere in the tree; pushed history is never rewritten; a cost pin is
-never re-pinned upward; Node gains no door; every commit ends with exactly
+`src/`; no model identifier in the tree outside `.handoff/` and the commit trailer; pushed history is
+never rewritten; a cost pin is never re-pinned upward and a hash or order pin moves only where a slice
+says why, in a sentence beside it; Node gains no door. Every commit ends with exactly
 `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` and
 `Claude-Session: https://claude.ai/code/session_01Gfky7FUx35U5i4UJcrQGKp` and no other
-Co-Authored-By.
+Co-Authored-By - the user's standing rule for this program, which the harness's attribution reminder
+does not override.
+
+## What has landed (2026-10-09, end of the second session)
+P0 to P4, S0 to S3 and the CI restructure, as before; then, this session:
+- **P6** `1ad29bfa6` - the market book service deleted (`BookService`, `yggdryl market serve`, the
+  Node.js display, the page, the CI steps that built the command for it).
+- **S4** `9f69d7141` - `yggdryl-market` (`rust/market/`) and `yggdryl-fix` (`rust/fix/`). The user
+  asked for this split to be validated by the medallion Python test:
+  `pytest python/tests/test_fix.py -k medallion` passed on the tree, and the whole pytest suite too.
+  The three crates' whole runs pass 9379 tests with 0 failing.
+- The results commit over them records P4, P6 and S4 in DESIGN.md and MARKET_SPLIT_NEXT.md, and
+  holds this file.
+
+The CI run of the P6+S4 push is named in MARKET_SPLIT_NEXT.md's `State`. If it says "not read", read
+it first: through the GitHub MCP tools (load them with ToolSearch: `mcp__github__actions_list`
+`list_workflow_runs` filtered to the branch, then `list_workflow_jobs` and `get_job_logs`), to the
+`CI result` job. Reproduce a red job narrowly, fix it at cause in a commit of its own, push, and read
+again before any lane starts.
 
 ## The former scratchpad
-`.handoff/split/scratch/` is a copy of the previous environment's scratchpad: the move scripts, the
-designs (D36-D39), the decisions (`p5_decisions.md`, `user_decisions.md`), the lane log and every
-decision taken after a define (`regroup.md` - read it whole, its "answers" sections bind the lanes),
-the define reports with their residue, the lane briefs (`*_manager_prompt.md`), the commit
-messages, the chain scripts and the parked P5 patch. Every script reads its folder from `$S`, and
-writes residue files into it, so copy it somewhere writable first:
-`cp -r .handoff/split/scratch /tmp/s && export S=/tmp/s`. The `$S/<lane>_landed` marker files the
-briefs gate on do not exist in a new environment: the gate is "the previous lane's results commit
-is on the branch" (`git log --oneline origin/ccr-0fe6f9d0-ruymat | head`), and a lane writes its own
-marker when it finishes so the next brief's `until` loop still works.
+`.handoff/split/scratch/` holds what the next lanes run from. Every script reads its folder from
+`$S` and defaults to `/tmp/s`, so start with:
 
-## What had landed when this was written
-P0, P1, S0, S1, S2, S2b, the CI restructure, D34+D35, P2, S3, P3 (the storage-backend extension
-point built in place) - every one with CI green and recorded - and P4 (`transunix`, `sendunix`,
-`uuid`, `hashcode`; commit 4e46b5ab7), pushed at the end of the previous session with its CI run
-NOT yet read: its chain had proven `cargo fmt`, the all-features whole run (63 targets, 9379
-passed), clippy all features and `cargo doc` before the session ran out, and its phase suites
-(fix, graph, text, root in both lanes, pytest 640, mypy, Node 401, mkdocs) were green before the
-commit; the rustdoc tests, the default-features run, the CLI tests, the whole Python and Node
-pre-push blocks and the docs runners were not re-run by the chain. Read MARKET_SPLIT_NEXT.md's
-`State` for anything landed after.
+```bash
+cp -r .handoff/split/scratch /tmp/s && export S=/tmp/s
+```
 
-## First steps of the new session
-1. Read P4's CI run on 4e46b5ab7 (the GitHub tools; the run of the push, its `CI result`). A red
-   job is reproduced narrowly, fixed at cause in a commit of its own, pushed, read again - before any
-   lane starts. The dictionary hash moved once in P4 (14542711836201211247 -> 12613356107921639431,
-   its sentence last in `rust/tests/fix/store.rs`); the snapshot's keys were re-spelled, no value.
-2. **P6** - delete the market book service (the user's instruction): `$S/p6_contract.md`,
-   `$S/p6_commit_message.txt`; its own commit, before S4.
-3. **S4** - `yggdryl-market` and `yggdryl-fix`: the brief `$S/m46_manager_prompt.md` (scoped to S4;
-   fix `s4_move.py`'s two defects named in `$S/s6_avro_report.md` finding 4 first), the script
-   `$S/s4_move.py`, the nine decisions in `$S/regroup.md` "S4 decisions" (decision 7 reversed:
-   P5 is not landed, see "Re-ordered on the user's instruction"), the pins rule of "Excel define
-   done - answers" item 1, `$S/s4_report.md`, `$S/s4/residue.md`, `$S/s4_commit_message.txt`. P6
-   and S4 go in one push; the user asked for market and fix first.
-Then the lanes below in order.
+| Lane | What it reads in `$S` |
+| --- | --- |
+| P7 (D40) | `p7/user_instruction.md`, `p7/d40_design.md` - the same design as DESIGN.md "## P7: design" |
+| P8 (D41) | `p8/user_instruction.md`: the instruction, what the walk does today and the questions to settle on evidence |
+| P5R (D37) | `p5r_manager_prompt.md` (the brief), `p5_on_p4.patch` with `p5_on_p4.commits`, `p5_state.md`, `p5_decisions.md`, `p5_contract.md`, `p5_define_report.md`, `p5r_report.md`, `d37_design.md`, `p5_commit_message.txt` |
+| M6 (S6) | `m6_manager_prompt.md` (the brief), `s6_<crate>_move.py`, `s6_<crate>_report.md`, `s6_<crate>_commit_message.txt` and the `s6_<crate>/` residue folders for excel, xmla, avro, parquet, s3 and iceberg, `s6_contract.md`, `d36_design.md`, `d39_design.md`, `moves_map/`, `s3_backend_map/`, and `s4_move.py`, the library every move script imports (S4's lexer, use trees, rewriter and lock) |
+| B5 (S5) | `b5_manager_prompt.md` (the brief), `s5_move.py`, `s5_define_report.md`, `s5/`, `s5_commit_message.txt`, `s4_move.py` (imported by `s5_move.py`) |
+| every lane | `regroup.md` (the lane protocols and every answer a define earned - binding), `user_decisions.md`, `s4_decisions.md` (the worked example of a settle's residue and how each item was decided), `logs/chain.sh` (the chain template) |
 
-## The remaining lanes, in order, each with its brief
-4. **P5R** - MarketMessage (D37) finished inside the crates: `$S/p5r_manager_prompt.md`. The parked
-   work is `$S/p5_on_p4.patch` (the diff of the previous environment's `wip/p5-impl` over P4's
-   4e46b5ab7; `$S/p5_on_p4.commits` names it) - where the brief says `git diff 4e46b5ab7
-   wip/p5-impl`, read that file instead. `$S/p5_state.md` says what is done and what remains; C1
-   and C2 of `$S/p5_decisions.md` are the unfinished design work; its last run gave graph 411/411 and
-   fix 905/906, the one failure the native round trip (an unresolved entry left in the metadata is
-   not written on the rendered wire). Commit message
-   `$S/p5_commit_message.txt`.
-5. **M6** - the media moves: `$S/m6_manager_prompt.md` - excel and xmla each a commit under one
-   push, then avro, parquet, s3 and iceberg as one dependency-closed commit (the user's decision).
-   Scripts `$S/s6_<crate>_move.py`, reports `$S/s6_<crate>_report.md`, commit messages
-   `$S/s6_<crate>_commit_message.txt`. The scripts were written on trees without P5, P6 and S4:
-   an anchor that no longer matches is fixed in the script, re-derived from the tree it runs on,
-   never at the site by hand.
-6. **B5** - the market binding packages and the release learning every crate (S5):
-   `$S/b5_manager_prompt.md`, `$S/s5_move.py`, `$S/s5_define_report.md`, `$S/s5_commit_message.txt`.
-7. **S7** (`RecordOptions` -> `MediaOptions` over every crate) and **S8** (the expression series):
-   designed in DESIGN.md, no brief yet - design in the foreground first, as every slice was.
-8. **S9**, the final sweep, on the user's go (MARKET_SPLIT_PROMPT.md).
+The briefs were written before S4 landed, for lane managers in a session that had no workflows. Read
+them for what a lane must do and the decisions it carries. Where a brief disagrees with "Since S4"
+below, the list below holds.
 
-## How a lane runs
-A lane manager (a background agent on the tier below the foreground's) follows its brief: the
-script on the program branch head, the decisions, the compile loop (`CARGO_INCREMENTAL=0
-CARGO_PROFILE_DEV_DEBUG=0 cargo check --workspace --all-targets --all-features --keep-going
---message-format=short`, the first run without `--locked` when a member is added), the
-regenerations in dependency order, the phase suites with every hash, order and request-count pin
-green WITHOUT edit, the commit with its message file verbatim, one chain over the tree (the
-all-features whole run leading - it needs about 13 GB of free disk - clippy both lanes, `cargo doc
--D warnings`, the rustdoc examples, Python's and Node's pre-push blocks, the three docs example
-runners, the inventories, the internals), one push, CI read through the GitHub tools to
-`CI result`, the results tables into DESIGN.md and MARKET_SPLIT_NEXT.md as a results commit, pushed
-and read. At most two workers at once on disjoint file sets; nobody runs `cargo fmt --all` while
-workers edit; one target directory. The foreground designs and decides; it does not edit by hand
-what a script can own.
+## Since S4: what the briefs do not know yet
+- **Test layout.** The FIX crate's tests mirror its sources: `rust/fix/tests/root/<file>.rs` under the
+  harness `rust/fix/tests/root.rs` (`--test root`). There is no `--test fix` and no `rust/fix/tests/fix/`;
+  `lib.rs` is pinned by `root/lib.rs`. The market crate's tests are `rust/market/tests/{root,graph,...}`.
+  The core's `graph/` tests are re-fixtured onto `TextLine` and stay in `rust/tests/graph/`.
+- **The reserved market kinds.** `rust/src/market.rs` holds `RESERVED_KINDS` (byte, name, extension
+  name and ranks of the four kinds) and `RESERVED_OWNER` (`yggdryl-market`). A claim of a reserved key
+  by another crate, or at other numbers, is refused. A second claim is the register's conflict naming
+  the claimant, checked before the numbers. The install sentence ("`side` is read only once the crate
+  that claims it is installed (`yggdryl_market::install()`)") is spelled only for a reserved name. D39's
+  `RESERVED_RANKS` for the media is the same shape.
+- **The listings.** `StringEnum::register_prebuilt(name, values, by)` and `StringEnum::prebuilt()`.
+  The market crate registers `side` and `timeinforce` at install. The core keeps no market word.
+- **Implementer routes.** `rust/market/src/implementer.rs` is FIX's door into the market crate's
+  private items (routes F, A, R, as in the core's `implementer.rs`). It has its own test file. The
+  core's `implementer::{normalize_path, format_timestamp}` were dropped with the book service, and
+  `s6_xmla_move.py` adds them back for the XMLA crate.
+- **CI rows.** A leaf line under `[leaves]` in `.github/ci/rows.toml` takes `paths`: the core-tree
+  files its sources include. `scripts/tests/test_ci_plan.py` fails a line that misses one, so the
+  S6d leaf `s3` must name `rust/tests/support/server.rs` (`FakeS3`) and any other shared fixture.
+  `rows.core` no longer reads `config/**`. `cli` is in `[leaf] jobs`.
+- **Whole-register pins** live in `cli/tests/market_register.rs`, because the CLI is the one member
+  linking every crate. A media move adds its medium's rows there by the same rule (the Excel answer in
+  `regroup.md`).
+- **Isolated tests.** The process-global tests run in a child test process. The three runners
+  (`rust/fix/tests/root.rs`, `rust/fix/tests/isin_registry.rs`, `rust/market/tests/isin_registry.rs`)
+  refuse a child that does not report `1 passed`. A child spawned under a wrong name used to pass
+  having run nothing; a moved isolated test must keep its child's name equal to its new path.
+- **Paths a move script anchors on may be gone.** P6 deleted `graph/serve.rs`, `cli/src/market.rs`,
+  `node/book/` and their tests. S4 moved `rust/src/fix/`, `rust/src/graph/` (less the event
+  vocabulary), the market root files and `rust/tests/fix/`. Every S6 and S5 script was written before
+  that. An anchor that no longer matches is fixed in the script, re-derived from the tree it runs on,
+  never at the site by hand.
+
+## The remaining lanes, in order
+1. **P7 (D40)**: the user's six items and their refinement - the FIX row named by the registry where
+   one field states the fact whole (`transacttime`, `sendingtime`, `strikeprice`, ...); the crate's
+   bands in order with the lifted band last (`instuuid`, `isin`, `cfi`, `mic`); `securityids` as the
+   one hold map; the code columns renamed; `crossuuid` as the XXH3-128 of the cross code; a book's
+   `srcuuids` (its delta, its events and the previous book's `uuid`, never the previous book's sources)
+   and its `hashcode` (the instant over the digest of those sources). The design is DESIGN.md
+   "## P7: design" and ends with five readings put to the user. There is no script yet: write the
+   sweep first (the P4 sweep, `p4_sweep.py` in git history at `4e46b5ab7^`, is the model), then
+   settle. The dump, the dictionary hash, the snapshot's keys, the book identities and `fix.json`
+   move once, each with its sentence.
+2. **P8 (D41)**: the lifecycle matches the previous alive element and the current one on one common
+   identifier, through an index, and propagates values. Gather the evidence `p8/user_instruction.md`
+   lists first, decide the design in the foreground, record it as D41 in DESIGN.md, then implement it
+   in `rust/market/src/graph/iterator.rs` and `rust/fix/src/enrich.rs`.
+3. **P5R (D37)**: `MarketMessage`, the parked patch re-targeted onto S4's paths (FIX tests under
+   `rust/fix/tests/root/`) and P7's names. The brief is `p5r_manager_prompt.md`; its gate is now
+   "P7 and P8 landed".
+4. **M6 (S6)**: excel and xmla, each its own commit under one push; then the avro, parquet, s3 and
+   iceberg batch as one commit (the user's decision). The brief is `m6_manager_prompt.md`; its gate
+   is now "P5R landed".
+5. **B5 (S5)**: the market binding packages, with the release learning every crate. The brief is
+   `b5_manager_prompt.md`.
+6. **S7** (`RecordOptions` -> `MediaOptions`) and **S8** (the expression series) are designed in
+   DESIGN.md; design each in the foreground first. **S9**, the final sweep, waits for the user's go.
+
+## How a lane runs here (what worked in this session)
+- **Setup** (a fresh container has neither):
+  `python3 -m venv python/.venv && python/.venv/bin/pip install "maturin>=1.15,<2" "pyarrow>=18" "pytest>=8" "mypy>=1.15" "pandas>=2" "polars>=1" tzdata xxhash -r requirements-docs.txt`,
+  then `npm ci --prefix node`.
+- **The foreground designs and decides.** It writes each lane as a workflow (load the
+  `workflow-authoring` skill). The S4 lane's shape was:
+  1. the move script, run by one agent, then the first workspace check without `--locked`;
+  2. settle rounds of one agent each until `cargo check --workspace --all-targets --all-features --keep-going --message-format=short --locked`
+     is clean in both feature lanes;
+  3. decision agents on disjoint file sets, at most two at once on four cores;
+  4. one suites round: fmt, regenerations, the crates' suites in both lanes, the core harnesses,
+     Python with the named validation, Node, the planner and mkdocs;
+  5. read-only review lenses: back-compat, pins, and the named validation;
+  6. the foreground's decisions on every residue item, numbered in a file, applied by one more
+     agent and verified by two lenses.
+  Then: commit with the message file, the chain, one push, the CI read, and a results commit.
+- **The chain** is `logs/chain.sh` adapted to the lane's crates: each package's whole run in the
+  all-features lane, then clippy, `cargo doc -D warnings`, the bench-profile checks, a clean, the
+  rustdoc examples, clippy in the default lane, the CLI tests, the default lane's whole runs, a clean,
+  Python, Node, the manifests, mkdocs, the inventories and internals, the greps and the three docs
+  runners. Run it with `nohup` so it survives the shell. If the shell dies anyway, the running cargo
+  usually goes on: wait on its pid and continue from the next step. This session did that once, with
+  a `chain_s4b.sh` written from the template.
+- **Disk.** One lane's test binaries take about 10 GB. Before a whole run, delete the test
+  executables older than the lane's last build:
+  `find target/debug/deps -maxdepth 1 -type f -perm /111 ! -name '*.so' ! -name '*.rlib' ! -name '*.rmeta' ! -name '*.d' -mmin +20 -delete`.
+  Keep a background watch on `df` under 3 GB.
+- **Model tiers.** The user asked for the most capable model only where deep thinking or design is
+  needed: reviews and settles on the tier below, mechanical sweeps and check-and-report on the
+  cheapest. This session's last steps ran on Opus at the user's request.
 
 ## Open with the user
-The release rehearsal (a manual `release.yml` run publishes nothing but is a release run: the
-user's explicit go) and the registry configuration a real publish needs (a PyPI pending trusted
-publisher for `yggdryl-market`, an npm bootstrap publish before trusted publishing, a
-`CARGO_REGISTRY_TOKEN` with `publish-new` over `yggdryl-*`). Everything else the briefs asked the
-user is decided in `$S/user_decisions.md`.
+- The release rehearsal: a manual `release.yml` run publishes nothing but is a release run, so it
+  needs the user's explicit go.
+- The registry configuration a real publish needs: a PyPI pending trusted publisher for
+  `yggdryl-market`, an npm bootstrap publish before trusted publishing, and a `CARGO_REGISTRY_TOKEN`
+  with `publish-new` over `yggdryl-*`.
+- P7's five readings (DESIGN.md "## P7: design", "Put to the user") are taken as stated unless the
+  user says otherwise. The one that changes a table's shape is the medallion pipeline windowing its FIX
+  tables by `transacttime`.

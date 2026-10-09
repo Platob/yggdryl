@@ -1,6 +1,6 @@
 # S6 Iceberg residue
 
-Tree: `/tmp/claude-0/-home-user-yggdryl/09ea5bac-ef2f-52ce-b6c3-cfd3a196ec17/scratchpad/s6_iceberg/batch`
+Tree: `/tmp/s/s6_iceberg/batch`
 
 ## Done
 
