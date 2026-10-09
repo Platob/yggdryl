@@ -909,6 +909,30 @@ pub fn parse_timestamp(text: &str) -> crate::Result<(i64, crate::TimeUnit, crate
     crate::temporal::parse_timestamp(text)
 }
 ''', "pub fn parse_timestamp(text: &str) -> crate::Result<(i64, crate::TimeUnit, crate::Timezone)>  (`temporal::parse_timestamp`: a zoned instant, the zone required)"),
+    "format_timestamp": ('''/// `temporal::format_timestamp`, for the XMLA crate: a zoned instant
+/// spelled as its local reading plus its offset.
+#[inline]
+#[must_use]
+pub fn format_timestamp(
+    count: i64,
+    unit: crate::TimeUnit,
+    zone: &crate::Timezone,
+) -> Option<smol_str::SmolStr> {
+    crate::temporal::format_timestamp(count, unit, zone)
+}
+''', "pub fn format_timestamp(count: i64, unit: crate::TimeUnit, zone: &crate::Timezone) -> Option<smol_str::SmolStr>  (`temporal::format_timestamp`: a zoned instant as its local reading plus its offset)"),
+    "normalize_path": ('''/// `http::server::normalize_path`, for the XMLA crate: the canonical
+/// spelling of a mount prefix or a route path.
+///
+/// # Errors
+///
+/// Returns a parse error for a query, a fragment or a control byte in it.
+#[cfg(feature = "http")]
+#[inline]
+pub fn normalize_path(path: &str) -> crate::Result<String> {
+    crate::http::server::normalize_path(path)
+}
+''', "pub fn normalize_path(path: &str) -> crate::Result<String>  (`http::server::normalize_path`: the canonical spelling of a mount prefix or a route path)"),
     "holds": ('''/// `warehouse::holds`, for the XMLA crate: whether `prefix` holds `url` on a
 /// path boundary, and how long the match is - the one containment rule every
 /// location check reads.

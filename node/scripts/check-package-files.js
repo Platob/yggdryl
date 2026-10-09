@@ -62,38 +62,10 @@ for (const [entry, conditions] of Object.entries(manifest.exports)) {
   }
   for (const target of Object.values(conditions)) required.add(target.replace(/^\.\//, ''))
 }
-// The book display's ES modules, and the `"type": "module"` marker that makes them ES modules.
-const book = require('../book.js')
-for (const name of [...book.assetFiles, 'package.json']) required.add(`book/${name}`)
 for (const path of required) {
   if (!files.has(path)) {
     throw new Error(`npm package is missing required file ${path}`)
   }
-}
-
-// `book.d.ts` is written by hand beside `book.js`, so it is held to the values
-// the module exports: one undeclared is `any` to a consumer, one declared and
-// absent a runtime `undefined` the compiler vouched for.
-const ts = require('typescript')
-const bookDeclarations = join(root, 'book.d.ts')
-const program = ts.createProgram([bookDeclarations], {
-  module: ts.ModuleKind.Node16,
-  moduleResolution: ts.ModuleResolutionKind.Node16,
-  noEmit: true,
-  strict: true,
-  target: ts.ScriptTarget.ES2022,
-})
-const checker = program.getTypeChecker()
-const declared = checker
-  .getExportsOfModule(checker.getSymbolAtLocation(program.getSourceFile(bookDeclarations)))
-  .filter((symbol) => symbol.flags & ts.SymbolFlags.Value)
-  .map(({ name }) => name)
-  .sort()
-const exported = Object.keys(book).sort()
-if (JSON.stringify(declared) !== JSON.stringify(exported)) {
-  throw new Error(
-    `book.d.ts declares ${JSON.stringify(declared)} but book.js exports ${JSON.stringify(exported)}`,
-  )
 }
 
 const nativeFiles = readdirSync(root).filter((path) => path.endsWith('.node'))

@@ -48,8 +48,6 @@ PYTHON = ROOT / "python" / ".venv" / "Scripts" / "python.exe"
 if not PYTHON.exists():
     PYTHON = ROOT / "python" / ".venv" / "bin" / "python"
 NODE_BINDING = (ROOT / "node" / "binding.js").as_posix()
-# The package's `book` entry point: `require('yggdryl/book')` spawns the display.
-NODE_BOOK = (ROOT / "node" / "book.js").as_posix()
 # Apache Arrow JS is a dependency of the package, so a reader who installed
 # ``yggdryl`` can require it; a generated script in a temporary directory
 # cannot, because Node resolves from the script's own folder.
@@ -250,7 +248,6 @@ def run_scripts(pages, language: str, jobs: int) -> tuple[int, int, list[str]]:
                     # names a logger, not the package.
                     rewired = block.code
                     for name, target in (
-                        ("yggdryl/book", NODE_BOOK),
                         ("yggdryl", NODE_BINDING),
                         ("apache-arrow", NODE_ARROW),
                     ):

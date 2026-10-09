@@ -508,9 +508,9 @@ fn registry() -> Arc<FixRegistry> {
     Arc::new(FixRegistry::from_handle(&folder).expect("the committed dictionary loads"))
 }
 
-/// The options a bridge log is read under, as `yggdryl market serve` reads
-/// one: the bridge's row header, each line numbered and classified, and its
-/// clock - which the generator writes in UTC - read in UTC.
+/// The options a bridge log is read under: the bridge's row header, each
+/// line numbered and classified, and its clock - which the generator writes
+/// in UTC - read in UTC.
 fn reading() -> TextOptions {
     let mut options = TextOptions::new()
         .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)

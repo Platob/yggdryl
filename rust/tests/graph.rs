@@ -28,9 +28,6 @@ mod market_data;
 mod operation;
 #[path = "graph/operation_column.rs"]
 mod operation_column;
-#[cfg(feature = "http")]
-#[path = "graph/serve.rs"]
-mod serve;
 #[path = "graph/trade.rs"]
 mod trade;
 #[path = "graph/view.rs"]

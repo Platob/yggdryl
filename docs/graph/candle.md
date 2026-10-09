@@ -1,6 +1,6 @@
 # Candle
 
-A candle is one OHLC of one book over one bucket: `Candle` what the books of one cross code whose instants fell in `[start, end)` read at their best bid, their best ask, their midpoint and their spread - each an `Ohlc` of open, high, low and close - with the quantities at the touch when the bucket closed and how many books it folded; `CandleOptions` the interval and the zone whose wall clock the buckets align to; `CandleIterator` the fold of a sorted stream of [books](book.md) into candles. The [book display](serve.md) serves them over a `marketdata` table.
+A candle is one OHLC of one book over one bucket: `Candle` what the books of one cross code whose instants fell in `[start, end)` read at their best bid, their best ask, their midpoint and their spread - each an `Ohlc` of open, high, low and close - with the quantities at the touch when the bucket closed and how many books it folded; `CandleOptions` the interval and the zone whose wall clock the buckets align to; `CandleIterator` the fold of a sorted stream of [books](book.md) into candles.
 
 ## Contract
 

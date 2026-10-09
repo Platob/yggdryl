@@ -33,8 +33,7 @@ use crate::text::{TextBytes, TextEntries};
 use crate::xxhash::Xxh3;
 use crate::{
     Cfi, Charset, DataType, DateTime64, Field, IOBase, Isin, Listing, MarketDescriptor, Metadata,
-    Mic, MimeType, Result, Scalar, Serie, State, Str, StructType, Time32, Time64, TimeUnit,
-    Timezone, Uuid,
+    Mic, MimeType, Result, Scalar, Serie, State, Str, StructType, Time32, Time64, Timezone, Uuid,
 };
 
 // ------------------------------------------------------------------------
@@ -527,10 +526,6 @@ pub fn record_parts(folder: &(impl IOBase + ?Sized), encoding: MimeType) -> Resu
     crate::media::partition::record_parts(folder, encoding)
 }
 
-/// One captured text read under the datatype its capture was typed with,
-/// for the market crate's book service.
-pub use crate::text::arrow::parse_capture;
-
 /// The enum leaf builder, for the market crate's kinds: `enum_leaf!` writes
 /// a kind's enum, its descriptor and its typed value.
 #[doc(hidden)]
@@ -862,27 +857,6 @@ pub use crate::protocol_field_types;
 #[inline]
 pub fn integer_from_text_as<T: TryFrom<i128> + TryFrom<u128>>(text: &str) -> Option<T> {
     crate::integer::integer_from_text_as(text)
-}
-
-/// `http::server::normalize_path`, for the market crate's book service and
-/// the media crates: the canonical spelling of a mount prefix or a route
-/// path.
-///
-/// # Errors
-///
-/// Returns a parse error for a query, a fragment or a control byte in it.
-#[cfg(feature = "http")]
-#[inline]
-pub fn normalize_path(path: &str) -> Result<String> {
-    crate::http::server::normalize_path(path)
-}
-
-/// `temporal::format_timestamp`, for the market crate's book service and
-/// the media crates: a zoned instant spelled as its local reading plus its
-/// offset.
-#[inline]
-pub fn format_timestamp(count: i64, unit: TimeUnit, zone: &Timezone) -> Option<SmolStr> {
-    crate::temporal::format_timestamp(count, unit, zone)
 }
 
 /// `arrow::field_from_arrow_schema`, for the FIX and media crates: the

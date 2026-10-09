@@ -448,8 +448,6 @@ pub mod market_column;
 pub mod market_data;
 pub mod operation;
 pub mod operation_column;
-#[cfg(feature = "http")]
-pub mod serve;
 pub mod trade;
 pub mod view;
 
@@ -468,7 +466,5 @@ pub use operation::{
     OperationEvent, OperationKind, Order, OrderEvent, OrderKind, Quote, QuoteEvent, QuoteKind,
 };
 pub use operation_column::OperationColumn;
-#[cfg(feature = "http")]
-pub use serve::{BookQuery, BookService, BookServiceOptions, BookTable};
 pub use trade::TradeEvent;
 pub use view::MarketView;

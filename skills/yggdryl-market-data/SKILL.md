@@ -1,6 +1,6 @@
 ---
 name: yggdryl-market-data
-description: Models and streams market data with yggdryl's graph layer in Rust, Python and Node.js - orders, quotes, executions and trades as dated events (OrderEvent, QuoteEvent, ExecutionEvent, TradeEvent), identities and side-keyed chains (uuid, crossuuid, with_previous / withPrevious, EventIterator), order books keyed by ISIN or ticker (BookIterator and its filter, BookEvent, delta books rebuilt with with_previous, is_complete, alive_on, limits, best_price / bestPrice, spread, depth, SnapshotEvent), OHLC candles of the best bid and ask per zone-aligned bucket (CandleIterator, CandleOptions, graph.candles, Candle.field), the book display served over a marketdata table (yggdryl market serve, BookService, node/book.js), the Side and MarketDataKind enums and the lifted marketdata Arrow row (MarketData.arrow_reader / arrowReader, from_arrow_reader / fromArrowReader, apply_view / applyView). Use when building market events, folding them into books or candles, persisting or querying marketdata batches, or serving a table of books as a display.
+description: Models and streams market data with yggdryl's graph layer in Rust, Python and Node.js - orders, quotes, executions and trades as dated events (OrderEvent, QuoteEvent, ExecutionEvent, TradeEvent), identities and side-keyed chains (uuid, crossuuid, with_previous / withPrevious, EventIterator), order books keyed by ISIN or ticker (BookIterator and its filter, BookEvent, delta books rebuilt with with_previous, is_complete, alive_on, limits, best_price / bestPrice, spread, depth, SnapshotEvent), OHLC candles of the best bid and ask per zone-aligned bucket (CandleIterator, CandleOptions, graph.candles, Candle.field), the Side and MarketDataKind enums and the lifted marketdata Arrow row (MarketData.arrow_reader / arrowReader, from_arrow_reader / fromArrowReader, apply_view / applyView). Use when building market events, folding them into books or candles, or persisting or querying marketdata batches.
 ---
 
 # yggdryl market data
@@ -158,8 +158,7 @@ Hold these facts:
   follows no book (`prevuuid` null) and rebuilds over the empty
   `BookEvent.keyed(unix, key)`. Sorted books fold on into `Candle`s - one
   OHLC of the best bid, the best ask, the mid and the spread per book cross
-  code and bucket - and `yggdryl market serve` serves a table of them as
-  candles, books and audits behind the Node.js display.
+  code and bucket.
 
 ## Choose the door
 
@@ -208,8 +207,6 @@ Hold these facts:
 | FIX to sorted market data / books | `codec.market_data(codec.lifecycle(msgs))`, `codec.book_arrow_reader(msgs, 0, None)?` | `codec.market_data(...)`, `codec.book_arrow_reader(msgs, snapshot_millis=0, filter=None)` | `codec.marketData(..)`, `codec.bookArrowReader(msgs, 0, filter)` |
 | fold sorted books into candles | `CandleIterator::new(books, CandleOptions::from_spelling("1m")?.with_timezone(zone))` | `graph.candles(books, "1m", timezone=None)`, `graph.CandleIterator(books, graph.CandleOptions("1m", zone))` | `graph.candles(books, '1m', zone)`, `new graph.CandleIterator(books, new graph.CandleOptions('1m', zone))` |
 | a candle's row, and candles as Arrow | `Candle::field()?`, `Candle::arrow_reader(candles, None)?`, `candle.into_scalar()`, `Candle::from_scalar(&value)?` | `graph.Candle.field()`, `candle.into_scalar()`, `candle.as_py()`, `graph.Candle.from_scalar(value)` | `graph.Candle.field()`, `candle.intoScalar()`, `candle.toJSON()`, `graph.Candle.fromScalar(value)` |
-| serve a table of books as the display | `BookService::new(options).with_table(name, holder)`, `Arc::new(service).route(&server, "/")?` (the `http` feature); `yggdryl market serve books=/data/books` | `yggdryl market serve books=/data/books`, the wheel's own command | `book.serve({ tables: 'books=/data/books' })` over the package's `book.js`; `yggdryl market serve` |
-| a served table's readings without HTTP | `service.tickers("books")?`, `service.candles(&query)?`, `service.book(table, key_or_ticker, at)?`, `service.events(&query)?` | Rust-only | Rust-only |
 
 ## Rules for fast, correct use
 
@@ -430,44 +427,12 @@ Hold these facts:
   order_event`). A one-sided book states no `mid` and no `spread`, and a
   bucket whose ask side empties keeps the ask readings its earlier books made
   while `askqty` reads `None`/`null`, because the touch is the last book's.
-- The display is keyed by the book key, not the ticker: `tickers()` (`GET
-  <prefix>/api/tickers`) lists `{key, ticker, crosscode, from, to, books}`,
-  one per key, and a route's `ticker` parameter names a key, else the ticker
-  one key's books state - a ticker two keys' books state (one listing under
-  two ISINs, or a ticker-keyed and an ISIN-keyed book) is refused as
-  ambiguous, and one no book states is `404`. `book` rebuilds the book at
-  `at` from the last complete book, or the first following none, and answers
-  `"complete": false` - with no entries or levels - where it cannot.
-- The display's routes render instants as RFC 9557 text with a bracketed zone,
-  `2026-08-14T14:00:00+02:00[Europe/Zurich]`, which `Date.parse`
-  does not read: hand a candle's `start`/`end` back as the next question's
-  `from`, `to` or `at` - percent-encoded, as `URLSearchParams` does - rather
-  than re-parsing them. A naive `from`/`to` is a wall clock in `tz`, and `to`
-  is exclusive. An `events` row's `hashcode`/`crosshashcode` are JSON
-  integers up to 2^64: `JSON.parse` rounds them past 2^53, the CSV audit
-  does not.
-- A route's `tz` reads only the zones this build has rules for, and a zone
-  it lacks is `400` at `$.tz`: offer the list `GET <prefix>/api/timezones`
-  answers (`UTC` first) rather than the runtime's own zone list. A table's
-  `url` and every refusal are stated without the location's user
-  information and query, so a credential in a location reaches no client.
-- `yggdryl market serve --capture` appends the capture's books to the first
-  table every time it runs: prepare the table once, then serve it without the
-  capture. The Iceberg table it makes of an absent folder needs the `iceberg`
-  feature, which the wheel's command has. A capture is read with
-  `--registry`, default `config/fix` under the working directory - a yggdryl
-  checkout's committed dictionary; the wheel and the npm package ship none,
-  so an installed command passes `--registry <folder>` or refuses
-  (`expected a FIX dictionary at "file:///.../config/fix", got nothing`).
-- The command prints a refusal on stdout, one `✗` line, and exits `1`; only
-  the argument parser's own refusals go to stderr (exit `2`). `book.serve`
-  rejects with that `✗` line, then any stderr, as the error's message.
 
 ## Language references
 
-- Rust: [references/rust.md](references/rust.md) - `yggdryl::graph::*` leaves, traits, candles and the book service, `Decimal`, `Side`, `MarketDataKind`, `Ccy`.
+- Rust: [references/rust.md](references/rust.md) - `yggdryl::graph::*` leaves, traits, candles, `Decimal`, `Side`, `MarketDataKind`, `Ccy`.
 - Python: [references/python.md](references/python.md) - `from yggdryl import graph`, `Side`, `MarketDataKind`, pyarrow readers, `graph.candles`.
-- JavaScript: [references/javascript.md](references/javascript.md) - `graph`, `Side`, `MarketDataKind`, `graph.candles`, the package's `book.js`.
+- JavaScript: [references/javascript.md](references/javascript.md) - `graph`, `Side`, `MarketDataKind`, `graph.candles`.
 
 Read the one for the language you write; recipes appear in the same order in each.
 
@@ -485,7 +450,6 @@ Read the one for the language you write; recipes appear in the same order in eac
 - Book, limits, snapshots, the fold: https://platob.github.io/yggdryl/graph/book/
 - `MarketData`, columns, Arrow row, views: https://platob.github.io/yggdryl/graph/market-data/
 - Candles, buckets and zones, the candle row: https://platob.github.io/yggdryl/graph/candle/
-- The book display, `yggdryl market serve`, the routes, the components: https://platob.github.io/yggdryl/graph/serve/
 - `Side`, `MarketDataKind`, `MarketDataType` and `TimeInForce`: https://platob.github.io/yggdryl/types/enum/
 - Sibling skills: `yggdryl-fix` (FIX captures into market data and books),
   `yggdryl-expressions` (the `Plan` a view is), `yggdryl-records` (persisting

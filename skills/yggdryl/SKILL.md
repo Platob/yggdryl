@@ -62,7 +62,7 @@ answers the task.
 | filters, selections, SQL-like plans, predicate pushdown, field paths | `yggdryl-expressions` |
 | xxHash digests, stable hashes, row digests, TxHash | `yggdryl-hashing` |
 | FIX messages, dictionaries, captures, the `yggdryl fix` CLI | `yggdryl-fix` |
-| orders, quotes, executions, order books, candles, market data, the book display (`yggdryl market serve`) | `yggdryl-market-data` |
+| orders, quotes, executions, order books, candles, market data | `yggdryl-market-data` |
 
 ## Cross-language conventions
 

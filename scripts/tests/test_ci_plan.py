@@ -235,12 +235,12 @@ class ThePlan(unittest.TestCase):
 
     def test_a_node_change_runs_the_node_jobs(self) -> None:
         self.assertEqual(planned(["node/src/serie.rs"]).jobs, {
-            "node-addon", "node", "cli", "docs-javascript", "inventory", "lint-full", "fmt",
+            "node-addon", "node", "docs-javascript", "inventory", "lint-full", "fmt",
         })
 
     def test_a_cli_change_runs_what_carries_the_command(self) -> None:
         jobs = planned(["cli/src/main.rs"]).jobs
-        self.assertTrue({"cli", "node", "python-wheel", "python", "lint-full", "fmt"} <= jobs)
+        self.assertTrue({"cli", "python-wheel", "python", "lint-full", "fmt"} <= jobs)
         self.assertFalse({"core-default", "core-full", "core-tests-default", "core-tests-full"} & jobs)
 
     def test_a_page_runs_the_examples(self) -> None:

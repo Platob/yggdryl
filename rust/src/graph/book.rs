@@ -315,23 +315,6 @@ pub(crate) fn rests_on(entry: &MarketData, side: Side) -> bool {
     (side.is_bid() || side.is_ask()) && leg(entry, side.is_bid()).is_some()
 }
 
-/// Whether `entry` is about the side `side` takes, resting there or not: a
-/// sided entry taking it, an unsided one stating a leg there - a leg sized
-/// zero, which withdraws it, included - or tagging it. What an order or a
-/// quote of a book's delta that takes an entry off a side still states,
-/// which the audit keeps by.
-#[cfg(feature = "http")]
-pub(crate) fn states_on(entry: &MarketData, side: Side) -> bool {
-    (side.is_bid() || side.is_ask())
-        && (stated_leg(entry, side.is_bid()).is_some()
-            || (!entry.is_sided()
-                && (if side.is_bid() {
-                    entry.get_side().is_bid()
-                } else {
-                    entry.get_side().is_ask()
-                })))
-}
-
 /// Whether the entry is currently typed as a dated order (versus a quote).
 fn is_order(operation: &MarketData) -> bool {
     matches!(operation, MarketData::OrderEvent(_))

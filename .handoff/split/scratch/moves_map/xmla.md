@@ -13,7 +13,7 @@ Tool: `work/refs.py` copy repointed at the s3 tree (`moves_map/tool/`), `python3
 - CLI: `cli/src/xmla.rs` 187, `cli/tests/xmla.rs` 513 (:13 `use yggdryl::xmla::{Discover, Request, RequestType, Response}`), `cli/src/main.rs:49,88-90,142` (module + `Command::Xmla`), `cli/src/location.rs:5` (comment).
 
 ## 2. Core privates the crate reaches (pub(crate) path, site count = grep of the name in xmla/+soap/)
-Already in `implementer.rs` (8): `arrow::field_from_arrow_schema` (media.rs:16,200; implementer.rs:897), `http::server::normalize_path` (server.rs:70; :876, http-gated), `integer::integer_from_text_as` (response.rs:181, vocabulary.rs:618; :863), `temporal::format_timestamp` (rowset.rs:1321; :884), `Serie::is_string_storage` (rowset.rs:1201; :947), `Serie::is_byte_storage` (:1228; :954), `Serie::value_bytes` (:1202,:1229; :961), and `text::{expected_got, elide_to, ERROR_TEXT_LIMIT}` (media.rs:295, vocabulary.rs:754; `pub use text::display`, :915). `record_options_fields!` (options.rs:119) and `xxhash::xxh3` (service.rs:313) are already `pub`.
+Already in `implementer.rs` (6): `arrow::field_from_arrow_schema` (media.rs:16,200; implementer.rs:897), `integer::integer_from_text_as` (response.rs:181, vocabulary.rs:618; :863), `Serie::is_string_storage` (rowset.rs:1201; :947), `Serie::is_byte_storage` (:1228; :954), `Serie::value_bytes` (:1202,:1229; :961), and `text::{expected_got, elide_to, ERROR_TEXT_LIMIT}` (media.rs:295, vocabulary.rs:754; `pub use text::display`, :915). `record_options_fields!` (options.rs:119) and `xxhash::xxh3` (service.rs:313) are already `pub`.
 
 MISSING from implementer.rs - the list the move adds (shared = also reached by another leaving crate, so one forwarder serves both; per the tool):
 | item | sites | also reached by |
@@ -37,6 +37,8 @@ MISSING from implementer.rs - the list the move adds (shared = also reached by a
 | `bytes::into_base64` (bytes.rs:1917) | rowset.rs:1233 | xmla only |
 | `serie::arrow::from_canonical_rows` (serie/arrow.rs:1095) | rowset.rs:817 | xmla only |
 | `temporal::parse_timestamp` (temporal.rs:1043) | rowset.rs:1032 | xmla only |
+| `temporal::format_timestamp` | rowset.rs:1321 | xmla only |
+| `http::server::normalize_path` (http-gated) | server.rs:70 | xmla only |
 | `warehouse::catalog::no_catalog` (catalog.rs:565) | service.rs:36 (+2) | xmla only |
 | `warehouse::holds` (warehouse/mod.rs:398) | service.rs:36, ~1 call at 964 (`holds(&root.to_string(), &text)`) | xmla only |
 | `xml::wire::write_fragment` (:128) | soap:51, request.rs:693,727,747 (+1) (5) | xmla only |

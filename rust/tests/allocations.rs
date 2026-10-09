@@ -1107,13 +1107,12 @@ fn a_walk_step_at_a_deep_touch_allocates_alike_at_8_and_1024_entries() {
     );
 }
 
-/// Rebuilding a delta book over the complete book before
-/// it - the fold `BookService::book` runs over the rows it read, through
-/// [`Element::with_previous`] - makes as many allocations over a book 8
+/// Rebuilding a delta book over the complete book before it, through
+/// [`Element::with_previous`], makes as many allocations over a book 8
 /// levels a side deep as over one 1,024 deep: it replays its delta, and
 /// never copies an entry or builds anything per level.
 #[test]
-fn a_service_rebuild_allocates_per_delta_not_per_level() {
+fn a_delta_book_rebuild_allocates_per_delta_not_per_level() {
     let rebuild = |levels: usize| {
         let updates = [2, 3].map(|unix| allocation_level_entry("Buy", 0, 0, unix, "Replaced"));
         let books = BookIterator::new(

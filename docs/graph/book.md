@@ -1,6 +1,6 @@
 # Book
 
-A book is live depth over time: `BookEvent` one book at an instant - complete, holding the entries alive on both sides and each side read as its price levels, or a [delta book](#complete-books-and-delta-books) holding no sides: its `delta` - the orders and quotes it applied since the book before - its `events` - the executions and snapshot controls it recorded - and the top of book they settled on - `SnapshotEvent` the scope-replacing control, and `BookIterator` the fold of a sorted stream into books. Sorted books fold on into [candles](candle.md), and the [book display](serve.md) serves a table of them as candles, books and audits.
+A book is live depth over time: `BookEvent` one book at an instant - complete, holding the entries alive on both sides and each side read as its price levels, or a [delta book](#complete-books-and-delta-books) holding no sides: its `delta` - the orders and quotes it applied since the book before - its `events` - the executions and snapshot controls it recorded - and the top of book they settled on - `SnapshotEvent` the scope-replacing control, and `BookIterator` the fold of a sorted stream into books. Sorted books fold on into [candles](candle.md).
 
 ## Contract
 

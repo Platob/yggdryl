@@ -262,7 +262,6 @@ nav:
     - Book: graph/book.md
     - Market data: graph/market-data.md
     - Candle: graph/candle.md
-    - Book display: graph/serve.md
     - Row schemas: graph/schemas.md
   - FIX:
     - fix/index.md

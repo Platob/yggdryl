@@ -364,7 +364,6 @@ pub struct Staged<'state>  (Facts staged on the stack and written to a digest a 
 pub use iomedia::arrow_serie  (A stream of batches as the serie it is, for the market crate's registry store)
 pub fn locate<H: IOBase + ?Sized>(handle: &H) -> Result<Option<Box<dyn crate::media::LocatedTable>>>  (`media::format::locate`, for the market crate's registry store: the table a container handle addresses, if any claimed format locates one)
 pub fn record_parts(folder: &(impl IOBase + ?Sized), encoding: MimeType) -> Result<Listing>  (`media::partition::record_parts`, for the market crate's registry store: the leaves beneath `folder` that hold `encoding`)
-pub use text::arrow::parse_capture  (One captured text read under the datatype its capture was typed with, for the market crate's book service)
 pub use enum_leaf  (The enum leaf builder, for the market crate's kinds: `enum_leaf!` writes a kind's enum, its descriptor and its typed value)
 pub use enums::patterns::Patterns  (The spelling patterns an `enum_leaf!` kind reads a member's words by, for the macro's expansion in the market crate)
 pub use define_field_types  (The field marker builder, for the market crate's kinds: `define_field_types!` writes a kind's marker and field alias)
@@ -406,8 +405,6 @@ pub fn state_from_wire_code(code: &str) -> Option<State>  (`state::state_from_wi
 pub use protocol_field_types  (The protocol-view builder, for the FIX crate's `FixField` and `FixFieldMut`: `protocol_field_types!` declares one scheme's two views)
   (Shared with the media crates: what the market or FIX crate reaches that a media folder reaches too)
 pub fn integer_from_text_as<T: TryFrom<i128> + TryFrom<u128>>(text: &str) -> Option<T>  (`integer::integer_from_text_as`, for the market, FIX and media crates: an integer read out of its canonical spelling at one native width, a magnitude `T` cannot hold `None`)
-pub fn normalize_path(path: &str) -> Result<String>  (`http::server::normalize_path`, for the market crate's book service and the media crates: the canonical spelling of a mount prefix or a route path)
-pub fn format_timestamp(count: i64, unit: TimeUnit, zone: &Timezone) -> Option<SmolStr>  (`temporal::format_timestamp`, for the market crate's book service and the media crates: a zoned instant spelled as its local reading plus its offset)
 pub fn field_from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Field>  (`arrow::field_from_arrow_schema`, for the FIX and media crates: the record root an Arrow schema forms, its dictionary-ID sidecar taken off)
 pub const BOOLEAN_SPELLINGS: &str  (`boolean::BOOLEAN_SPELLINGS`, for the FIX and media crates: what every refusal of a boolean spelling names)
 pub fn bool_from_text(text: &str) -> Option<bool>  (`boolean::bool_from_text`, for the FIX and media crates: a boolean read out of text through the one table every flag in the crate reads)
@@ -1458,7 +1455,6 @@ pub mod market_column;
 pub mod market_data;
 pub mod operation;
 pub mod operation_column;
-pub mod serve;  (behind the `http` feature)
 pub mod trade;
 pub mod view;
   pub use book::{BookEvent, BookIterator, SnapshotEvent};
@@ -1473,7 +1469,6 @@ pub mod view;
   pub use market_data::{MarketData, MarketMessage};
   pub use operation::{BookRef, Execution, ExecutionEvent, ExecutionKind, MdUpdateAction, Order, OrderEvent, OrderKind, OperationElement, OperationEvent, OperationKind, Quote, QuoteEvent, QuoteKind};
   pub use operation_column::OperationColumn;
-  pub use serve::{BookQuery, BookService, BookServiceOptions, BookTable};  (behind the `http` feature)
   pub use trade::TradeEvent;
   pub use view::MarketView;
   macro_rules! delegate_event, delegate_market, delegate_operation  (pub(crate): `impl Event`, `impl Market` and `impl Operation` forwarding every accessor to a field that is one; `delegate_event!(Type, field, restating = .., is_execution = .., set_transunix = ..)` takes the readings a wrapper answers itself as closures, the last two optional)
@@ -1851,32 +1846,6 @@ pub enum MarketView { Orders, Quotes, Executions, Trades, Books, Lifecycle { cro
 impl MarketData
   pub fn plan(view: &MarketView, lifts: &[FieldPath]) -> Result<Plan>  (built structurally; its text reads back as the plan; lifts appended as projections, a missing key reading null and a missing column refused at bind)
   pub fn apply_view(view: &MarketView, lifts: &[FieldPath], reader: BatchReader) -> Result<BatchReader>  (exactly plan.apply_arrow_reader(reader), bound once)
-
-### yggdryl::graph::serve  [rust/src/graph/serve.rs]  (behind the `http` feature: the HTTP face of a market-data table - the book keys it holds, the candles a key's books fold into, the book standing at an instant and the audit of every entry and delta of the books in a range - as JSON for the display and as CSV for a download; a table is any record location a `Holder` reads books from - an Iceberg folder, an Arrow, Parquet, Avro or CSV leaf, a partitioned folder - and every reading is one filtered read of it - `marketdatakind` the `BOOK` member, the book key, the instants, a `ticker` that is no key resolved by the projected scan `tickers` makes only once the read of it as a key answers nothing - pushed into the location's own record options and read back through `MarketData::from_arrow_reader`, the `BookEvent`s kept and stably sorted by instant; nothing cached, every request reading the table as it stands; each reading answered without HTTP too, the routes only reading the query and spelling its answer)
-pub struct BookServiceOptions  (what a service states about itself; Clone, Debug, Default, Eq, Hash, PartialEq)
-  pub const DEFAULT_MAX_EVENT_ROWS: u64 = 5_000  (the most rows `/api/events` answers when the query states no `limit`, and the most it answers whatever the query states)
-  pub fn new() -> Self  (no snapshot grid, `DEFAULT_MAX_EVENT_ROWS` event rows)
-  pub fn with_snapshot_millis(mut self, snapshot_millis: u64) -> Self  (the grid a capture is folded on before it lands in a table - what `yggdryl market serve --snapshot-millis` states and hands `BookIterator::new`; zero none - and so how far back `book` reads: a walk emits a book whole only at a grid tick holding an entry and at a full refresh, so with no grid the book at an instant is rebuilt from its first appearance or last full refresh; the service reads books already folded and re-folds nothing)
-  pub fn with_max_event_rows(mut self, max_event_rows: u64) -> Self  (at least one; the CSV audit is never bounded)
-  pub fn snapshot_millis(&self) -> u64
-  pub fn max_event_rows(&self) -> u64
-pub struct BookTable  (one served table: a name and the location holding its `marketdata` rows; Debug)
-  pub fn name(&self) -> &str  (what every route's `table` parameter states)
-  pub fn holder(&self) -> &Holder  (the location the books are read from)
-pub struct BookQuery { pub table: String, pub ticker: String, pub from: i64, pub to: i64, pub timezone: Timezone, pub interval: Option<CandleOptions>, pub side: Option<Side> }  (one question about one book key's books over `[from, to)` - `ticker` the key (`Market::book_crosscode`: the ISIN, the ticker or `XX0000000000`), else the ticker one key's books state - nanoseconds UTC, `to` exclusive; `timezone` the zone instants are rendered in and a naive instant is read in, `interval` how candles are bucketed - `None` a minute in that zone - `side` the side the audit keeps - the entries alive on it and the delta and events entries standing on it - `None` both; what `/api/candles`, `/api/events` and the audit routes read off their query; Clone, Debug, Eq, Hash, PartialEq)
-  pub fn from_parameters(parameters: &Parameters<'_>) -> Result<Self>  (`table` and `ticker` required; `from` and `to` required ISO-8601 instants - one stating an offset or `Z` that instant, a naive one a wall clock in `tz`; `tz` an IANA zone this build has rules for, default `UTC`; `interval` a candle spelling (`30s`, `5m`, `1h`, `1d`); `side` `bid` or `ask` in any case; `InvalidRecord` at `$.<parameter>` for one missing or unreadable, at `$.to` when `from` is not before `to`, at `$.tz` for a zone this build has no rules for)
-  pub fn candle_options(&self) -> Result<CandleOptions>  (`interval` where stated, else a minute aligned to `timezone`)
-pub struct BookService  (the service over its tables; Debug)
-  pub fn new(options: BookServiceOptions) -> Self  (over no table yet)
-  pub fn with_table(mut self, name: impl Into<String>, holder: Holder) -> Self  (a name already listed is replaced)
-  pub fn tables(&self) -> &[BookTable]  (in the order they were added)
-  pub fn options(&self) -> &BookServiceOptions
-  pub fn events_field() -> Result<Field>  (the audit row: the required struct `event` of `bookunix: datetime64(ns, UTC) not null`, `role: utf8 not null` - `alive`, `delta` or `event` - then every flat column of `MarketData::field` - the element, event, market and operation columns and the book controls `bookscope`, `bookaction` and `bookposition` - the nested `alive`, `delta`, `events`, `executions`, `bidlimits` and `asklimits` left out; 60 columns)
-  pub fn route(self: Arc<Self>, server: &Server, prefix: &str) -> Result<Url>  (the eight `GET` routes under `{prefix}/api` - `tables`, `tickers`, `candles`, `book`, `events`, `audit.csv`, `audit.csv.gz`, `audit.csv.zst` - and the endpoint, `prefix` under the server's own URL (`Server::url_of`; `public_url_of` is the one behind a proxy), a prefix routed again replacing the service that answered there; `HEAD` answered off a `GET`, `POST` the server's 405; every answer `Cache-Control: no-store` and its `Content-Type`, JSON `application/json`, a refusal JSON `{"error": "<text>"}` - 400 for a parameter at `$.table`, `$.ticker`, `$.from`, `$.to`, `$.at`, `$.tz`, `$.interval`, `$.side` or `$.limit`, 400 at `$.ticker` too for a ticker two keys' books state, 404 for a table, a key or ticker or a book there is none of, 500 otherwise; `/api/book` answering `isincode` and `complete` beside the book's readings, its entries and limits none where `complete` is false; instants spelled RFC 9557 in `tz` with nine fraction digits, decimals text, uuids canonical text, counts integers; the audit routes the events reader written by the CSV medium into a `Buffer` of the suffix's media type, `Content-Type` `text/csv`, `application/gzip` or `application/zstd` and `Content-Disposition: attachment; filename="audit-<key>-<from>-<to>.<suffix>"`; a prefix carrying a query, a fragment or a control byte refused)
-  pub fn tickers(&self, table: &str) -> Result<Scalar>  (a sequence of `{key, ticker, crosscode, from, to, books}` structs, one per book key (`Market::book_crosscode`: the instrument's ISIN, else the ticker, else `XX0000000000`) ordered by key, `ticker` the first ticker the key's books state or null, `crosscode` the stored one, `from` the whole second the first book stands in and `to` the whole second after the last, both `datetime64(ns, UTC)`, so `[from, to)` holds every book; every book listed; one projected scan, `select ticker, crosscode, transunix where marketdatakind = 'BOOK'`; `Absent` for a table the service does not hold)
-  pub fn candles(&self, query: &BookQuery) -> Result<Vec<Candle>>  (the books of `query.ticker` - a book key, or the ticker of one key's books - in range, folded by `CandleIterator` under `query.candle_options()`; `InvalidRecord` at `$.to` when `from` is not before `to` and for a ticker two keys' books state, `Absent` for a table not held or a key or ticker the table holds no book of, an empty range of a known key the empty vector)
-  pub fn book(&self, table: &str, ticker: &str, at: i64) -> Result<Option<BookEvent>>  (the book of `ticker` - a book key, or the ticker of one key's books - at `at`, nanoseconds UTC, whole: the last origin stored at or before it - a complete book, or a delta book naming no `prevuuid` - and each delta book after it folded over it in instant order, as `Element::with_previous` rebuilds one; best effort, a delta book the book before it does not rebuild answered as it stands, holding no entry, `BookEvent::is_complete` saying so and `/api/book` answering `"complete": false`; one read of the rows at or before `at`; `None` when none stands there yet, which `/api/book` answers as 404; `InvalidRecord` for a ticker two keys' books state)
-  pub fn events(&self, query: &BookQuery) -> Result<BatchReader>  (the audit rows of `events_field()`: for every book of `query.ticker` - a book key, or the ticker of one key's books - in range, in instant order, its alive entries (`alive`) where the table holds it whole - at a snapshot tick - the orders and quotes its instant applied (`delta`), then the executions and snapshot controls it recorded (`event`), each in the order applied and kept where it stands on `query.side`; unbounded, what the CSV audit writes whole and `/api/events` bounds at `limit`, answering `{rows, truncated}`)
 
 ### yggdryl::hashing  [rust/src/hashing/mod.rs]
 (no public items: the private stable-hash adapters the digests share; xxhash and txhash are root modules with sections of their own)

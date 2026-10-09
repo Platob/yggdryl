@@ -763,8 +763,7 @@ jobs:
     # The CLI's tests start the `yggdryl` binary and drive it - `yggdryl fix`
     # over a dictionary, `yggdryl xmla serve` over a socket. The binary links
     # the default-feature core plus `http`, a feature set no lane builds, so
-    # it builds here, at once, and the command goes on to the Node.js book
-    # tests.
+    # it builds here, at once.
     name: CLI tests
     needs: [changes]
     if: contains(needs.changes.outputs.jobs, ' cli ')
@@ -779,15 +778,6 @@ jobs:
           save: "true"
       - name: CLI tests and benchmark smoke tests
         run: cargo test --locked -p yggdryl-cli --all-targets --no-fail-fast
-      - name: Build the yggdryl command the book tests spawn
-        run: cargo build --locked -p yggdryl-cli
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cli-bin
-          path: target/debug/yggdryl
-          if-no-files-found: error
-          retention-days: 3
-          overwrite: true
 
   node-addon:
     # napi builds the addon for `--target x86_64-unknown-linux-gnu`, a
@@ -824,9 +814,9 @@ jobs:
           overwrite: true
 
   node:
-    # No Rust: the addon and the command arrive built.
+    # No Rust: the addon arrives built.
     name: Node.js binding
-    needs: [changes, node-addon, cli]
+    needs: [changes, node-addon]
     if: contains(needs.changes.outputs.jobs, ' node ')
     runs-on: ubuntu-24.04
     steps:
@@ -839,17 +829,6 @@ jobs:
         with:
           name: node-addon
           path: node
-      # `node/tests/book.test.js` drives `book.serve` against the real
-      # command, which it finds at `target/debug/yggdryl`, and skips naming the
-      # missing build when nothing is there - as it did in this job when it
-      # built only the addon. The command links the default-feature core plus
-      # `http`; an artifact keeps no mode, so it is made executable again.
-      - uses: actions/download-artifact@v4
-        with:
-          name: cli-bin
-          path: target/debug
-      - name: The yggdryl command the book tests spawn
-        run: chmod +x target/debug/yggdryl
       - name: Install Node.js packages
         run: npm ci --prefix node
       - name: Smoke tests

@@ -1082,7 +1082,7 @@ impl TextLines {
 /// Returns the refusal sentence - the inferred datatype and the bounded
 /// text - for a value that datatype does not read, and one naming a
 /// datatype no capture is typed with.
-pub fn parse_capture(
+pub(crate) fn parse_capture(
     value: &str,
     dtype: &DataType,
     timezone: Option<&Timezone>,

@@ -32,12 +32,11 @@ Signatures with no storage: a FIX message, a text line or a book entry can each 
 
 Every leaf is filed under one [`MarketDataKind`](../types/enum/marketdatakind.md) - an order `ORDR`, a quote `QUOT`, an execution `EXEC`, a trade `TRAD`, a book or a snapshot control `BOOK` - the first market column of its [row](market-data.md#arrow).
 
-Two readings stand over the books, neither a leaf:
+One reading stands over the books, not a leaf:
 
 | Reading | Page | Rust types | Bindings |
 | --- | --- | --- | --- |
 | Candle | [Candle](candle.md) | `Candle`, `Ohlc`, `CandleOptions`, `CandleIterator` - one OHLC of the best bid, the best ask, the mid and the spread per stored book cross code (`3:0:ACME`) and bucket, with the touch and the count of books, the buckets aligned to a zone's wall clock | `graph.Candle`, `graph.CandleOptions`, `graph.CandleIterator` and `graph.candles` in both, a candle built by the walk or read back, never by hand |
-| Book display | [Book display](serve.md) | `BookService`, `BookServiceOptions`, `BookTable`, `BookQuery` (the `http` feature) - a `marketdata` table's book keys, candles, books and audits over HTTP, and the Node.js display in front of them | the service is Rust-only; the command `yggdryl market serve` ships in the wheel, and the npm package's `book.js` spawns it |
 
 ## Bindings
 

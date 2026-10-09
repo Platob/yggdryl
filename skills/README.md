@@ -42,7 +42,7 @@ and let it follow the links. Every skill is plain Markdown with a `name` and
 | [`yggdryl-expressions`](yggdryl-expressions/SKILL.md) | terms, filters, selectors, plans, evaluation and pushdown |
 | [`yggdryl-hashing`](yggdryl-hashing/SKILL.md) | xxHash digests, stable hashes, row digests, TxHash |
 | [`yggdryl-fix`](yggdryl-fix/SKILL.md) | FIX decode and encode, the registry and store, Arrow rows, captures, lifecycle, `yggdryl fix` |
-| [`yggdryl-market-data`](yggdryl-market-data/SKILL.md) | orders, quotes, executions, trades, order books, candles, market data views, the book display (`yggdryl market serve`) |
+| [`yggdryl-market-data`](yggdryl-market-data/SKILL.md) | orders, quotes, executions, trades, order books, candles, market data views |
 
 Each skill is a `SKILL.md` - the decision table, the rules, the pitfalls -
 and `references/rust.md`, `references/python.md` and

@@ -16,8 +16,7 @@ feature with HTTP/2 and HTTP/3 behind `http2` and `http3`,
 and the S3, Google Cloud Storage, and Azure Blob object stores behind the `s3`
 feature), record media (Arrow IPC, Parquet, Avro, CSV, plain text, XML for
 Analysis and Iceberg tables), the event graph - orders, quotes, executions,
-books, candles, and the book display `yggdryl market serve` hosts over a
-table of them - and the FIX protocol are core domains over those same
+books and candles - and the FIX protocol are core domains over those same
 values; the expression layer is a grammar over them, never a second query
 engine.
 
@@ -82,8 +81,7 @@ rust/                    The core crate
                          Field metadata, MIME and media types, identifiers
   src/{arrow,expression,graph,fix}/
                          Arrow interop, the expression grammar, the event
-                         graph - its books, candles and graph/serve.rs, the
-                         book display's HTTP service - FIX
+                         graph - its books and candles - FIX
   src/hashing/           The private stable-hash adapters; xxhash/ and
                          txhash/ are one folder each
   src/logging/           Python's logging owned by the core: loggers, levels,

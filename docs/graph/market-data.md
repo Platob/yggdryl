@@ -723,8 +723,6 @@ MarketData::apply_view(view: &MarketView, lifts: &[FieldPath], reader: BatchRead
     assert.deepEqual([...chain.getChild('crosscode')], ['10:1:O-1001'])
     ```
 
-The [book display](serve.md) applies no view: each of its readings is [one filtered read](serve.md#contract) of a table's `BOOK` rows.
-
 ## Edges
 
 - A view's lift naming a column the root does not hold is refused where the plan binds; a key the identifier map lacks reads null, and so does a key not spelled as stored - the lookup compares exactly.

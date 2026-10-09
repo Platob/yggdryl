@@ -21,8 +21,8 @@ use yggdryl::implementer::{
     canonicalize_uuids, cfi_from_proven, civil_from_days, crosshash, datetime64_from_fix_clock,
     datetime64_from_fix_text, declared_charset, digest_u64, document_behind_prefix, earliest,
     elide_display, elide_to, expected_got, feed_event_facts, field_new_with_metadata, fold_digest,
-    folded, folded_spelling, folds_equal, format_timestamp, inspect, integer_from_text_as,
-    is_null_like, isin_from_proven, json_span, land_unproven_batch, latest, locate, merge_element,
+    folded, folded_spelling, folds_equal, inspect, integer_from_text_as, is_null_like,
+    isin_from_proven, json_span, land_unproven_batch, latest, locate, merge_element,
     metadata_shares_storage_with, metadata_storage_address, mic_from_market, mic_from_proven,
     moved, normalized, ordered, payload_at, percent_decode, read_enum_spelling, reader,
     result_reader, right_is_reference, scalar_from_decimal_text, scalar_leaf_display,
@@ -35,7 +35,7 @@ use yggdryl::implementer::{
 use yggdryl::xxhash::{Xxh3, xxh3};
 use yggdryl::{
     Cfi, Charset, DataType, Decimal, Error, Field, Isin, Metadata, Mic, SIDE_KIND, Scalar, Serie,
-    Side, State, StructType, Time32, Time64, TimeUnit, Timezone, Uuid,
+    Side, State, StructType, Time32, Time64, Timezone, Uuid,
 };
 
 /// Every name the door exports, imported by name and used by nothing here:
@@ -44,8 +44,6 @@ use yggdryl::{
 /// dropped from it, renamed or no longer `pub` breaks the build.
 #[allow(unused_imports)]
 mod every_name {
-    #[cfg(feature = "http")]
-    use yggdryl::implementer::normalize_path;
     use yggdryl::implementer::{
         BBG_WIDTH, BOOLEAN_SPELLINGS, CCY_WIDTH, CFI_UNCLASSIFIED, Closing, DEFAULT_BATCH_ROW_SIZE,
         DTI_WIDTH, ELF_WIDTH, ERROR_TEXT_LIMIT, Elided, ElidedDisplay, FISN_WIDTH, InstantSequence,
@@ -57,15 +55,15 @@ mod every_name {
         document_behind_prefix, earliest, elide_display, elide_to, enum_leaf, expected_got,
         feed_event_facts, field_from_arrow_schema, field_new_with_metadata, fold_digest,
         fold_event_instants, folded, folded_spelling, folds_equal, follow_element, follow_timed,
-        format_timestamp, inspect, integer_from_text_as, is_null_like, isin_from_proven, json_span,
+        inspect, integer_from_text_as, is_null_like, isin_from_proven, json_span,
         land_unproven_batch, latest, locate, merge_element, merge_event_element, merge_timed,
         metadata_shares_storage_with, metadata_storage_address, mic_from_market, mic_from_proven,
-        moved, normalized, ordered, parse_capture, payload_at, percent_decode,
-        protocol_field_types, read_enum_spelling, reader, record_parts, restate_event,
-        result_reader, right_is_reference, scalar_from_decimal_text, scalar_leaf_display,
-        scalar_try_build_sequence, scalar_try_fill_sequence, scalar_try_sequence,
-        serie_is_byte_storage, serie_is_string_storage, serie_value_bytes, similarity,
-        stable_hash_of, state_from_wire_code, stated, str_from_value, string_scalars,
+        moved, normalized, ordered, payload_at, percent_decode, protocol_field_types,
+        read_enum_spelling, reader, record_parts, restate_event, result_reader, right_is_reference,
+        scalar_from_decimal_text, scalar_leaf_display, scalar_try_build_sequence,
+        scalar_try_fill_sequence, scalar_try_sequence, serie_is_byte_storage,
+        serie_is_string_storage, serie_value_bytes, similarity, stable_hash_of,
+        state_from_wire_code, stated, str_from_value, string_scalars,
         struct_type_from_checked_fields, struct_type_from_unique_fields,
         struct_type_shares_storage_with, struct_type_storage_address,
         text_entries_from_bytes_direct_located, time32_from_fix_text, time64_from_fix_text,
@@ -389,9 +387,6 @@ fn the_temporal_doors_read_what_fix_spells() {
 
     assert_eq!(civil_from_days(0), (1970, 1, 1));
     assert_eq!(civil_from_days(19_723), (2024, 1, 1));
-    let text = format_timestamp(0, TimeUnit::Second, &Timezone::UTC).unwrap();
-    assert!(text.starts_with("1970-01-01T00:00:00"), "{text}");
-    assert!(text.ends_with('Z'), "{text}");
 }
 
 #[test]

@@ -577,39 +577,6 @@ assert.throws(() => graph.candles([...books].reverse(), '1m'), /\$\.book\.transu
 assert.throws(() => graph.candles([stream[0]], '1m'), /expected book_event, got quote_event/)
 ```
 
-## Start the display beside a Node program
-
-`require('yggdryl/book')` is the package's door to the display: `assets` is the folder of
-the display's files, `serveArguments(options)` the argument vector `yggdryl
-market serve` takes, and `serve(options)` spawns the command - `bin` from
-`YGGDRYL_BIN`, else `yggdryl` on the path - resolving `{ endpoint, process,
-close() }` once it has printed its endpoint. A process that exits first
-rejects with what it printed as the message: the command's refusal, the `✗`
-line it prints on stdout in the endpoint's place (`✗ invalid record value at
-$.capture: ...`), then its stderr, where the argument parser refuses; an
-aborted `signal` (`AbortSignal.timeout(ms)`) rejects with an `AbortError`
-once it has ended the process. A table is
-`'name=location'`, a location or `{ name, location }`; `capture` folds FIX
-bridge logs into the first table before serving.
-
-```javascript
-const assert = require('node:assert/strict')
-const path = require('node:path')
-
-const book = require('yggdryl/book')
-
-assert.equal(book.assetFiles.length, 8)
-assert.equal(book.assetFiles[0], 'index.html')
-assert.deepEqual(
-  book.serveArguments({ tables: [{ name: 'books', location: '/data/books' }], bind: '127.0.0.1:8080', capture: ['bridge.log'] }),
-  ['market', 'serve', 'books=/data/books', '--bind', '127.0.0.1:8080', '--path', '/', '--capture', 'bridge.log'],
-)
-// `serve` runs that vector and hands back the endpoint to open, or rejects with
-// the refusal the command printed in its place - its `✗` line, then any stderr:
-//   const { endpoint, close } = await book.serve({ tables: 'books=/data/books' })
-assert.equal(typeof book.serve, 'function')
-```
-
 ## Gotchas in JavaScript
 
 - Instants are `bigint`: `T + 1_000_000_000n`, never `T + 1e9`; a `Date` is
