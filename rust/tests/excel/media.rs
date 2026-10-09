@@ -1018,3 +1018,458 @@ fn a_local_xlsx_url_is_held_written_and_reopened_as_a_workbook() {
     assert_eq!(workbook.sheet_names(), vec!["Sheet1"]);
     let _ = std::fs::remove_dir_all(&folder);
 }
+
+/// What the workbook states and the one schema answer, seen from the record
+/// surface.
+mod origin {
+    use yggdryl::excel::{Excel, ExcelOptions};
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{DataType, Field, IOMedia};
+
+    use super::{batch, trades, xlsx};
+
+    /// The names of a root's columns.
+    fn column_names(field: &Field) -> Vec<&str> {
+        field.fields().iter().map(Field::name).collect()
+    }
+
+    /// A workbook of two trades.
+    fn workbook() -> yggdryl::holder::Buffer {
+        let mut media = Excel::new(xlsx());
+        let options = media.record_options().unwrap();
+        media
+            .overwrite_arrow_batch(batch(&[1, 2], &[Some("AAPL"), Some("MSFT")]), &options)
+            .unwrap();
+        media.into_handle()
+    }
+
+    #[test]
+    fn one_schema_answer_under_a_select_whether_the_field_is_declared_or_stored() {
+        let media = Excel::new(workbook());
+        let selected = media.record_options().unwrap().with_select("id").unwrap();
+
+        let by_sheet = media.read_arrow_field(&selected).unwrap();
+        assert_eq!(column_names(&by_sheet), ["id"]);
+        let by_declaration = media
+            .read_arrow_field(&selected.clone().with_field(trades()))
+            .unwrap();
+        assert_eq!(column_names(&by_declaration), ["id"]);
+
+        // It is the shape the read publishes, too.
+        let read = media
+            .read_arrow_reader(&selected.with_field(trades()))
+            .unwrap()
+            .schema();
+        assert_eq!(
+            column_names(&Field::from_arrow_schema("row", read.as_ref()).unwrap()),
+            ["id"]
+        );
+    }
+
+    #[test]
+    fn the_origin_is_what_the_sheet_states_whatever_the_options_declare_or_select() {
+        let narrow = yggdryl::StructType::from_fields([DataType::Int64.required_field("id")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+        let media = Excel::new(workbook()).with_options(
+            ExcelOptions::new()
+                .with_field(narrow)
+                .with_select("id")
+                .unwrap(),
+        );
+
+        let origin = media.read_origin_field().unwrap().expect("a stated shape");
+        assert_eq!(column_names(&origin), ["id", "symbol"]);
+        let published = media
+            .read_arrow_field(&media.record_options().unwrap())
+            .unwrap();
+        assert_eq!(column_names(&published), ["id"]);
+    }
+
+    /// Every verb that changes what the handle holds without saying what ends the
+    /// answers an open session held: the next ask opens the package, and the
+    /// session holds what it read again - `handle_mut` among them, which no cache
+    /// dropped before.
+    #[test]
+    fn every_byte_verb_drops_what_an_open_session_holds() {
+        use yggdryl::IOBase;
+        use yggdryl::holder::Buffer;
+        use yggdryl::holder::counted::{Calls, Counted, Group};
+
+        for verb in ["handle_mut", "set_media_type", "pwrite", "truncate"] {
+            let counted = Counted::new(workbook());
+            let calls: std::sync::Arc<Calls> = std::sync::Arc::clone(counted.calls());
+            let mut media = Excel::new(counted);
+            media.open().unwrap();
+
+            let asks = |media: &Excel<Counted<Buffer>>| {
+                media.read_origin_field().unwrap();
+                media.row_size().unwrap();
+                media.column_size().unwrap();
+            };
+            asks(&media);
+            calls.reset();
+            asks(&media);
+            assert_eq!(calls.group(Group::Read), 0, "{verb}: warm before");
+            match verb {
+                "handle_mut" => {
+                    let _ = media.handle_mut();
+                }
+                "set_media_type" => {
+                    let media_type = media.media_type().clone();
+                    media.set_media_type(media_type);
+                }
+                "pwrite" => {
+                    let first = media.read_range_bytes(0, 1).unwrap();
+                    media.pwrite(0, &first).unwrap();
+                }
+                _ => {
+                    let size = media.handle().size();
+                    media.truncate(size).unwrap();
+                }
+            }
+            calls.reset();
+            asks(&media);
+            assert!(
+                calls.group(Group::Read) > 0,
+                "{verb}: the held answers are dropped"
+            );
+            calls.reset();
+            asks(&media);
+            assert_eq!(calls.group(Group::Read), 0, "{verb}: and held again");
+        }
+    }
+
+    #[test]
+    fn an_empty_handle_states_no_origin() {
+        let media = Excel::new(xlsx());
+        assert!(media.read_origin_field().unwrap().is_none());
+        assert_eq!(media.row_size().unwrap(), 0);
+        assert_eq!(media.column_size().unwrap(), 0);
+    }
+}
+
+/// What a closed workbook's cache serves under the options' `cache_ttl`, with
+/// the clock the cache doors read installed by hand, and what every write and
+/// every byte verb does to it.
+#[cfg(feature = "internals")]
+mod ttl {
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    use yggdryl::excel::{Excel, ExcelOptions};
+    use yggdryl::holder::Buffer;
+    use yggdryl::holder::counted::{Calls, Counted, Group};
+    use yggdryl::internals::media_cache::with_clock;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{Field, IOBase, IOMedia, MediaType, Url};
+
+    use super::{batch, reader, xlsx};
+
+    /// Two independent handles over one in-memory byte value.
+    #[derive(Clone, Debug)]
+    struct Shared {
+        handle: Arc<Mutex<Buffer>>,
+        media_type: MediaType,
+    }
+
+    impl Shared {
+        fn new(handle: Buffer) -> Self {
+            let media_type = handle.media_type().clone();
+            Self {
+                handle: Arc::new(Mutex::new(handle)),
+                media_type,
+            }
+        }
+    }
+
+    impl IOMedia for Shared {
+        yggdryl::impl_default_iomedia!();
+    }
+
+    impl IOBase for Shared {
+        fn pread(&self, offset: u64, buffer: &mut [u8]) -> yggdryl::Result<usize> {
+            self.handle.lock().unwrap().pread(offset, buffer)
+        }
+
+        fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> yggdryl::Result<usize> {
+            self.handle.lock().unwrap().pwrite(offset, bytes)
+        }
+
+        fn create_bytes(&mut self, bytes: &[u8]) -> yggdryl::Result<()> {
+            self.handle.lock().unwrap().create_bytes(bytes)
+        }
+
+        fn size(&self) -> u64 {
+            self.handle.lock().unwrap().size()
+        }
+
+        fn capacity(&self) -> u64 {
+            self.handle.lock().unwrap().capacity()
+        }
+
+        fn reserve(&mut self, capacity: u64) -> yggdryl::Result<()> {
+            self.handle.lock().unwrap().reserve(capacity)
+        }
+
+        fn truncate(&mut self, size: u64) -> yggdryl::Result<()> {
+            self.handle.lock().unwrap().truncate(size)
+        }
+
+        fn uri(&self) -> Option<&yggdryl::Uri> {
+            None
+        }
+
+        fn url(&self) -> Option<&Url> {
+            None
+        }
+
+        fn media_type(&self) -> &MediaType {
+            &self.media_type
+        }
+
+        fn set_media_type(&mut self, media_type: MediaType) {
+            self.handle
+                .lock()
+                .unwrap()
+                .set_media_type(media_type.clone());
+            self.media_type = media_type;
+        }
+    }
+
+    /// The names of a root's columns.
+    fn column_names(field: &Field) -> Vec<&str> {
+        field.fields().iter().map(Field::name).collect()
+    }
+
+    /// A workbook of `rows` trades, ids from zero.
+    fn encoded(rows: usize) -> Buffer {
+        let ids: Vec<i64> = (0..rows as i64).collect();
+        let names: Vec<String> = ids.iter().map(|id| format!("SYM{id}")).collect();
+        let symbols: Vec<Option<&str>> = names.iter().map(|name| Some(name.as_str())).collect();
+        let mut media = Excel::new(xlsx());
+        let options = media.record_options().unwrap();
+        media
+            .overwrite_arrow_batch(batch(&ids, &symbols), &options)
+            .unwrap();
+        media.into_handle()
+    }
+
+    /// A workbook of `rows` trades over a counted handle, read under a `ttl`
+    /// of milliseconds.
+    fn counted(rows: usize, ttl: u64) -> (Excel<Counted<Buffer>>, Arc<Calls>) {
+        let counted = Counted::new(encoded(rows));
+        let calls = Arc::clone(counted.calls());
+        let media = Excel::new(counted).with_options(ExcelOptions::new().with_cache_ttl(ttl));
+        (media, calls)
+    }
+
+    /// The three answers the cache serves: the origin, the rows, the columns.
+    fn ask<H: IOBase>(media: &Excel<H>) -> (Option<Field>, u64, usize) {
+        (
+            media.read_origin_field().unwrap(),
+            media.row_size().unwrap(),
+            media.column_size().unwrap(),
+        )
+    }
+
+    /// The bytes read from the store while `ask` runs.
+    fn reads(calls: &Calls, ask: impl FnOnce()) -> u64 {
+        calls.reset();
+        ask();
+        calls.group(Group::Read)
+    }
+
+    #[test]
+    fn a_warm_closed_read_under_a_ttl_costs_no_store_call_until_the_entry_is_as_old_as_the_ttl() {
+        let (media, calls) = counted(2, 1_000);
+        let options = media.record_options().unwrap();
+        let t0 = Instant::now();
+        let at = |milliseconds: u64| t0 + Duration::from_millis(milliseconds);
+
+        let (origin, rows, columns) = with_clock(t0, || ask(&media));
+        assert_eq!((rows, columns), (2, 2));
+        assert_eq!(
+            column_names(origin.as_ref().expect("a stated shape")),
+            ["id", "symbol"]
+        );
+        assert!(
+            calls.group(Group::Read) > 0,
+            "the first ask opens the package"
+        );
+
+        let cost = reads(&calls, || {
+            let warm = with_clock(at(999), || ask(&media));
+            assert_eq!(warm.0, origin);
+            assert_eq!((warm.1, warm.2), (rows, columns));
+            let field = with_clock(at(999), || media.read_arrow_field(&options).unwrap());
+            assert_eq!(column_names(&field), ["id", "symbol"]);
+        });
+        assert_eq!(cost, 0, "a warm closed read is free");
+
+        assert!(reads(&calls, || drop(with_clock(at(1_000), || ask(&media)))) > 0);
+        assert_eq!(
+            reads(&calls, || drop(with_clock(at(1_999), || ask(&media)))),
+            0
+        );
+        assert!(reads(&calls, || drop(with_clock(at(2_000), || ask(&media)))) > 0);
+    }
+
+    #[test]
+    fn a_realtime_closed_handle_reads_afresh_on_every_ask() {
+        let (media, calls) = counted(2, 0);
+        let first = reads(&calls, || drop(ask(&media)));
+        let second = reads(&calls, || drop(ask(&media)));
+        assert!(first > 0, "a closed realtime ask opens the package");
+        assert_eq!(second, first, "and what it read is not served again");
+    }
+
+    #[test]
+    fn an_open_handle_serves_whatever_the_ttl_says_until_it_closes() {
+        let t0 = Instant::now();
+        for ttl in [0, 1_000] {
+            let (mut media, calls) = counted(2, ttl);
+            media.open().unwrap();
+            with_clock(t0, || drop(ask(&media)));
+            let hour = t0 + Duration::from_secs(3_600);
+            assert_eq!(
+                reads(&calls, || drop(with_clock(hour, || ask(&media)))),
+                0,
+                "an open session serves, ttl {ttl}"
+            );
+            media.close().unwrap();
+            assert!(
+                reads(&calls, || drop(with_clock(hour, || ask(&media)))) > 0,
+                "closing dropped the entry, ttl {ttl}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_out_of_band_write_is_seen_after_the_ttl_and_not_before() {
+        let shared = Shared::new(encoded(2));
+        let mut external = shared.clone();
+        let media = Excel::new(Counted::new(shared))
+            .with_options(ExcelOptions::new().with_cache_ttl(1_000_u64));
+        let t0 = Instant::now();
+        let at = |milliseconds: u64| t0 + Duration::from_millis(milliseconds);
+        assert_eq!(with_clock(t0, || media.row_size().unwrap()), 2);
+
+        external.write_all_bytes(encoded(5).as_slice()).unwrap();
+        assert_eq!(
+            with_clock(at(999), || media.row_size().unwrap()),
+            2,
+            "the entry is younger than the TTL"
+        );
+        assert_eq!(with_clock(at(1_000), || media.row_size().unwrap()), 5);
+    }
+
+    #[test]
+    fn an_overwrite_leaves_no_stale_answer_under_a_ttl() {
+        let (mut media, _) = counted(1, 1_000);
+        let options = media.record_options().unwrap();
+        let t0 = Instant::now();
+        assert_eq!(with_clock(t0, || ask(&media).1), 1);
+
+        with_clock(t0, || {
+            media
+                .overwrite_arrow_reader(
+                    reader(&[1, 2, 3, 4], &[Some("A"), Some("B"), Some("C"), None]),
+                    &options,
+                )
+                .unwrap();
+        });
+        let (origin, rows, columns) = with_clock(t0 + Duration::from_millis(1), || ask(&media));
+        assert_eq!((rows, columns), (4, 2));
+        assert_eq!(
+            column_names(&origin.expect("the sheet's header")),
+            ["id", "symbol"]
+        );
+        // A worksheet records no column datatype - its origin is what its
+        // cells prove - so an overwrite drops the entry rather than stating
+        // it, and the next ask opens the package afresh: the answer is the
+        // fresh one.
+    }
+
+    #[test]
+    fn clear_answers_no_origin_and_zero_rows_with_zero_reads() {
+        let (mut media, calls) = counted(3, 1_000);
+        let t0 = Instant::now();
+        with_clock(t0, || {
+            assert_eq!(ask(&media).1, 3);
+            media.clear().unwrap();
+        });
+        let mut answers = None;
+        let cost = reads(&calls, || {
+            answers = Some(with_clock(t0 + Duration::from_millis(10), || ask(&media)));
+        });
+        assert_eq!(cost, 0);
+        let (origin, rows, columns) = answers.unwrap();
+        assert!(origin.is_none(), "an emptied handle states no sheet");
+        assert_eq!((rows, columns), (0, 0));
+    }
+
+    /// Every verb that changes what the handle holds without saying what
+    /// leaves the next ask to read it - `handle_mut` among them, which no
+    /// cache dropped before - and the options that address the sheet.
+    #[test]
+    fn every_byte_verb_and_every_option_edit_drops_the_entry() {
+        let t0 = Instant::now();
+        for verb in [
+            "handle_mut",
+            "set_media_type",
+            "pwrite",
+            "truncate",
+            "options_mut",
+        ] {
+            let (mut media, calls) = counted(2, 1_000);
+            with_clock(t0, || drop(ask(&media)));
+            assert_eq!(
+                reads(&calls, || drop(with_clock(t0, || ask(&media)))),
+                0,
+                "{verb}: warm before"
+            );
+            match verb {
+                "handle_mut" => {
+                    let _ = media.handle_mut();
+                }
+                "options_mut" => {
+                    let _ = media.options_mut();
+                }
+                "set_media_type" => {
+                    let media_type = media.media_type().clone();
+                    media.set_media_type(media_type);
+                }
+                "pwrite" => {
+                    let first = media.read_range_bytes(0, 1).unwrap();
+                    media.pwrite(0, &first).unwrap();
+                }
+                _ => {
+                    let size = media.handle().size();
+                    media.truncate(size).unwrap();
+                }
+            }
+            assert!(
+                reads(&calls, || drop(with_clock(t0, || ask(&media)))) > 0,
+                "{verb}: the entry is dropped"
+            );
+            assert_eq!(
+                reads(&calls, || drop(with_clock(t0, || ask(&media)))),
+                0,
+                "{verb}: and read again"
+            );
+        }
+    }
+
+    #[test]
+    fn a_removal_leaves_no_stale_answer() {
+        let t0 = Instant::now();
+        let (mut media, _) = counted(2, 1_000);
+        with_clock(t0, || drop(ask(&media)));
+
+        media.remove(false).unwrap();
+        assert_eq!(with_clock(t0, || media.row_size().unwrap()), 0);
+        assert!(with_clock(t0, || media.read_origin_field().unwrap()).is_none());
+    }
+}

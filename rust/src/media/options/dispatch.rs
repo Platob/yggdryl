@@ -5,6 +5,7 @@ use smol_str::SmolStr;
 
 use super::{IORecordOptions, RecordOptions};
 use crate::ipc::IpcOptions;
+use crate::media::CacheTtl;
 use crate::{Field, Filter, Level, Selector};
 
 impl IORecordOptions for RecordOptions {
@@ -118,6 +119,14 @@ impl IORecordOptions for RecordOptions {
 
     fn set_level(&mut self, level: Level) {
         self.as_medium_mut().set_level(level);
+    }
+
+    fn cache_ttl(&self) -> CacheTtl {
+        self.as_medium().cache_ttl()
+    }
+
+    fn set_cache_ttl(&mut self, ttl: CacheTtl) {
+        self.as_medium_mut().set_cache_ttl(ttl);
     }
 }
 

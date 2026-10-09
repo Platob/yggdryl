@@ -205,6 +205,27 @@ impl Constant {
             arrow_select::take::take(row.as_ref(), &indices, None).map_err(Error::Arrow)?;
         Ok((Arc::clone(field), repeated))
     }
+
+    /// The value every row restores, as the column the root declares holds
+    /// it; `None` for a column the root does not declare, which the cast to
+    /// that root drops.
+    ///
+    /// # Errors
+    ///
+    /// Returns the cast's refusal of the path's text under a required
+    /// column.
+    fn held(&mut self) -> Result<Option<crate::Scalar>> {
+        if self.child.is_none() {
+            return Ok(None);
+        }
+        let (_, row) = self.restore(1)?;
+        let Some(child) = &self.child else {
+            return Ok(None);
+        };
+        Ok(Some(
+            Serie::from_arrow_array(Some(child), row, ArrowCastOptions::new())?.scalar(0)?,
+        ))
+    }
 }
 
 /// The partition columns one path spells out, restored into its batches.
@@ -226,6 +247,26 @@ impl Constants {
                 })
                 .collect(),
         )
+    }
+
+    /// What the path settles for every row of its leaf: each column `read`
+    /// names that the root declares, with the value it restores - the
+    /// conjunct `column = value` or `column is null` holds for every row, so
+    /// neither the leaf's encoding nor its rows are asked it again. A value
+    /// the column refuses settles nothing; the restore that meets a row
+    /// refuses it there, as it always did.
+    fn settled(&mut self, read: &[String]) -> Vec<(smol_str::SmolStr, crate::Scalar)> {
+        self.0
+            .iter_mut()
+            .filter(|constant| {
+                read.iter()
+                    .any(|column| column.eq_ignore_ascii_case(&constant.column))
+            })
+            .filter_map(|constant| {
+                let value = constant.held().ok().flatten()?;
+                Some((smol_str::SmolStr::new(&constant.column), value))
+            })
+            .collect()
     }
 
     /// Append every column the batch does not already carry.
@@ -367,12 +408,20 @@ pub fn partitioned_reader(
     partitions: Vec<(String, String)>,
     field: Option<Field>,
 ) -> Result<crate::arrow::BatchReader> {
-    if partitions.is_empty() {
+    restoring(inner, Constants::new(&partitions, field.as_ref()))
+}
+
+/// Wrap a reader so every batch it yields carries the columns `constants`
+/// restore.
+fn restoring(
+    inner: crate::arrow::BatchReader,
+    mut constants: Constants,
+) -> Result<crate::arrow::BatchReader> {
+    if constants.0.is_empty() {
         return Ok(inner);
     }
     // The widened schema is the reader's own plus one field per partition, and
     // it is computed once so a consumer can read it before the first batch.
-    let mut constants = Constants::new(&partitions, field.as_ref());
     let widened = constants.restore(&RecordBatch::new_empty(inner.schema()))?;
     Ok(Box::new(Partitioned {
         inner,
@@ -716,12 +765,12 @@ fn leaf_options(options: &RecordOptions, pairs: &[(String, String)]) -> Result<R
     if options.max_row_size().is_some() {
         leaf.set_file_threads(1);
     }
-    // The row skip and the row and byte limits were already applied to the
-    // whole operation at the record-method seam, so a leaf must not apply them
-    // again: a limit on the tree re-applied per leaf would become one bound
-    // per partition, a skip would drop the head of every partition, and a
-    // byte bound would re-cut a sliced batch whose buffers still report their
-    // full size.
+    // The row skip and the row and byte limits are the whole operation's -
+    // a read's residual runs them once over every leaf, a write's shaping
+    // once over its stream - so a leaf must not apply them again: a limit on
+    // the tree re-applied per leaf would become one bound per partition, a
+    // skip would drop the head of every partition, and a byte bound would
+    // re-cut a sliced batch whose buffers still report their full size.
     leaf.set_max_row_size(None);
     leaf.set_row_offset(None);
     leaf.set_max_byte_size(None);
@@ -737,12 +786,21 @@ fn leaf_options(options: &RecordOptions, pairs: &[(String, String)]) -> Result<R
     Ok(leaf)
 }
 
-/// Read every leaf beneath a folder as one reader.
+/// Read every leaf beneath a folder as one reader: each leaf one unit of the
+/// read's composition.
 ///
+/// The root - the declared one, else the one the first leaf holding a
+/// schema derives - is narrowed to the columns the `select` and the `where`
+/// conjuncts over stored columns read, as a composed read narrows any
+/// declared root, so a selection decodes its own columns in every leaf.
 /// Each leaf is read with the partition columns removed from its pushdown -
-/// they are not stored there - restored from its own directory names, and cast
-/// to the declared root, so a partitioned tree yields exactly the batches one
-/// unpartitioned file would.
+/// they are not stored there - restored from its own directory names, cast
+/// to that root, and filtered by the conjuncts over stored columns its path
+/// does not settle; a leaf whose path names another value for a column the
+/// `where` pins is never opened. The selection, the conjuncts after it and
+/// the row bounds are the caller's to run once over every leaf
+/// (`Residual::over_units`), so a partitioned tree yields exactly the rows
+/// one unpartitioned file would.
 ///
 /// # Errors
 ///
@@ -786,12 +844,25 @@ pub(crate) fn folder_reader(
         // report; an empty reader is what the laziness contract asks for.
         return Ok(crate::arrow::batch_reader(Arc::new(Schema::empty()), []));
     };
+    // Every leaf reads under the root declared and narrowed once: a derived
+    // root is narrowed by the rule a declared one is.
+    let mut unit = options.clone();
+    unit.set_declared(Some(field.clone()));
+    let unit =
+        crate::media_serie::compose(&unit, &crate::media_serie::Scan::default(), None, &[])?.handed;
+    let field = unit.declared().cloned().unwrap_or(field);
+    // Each leaf binds the conjuncts over stored columns as it opens; one that
+    // binds against no leaf is refused here, before any is, as a read of one
+    // leaf refuses it.
+    if !unit.filter().is_always_true() {
+        unit.filter().bind(&field)?;
+    }
     let schema = arrow_schema_from_field(&field)?;
     Ok(Box::new(Chained {
         parts,
         root,
         field,
-        options: options.clone(),
+        options: unit,
         current: None,
         schema,
         done: false,
@@ -884,7 +955,16 @@ impl arrow_array::RecordBatchReader for Chained {
     }
 }
 
-/// Read one leaf of a partitioned folder as the declared root.
+/// Read one leaf of a partitioned folder as the folder's root, the
+/// conjuncts over stored columns run over its rows.
+///
+/// The leaf is composed as a unit of the read: its path settles every
+/// `column = value` and `column is null` conjunct over a column it restores,
+/// which leaves both the pushdown its encoding is handed and the conjuncts
+/// its rows are filtered by. The rest of the `where` over stored columns
+/// runs over the restored rows cast to the root; the selection, the
+/// conjuncts after it and the bounds are the read's, run once over every
+/// leaf.
 fn part_reader(
     part: &Holder,
     root: Option<&Url>,
@@ -892,19 +972,23 @@ fn part_reader(
     options: &RecordOptions,
 ) -> Result<BatchReader> {
     let pairs = pairs_under(part, root);
-    let mut leaf = leaf_options(options, &pairs)?;
-    if leaf.field().is_none() {
-        let columns: Vec<&str> = pairs.iter().map(|(column, _)| column.as_str()).collect();
-        leaf.set_field(field.without_fields(&columns)?);
-    }
+    let mut constants = Constants::new(&pairs, Some(field));
+    let settled = constants.settled(&options.filter().columns());
+    let composed = crate::media_serie::compose(
+        options,
+        &crate::media_serie::Scan::default(),
+        None,
+        &settled,
+    )?;
+    let leaf = leaf_options(&composed.handed, &pairs)?;
     let reader = crate::iobase::leaf_reader(part, &leaf)?;
-    let restored = partitioned_reader(reader, pairs, Some(field.clone()))?;
-    Ok(crate::StreamChunkedSerie::from_arrow_reader(
+    let restored = crate::StreamChunkedSerie::from_arrow_reader(
         Some(field),
-        restored,
+        restoring(reader, constants)?,
         ArrowCastOptions::new().with_safe(options.safe()),
     )?
-    .into_arrow_reader())
+    .into_arrow_reader();
+    Ok(composed.residual.of_unit().apply_reader(restored)?)
 }
 
 /// One routing plan for every cadence of a folder write.

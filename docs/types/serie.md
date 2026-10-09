@@ -2049,7 +2049,7 @@ A handle reads its rows as a `StreamChunkedSerie` and writes rows in any of the 
 
 | Verb | Contract |
 | --- | --- |
-| `read_serie(options)` | the rows as a generic `Serie`: a record encoding its batch stream, a container - a folder, a path ending in `/`, a glob, a table - the table its leaves hold, a structured text document the one record column its rows parse into |
+| `read_serie(options)` | the rows as a generic `Serie`: a record encoding its batch stream, a container - a folder, a path ending in `/`, a glob, a table - the table its leaves hold, a structured text document the one record column its rows parse into; the options' `where`, `select` and row bounds [compose once](../media/index.md#read) - the medium takes what it does natively and the rest runs once over its answer |
 | `write_serie(source, mode, options)` | the generic write: the source becomes the stream of its batches and reaches `write_arrow_reader` as its transport face, so every [mode](../holder/index.md#records) and every record option applies |
 | `overwrite_serie(source, options)`, `append_serie(source, options)`, `merge_serie(source, options)` | `write_serie` under `IOMode::Overwrite`, `Append` and `Merge`; a merge keys by the options' `merge_by`, else the destination's own ([an Iceberg table's](../media/iceberg.md#the-merge-key)) |
 | `Serie::field`, `memory_size`, `into_stream`, `into_chunked_stream` | the record root the rows are read under (a record column's own, any other column the one child of a `row` record, a stream's own), whether they are held, the bytes a held source occupies (`None` for a stream), and the stream of their batches |

@@ -700,49 +700,62 @@ pub fn from_reader_error(error: ArrowError) -> Error {
     }
 }
 
-/// Return the stored column positions `field` names, when it names a subset.
+/// Return the stored column positions a read decodes, when they are a subset.
 ///
-/// This is the input a column pushdown needs: an encoding can skip a column it
-/// is never asked for, but only when every name asked for is one it actually
-/// stores. `None` therefore means "read everything" - either the caller
-/// declared no schema, or the schema names something the resource does not
-/// hold, which a projection cannot conjure and a later cast has to supply.
-/// Positions come back ascending, because both encodings' masks select columns
-/// without reordering them.
+/// This is the input a column pushdown needs: an encoding skips a column it
+/// is never asked for. A declared root names what the rows are meant to be,
+/// and the read handed one is already narrowed to the columns its clauses
+/// read, so its children are what is decoded - every one of them only where
+/// the resource stores every one, since a projection cannot conjure a
+/// column the later cast has to supply. Without one, `columns` - what
+/// [`apply_columns`](crate::media::IORecordOptions::apply_columns) answers -
+/// names the stored columns the expressions read, and a name the resource
+/// does not store is skipped: an alias the `select` publishes, which no
+/// stored column answers, is computed after the read and never decoded.
+/// `None` means "read everything": no declaration and no list (a `*`), a
+/// list naming no stored column - a batch of no column states no row
+/// count - or one naming every stored column, the read that already happens.
+/// Positions come back ascending, because both encodings' masks select
+/// columns without reordering them.
 pub(crate) fn projection_indices(
     field: Option<&Field>,
     columns: Option<&[String]>,
     stored: &Schema,
 ) -> Option<Vec<usize>> {
-    let names: Vec<&str> = match (field, columns) {
+    let position = |name: &str| {
+        stored
+            .fields()
+            .iter()
+            .position(|held| held.name().eq_ignore_ascii_case(name))
+    };
+    let mut indices: Vec<usize> = match (field, columns) {
         // A declared root says what the rows are meant to be, and its columns
         // are what the encoding decodes; the expressions run over those.
         (Some(field), _) => {
             if field.is_nullable() || !field.is_struct() {
                 return None;
             }
-            field.fields().iter().map(Field::name).collect()
+            field
+                .fields()
+                .iter()
+                .map(|child| position(child.name()))
+                .collect::<Option<_>>()?
         }
         // Without one, the expressions themselves say which stored columns
         // they read, and nothing else is decoded.
-        (None, Some(columns)) => columns.iter().map(String::as_str).collect(),
+        (None, Some(columns)) => columns
+            .iter()
+            .filter_map(|name| position(name.as_str()))
+            .collect(),
         (None, None) => return None,
     };
-    // Zero columns is not a projection, and asking for every column is the read
-    // that already happens, so neither is worth a mask.
-    if names.is_empty() || names.len() >= stored.fields().len() {
-        return None;
-    }
-    let mut indices: Vec<usize> = Vec::with_capacity(names.len());
-    for name in names {
-        let position = stored
-            .fields()
-            .iter()
-            .position(|held| held.name().eq_ignore_ascii_case(name))?;
-        indices.push(position);
-    }
     indices.sort_unstable();
     indices.dedup();
+    // Zero columns is not a projection, and asking for every column is the read
+    // that already happens, so neither is worth a mask.
+    if indices.is_empty() || indices.len() >= stored.fields().len() {
+        return None;
+    }
     Some(indices)
 }
 

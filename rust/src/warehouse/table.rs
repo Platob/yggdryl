@@ -442,6 +442,10 @@ impl IOMedia for Table {
         IOMedia::as_any(self.as_media())
     }
 
+    fn read_origin_field(&self) -> Result<Option<Field>> {
+        IOMedia::read_origin_field(self.as_media())
+    }
+
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
         IOMedia::read_arrow_field(self.as_media(), options)
     }

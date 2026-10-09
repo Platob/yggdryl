@@ -84,7 +84,7 @@
 //! ```
 
 use std::hash::{Hash, Hasher};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use arrow_array::{RecordBatch, RecordBatchIterator};
 use arrow_schema::{ArrowError, Schema};
@@ -108,7 +108,7 @@ use crate::arrow::{
     BatchReader, Error, Result, field_from_arrow_schema, from_reader_error, projection_indices,
 };
 use crate::holder::Holder;
-use crate::media::{IORecordOptions, Media, RecordOptions};
+use crate::media::{CacheTtl, Entry, IORecordOptions, Media, MediaCache, RecordOptions};
 use crate::{Error as CoreError, Field};
 
 pub(crate) mod geospatial;
@@ -176,6 +176,12 @@ pub struct ParquetOptions {
     /// The threads a write of several parts runs on at once; `None` is the
     /// destination's own answer.
     pub num_threads: Option<usize>,
+    /// How long a closed handle serves the metadata it read - the origin's
+    /// field, its counts - in milliseconds; `0`, the default, reads afresh on
+    /// every ask, and an open handle serves what it holds until it closes.
+    /// Outside the options' identity: it changes when a change is seen,
+    /// never what is.
+    pub cache_ttl: crate::media::CacheTtl,
     /// Unused: Parquet compresses pages internally through `compression`.
     pub level: crate::Level,
     /// The threads one file's columns decode or encode on; `None` is what
@@ -257,6 +263,7 @@ impl ParquetOptions {
             max_byte_size: None,
             commit_batch_num: None,
             num_threads: None,
+            cache_ttl: crate::media::CacheTtl::REALTIME,
             level: crate::Level::DEFAULT,
             threads: None,
         }
@@ -484,6 +491,22 @@ impl crate::media::MediaCodec for ParquetCodec {
         Ok(field)
     }
 
+    /// The root the footer states, its metadata whole - the file's key-value
+    /// pairs and the root's own the Arrow schema message carries - or `None`
+    /// for an empty file: the origin, of which the root
+    /// [`read_field`](crate::media::MediaCodec::read_field) lands rows under is the same root
+    /// with its metadata cleared.
+    fn stated_field(
+        &self,
+        handle: &dyn IOBase,
+        options: &RecordOptions,
+    ) -> crate::Result<Option<Field>> {
+        Ok(read_footer(handle)?
+            .0
+            .map(|footer| origin_of(footer, options.name()))
+            .transpose()?)
+    }
+
     fn overwrite_arrow_reader(
         &self,
         handle: &mut dyn IOBase,
@@ -601,9 +624,10 @@ pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &ParquetOptions) -> R
 ///
 /// The file's end is read once, by [`IOBase::read_tail_bytes`], which also
 /// answers its length, so no size is asked first; a file of at most a
-/// megabyte arrives whole in that read. A handle already holding the decoded
-/// footer - an opened [`Parquet`] - hands it over, and the read then fetches
-/// only the column chunks it keeps.
+/// megabyte arrives whole in that read. A handle holding the decoded footer -
+/// a [`Parquet`] whose cache keeps it, open or under the options'
+/// `cache_ttl` - hands it over, and the read then fetches only the column
+/// chunks it keeps.
 ///
 /// # Errors
 ///
@@ -613,17 +637,23 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     field: Option<&Field>,
     options: &ParquetOptions,
 ) -> Result<BatchReader> {
-    read_batch_reader_with(handle, field, options, held_footer(handle))
+    read_batch_reader_with(
+        handle,
+        field,
+        options,
+        held_footer(handle, options.cache_ttl),
+    )
 }
 
-/// The decoded footer `handle` already holds for the Parquet file it is: an
-/// opened [`Parquet`]'s, asked through
-/// [`IOMedia::as_any`](crate::IOMedia::as_any) as its [`ParquetFooter`];
-/// every other handle's, and a closed one's, `None`.
-fn held_footer<H: IOBase + ?Sized>(handle: &H) -> Option<Arc<ParquetMetaData>> {
-    crate::IOMedia::as_any(handle)
-        .and_then(|any| any.downcast_ref::<ParquetFooter>())
-        .and_then(ParquetFooter::footer)
+/// The decoded footer `handle` holds for the Parquet file it is under `ttl`:
+/// a [`Parquet`]'s, asked through
+/// [`IOMedia::as_any`](crate::IOMedia::as_any) as its [`ParquetFooter`] and
+/// read into its cache where the cache keeps; every other handle's, and one
+/// whose cache keeps nothing - closed, under a realtime TTL - `None`.
+fn held_footer<H: IOBase + ?Sized>(handle: &H, ttl: CacheTtl) -> Option<Arc<ParquetMetaData>> {
+    crate::IOMedia::as_any(handle)?
+        .downcast_ref::<ParquetFooter>()?
+        .held(crate::IOMedia::as_io_base(handle), ttl)
 }
 
 /// [`read_batch_reader`] over `footer`, the file's decoded footer when the
@@ -1078,9 +1108,10 @@ pub fn read_statistics<H: IOBase + ?Sized>(handle: &H) -> Result<FileStatistics>
 /// row.
 ///
 /// A [`Parquet`] wrapper answers as its own [`Parquet::read_statistics`]
-/// does, asking the store nothing of what it is: an opened one from the
-/// footer its `open` read, refilled from one footer read where a publication
-/// cleared it, a closed one from one fresh footer read. Any other media's
+/// does, asking the store nothing of what it is: one whose cache keeps -
+/// open, or under its options' `cache_ttl` - from the footer it holds,
+/// refilled from one footer read where a byte write dropped it, any other
+/// from one fresh footer read. Any other media's
 /// record options name its encoding first, so an Arrow IPC, Avro, text or
 /// container handle is refused with a typed record error rather than its
 /// bytes parsed as a footer, and a Parquet leaf is [`read_statistics`].
@@ -1093,7 +1124,8 @@ pub fn read_statistics<H: IOBase + ?Sized>(handle: &H) -> Result<FileStatistics>
 pub fn read_media_statistics(media: &dyn crate::IOMedia) -> crate::Result<FileStatistics> {
     if let Some(footer) = footer_of(media) {
         let handle = crate::IOMedia::as_io_base(media);
-        return match footer.metadata(handle)? {
+        let ttl = crate::IOMedia::record_options(media)?.cache_ttl();
+        return match footer.metadata(handle, ttl)? {
             Some(metadata) => Ok(FileStatistics::from_metadata(metadata.as_ref())),
             None => Ok(read_statistics(handle)?),
         };
@@ -2241,95 +2273,150 @@ impl arrow_array::RecordBatchReader for ParallelRead {
     }
 }
 
-/// What a [`Parquet`] session holds of its file: whether it is open, and the
-/// footer and length its `open` read.
+/// What a [`Parquet`] session holds of its file: its metadata cache, whose
+/// state is the footer and the length of the file it closes.
 ///
-/// The object an opened wrapper answers
-/// [`IOMedia::as_any`](crate::IOMedia::as_any) with, so a record read of a
-/// handle known only as `&dyn IOBase` finds the footer it already holds:
-/// `Parquet<H>` names its handle's type and cannot be downcast to, this can.
+/// The object a wrapper answers [`IOMedia::as_any`](crate::IOMedia::as_any)
+/// with, so a record read of a handle known only as `&dyn IOBase` finds the
+/// footer it already holds: `Parquet<H>` names its handle's type and cannot
+/// be downcast to, this can.
 #[derive(Debug)]
 pub struct ParquetFooter {
-    /// Explicit lifecycle state. An opened empty file has no footer, so cache
-    /// presence cannot truthfully answer whether the wrapper is open.
-    opened: bool,
-    /// Whether the opened session is over a container, asked once at `open`:
-    /// its leaves answer every dimension ask, so it caches nothing.
-    container: bool,
-    /// The footer and the length of the file it closes; `Some((None, 0))` is
-    /// the stable opened-session answer for an empty handle.
-    cached: OnceLock<(Option<Arc<ParquetMetaData>>, u64)>,
+    /// The file's root, its counts, and - as its state - the footer and the
+    /// length one read of the file's end, or one write's close, answered.
+    cache: MediaCache,
+}
+
+/// The footer one read of a file's end decoded, or one write closed the file
+/// with, beside the length of the file it closes: a Parquet leaf's cache
+/// state. No footer is an empty file.
+#[derive(Debug)]
+struct Tail {
+    footer: Option<Arc<ParquetMetaData>>,
+    size: u64,
+}
+
+/// The [`Tail`] an entry holds as its state.
+fn tail_of(entry: &Entry) -> Option<&Tail> {
+    entry.state.as_deref()?.downcast_ref::<Tail>()
+}
+
+/// The root a footer states, named `name`, its metadata whole: the file's
+/// key-value pairs and the root's own the Arrow schema message carries.
+fn origin_of(footer: Arc<ParquetMetaData>, name: &str) -> Result<Field> {
+    field_from_arrow_schema(name, schema_from_metadata(footer)?.as_ref())
+}
+
+/// What a footer and the length of the file it closes state as a cache
+/// entry: the root - named for the default root, renamed as it is served -
+/// both counts, and the two themselves as its state.
+fn entry_of(footer: Option<Arc<ParquetMetaData>>, size: u64) -> crate::Result<Entry> {
+    let (origin, rows) = match &footer {
+        Some(metadata) => (
+            Some(origin_of(
+                Arc::clone(metadata),
+                crate::media::DEFAULT_ROOT_NAME,
+            )?),
+            metadata_row_size(metadata)?,
+        ),
+        None => (None, 0),
+    };
+    let columns = origin.as_ref().map_or(0, Field::field_len);
+    let state: Arc<dyn std::any::Any + Send + Sync> = Arc::new(Tail { footer, size });
+    Ok(Entry {
+        origin,
+        rows: Some(rows),
+        columns: Some(columns),
+        state: Some(state),
+    })
+}
+
+/// One read of the end of the file `handle` holds, as a cache entry.
+fn read_entry(handle: &dyn IOBase) -> crate::Result<Entry> {
+    let (footer, size) = read_footer(handle)?;
+    entry_of(footer, size)
 }
 
 impl ParquetFooter {
     /// A closed session, holding nothing.
-    const fn new() -> Self {
+    fn new() -> Self {
         Self {
-            opened: false,
-            container: false,
-            cached: OnceLock::new(),
+            cache: MediaCache::new(),
         }
     }
 
-    /// Whether this session caches what it reads: an opened leaf's does, a
-    /// closed handle's and a container's never do.
-    const fn caches(&self) -> bool {
-        self.opened && !self.container
-    }
-
-    /// The decoded footer the opened session holds, which a record read then
-    /// reads no byte of the file's end for; a closed wrapper's, a
-    /// container's and an empty file's none.
+    /// The decoded footer this session serves under `ttl` - while open,
+    /// whatever `ttl` says, else while it is younger than `ttl` - which a
+    /// record read then reads no byte of the file's end for; `None` where it
+    /// holds none, and for an empty file.
     #[must_use]
-    pub fn footer(&self) -> Option<Arc<ParquetMetaData>> {
-        if !self.caches() {
-            return None;
-        }
-        self.cached.get().and_then(|(footer, _)| footer.clone())
+    pub fn footer(&self, ttl: CacheTtl) -> Option<Arc<ParquetMetaData>> {
+        let entry = self.cache.entry(ttl, crate::media::cache::now())?;
+        tail_of(&entry)?.footer.clone()
     }
 
-    /// The footer of the file `handle` holds, as the session reads it: the
-    /// opened session's cache, refilled from one footer read where a
-    /// publication cleared it; a closed or container session's one fresh
-    /// uncached read.
-    fn metadata(&self, handle: &dyn IOBase) -> Result<Option<Arc<ParquetMetaData>>> {
-        if !self.caches() {
-            return Ok(read_footer(handle)?.0);
+    /// The entry of the file `handle` holds under `ttl`: the one served, else
+    /// one read of the file's end, kept; `None` where nothing is kept - a
+    /// closed session under a realtime TTL.
+    fn entry(&self, handle: &dyn IOBase, ttl: CacheTtl) -> crate::Result<Option<Entry>> {
+        if !self.cache.keeps(ttl) {
+            return Ok(None);
         }
-        if let Some((cached, _)) = self.cached.get() {
-            return Ok(cached.clone());
+        self.cache
+            .get_or_fill(ttl, crate::media::cache::now(), || read_entry(handle))
+            .map(Some)
+    }
+
+    /// The footer the decode of `handle` under `ttl` reads no byte of the
+    /// file's end for: the one served, else one read of the end, kept; `None`
+    /// where nothing is kept, so the decode reads the end itself, and where
+    /// the end does not read, which the decode then reports.
+    fn held(&self, handle: &dyn IOBase, ttl: CacheTtl) -> Option<Arc<ParquetMetaData>> {
+        let entry = self.entry(handle, ttl).ok()??;
+        tail_of(&entry)?.footer.clone()
+    }
+
+    /// The footer of the file `handle` holds, as the session reads it under
+    /// `ttl`: the cache's, refilled from one footer read where a publication
+    /// cleared it, or one fresh uncached read where the cache keeps nothing.
+    fn metadata(&self, handle: &dyn IOBase, ttl: CacheTtl) -> Result<Option<Arc<ParquetMetaData>>> {
+        match self.entry(handle, ttl)? {
+            Some(entry) => Ok(tail_of(&entry).and_then(|tail| tail.footer.clone())),
+            None => Ok(read_footer(handle)?.0),
         }
-        let loaded = read_footer(handle)?;
-        // Concurrent immutable asks may race to refill an invalidated cache;
-        // whichever answer wins defines this opened session consistently.
-        let _ = self.cached.set(loaded.clone());
-        Ok(self
-            .cached
-            .get()
-            .map_or(loaded.0, |(cached, _)| cached.clone()))
+    }
+
+    /// Keep what a publication wrote - the footer the writer closed the file
+    /// with and the length it wrote - where the cache keeps under `ttl`; drop
+    /// the entry otherwise, so nothing from before the write is answered.
+    fn record(&self, ttl: CacheTtl, footer: Option<Arc<ParquetMetaData>>, size: u64) {
+        if self.cache.keeps(ttl)
+            && let Ok(entry) = entry_of(footer, size)
+        {
+            self.cache.fill(crate::media::cache::now(), entry);
+            return;
+        }
+        self.cache.invalidate();
     }
 }
 
 /// An Apache Parquet file bound to one [`IOBase`] handle.
 ///
 /// Every read and write goes through this type, so the handle, the options,
-/// and the cached footer live in one place instead of being repeated at each
-/// call. [`IOBase::open`] materializes the handle and caches the footer and
-/// the file's length, read together by one [`IOBase::read_tail_bytes`], so
-/// repeated schema or statistics reads do not re-parse it and a record read
-/// fetches only the column chunks it keeps; [`IOBase::close`] releases both.
-/// The session's state is its [`ParquetFooter`].
+/// and the footer live in one place instead of being repeated at each call.
+/// [`IOBase::open`] materializes the handle and holds the footer and the
+/// file's length, read together by one [`IOBase::read_tail_bytes`], until
+/// [`IOBase::close`], so repeated schema or statistics reads do not re-parse
+/// it and a record read fetches only the column chunks it keeps; a closed
+/// file holds what it read for the options' `cache_ttl`, and every write
+/// keeps the footer it closed the file with rather than reading it back. The
+/// session's state is its [`ParquetFooter`].
 #[derive(Debug)]
 pub struct Parquet<H: IOBase> {
     handle: H,
     options: ParquetOptions,
-    /// The open state, and the footer the opened session cached.
+    /// The session's metadata cache.
     footer: ParquetFooter,
-    /// The schema conversion is also metadata-only, but materially more
-    /// expensive than returning its result. Cache the derived width only for
-    /// the explicitly opened session, under the same invalidation rules as
-    /// the footer.
-    cached_column_size: OnceLock<usize>,
 }
 
 impl<H: IOBase> Parquet<H> {
@@ -2339,15 +2426,16 @@ impl<H: IOBase> Parquet<H> {
             handle,
             options: ParquetOptions::new(),
             footer: ParquetFooter::new(),
-            cached_column_size: OnceLock::new(),
         }
     }
 
     /// Return this file with different options.
+    ///
+    /// The footer does not depend on them - its root is renamed as it is
+    /// served - so the cache holds.
     #[must_use]
     pub fn with_options(mut self, options: ParquetOptions) -> Self {
         self.options = options;
-        self.invalidate_metadata();
         self
     }
 
@@ -2355,7 +2443,6 @@ impl<H: IOBase> Parquet<H> {
     #[must_use]
     pub fn with_name(mut self, name: impl Into<smol_str::SmolStr>) -> Self {
         self.options.set_name(name.into());
-        self.invalidate_metadata();
         self
     }
 
@@ -2366,7 +2453,6 @@ impl<H: IOBase> Parquet<H> {
     #[must_use]
     pub fn with_field(mut self, field: Field) -> Self {
         self.options.set_field(field);
-        self.invalidate_metadata();
         self
     }
 
@@ -2375,9 +2461,10 @@ impl<H: IOBase> Parquet<H> {
         &self.handle
     }
 
-    /// Borrow the underlying handle mutably.
+    /// Borrow the underlying handle mutably, dropping the held footer before
+    /// any byte mutation can occur.
     pub fn handle_mut(&mut self) -> &mut H {
-        self.invalidate_metadata();
+        self.footer.cache.invalidate();
         &mut self.handle
     }
 
@@ -2393,64 +2480,54 @@ impl<H: IOBase> Parquet<H> {
 
     /// Borrow the options mutably.
     pub fn options_mut(&mut self) -> &mut ParquetOptions {
-        self.invalidate_metadata();
         &mut self.options
     }
 
-    /// Discard footer metadata after an in-place mutation while retaining the
-    /// explicit open state. The next metadata ask repopulates an open cache.
-    fn invalidate_metadata(&mut self) {
-        self.footer.cached.take();
-        self.cached_column_size.take();
+    /// The entry the cache serves under `ttl`, if any - which only a leaf's
+    /// session ever holds.
+    fn served(&self, ttl: CacheTtl) -> Option<Entry> {
+        self.footer.cache.entry(ttl, crate::media::cache::now())
     }
 
-    /// Whether this session already holds the leaf's footer, which answers
-    /// every dimension ask with no call - and which a container's session
-    /// never holds.
-    fn warm(&self) -> bool {
-        self.caches() && self.footer.cached.get().is_some()
-    }
-
-    /// Whether this session caches what it reads: an opened leaf's does, a
-    /// closed handle's and a container's never do.
-    const fn caches(&self) -> bool {
-        self.footer.caches()
-    }
-
-    /// Whether a dimension ask goes to the leaves: a container, known from
-    /// `open` in a session and asked of the handle otherwise.
-    fn reads_leaves(&self) -> bool {
-        if self.footer.opened {
-            self.footer.container
-        } else {
-            self.handle.is_container()
+    /// The leaf's entry, `served` where the cache had one: the cache's under
+    /// `ttl`, read and kept where it keeps, else one fresh read of the file's
+    /// end.
+    fn entry(&self, ttl: CacheTtl, served: Option<Entry>) -> crate::Result<Entry> {
+        if let Some(entry) = served {
+            return Ok(entry);
+        }
+        match self.footer.entry(&self.handle, ttl)? {
+            Some(entry) => Ok(entry),
+            None => read_entry(&self.handle),
         }
     }
 
-    /// Return opened-session footer metadata, or a fresh uncached closed read.
+    /// The footer under the options' TTL: the session's, or a fresh uncached
+    /// read.
     fn metadata(&self) -> Result<Option<Arc<ParquetMetaData>>> {
-        self.footer.metadata(&self.handle)
+        self.footer.metadata(&self.handle, self.options.cache_ttl)
     }
 
-    /// Refresh the footer after publication without implicitly opening a
-    /// closed wrapper.
-    fn refresh_metadata(&mut self) -> crate::Result<()> {
-        self.invalidate_metadata();
-        if self.caches() {
-            let _ = self.footer.cached.set(read_footer(&self.handle)?);
+    /// The root the footer states under `ttl`, its metadata whole, named as
+    /// the options name it: from the cache where it serves, else from one
+    /// read of the file's end, kept where the cache keeps.
+    fn origin(&self, ttl: CacheTtl) -> crate::Result<Option<Field>> {
+        let served = self.served(ttl);
+        if served.is_none() && self.handle.is_container() {
+            return crate::iomedia::container_origin(
+                &self.handle,
+                crate::iomedia::dimension_options(self)?,
+            );
         }
-        Ok(())
-    }
-
-    /// Best-effort refresh after an error that may follow a partial commit.
-    /// The original write error remains authoritative.
-    fn refresh_metadata_after_error(&mut self) {
-        self.invalidate_metadata();
-        if self.caches()
-            && let Ok(loaded) = read_footer(&self.handle)
-        {
-            let _ = self.footer.cached.set(loaded);
-        }
+        let origin = if served.is_none() && !self.footer.cache.keeps(ttl) {
+            read_footer(&self.handle)?
+                .0
+                .map(|footer| origin_of(footer, self.options.name()))
+                .transpose()?
+        } else {
+            self.entry(ttl, served)?.origin
+        };
+        Ok(origin.map(|origin| origin.with_name(self.options.name())))
     }
 
     /// Refuse options for a different encoding before a write can pull its
@@ -2514,8 +2591,9 @@ impl<H: IOBase> Parquet<H> {
 /// reachable directly - to copy it, upload it, or hand it to another reader -
 /// without unwrapping the media type first.
 ///
-/// [`IOBase::open`] additionally caches the footer and [`IOBase::close`]
-/// releases it, which is what a scoped context binds to.
+/// [`IOBase::open`] additionally holds the footer until [`IOBase::close`]
+/// releases it, which is what a scoped context binds to; a closed file holds
+/// it for the options' `cache_ttl`.
 impl<H: IOBase> crate::IOMedia for Parquet<H> {
     fn as_io_base(&self) -> &dyn IOBase {
         self
@@ -2526,42 +2604,47 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
     }
 
     fn row_size(&self) -> crate::Result<u64> {
-        if !self.warm() && self.reads_leaves() {
+        let ttl = self.options.cache_ttl;
+        let served = self.served(ttl);
+        if let Some(rows) = served.as_ref().and_then(|entry| entry.rows) {
+            return Ok(rows);
+        }
+        // Past the cache, which only a leaf ever fills.
+        if served.is_none() && self.handle.is_container() {
             return crate::iomedia::container_row_size(
                 &self.handle,
                 &crate::iomedia::dimension_options(self)?,
             );
         }
-        match self.metadata()? {
-            Some(metadata) => metadata_row_size(metadata.as_ref()),
-            None => Ok(0),
+        if !self.footer.cache.keeps(ttl) {
+            return row_size(&self.handle, &self.options);
         }
+        Ok(self.entry(ttl, served)?.rows.unwrap_or_default())
     }
 
     fn column_size(&self) -> crate::Result<usize> {
-        if self.caches()
-            && let Some(column_size) = self.cached_column_size.get()
-        {
-            return Ok(*column_size);
+        if let Some(field) = self.options.field() {
+            return Ok(field.field_len());
         }
-        let column_size = if let Some(field) = self.options.field() {
-            field.field_len()
-        } else if !self.warm() && self.reads_leaves() {
-            crate::iomedia::container_field(
+        let ttl = self.options.cache_ttl;
+        let served = self.served(ttl);
+        if let Some(columns) = served.as_ref().and_then(|entry| entry.columns) {
+            return Ok(columns);
+        }
+        if served.is_none() && self.handle.is_container() {
+            return Ok(crate::iomedia::container_origin(
                 &self.handle,
-                &crate::iomedia::dimension_options(self)?,
+                crate::iomedia::dimension_options(self)?,
             )?
-            .field_len()
-        } else if let Some(metadata) = self.metadata()? {
-            schema_from_metadata(metadata)?.fields().len()
-        } else {
-            0
-        };
-        if self.caches() {
-            let _ = self.cached_column_size.set(column_size);
-            return Ok(*self.cached_column_size.get().unwrap_or(&column_size));
+            .map_or(0, |field| field.field_len()));
         }
-        Ok(column_size)
+        if !self.footer.cache.keeps(ttl) {
+            return Ok(match read_footer(&self.handle)?.0 {
+                Some(metadata) => schema_from_metadata(metadata)?.fields().len(),
+                None => 0,
+            });
+        }
+        Ok(self.entry(ttl, served)?.columns.unwrap_or_default())
     }
 
     /// Return this wrapper's Parquet options even when the wrapped byte handle
@@ -2570,16 +2653,18 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
         Ok(RecordOptions::from(self.options.clone()))
     }
 
+    /// The root the footer states, its metadata whole, under the options'
+    /// TTL.
+    fn read_origin_field(&self) -> crate::Result<Option<Field>> {
+        self.origin(self.options.cache_ttl)
+    }
+
+    /// The one schema answer, the declared root else the origin as `options`'
+    /// TTL serves it, narrowed by their `where` and `select`: an open file,
+    /// or a closed one under a TTL, reads no byte to answer it.
     fn read_arrow_field(&self, options: &RecordOptions) -> crate::Result<Field> {
-        let options = self.require_record_options(options)?;
-        if let Some(field) = options.field() {
-            return Ok(field.clone());
-        }
-        if !self.warm() && self.reads_leaves() {
-            return crate::iomedia::container_field(&self.handle, &options.clone().into());
-        }
-        let schema = self.read_arrow_schema()?;
-        Ok(field_from_arrow_schema(options.name(), schema.as_ref())?)
+        self.require_record_options(options)?;
+        crate::iomedia::held_arrow_field(options, |ttl| self.origin(ttl))
     }
 
     /// The session's [`ParquetFooter`], which a record read of this wrapper
@@ -2597,36 +2682,40 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
         let options = options.as_ref();
         let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
-        // Publication may have changed the visible file before a later source
-        // or storage failure. Never retain a footer from before the attempt.
+        // Every publication passes through `overwrite_prepared_serie`, which
+        // keeps the footer it wrote. A failure may follow a published
+        // cadence, so no footer from before the attempt is answered after it.
         let result =
-            match crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options)
-                .map(|(_, result)| result)
-            {
-                Ok(result) => result,
-                Err(error) => {
-                    self.refresh_metadata_after_error();
-                    return Err(error);
-                }
-            };
-        self.refresh_metadata()?;
-        Ok(result)
+            crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options)
+                .map(|(_, result)| result);
+        if result.is_err() {
+            self.footer.cache.invalidate();
+        }
+        result
     }
 
+    /// Encode the prepared rows as the whole file and keep the footer the
+    /// writer closed it with, and its length, where the cache keeps: an
+    /// append or a merge rewrites the file through here, so no publication
+    /// reads its own footer back.
     fn overwrite_prepared_serie(
         &mut self,
         value: crate::StreamChunkedSerie,
         options: &RecordOptions,
     ) -> crate::Result<()> {
         let batches = value.into_arrow_reader();
-        self.require_record_options(options)?;
-        let result = crate::iobase::leaf_writer(self, batches, options);
-        if let Err(error) = result {
-            self.refresh_metadata_after_error();
-            return Err(error);
+        let parquet = self.require_record_options(options)?;
+        match overwrite_buffered(self, batches, parquet, WRITE_BUFFER_BYTES) {
+            Ok((footer, size)) => {
+                self.footer
+                    .record(parquet.cache_ttl, Some(Arc::new(footer)), size);
+                Ok(())
+            }
+            Err(error) => {
+                self.footer.cache.invalidate();
+                Err(error.into())
+            }
         }
-        self.refresh_metadata()?;
-        Ok(())
     }
 
     fn append_serie(
@@ -2638,7 +2727,11 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
         let options = options.as_ref();
         let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
-        crate::iobase::append_arrow_reader_default(self, batches, options)
+        let result = crate::iobase::append_arrow_reader_default(self, batches, options);
+        if result.is_err() {
+            self.footer.cache.invalidate();
+        }
+        result
     }
 
     fn merge_serie(
@@ -2650,37 +2743,50 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
         let options = options.as_ref();
         let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
-        crate::iobase::merge_arrow_reader_default(self, batches, options)
+        let result = crate::iobase::merge_arrow_reader_default(self, batches, options);
+        if result.is_err() {
+            self.footer.cache.invalidate();
+        }
+        result
     }
 }
 
 impl<H: IOBase> IOBase for Parquet<H> {
     crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, read_tail_bytes,
         pstream_bytes, capacity, reserve, uri, url,
-        bound_location, mtime, media_type, set_media_type, applied_codec, flush, parent, child_by_path, ls, kind, is_container);
+        bound_location, mtime, media_type, applied_codec, flush, parent, child_by_path, ls, kind, is_container);
 
-    /// The length the opened session read with its footer, asked of nothing;
-    /// the handle's otherwise.
+    /// The length the open session holds with the footer, asked of nothing;
+    /// the handle's otherwise. A byte length is not metadata a TTL serves: a
+    /// byte write offsets by it, so a closed handle asks.
     fn size(&self) -> u64 {
-        match self.footer.cached.get() {
-            Some((_, size)) if self.caches() => *size,
-            _ => self.handle.size(),
+        if !self.footer.cache.is_open() {
+            return self.handle.size();
         }
+        self.served(self.options.cache_ttl)
+            .as_ref()
+            .and_then(tail_of)
+            .map_or_else(|| self.handle.size(), |tail| tail.size)
     }
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {
-        self.invalidate_metadata();
+        self.footer.cache.invalidate();
         self.handle.pwrite(offset, bytes)
     }
 
     fn truncate(&mut self, size: u64) -> crate::Result<()> {
-        self.invalidate_metadata();
+        self.footer.cache.invalidate();
         self.handle.truncate(size)
     }
 
     fn create_bytes(&mut self, bytes: &[u8]) -> crate::Result<()> {
-        self.invalidate_metadata();
+        self.footer.cache.invalidate();
         self.handle.create_bytes(bytes)
+    }
+
+    fn set_media_type(&mut self, media_type: crate::MediaType) {
+        self.footer.cache.invalidate();
+        self.handle.set_media_type(media_type);
     }
 
     /// Parquet is a record encoding, so this handle holds rows whatever media
@@ -2695,61 +2801,68 @@ impl<H: IOBase> IOBase for Parquet<H> {
         false
     }
 
-    /// Materialize the handle and cache the footer.
+    /// Materialize the handle and hold the footer until
+    /// [`close`](IOBase::close).
     fn open(&mut self) -> crate::Result<()> {
-        if self.footer.opened {
+        if self.footer.cache.is_open() {
             return Ok(());
         }
         self.handle.open()?;
-        self.invalidate_metadata();
+        self.footer.cache.open();
         // A container's leaves answer for it on every ask, so its session
-        // caches nothing one leaf's footer would answer.
-        self.footer.container = self.handle.is_container();
-        if !self.footer.container {
-            let _ = self.footer.cached.set(read_footer(&self.handle)?);
+        // holds nothing one leaf's footer would answer.
+        if !self.handle.is_container() {
+            let (footer, size) = match read_footer(&self.handle) {
+                Ok(tail) => tail,
+                Err(error) => {
+                    // A session that could not read what it holds is not open.
+                    self.footer.cache.close();
+                    return Err(error.into());
+                }
+            };
+            // A root this crate cannot type is refused where it is asked
+            // for; the footer itself still opens the session.
+            if let Ok(entry) = entry_of(footer, size) {
+                self.footer.cache.fill(crate::media::cache::now(), entry);
+            }
         }
-        self.footer.opened = true;
         Ok(())
     }
 
-    /// Return explicit lifecycle state, including for an empty file.
+    /// Return whether the session is open, including over an empty file.
     fn opened(&self) -> bool {
-        self.footer.opened
+        self.footer.cache.is_open()
     }
 
-    /// Flush the handle and drop the cached footer.
+    /// Flush the handle and drop the held footer with the session.
     fn close(&mut self) -> crate::Result<()> {
-        self.footer.opened = false;
-        self.footer.container = false;
-        self.invalidate_metadata();
+        self.footer.cache.close();
         self.handle.close()
     }
 
-    /// Empty the encoded resource and drop the cached footer with it.
+    /// Empty the encoded resource; the cache then holds what an empty file
+    /// states - no footer, no row, no column - where it keeps.
     ///
-    /// Invalidation is part of the call, not deferred to the next `open`: a
-    /// cached footer describing bytes that are gone is a stale answer, and a
-    /// stale answer after an emptying is a bug.
+    /// The held footer goes with the bytes, not at the next `open`: a footer
+    /// describing bytes that are gone is a stale answer, and a stale answer
+    /// after an emptying is a bug.
     fn clear(&mut self) -> crate::Result<()> {
-        self.invalidate_metadata();
-        let result = self.handle.clear();
-        if self.caches() {
-            if result.is_ok() {
-                let _ = self.footer.cached.set((None, 0));
-            } else {
-                self.refresh_metadata_after_error();
-            }
+        self.footer.cache.invalidate();
+        self.handle.clear()?;
+        // A container caches nothing: its leaves answer for it on every ask.
+        if !self.handle.is_container() {
+            self.footer.record(self.options.cache_ttl, None, 0);
         }
-        result
+        Ok(())
     }
 
-    /// Delete the encoded resource, and every cached footer it filled.
+    /// Delete the encoded resource, and end the session with the footer it
+    /// held.
     ///
     /// A media handle removes what it wraps, not merely its own view: the
     /// resource behind the handle goes, and the footer cache goes with it.
     fn remove(&mut self, recursive: bool) -> crate::Result<()> {
-        self.footer.opened = false;
-        self.invalidate_metadata();
+        self.footer.cache.close();
         self.handle.remove(recursive)
     }
 }

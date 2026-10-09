@@ -17,7 +17,7 @@ use yggdryl::avro::AvroOptions;
 use yggdryl::excel::ExcelOptions;
 use yggdryl::holder::Buffer;
 use yggdryl::ipc::IpcOptions;
-use yggdryl::media::{IORecordOptions, RecordOptions};
+use yggdryl::media::{CacheTtl, IORecordOptions, RecordOptions};
 #[cfg(feature = "parquet")]
 use yggdryl::parquet::ParquetOptions;
 use yggdryl::{DataType, Field, StructType, Url};
@@ -1526,6 +1526,201 @@ fn a_batch_and_a_stream_split_source_predicates_from_selected_aliases() {
         )
         .unwrap();
     assert_eq!(stream.map(Result::unwrap).collect::<Vec<_>>(), [shaped]);
+}
+
+/// The hash `value` feeds a fresh default hasher.
+fn hashed(value: &impl std::hash::Hash) -> u64 {
+    use std::hash::Hasher as _;
+
+    let mut hasher = std::hash::DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
+
+#[test]
+fn every_concrete_options_type_carries_the_cache_ttl_outside_its_identity() {
+    fn assert_ttl<O>(options: O)
+    where
+        O: IORecordOptions + Clone + Eq + Ord + std::hash::Hash + std::fmt::Debug,
+    {
+        assert!(options.cache_ttl().is_realtime(), "realtime by default");
+        assert_eq!(options.cache_ttl().millis(), 0);
+
+        // The builder and the setter state the same milliseconds.
+        let stated = options.clone().with_cache_ttl(5_000_u64);
+        assert_eq!(stated.cache_ttl().millis(), 5_000);
+        assert!(!stated.cache_ttl().is_realtime());
+        let mut set = options.clone();
+        set.set_cache_ttl(CacheTtl(7));
+        assert_eq!(set.cache_ttl().millis(), 7);
+        set.set_cache_ttl(CacheTtl::REALTIME);
+        assert!(set.cache_ttl().is_realtime());
+
+        // It changes when a change is seen, never what is: options differing
+        // only here are one value, so the hash every options value feeds - the
+        // persisted `stable_hash` among them - is the same whatever it says.
+        assert_eq!(stated, options);
+        assert_eq!(stated.cmp(&options), std::cmp::Ordering::Equal);
+        assert_eq!(hashed(&stated), hashed(&options));
+    }
+
+    assert_ttl(IpcOptions::new());
+    assert_ttl(AvroOptions::new());
+    assert_ttl(yggdryl::text::TextOptions::new());
+    assert_ttl(ExcelOptions::new());
+    assert_ttl(yggdryl::csv::CsvOptions::new());
+    assert_ttl(yggdryl::xmla::XmlaOptions::new());
+    #[cfg(feature = "parquet")]
+    assert_ttl(ParquetOptions::new());
+
+    // The field is the options' own, public like the other shared settings.
+    let mut ipc = IpcOptions::new().with_cache_ttl(1_000_u64);
+    assert_eq!(ipc.cache_ttl.millis(), 1_000);
+    ipc.cache_ttl = CacheTtl(2_000);
+    assert_eq!(ipc.cache_ttl().millis(), 2_000);
+}
+
+#[test]
+fn record_options_of_every_medium_hash_and_compare_the_same_whatever_their_cache_ttl() {
+    use yggdryl::MimeType;
+
+    let mut media = vec![MimeType::ARROW_STREAM];
+    #[cfg(feature = "parquet")]
+    media.push(MimeType::PARQUET);
+    media.extend([
+        MimeType::AVRO,
+        MimeType::PLAIN_TEXT,
+        MimeType::XMLA,
+        MimeType::CSV,
+        MimeType::TSV,
+        MimeType::XLSX,
+    ]);
+    for mime_type in media {
+        let default = RecordOptions::for_mime_type(&mime_type).unwrap();
+        assert!(default.cache_ttl().is_realtime(), "{mime_type}");
+
+        let stated = default.clone().with_cache_ttl(60_000_u64);
+        assert_eq!(stated.cache_ttl().millis(), 60_000, "{mime_type}");
+        assert_eq!(stated, default, "{mime_type}");
+        assert_eq!(
+            stated.cmp(&default),
+            std::cmp::Ordering::Equal,
+            "{mime_type}"
+        );
+        assert_eq!(hashed(&stated), hashed(&default), "{mime_type}");
+        assert_eq!(stated.stable_hash(), default.stable_hash(), "{mime_type}");
+
+        // The enum reaches the same field through its setter.
+        let mut set = default.clone();
+        set.set_cache_ttl(CacheTtl(250));
+        assert_eq!(set.cache_ttl().millis(), 250, "{mime_type}");
+        assert_eq!(set.stable_hash(), default.stable_hash(), "{mime_type}");
+
+        // Neutral is not blind: a setting that is part of the identity still
+        // moves the hash beside a stated TTL.
+        let bounded = stated.clone().with_max_row_size(5);
+        assert_ne!(bounded, stated, "{mime_type}");
+        assert_ne!(bounded.stable_hash(), stated.stable_hash(), "{mime_type}");
+    }
+}
+
+#[test]
+fn a_plan_lands_in_its_sections_and_leaves_the_cache_ttl_as_it_was() {
+    let options = RecordOptions::Ipc(IpcOptions::new()).with_cache_ttl(1_500_u64);
+    assert_eq!(options.clone().cache_ttl().millis(), 1_500);
+    // A plan lands in the sections it spells and leaves a setting that is no
+    // section of the plan - the TTL - as the options had it.
+    let planned = options.with_plan("select id where id > 1").unwrap();
+    assert_eq!(planned.cache_ttl().millis(), 1_500);
+}
+
+#[test]
+fn a_plan_that_declares_no_field_leaves_the_declared_field_standing() {
+    let declared = schema();
+    let options = IpcOptions::new().with_field(declared.clone());
+
+    // A plan that only narrows the read changes the sections it spells: the
+    // clause and the selection, and not the declaration it never made.
+    let narrowed = options.clone().with_plan("select id where id > 1").unwrap();
+    assert_eq!(narrowed.field(), Some(declared.clone()));
+    assert_eq!(narrowed.select().to_string(), "id");
+    assert_eq!(narrowed.filter().to_string(), "id > 1");
+
+    // Applying another narrowing replaces those sections and still keeps it.
+    let again = narrowed.with_plan("select id").unwrap();
+    assert_eq!(again.field(), Some(declared));
+    assert!(again.filter().is_always_true());
+
+    // A plan that declares a field replaces the declaration.
+    let replaced = options
+        .with_plan("create trade (id int64 not null, venue utf8)")
+        .unwrap();
+    assert_eq!(replaced.name(), "trade");
+    assert_eq!(replaced.field().unwrap().field_len(), 2);
+}
+
+/// The columns an `apply_columns` answer names, in a fixed order.
+fn columns(options: &impl IORecordOptions) -> Option<Vec<String>> {
+    options.apply_columns().map(|mut columns| {
+        columns.sort();
+        columns
+    })
+}
+
+#[test]
+fn the_columns_a_read_decodes_are_the_ones_its_select_and_early_where_read() {
+    let declared = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Float64.required_field("price"),
+        DataType::utf8().nullable_field("symbol"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    let base = IpcOptions::new().with_field(declared);
+    let names = |names: &[&str]| Some(names.iter().map(|name| (*name).to_owned()).collect());
+
+    // No selection and a star are every column: nothing narrows the decode.
+    assert_eq!(columns(&base), None);
+    assert_eq!(
+        columns(&base.clone().with_select("*, price * 2 as doubled").unwrap()),
+        None
+    );
+    assert_eq!(
+        columns(
+            &base
+                .clone()
+                .with_select("*")
+                .unwrap()
+                .with_filter("symbol = 'A'")
+                .unwrap()
+        ),
+        None
+    );
+
+    // A selection reads the columns its projections read, not the ones it
+    // publishes: `doubled` is built from `price`.
+    let selected = base
+        .clone()
+        .with_select("id, price * 2 as doubled")
+        .unwrap();
+    assert_eq!(columns(&selected), names(&["id", "price"]));
+
+    // A conjunct over a stored column runs before the selection and reads its
+    // own column, selected or not.
+    let early = selected.clone().with_filter("symbol = 'A'").unwrap();
+    assert_eq!(columns(&early), names(&["id", "price", "symbol"]));
+
+    // A conjunct over an alias runs after the selection: it reads no stored
+    // column, so it decodes nothing the selection did not.
+    let late = selected.clone().with_filter("doubled > 3").unwrap();
+    assert_eq!(columns(&late), names(&["id", "price"]));
+
+    // Both halves of one clause: each conjunct in its own phase.
+    let both = selected
+        .with_filter("doubled > 3 and symbol = 'A'")
+        .unwrap();
+    assert_eq!(columns(&both), names(&["id", "price", "symbol"]));
 }
 
 /// The values `RecordOptions` hashes and orders by, pinned before the media

@@ -198,6 +198,11 @@ impl MediaTable {
 
     /// A completed leaf write no longer owns a read snapshot or a writer
     /// mapping. Close its located session before returning the descriptor.
+    ///
+    /// The close ends the medium's session with it, so the entry its write
+    /// refreshed is dropped too and the next read asks the store once: a
+    /// leaf a write published by rename is read afresh rather than through
+    /// a mapping of the file it replaced.
     fn finish_write<T>(&mut self, result: Result<T>) -> Result<T> {
         if result.is_ok() && self.layout == FolderLayout::Leaf {
             self.handle.release_after_write()?;
@@ -512,11 +517,19 @@ impl IOMedia for MediaTable {
         self.handle().ok().and_then(IOMedia::as_any)
     }
 
+    // The origin is what the store states: a declared field is the table's
+    // intent, never its origin.
+    fn read_origin_field(&self) -> Result<Option<Field>> {
+        IOMedia::read_origin_field(self.handle()?)
+    }
+
+    // The table's declared field is the root the options declare none over,
+    // answered under the one schema rule with no read.
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
-        if options.field().is_none()
+        if options.declared().is_none()
             && let Some(field) = &self.field
         {
-            return Ok(field.clone());
+            return crate::iomedia::field_under(options, field);
         }
         IOMedia::read_arrow_field(self.handle()?, options)
     }

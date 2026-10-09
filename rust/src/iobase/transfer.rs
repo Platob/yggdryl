@@ -256,12 +256,14 @@ pub fn overwrite_serie_default(
 
 /// Run the default overwrite and return the logical field actually published.
 ///
-/// Stateful media use this to refresh an already-open metadata cache without
-/// rereading the encoded value. The field is resolved by the same shaping pass
-/// that consumes `batches`: declared-field casting and selection happen once,
-/// then an existing stored field completes the result. `None` is reserved for
-/// a table-format redirection whose own commit owns its metadata cache.
-/// The rows read and written travel beside it.
+/// A media wrapper hands this field to its
+/// [`MediaCache`](crate::media::MediaCache) as the origin the write left,
+/// beside the rows written, so a later schema or count asks the store
+/// nothing. The field is resolved by the same shaping pass that consumes
+/// `batches`: declared-field casting and selection happen once, then an
+/// existing stored field completes the result. `None` is reserved for a
+/// table-format redirection whose own commit owns its metadata cache. The
+/// rows read and written travel beside it.
 pub(crate) fn overwrite_arrow_reader_default_with_field(
     handle: &mut (impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
@@ -1215,7 +1217,11 @@ pub(crate) fn leaf_writer(
 ///
 /// The declared schema is deliberately not consulted: this asks what is stored,
 /// which is the only thing that can say whether a write is filling a resource
-/// that already has a shape or giving one to a resource that has none.
+/// that already has a shape or giving one to a resource that has none. It is
+/// the origin [`IOMedia::read_origin_field`](crate::IOMedia::read_origin_field)
+/// answers, read under the write's own options - a CSV's dialect, a
+/// workbook's sheet - since the write holds them: asking the medium's origin
+/// door instead would ask a bare handle for its options once more.
 pub(crate) fn stored_field(
     handle: &(impl IOBase + ?Sized),
     options: &RecordOptions,

@@ -5074,6 +5074,7 @@ class TextProperties(TypedDict, total=False):
     batch_row_size: int | None | EllipsisType
     commit_batch_num: int | None | EllipsisType
     num_threads: int | None | EllipsisType
+    cache_ttl: SupportsIndex | str | None | EllipsisType
     max_row_size: int | None | EllipsisType
     row_offset: int | None | EllipsisType
     max_byte_size: int | None | EllipsisType
@@ -5163,6 +5164,22 @@ class RecordOptions:
     def num_threads(self) -> int | None: ...
     @num_threads.setter
     def num_threads(self, num_threads: int | None) -> None: ...
+    @property
+    def cache_ttl(self) -> int:
+        """How long a closed handle serves the metadata its medium cached, in
+        milliseconds; ``0``, the default, is realtime, a closed handle reading
+        afresh on every ask.
+
+        An open handle serves what it read until it closes, and a write through
+        the handle refreshes or drops the entry either way. Outside the
+        options' identity, so two options differing only here compare and hash
+        as equal. Milliseconds, where ``IOBase.buffered(ttl=)`` is seconds. Set
+        from an integer - an ``int`` or anything ``__index__`` reads - or its
+        digits as a ``str``; ``None`` clears it to ``0``; a ``bool`` is a
+        ``TypeError`` and a negative or fractional value a ``ValueError`` naming
+        ``$.cache_ttl``."""
+    @cache_ttl.setter
+    def cache_ttl(self, cache_ttl: SupportsIndex | str | None) -> None: ...
     @property
     def max_row_size(self) -> int | None: ...
     @max_row_size.setter
@@ -5346,6 +5363,10 @@ class TextOptions:
     def num_threads(self) -> int | None: ...
     @num_threads.setter
     def num_threads(self, num_threads: int | None) -> None: ...
+    @property
+    def cache_ttl(self) -> int: ...
+    @cache_ttl.setter
+    def cache_ttl(self, cache_ttl: SupportsIndex | str | None) -> None: ...
     @property
     def max_row_size(self) -> int | None: ...
     @max_row_size.setter

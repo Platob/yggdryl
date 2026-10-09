@@ -1008,6 +1008,9 @@ mod records {
     /// a re-plan one `record_options` and no byte, and a drained read
     /// exactly what the handle's own `read_serie(None)` costs - the
     /// medium asked once more, the rows once.
+    /// The serie keeps the root it bound - the medium's declared field, else
+    /// its origin's - so a re-plan reads nothing; every row held where it
+    /// stood when the read was composed through one composer (D34).
     #[test]
     fn a_media_serie_asks_its_medium_for_the_options_on_every_read() {
         use yggdryl::media::GenericMediaSerie;
@@ -1205,6 +1208,76 @@ mod records {
             "pstream_bytes=1 size=1 url=1 media_type=2 is_container=2",
             "pstream_bytes=1 media_type=2 is_container=2",
         );
+    }
+
+    /// A wrapper under a time-to-live holds what it read of a closed handle:
+    /// the schema and both counts cost the store nothing at all - not one call
+    /// of any kind - until the entry is as old as the TTL, and a realtime
+    /// wrapper asks again every time.
+    #[cfg(feature = "internals")]
+    #[test]
+    fn a_closed_wrapper_under_a_ttl_answers_a_warm_ask_with_no_call() {
+        use std::time::{Duration, Instant};
+
+        use yggdryl::avro::{Avro, AvroOptions};
+        use yggdryl::holder::counted::Calls;
+        use yggdryl::internals::media_cache::with_clock;
+        use yggdryl::ipc::{Ipc, IpcOptions};
+        use yggdryl::media::IORecordOptions;
+
+        /// The three answers a wrapper serves from its entry.
+        fn ask(media: &dyn IOMedia) {
+            assert!(media.read_origin_field().expect("an origin").is_some());
+            assert_eq!(media.row_size().expect("rows"), 64);
+            assert_eq!(media.column_size().expect("columns"), 2);
+        }
+
+        let t0 = Instant::now();
+        let at = |milliseconds: u64| t0 + Duration::from_millis(milliseconds);
+        let check = |label: &str, calls: &Arc<Calls>, media: &dyn IOMedia| {
+            calls.reset();
+            with_clock(t0, || ask(media));
+            assert!(calls.total() > 0, "{label}: the first ask reads");
+            costs(&format!("{label}: a warm ask"), calls, "none", || {
+                with_clock(at(999), || ask(media));
+            });
+            calls.reset();
+            with_clock(at(1_000), || ask(media));
+            assert!(calls.total() > 0, "{label}: as old as the TTL, read again");
+        };
+
+        let handle = written("file:///lake/ttl.arrow", 64);
+        let calls = Arc::clone(handle.calls());
+        let media = Ipc::new(handle).with_options(IpcOptions::new().with_cache_ttl(1_000_u64));
+        check("ipc", &calls, &media);
+
+        let handle = written("file:///lake/ttl.avro", 64);
+        let calls = Arc::clone(handle.calls());
+        let media = Avro::new(handle).with_options(AvroOptions::new().with_cache_ttl(1_000_u64));
+        check("avro", &calls, &media);
+
+        #[cfg(feature = "parquet")]
+        {
+            use yggdryl::parquet::{Parquet, ParquetOptions};
+
+            let handle = written("file:///lake/ttl.parquet", 64);
+            let calls = Arc::clone(handle.calls());
+            let media =
+                Parquet::new(handle).with_options(ParquetOptions::new().with_cache_ttl(1_000_u64));
+            check("parquet", &calls, &media);
+        }
+
+        // Realtime reads on every ask, as it always did.
+        let handle = written("file:///lake/ttl.arrow", 64);
+        let calls = Arc::clone(handle.calls());
+        let media = Ipc::new(handle);
+        calls.reset();
+        ask(&media);
+        let first = calls.total();
+        calls.reset();
+        ask(&media);
+        assert_eq!(calls.total(), first, "ipc: realtime asks again");
+        assert!(first > 0);
     }
 
     #[test]

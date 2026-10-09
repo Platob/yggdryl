@@ -510,10 +510,12 @@ pub mod internals {
     pub use crate::logging::terminal::internals as logging_terminal;
     pub use crate::logging::warning::internals as logging_warning;
     pub use crate::marketdatakind::internals as marketdatakind;
+    pub use crate::media::cache::internals as media_cache;
     pub use crate::media::merge::internals as media_merge;
     pub use crate::media::options::commit::internals as media_options_commit;
     pub use crate::media::options::internals as media_options;
     pub use crate::media::partition::internals as media_partition;
+    pub use crate::media_serie::internals as media_serie;
     pub use crate::merge::internals as merge;
     pub use crate::metadata::internals as metadata;
     pub use crate::mic::internals as mic;

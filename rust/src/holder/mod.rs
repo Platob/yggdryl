@@ -1083,6 +1083,10 @@ impl crate::IOMedia for Holder {
         crate::IOMedia::as_any(self.as_media())
     }
 
+    fn read_origin_field(&self) -> Result<Option<crate::Field>> {
+        crate::IOMedia::read_origin_field(self.as_media())
+    }
+
     fn read_arrow_field(&self, options: &crate::media::RecordOptions) -> Result<crate::Field> {
         crate::IOMedia::read_arrow_field(self.as_media(), options)
     }

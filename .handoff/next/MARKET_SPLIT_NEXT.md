@@ -62,10 +62,10 @@ live AWS resource touched.
 | Fact | Value |
 | --- | --- |
 | Program branch | `ccr-0fe6f9d0-ruymat` |
-| HEAD | the commit holding this file, "Hand off the CI structure: its first run" (the handoff alone), on `1f909739b` |
+| HEAD | the commit holding this file, P2: "Hold the origin field and its cache on the medium; compose the pushdown once" (D34, D35), on `d100439d3` ("Record the S3 design") |
 | Draft PR | #209, draft |
 | Base | `origin/main` at `2ae975674`; no merge of `origin/main` was needed this session (nothing landed on `main` since) |
-| Slices done | P0 `3d8bf84d9` (D22), P1 `08ae4c6b7` (D23), S0 `6d71a36ee` (the pins), S1 `eeb4ec14d` (the market extension point), S1's handoff `719299cf6`, S2 `f9f665198` (the media extension point), S2's handoff `2d800d51b`, S2b `c015226b6` (the XMLA medium registered in place, D33) and `2048b4681` (its CI's red census race fixed in the test), the CI structure `1f909739b` - each pushed alone, its CI read green before the next |
+| Slices done | P0 `3d8bf84d9` (D22), P1 `08ae4c6b7` (D23), S0 `6d71a36ee` (the pins), S1 `eeb4ec14d` (the market extension point), S1's handoff `719299cf6`, S2 `f9f665198` (the media extension point), S2's handoff `2d800d51b`, S2b `c015226b6` (the XMLA medium registered in place, D33) and `2048b4681` (its CI's red census race fixed in the test), the CI structure `1f909739b` and its handoff `b656e765b`, the S3 design `d100439d3`, P2 (this commit: the medium holds its origin and its cache, the serie composes the pushdown, D34 and D35) - each pushed alone, its CI read green before the next |
 | CI structure | `1f909739b`, "Build the core first and run only the CI jobs a change reaches": run 37904365402 success, 33 jobs green and the empty `Leaf` matrix skipped as planned; 10m41s wall against 18m09s before (the old workflow's last run, 37902279246, 18m57s); the critical path `Changes` 12s, `Python binding wheel` 5m12s, `Documentation examples (Python)` 4m57s, `CI result` 9s; the core path `Core build (all features)` 1m40s then its slowest shard, `rest`, 5m37s; the exchanges 30s to 1m18s, compiling nothing; the gate proved 20 rows into the ledger; docs run 37904365351 success |
 | Next | S3, the remaining seams in place (D5, D6, D9, D10) |
 
@@ -90,57 +90,50 @@ What S2b built is DESIGN.md's D33 and "S2b results": XMLA a registered
 medium in place - `RecordOptions::Xmla`, `Media::Xmla`, `Media::xmla`,
 `Serie::Xmla` and `XmlaSerie` deleted, `Xmla<Holder>` a `MediaWrapper`,
 the core's own media three (`Ipc`, `Text`, `Csv`).
+What P2 built is DESIGN.md's D34, D35 and "P2 results":
+`IOMedia::read_origin_field` (the whole root the origin holds) and
+`read_arrow_field` one rule in the trait default; one projection rule (the
+declared children, else the origin's, that the `select` and the early
+`where` read, handed whole to a headerless medium); `compose` and
+`Residual` in `media_serie.rs`, the one composition every record read
+takes, the five residual copies and `RecordOptions::apply_stream` gone;
+`media/cache.rs` `MediaCache` on the seven wrappers under the options'
+`cache_ttl` (milliseconds, `0` realtime, outside the options' identity),
+every write door updating or dropping it; Python's `cache_ttl` property;
+Node gains no door.
 
 ## Checks
 
-Every command below ran on the tree committed as S2b (`c015226b6`), from
-`/home/user/yggdryl`, with `CARGO_INCREMENTAL=0` and the debug info off, in
-one background chain (`logs/chain_s2b.sh` under the scratchpad) that cleaned
-the workspace's own artifacts between lanes. Its first attempt died on a
-full disk at the whole run's link step (`No space left on device`; nothing
-of it counts but the passed `fmt-check`); after `target/debug/incremental`,
-`target/release` and the workspace crates' stale artifacts were removed the
-chain resumed from that step, unchanged. The settle and the review ran the
-smoke rows before it.
+Every command below ran on the tree committed as P2, from
+`/home/user/yggdryl`, with `CARGO_INCREMENTAL=0` and the debug info off: the
+smoke rows after the review's fixes, then one background chain
+(`logs/chain_p2.sh` under the scratchpad) that cleaned the workspace's own
+artifacts between lanes, then a confirmation chain (`logs/chain_p2b.sh`)
+over the unchanged tree for the format, the build checks and the Node
+package audit.
 
 | Check | Command | Result |
 | --- | --- | --- |
-| it builds | `cargo check -p yggdryl --all-targets --keep-going --message-format=short`, with `--all-features`, and `cargo check --workspace --all-targets --keep-going` | clean, 0 warnings; the bindings and the CLI compile against the new shape |
-| the registers | `cargo test -p yggdryl --test media_register` | 13 passed |
-| the S2 pins | `cargo test -p yggdryl --test media s2_pins` | 4 passed: the three `xmla` hashes `8_486_799_845_904_195_949`, `11_124_752_632_585_582_100`, `2_087_720_147_871_917_823` and the order pin (renamed `the_media_order_by_their_rank`, its values unchanged) byte-identical |
-| the XMLA serie | `cargo test -p yggdryl --test xmla generic_media_serie` | 1 passed - `an_xmla_handle_is_read_through_the_generic_media_serie`, the review's missing test |
-| the cost rows | `cargo test -p yggdryl --test iobase_calls xmla`; `--test allocations rowset` | 1 passed each; no cost pin re-pinned |
-| the whole run | `cargo test -p yggdryl --all-targets --all-features --no-fail-fast` | 63 targets, 9170 passed, 1 failed, 3 ignored: the one failure is `market_register`'s count race below, S1's, not this slice's |
-| the whole run, default features | `cargo test -p yggdryl --all-targets --no-fail-fast` | 63 targets, 6523 passed, 0 failed |
+| it builds | `cargo check -p yggdryl --all-targets --keep-going --message-format=short`; `cargo check --workspace --all-targets --all-features --keep-going --message-format=short` | clean, 0 diagnostics |
+| the smoke, all-features lane | `cargo test -p yggdryl --all-features --test <t>` for media, root, ipc, parquet, avro, csv, xmla, excel, text, iobase_calls, iceberg, expression, http, warehouse, allocations, media_register | 205, 1871, 52, 88, 142, 102, 761, 332, 236, 67, 528, 244, 503, 139, 184, 14 passed; 0 failed |
+| the S2 pins | `cargo test -p yggdryl --test media s2_pins` | green in both lanes, byte-identical (`CacheTtl` hashes nothing) |
+| the cost rows | `--test iobase_calls`; `--test allocations` | 67 and 184 passed; no cost pin moved or re-pinned; the media-serie construction row unmoved (`pstream_bytes=1 media_type=2 is_container=2`) |
+| the whole run | `cargo test -p yggdryl --all-targets --all-features --no-fail-fast` | 63 targets, 9298 passed, 0 failed, 3 ignored |
+| the whole run, default features | `cargo test -p yggdryl --all-targets --no-fail-fast` | 63 targets, 6580 passed, 0 failed |
 | the CLI | `cargo test -p yggdryl-cli --all-targets --no-fail-fast` | 6 targets, 35 passed, 0 failed, 6 ignored |
 | rustdoc examples | `cargo test -p yggdryl --doc` | 628 passed |
 | clippy | `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings`; `cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings` | exit 0 both |
 | the API pages | `RUSTDOCFLAGS="-D warnings" cargo doc -p yggdryl --no-deps --all-features` | exit 0 |
 | formatting | `cargo fmt --all -- --check` | clean |
-| Python | `VIRTUAL_ENV=python/.venv python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, `-m pytest python/tests --deselect python/tests/test_spark_interop.py`, `-m mypy --strict ...` | the extension installed; 2780 passed, 4 skipped; mypy "no issues found in 70 source files" |
-| Node | `npm run --prefix node build:debug`; `cargo build --locked -p yggdryl-cli`; `npm test --prefix node`; `npx tsc --noEmit`; `git diff --stat -- node/index.js node/index.d.ts` | 1122 tests, 1120 passed, the 2 failing ones the sandbox `TextDecoder` pair below; tsc exit 0; the generated loader and declarations unchanged |
+| Python | `VIRTUAL_ENV=python/.venv python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, `-m pytest python/tests --deselect python/tests/test_spark_interop.py`, `-m mypy --strict ...` | the extension installed; 2784 passed, 4 skipped; mypy "no issues found in 70 source files" |
+| Node | `npm run --prefix node build:debug`; `cargo build --locked -p yggdryl-cli`; `npm test --prefix node`; `npx tsc --noEmit`; `npm run --prefix node test:package:debug`; `git diff --exit-code -- node/index.js node/index.d.ts` | 1122 tests, 1120 passed, the 2 failing ones the sandbox `TextDecoder` pair below; tsc exit 0; the package audit passed; the generated loader and declarations unchanged |
 | the docs manifests | `node scripts/build_docs_fix.js --check`; `node scripts/build_docs_playground.js --check` | both current |
 | the page examples | `python scripts/check_docs_examples.py --lang rust`, `--lang python`, `--lang javascript` | Rust 940 passed; Python 837 run, 3 skipped, 0 failed; JavaScript 789 run, 2 skipped, 0 failed |
 | the site | `python -m mkdocs build --strict --config-file mkdocs.yml` | clean |
-| the inventories | `python scripts/check_api_inventory.py`; `python scripts/generate_internals.py --check` | current (180 source files and 586 `pub` names not described yet, as before); `yggdryl::internals` current |
+| the inventories | `python scripts/check_api_inventory.py`; `python scripts/generate_internals.py --check` | current (180 source files and 587 `pub` names not described yet); `yggdryl::internals` current |
 | no test code under `src/` | `grep -rn '#\[cfg(test)\]\|#\[test\]\|mod tests' rust/src python/src node/src cli/src` | empty |
-| the review | an independent read of the slice (opus) after the settle | "could not refute the slice"; three findings, all fixed before the commit: AGENTS.md's three stale lines (the core's four media, `XmlaSerie`), the missing `GenericMediaSerie` test with the `require_settings::<XmlaOptions>` refusal pinned, the order pin's name |
-| CI | the run on `ccr-0fe6f9d0-ruymat` for PR #209 | run 37902279246 on `2048b4681` (S2b and its test fix) success, all 17 jobs green, 18m57s wall; docs run 37902279190 success. The run on `c015226b6` (37900729990) was red in Rust quality (default features) on the `market_register` census race below, fixed in `2048b4681` |
-
-`rust/tests/market_register.rs`
-`a_claim_registers_the_kind_under_its_byte_its_name_and_its_extension_name`
-(S1) races two tests of its own binary: line 169 compares
-`DataTypeId::all().len()` with `DataTypeId::ALL.len() + kinds().len()`, read
-at two instants while `a_descriptor_that_is_not_the_claimed_one_validates_as_no_kind`
-and `a_name_parsed_before_its_claim_is_refused_naming_the_registration_and_resolves_after_it`
-claim `lying` and `lateclaim`, so a claim landing between the two reads
-answers `left: 98, right: 99`. Its all-features binary failed 25 of 200 runs
-in parallel and 0 of 100 under `--test-threads=1` on S2b's tree; S2b
-touches nothing of the market register. It went red in CI's default lane
-on `c015226b6` (run 37900729990) and was fixed at its cause in `2048b4681`:
-both counts read one listing filtered of the two late kinds, and the count
-is exactly 98 - 0 failures in 300 parallel runs, default and with
-`internals`.
+| the review | the `code-review` skill at high effort over the whole diff, and the lane manager's pass over the brief's checklist | fourteen points: eleven fixed before the commit (the headerless projection, `clear` over a container, the encoding check, `size()` under a TTL, the counts kept under a TTL, `add` beside `update`, one `keeps`, the Python docstrings, one `container_origin`, `cache_ttl` taking `__index__` and `None`), three kept with their reason; DESIGN.md "P2 results" lists them |
+| CI | the run on `ccr-0fe6f9d0-ruymat` for PR #209 | read after the push; the lane's report states it, and the next handoff records it |
 
 Not run, as the slice made nothing of theirs stale: the charset table and
 interop checks, the ISIN seed check, the country and MIC table checks, every
@@ -150,7 +143,7 @@ the package to the runtime's `TextDecoder` (`node/tests/charset.test.js`:
 `decoding agrees with TextDecoder over the same names`, `iso-8859-1 is not a
 spelling of windows-1252 here`) fail in this sandbox alone, whose Node 22.22
 decodes the C1 range of `windows-1252` as ISO 8859-1 does; they failed at P0,
-P1, S0, S1, S2 and S2b the same way and CI's Node proves them.
+P1, S0, S1, S2, S2b and P2 the same way and CI's Node proves them.
 
 ## Blockers
 
@@ -203,8 +196,9 @@ rows decided or changed this session:
 | D31 | `Error::External`; `From<ParquetError>` deleted; `IOMedia::as_any` + `ParquetFooter`; the statistics as free functions | `error.rs`, `parquet/mod.rs` | S2 |
 | D32 | `filter_phases` published; logging and D17 unchanged | `expression/mod.rs` | S2 |
 | D5, D6, D9, D10 (refined for S3) | the inherent `dtype()`/`field(name)` in `enum_leaf!`'s market arm and the four `DataType::<kind>()` blocks deleted; `implementer.rs` with 115 items by route R/F/A/M/X and the eleven `pub(super)` raises, proven by the re-point script and `refs.py`; `MarketMessage` behind `MarketData::Fix`, `protocol_field_types!` exported as the builder, `FixField::new(&field)` the one spelling; `fix/state.rs` free functions, `Scheme::FIX` and `STATE_CODES` core, a logger named by its module path whatever crate holds it | DESIGN.md "## S3: design"; `s3_map/design_inputs.md` | S3 |
-| D34 | the medium holds its origin (`IOMedia::read_origin_field`), `read_arrow_field` one rule (declared else origin, narrowed by the select), one projection rule (declared ∩ the columns the select and the early filter read), one composer in `media_serie.rs` that `read_record_serie` also calls - the serie the one wrapper composing pushdown - `source_field` and the five residual copies gone, S8 amended | the user's sixth instruction; DESIGN.md D34 | P2 |
-| D35 | `MediaCache` on every medium wrapper under `cache_ttl` - milliseconds, 0 realtime, a shared options section outside the hash feed as `file_threads` is - served while the handle is open or the entry younger than the TTL, every write door updating it with what it knows or invalidating it | the user's seventh instruction; DESIGN.md D35 | P2 |
+| D34 | the medium holds its origin (`IOMedia::read_origin_field`), `read_arrow_field` one rule (declared else origin, narrowed by the select), one projection rule (declared ∩ the columns the select and the early filter read), one composer in `media_serie.rs` that `read_record_serie` also calls - the serie the one wrapper composing pushdown - `source_field` and the five residual copies gone, S8 amended | the user's sixth instruction; DESIGN.md D34, "P2 results" | S2b, built P2 |
+| D35 | `MediaCache` on every medium wrapper under `cache_ttl` - milliseconds, 0 realtime, a shared options section outside the hash feed as `file_threads` is - served while the handle is open or the entry younger than the TTL, every write door updating it with what it knows or invalidating it | the user's seventh instruction; DESIGN.md D35, "P2 results" | S2b, built P2 |
+| D36 | (design pending, the user's eighth instruction: "Isolate also the yggdryl-s3 crate") the object-store backend `s3/` - Amazon S3, Google Cloud Storage, Azure Blob Storage under the `s3` feature - a ninth crate, `yggdryl-s3`, through a storage-backend extension point on the register, registered in place first and moved after; the CI leaf table gains `rust/s3` | the backend map under the scratchpad | after S3 |
 | D33 | `yggdryl-xmla`, an eighth crate through the media point, `soap/` with it; registered in place in S2b - the core's own media are three, `RecordOptions::Xmla`, `Media::Xmla`, `Media::xmla`, `Serie::Xmla` and `XmlaSerie` deleted, `Xmla<Holder>` a `MediaWrapper` - and moved in S6c; the Python `Xmla` class stays in the one native module, the CLI's `xmla serve` depends on the crate | the user's instruction; DESIGN.md D33; crates.io 404 | S2b, built S6c |
 
 ## Questions for the user

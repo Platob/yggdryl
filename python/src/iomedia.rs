@@ -55,14 +55,14 @@ use pyo3::exceptions::{PyImportError, PyStopIteration, PyTypeError, PyValueError
 use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::{
-    PyBool, PyByteArray, PyBytes, PyDict, PyList, PyMapping, PyMemoryView, PyString, PyTuple,
-    PyType,
+    PyBool, PyByteArray, PyBytes, PyDict, PyFloat, PyList, PyMapping, PyMemoryView, PyString,
+    PyTuple, PyType,
 };
 
 use yggdryl::arrow::BatchReader;
 use yggdryl::avro::AvroOptions;
 use yggdryl::excel::ExcelOptions;
-use yggdryl::media::{IORecordOptions, RecordOptions};
+use yggdryl::media::{CacheTtl, IORecordOptions, RecordOptions};
 use yggdryl::parquet::ParquetOptions;
 use yggdryl::text::{LeadingFragment, TextOptions as CoreTextOptions};
 use yggdryl::{Field as CoreField, Level, StreamChunkedSerie};
@@ -1354,6 +1354,40 @@ fn whole_count(value: &Bound<'_, PyAny>, name: &str) -> PyResult<usize> {
     value.extract::<usize>()
 }
 
+/// Read a `cache_ttl` value: a whole number of milliseconds, `0` realtime.
+///
+/// `None` clears the setting to its default, realtime. An integer - an
+/// `int`, or any object `__index__` reads, a `NumPy` integer among them - is
+/// taken as it is. A `str` of digits, a negative or too-wide integer and a
+/// `float` meet the core's one integer grammar as their text, so each is
+/// refused by the sentence every other door of the setting gives, naming
+/// `$.cache_ttl`, and as one exception type on every wheel; a `bool` or any
+/// other type is a `TypeError`.
+fn cache_ttl_from_value(value: &Bound<'_, PyAny>) -> PyResult<CacheTtl> {
+    if value.is_none() {
+        return Ok(CacheTtl::REALTIME);
+    }
+    if value.is_instance_of::<PyBool>() {
+        return Err(PyTypeError::new_err(
+            "cache_ttl must be an integer of milliseconds, not bool",
+        ));
+    }
+    if value.hasattr(intern!(value.py(), "__index__"))? {
+        if let Ok(millis) = value.extract::<u64>() {
+            return Ok(CacheTtl::from(millis));
+        }
+    } else if !value.is_instance_of::<PyString>() && !value.is_instance_of::<PyFloat>() {
+        return Err(PyTypeError::new_err(
+            "cache_ttl must be an integer of milliseconds",
+        ));
+    }
+    value
+        .str()?
+        .to_str()?
+        .parse::<CacheTtl>()
+        .map_err(value_error)
+}
+
 /// Set the row-per-batch bound, refusing a bound of nothing.
 ///
 /// A batch of zero rows is not a small batch: the readers chunk by this number,
@@ -1515,6 +1549,7 @@ impl PyRecordOptions {
         state.set_item("batch_row_size", self.inner.batch_row_size())?;
         state.set_item("commit_batch_num", self.inner.commit_batch_num())?;
         state.set_item("num_threads", self.inner.num_threads())?;
+        state.set_item("cache_ttl", self.inner.cache_ttl().millis())?;
         state.set_item("max_row_size", self.inner.max_row_size())?;
         state.set_item("row_offset", self.inner.row_offset())?;
         state.set_item("max_byte_size", self.inner.max_byte_size())?;
@@ -1598,6 +1633,7 @@ impl PyRecordOptions {
             "batch_row_size" => self.set_batch_row_size(value.extract()?)?,
             "commit_batch_num" => self.set_commit_batch_num(given)?,
             "num_threads" => self.set_num_threads(given)?,
+            "cache_ttl" => self.set_cache_ttl(value)?,
             "max_row_size" => self.set_max_row_size(value.extract()?)?,
             "row_offset" => self.set_row_offset(value.extract()?)?,
             "max_byte_size" => self.set_max_byte_size(value.extract()?)?,
@@ -1841,6 +1877,7 @@ impl PyRecordOptions {
         let num_threads =
             required_record_pickle_item(state, "num_threads")?.extract::<Option<usize>>()?;
         options.inner.set_num_threads(num_threads);
+        options.set_cache_ttl(&required_record_pickle_item(state, "cache_ttl")?)?;
         options.set_max_row_size(required_record_pickle_item(state, "max_row_size")?.extract()?)?;
         options.set_row_offset(required_record_pickle_item(state, "row_offset")?.extract()?)?;
         options
@@ -2055,6 +2092,31 @@ impl PyRecordOptions {
         Ok(())
     }
 
+    /// How long a closed handle serves the metadata its medium cached, in
+    /// milliseconds: the origin's root, its row and column counts, a footer.
+    ///
+    /// `0`, the default, is realtime - a closed handle reads afresh on every
+    /// ask - and `n` serves an entry younger than `n` milliseconds, so what
+    /// another writer changes is seen once the entry is that old. An open
+    /// handle serves what it read until it closes whatever this says, and a
+    /// write through the handle refreshes or drops the entry either way.
+    /// Outside the options' identity: two options that differ only here
+    /// compare and hash as equal. Milliseconds, where `IOBase.buffered(ttl=)`
+    /// is seconds. The setter takes a whole number - anything `__index__`
+    /// reads - clears to `0` on `None`, and refuses a `bool`, a negative or
+    /// a fractional one, the last two naming `$.cache_ttl`.
+    #[getter]
+    fn cache_ttl(&self) -> u64 {
+        self.inner.cache_ttl().millis()
+    }
+
+    #[setter]
+    fn set_cache_ttl(&mut self, cache_ttl: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_cache_ttl(cache_ttl_from_value(cache_ttl)?);
+        Ok(())
+    }
+
     /// The bound on how many result rows flow in total, when one is set.
     ///
     /// A count of rows, applied last - after the declared schema, selection,
@@ -2181,7 +2243,8 @@ impl PyRecordOptions {
     /// `max_row_size`.
     ///
     /// The setter splits a `Plan`, its text, a clause, or a `Field` back into
-    /// those sections, replacing every one of them.
+    /// those sections, replacing every one of them but the declared field,
+    /// which a plan with no `create` section leaves standing.
     #[getter]
     fn plan(&self) -> PyPlan {
         PyPlan::from_core(self.inner.plan())
@@ -2652,6 +2715,7 @@ impl PyTextOptions {
             "batch_row_size" => self.set_batch_row_size(value.extract()?)?,
             "commit_batch_num" => self.set_commit_batch_num(given)?,
             "num_threads" => self.set_num_threads(given)?,
+            "cache_ttl" => self.set_cache_ttl(value)?,
             "max_row_size" => self.set_max_row_size(value.extract()?)?,
             "row_offset" => self.set_row_offset(value.extract()?)?,
             "max_byte_size" => self.set_max_byte_size(value.extract()?)?,
@@ -2794,6 +2858,18 @@ impl PyTextOptions {
     }
 
     #[getter]
+    fn cache_ttl(&self) -> u64 {
+        self.inner.cache_ttl().millis()
+    }
+
+    #[setter]
+    fn set_cache_ttl(&mut self, cache_ttl: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_cache_ttl(cache_ttl_from_value(cache_ttl)?);
+        Ok(())
+    }
+
+    #[getter]
     fn max_row_size(&self) -> Option<u64> {
         self.inner.max_row_size()
     }
@@ -2909,7 +2985,8 @@ impl PyTextOptions {
     /// `max_row_size`.
     ///
     /// The setter splits a `Plan`, its text, a clause, or a `Field` back into
-    /// those sections, replacing every one of them.
+    /// those sections, replacing every one of them but the declared field,
+    /// which a plan with no `create` section leaves standing.
     #[getter]
     fn plan(&self) -> PyPlan {
         PyPlan::from_core(self.inner.plan())

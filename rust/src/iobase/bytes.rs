@@ -700,6 +700,10 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::as_any(self.as_ref())
     }
 
+    fn read_origin_field(&self) -> Result<Option<crate::Field>> {
+        IOMedia::read_origin_field(self.as_ref())
+    }
+
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field> {
         IOMedia::read_arrow_field(self.as_ref(), options)
     }

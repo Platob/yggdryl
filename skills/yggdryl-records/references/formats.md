@@ -41,11 +41,12 @@ another encoding's, naming both.
 | Plain text | `TextOptions`: `rowheader`, `autotype` (on), `framing`, `lstrip`/`rstrip`, `linesep`, `start_rownum`, `parse_mtime` (on), `leading_fragment`, `max_record_byte_size`, `rename_columns`, `timezone` | 35,840 rows or 64 MiB per batch | named regex captures become columns |
 | CSV, TSV | `separator`, `quote`, `escape`, `comment`, `header`, `null_values`, `trim`, `infer_row_size`; Rust also `linesep` | `,` (`\t` under a `.tsv` name), `"`, none, none, on, `[""]`, off, 1,024, `\n` | one ASCII byte per role, never a line break, no two roles one byte; Python and JavaScript spell a byte role as a one-character text and clear `quote`/`escape`/`comment` with `None`/`null` |
 | every encoding | `level` | 6 | outer `.gz`/`.zz`/`.zst` level |
+| every encoding | `cache_ttl` (Rust and Python) | `0`, realtime | milliseconds a closed handle serves its cached metadata - origin field, counts, footer - while the entry is younger; an open handle serves it until `close`; outside the options' identity; Python's `buffered(ttl=)` is seconds |
 | Iceberg | `IcebergOptions`: `read_parallelism`, `write_parallelism`, `max_open_partitions` (`write.max-open-partitions`, 128: past it a write closes and writes the lowest partition; a source sorted on the partition columns closes each as the next arrives), `read_parallel_min_files`, `read_parallel_min_file_size`, `target_file_size`, `commit_retries`, `data_mime_type` | explicit -> table property (`read.parallelism`, ...) -> default | per call (`options=`) or `set_options` per table |
 
 ## Pushdown
 
-| Encoding | `select` / narrower `field` | `filter` | `row_offset`, `max_row_size` / `max_byte_size` |
+| Encoding | `select` / declared `field` (its children that the `select` and the early `filter` read are decoded) | `filter` | `row_offset`, `max_row_size` / `max_byte_size` |
 | --- | --- | --- | --- |
 | Arrow IPC | skipped columns are never decoded | rows filtered after decode | stops pulling; the boundary batch is sliced |
 | Parquet | unprojected column chunks are never fetched (footer-first read above 1 MB; chunks under 1 MB apart share a request) | row groups whose footer statistics rule it out are skipped, then rows filtered; float min/max never prune (NaN), null counts do | decodes lazily, one file at a time, on one thread |

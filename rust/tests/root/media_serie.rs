@@ -114,40 +114,6 @@ fn edited_media_rows_are_owned_snapshots_and_refusal_is_atomic() {
 }
 
 #[test]
-fn shaping_a_native_row_stream_pulls_only_the_rows_its_result_needs() {
-    for length in [8, 1_024] {
-        let pulls = Arc::new(AtomicUsize::new(0));
-        let count = Arc::clone(&pulls);
-        let source = yggdryl::StreamSerie::from_rows(
-            field(),
-            (0..length).map(move |id| {
-                count.fetch_add(1, Ordering::Relaxed);
-                Ok(Scalar::from_sequence([
-                    Scalar::from(id as i64),
-                    Scalar::from(id as i64 * 2),
-                ]))
-            }),
-        );
-        let options = CsvOptions::new()
-            .with_field(field())
-            .with_filter("id >= 2")
-            .unwrap()
-            .with_select("value as qty")
-            .unwrap()
-            .with_max_row_size(1);
-        let mut shaped = options.apply_stream(source).unwrap();
-        assert_eq!(pulls.load(Ordering::Relaxed), 0);
-        assert_eq!(
-            shaped.next().unwrap().unwrap(),
-            Scalar::from_sequence([Scalar::from(4_i64)])
-        );
-        assert_eq!(pulls.load(Ordering::Relaxed), 3, "corpus {length}");
-        assert!(shaped.next().is_none());
-        assert_eq!(pulls.load(Ordering::Relaxed), 3);
-    }
-}
-
-#[test]
 fn a_media_scalar_access_does_not_hold_or_refuse_later_rows() {
     let source = csv(b"id,value\n1,2\n2,invalid\n");
     assert_eq!(
@@ -270,6 +236,9 @@ fn an_avro_row_stream_yields_its_prefix_before_a_bad_datum_in_the_same_block() {
     assert!(rows.next().is_none());
 }
 
+/// A medium that states its schema through the options it declares - the
+/// one schema answer is the trait default's - and counts the rows its native
+/// stream is pulled for.
 struct RowMedia {
     handle: Buffer,
     pulls: Arc<AtomicUsize>,
@@ -284,9 +253,6 @@ impl yggdryl::IOMedia for RowMedia {
     }
     fn record_options(&self) -> yggdryl::Result<yggdryl::media::RecordOptions> {
         Ok(CsvOptions::new().with_field(field()).into())
-    }
-    fn read_arrow_field(&self, _: &yggdryl::media::RecordOptions) -> yggdryl::Result<Field> {
-        Ok(field())
     }
     fn read_serie(
         &self,
@@ -705,4 +671,215 @@ fn parquet_native_rows_keep_the_published_media_root_name() {
     let published = source.field().clone();
     assert_eq!(published.name(), "scan");
     assert_eq!(source.into_stream().unwrap().field(), &published);
+}
+
+/// A user function that counts the rows it is evaluated over and answers its
+/// argument, so a `where` conjunct calling it tells how often it ran.
+struct Probe {
+    signature: yggdryl::expression::FunctionSignature,
+    seen: Arc<AtomicUsize>,
+}
+
+impl yggdryl::expression::UserFunction for Probe {
+    fn signature(&self) -> &yggdryl::expression::FunctionSignature {
+        &self.signature
+    }
+
+    fn call(&self, arguments: &[Scalar]) -> yggdryl::Result<Scalar> {
+        self.seen.fetch_add(1, Ordering::Relaxed);
+        Ok(arguments[0].clone())
+    }
+}
+
+/// Register `p2probe.<name>(value)` and answer the count of its evaluations.
+fn probe(name: &str) -> Arc<AtomicUsize> {
+    let seen = Arc::new(AtomicUsize::new(0));
+    let signature = yggdryl::expression::FunctionSignature::new(
+        yggdryl::expression::UserRef::new("p2probe", name).unwrap(),
+        [DataType::Int64.nullable_field("value")],
+        DataType::Int64.nullable_field("returns"),
+    )
+    .unwrap();
+    yggdryl::expression::register_function(Arc::new(Probe {
+        signature,
+        seen: Arc::clone(&seen),
+    }))
+    .unwrap();
+    seen
+}
+
+#[test]
+fn a_where_conjunct_over_an_alias_runs_once_per_row_over_a_native_stream_read() {
+    for length in [8_usize, 1_024] {
+        let seen = probe("late_stream");
+        let mut document = String::from("id,value\n");
+        for id in 0..length {
+            document.push_str(&format!("{id},{}\n", id * 2));
+        }
+        // `doubled` is built by the select, so the conjunct runs after it:
+        // the medium is never handed it, and the residual runs it once.
+        let source = csv(document.as_bytes())
+            .with_select("id, value * 2 as doubled")
+            .unwrap()
+            .with_filter("p2probe.late_stream(doubled) >= 8")
+            .unwrap();
+        assert_eq!(seen.load(Ordering::Relaxed), 0, "binding evaluates no row");
+
+        let rows = source.into_stream().unwrap().collect_rows().unwrap();
+        assert_eq!(rows.len(), length - 2, "doubled is 4 * id, corpus {length}");
+        assert_eq!(seen.load(Ordering::Relaxed), length, "corpus {length}");
+    }
+}
+
+#[test]
+fn a_where_conjunct_over_an_alias_runs_once_per_row_over_an_arrow_read() {
+    for length in [8_usize, 1_024] {
+        let seen = probe("late_arrow");
+        let mut media = yggdryl::ipc::Ipc::new(Buffer::new())
+            .with_options(yggdryl::ipc::IpcOptions::new().with_field(field()));
+        yggdryl::IOMedia::overwrite_serie(
+            &mut media,
+            yggdryl::Serie::from_scalars(
+                field(),
+                (0..length).map(|id| {
+                    Scalar::from_sequence([Scalar::from(id as i64), Scalar::from(id as i64 * 2)])
+                }),
+            )
+            .unwrap(),
+            None,
+        )
+        .unwrap();
+        let options = yggdryl::IOMedia::record_options(&media)
+            .unwrap()
+            .with_select("id, value * 2 as doubled")
+            .unwrap()
+            .with_filter("p2probe.late_arrow(doubled) >= 8")
+            .unwrap();
+
+        let rows: usize = yggdryl::IOMedia::read_arrow_reader(&media, &options)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum();
+        assert_eq!(rows, length - 2, "corpus {length}");
+        assert_eq!(seen.load(Ordering::Relaxed), length, "corpus {length}");
+    }
+}
+
+#[test]
+fn a_row_range_counts_result_rows_once_after_the_filter() {
+    let mut document = String::from("id,value\n");
+    for id in 1..=10 {
+        document.push_str(&format!("{id},{}\n", id * 2));
+    }
+    // Ids 2 to 10 match, the range skips one of them and keeps two: 3 and 4.
+    let rows = csv(document.as_bytes())
+        .with_filter("id >= 2")
+        .unwrap()
+        .with_row_range(1, Some(2))
+        .unwrap()
+        .into_stream()
+        .unwrap()
+        .collect_rows()
+        .unwrap();
+    assert_eq!(
+        rows,
+        [[3_i64, 6], [4, 8]].map(|row| Scalar::from_sequence(row.map(Scalar::from)))
+    );
+}
+
+#[test]
+fn a_bound_composes_with_a_select_and_a_late_filter_once() {
+    let mut document = String::from("id,value\n");
+    for id in 1..=10 {
+        document.push_str(&format!("{id},{}\n", id * 2));
+    }
+    let rows = csv(document.as_bytes())
+        .with_select("id, value * 2 as doubled")
+        .unwrap()
+        .with_filter("doubled > 8")
+        .unwrap()
+        .with_row_range(2, Some(3))
+        .unwrap()
+        .into_stream()
+        .unwrap()
+        .collect_rows()
+        .unwrap();
+    // `doubled` is 4 * id: ids 3 to 10 match, two are skipped, three kept.
+    assert_eq!(
+        rows,
+        [[5_i64, 20], [6, 24], [7, 28]].map(|row| Scalar::from_sequence(row.map(Scalar::from)))
+    );
+}
+
+#[test]
+fn a_selection_that_drops_an_order_key_publishes_no_declared_order() {
+    let mut ordered = field();
+    ordered
+        .as_sort_mut()
+        .set_by(["value".parse::<yggdryl::expression::Ordering>().unwrap()])
+        .unwrap();
+    let source = CSVSerie::new(
+        Csv::new(Buffer::from_bytes(b"id,value\n1,1\n2,2\n".to_vec()))
+            .with_options(CsvOptions::new().with_field(ordered)),
+    )
+    .unwrap();
+    assert_eq!(source.field().get_metadata("SORT:by"), Some(r#"["value"]"#));
+
+    // The serie binds its field through the medium's one schema answer, so
+    // the order is kept where the selection publishes every key unchanged and
+    // is not claimed where it drops one.
+    let kept = source.clone().with_select("value, id").unwrap();
+    assert_eq!(kept.field().get_metadata("SORT:by"), Some(r#"["value"]"#));
+    let dropped = source.with_select("id").unwrap();
+    assert_eq!(dropped.field().get_metadata("SORT:by"), None);
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    //! What `rust/src/media_serie.rs` pins and a caller cannot reach: a read's
+    //! residual, run over a native row stream as a read door composes it.
+
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use yggdryl::Scalar;
+    use yggdryl::csv::CsvOptions;
+    use yggdryl::internals::media_serie::apply_stream;
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+
+    use super::field;
+
+    #[test]
+    fn shaping_a_native_row_stream_pulls_only_the_rows_its_result_needs() {
+        for length in [8, 1_024] {
+            let pulls = Arc::new(AtomicUsize::new(0));
+            let count = Arc::clone(&pulls);
+            let source = yggdryl::StreamSerie::from_rows(
+                field(),
+                (0..length).map(move |id| {
+                    count.fetch_add(1, Ordering::Relaxed);
+                    Ok(Scalar::from_sequence([
+                        Scalar::from(id as i64),
+                        Scalar::from(id as i64 * 2),
+                    ]))
+                }),
+            );
+            let options = CsvOptions::new()
+                .with_field(field())
+                .with_filter("id >= 2")
+                .unwrap()
+                .with_select("value as qty")
+                .unwrap()
+                .with_max_row_size(1);
+            let mut shaped = apply_stream(&RecordOptions::from(options), source).unwrap();
+            assert_eq!(pulls.load(Ordering::Relaxed), 0);
+            assert_eq!(
+                shaped.next().unwrap().unwrap(),
+                Scalar::from_sequence([Scalar::from(4_i64)])
+            );
+            assert_eq!(pulls.load(Ordering::Relaxed), 3, "corpus {length}");
+            assert!(shaped.next().is_none());
+            assert_eq!(pulls.load(Ordering::Relaxed), 3);
+        }
+    }
 }

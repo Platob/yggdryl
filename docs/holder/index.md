@@ -28,7 +28,7 @@ Holder::folder(path) / Holder::file(path)      // commit to a role up front
 Holder::buffer(Buffer) -> Holder               // in memory
 Holder::from_url(location, properties)         // a Url, or any identifier that locates one: the scheme picks the backend
 holder.into_declared_media() -> Holder         // compose what the name declares, reading nothing
-holder.open() -> Result<()>                    // into_media, then open; keeps the schema and the medium's own caches
+holder.open() -> Result<()>                    // into_media, then open; the medium's cache is served until close
 holder.as_io() -> &dyn IOBase                  // the variant as the trait object
 ```
 
@@ -1132,7 +1132,7 @@ A name declaring a coding is composed at construction, so `IOBase("app.log.gz")`
 
 ### Open and close
 
-A handle works without `open`; opening moves materialization to a known point and keeps cached state until `close`. Python binds the pair to `with`, JavaScript adds `Symbol.dispose`.
+A handle works without `open`; opening moves materialization to a known point and keeps cached state until `close`, and a closed handle serves a medium's cached metadata only for the options' `cache_ttl` - `0`, the default, asks the store on every call (the table below). Python binds the pair to `with`, JavaScript adds `Symbol.dispose`.
 
 === "Rust"
 
@@ -1193,8 +1193,9 @@ A handle works without `open`; opening moves materialization to a known point an
             rows += batch.num_rows
     assert rows == 2
 
-    # Outside a scope the same calls still work - each one just fetches fresh,
-    # which is exactly right for a resource another writer may be changing.
+    # Outside a scope the same calls still work - each one just fetches fresh
+    # (the default `cache_ttl` of 0 is realtime), which is exactly right for a
+    # resource another writer may be changing.
     assert IOBase(target).read_arrow_field() == field
     ```
 
@@ -1220,15 +1221,21 @@ A handle works without `open`; opening moves materialization to a known point an
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
-| Implementation | `open` caches |
-| --- | --- |
-| [`Buffer`](#buffer) | nothing; `opened` stays `false` |
-| [`LocalFile`](#local) | descriptor and memory mapping |
-| [`Coded`](../media/compression.md) | the decoded value |
-| [IPC](../media/ipc.md) | schema and dimensions |
-| [Parquet](../media/parquet.md) | the footer, which `IOMedia::as_any` answers as a `ParquetFooter` |
-| [Avro](../media/avro.md) | header and block metadata |
-| [Text](../media/text.md) | resolved field, coding plan, dimensions |
+| Implementation | `open` caches | Closed, under `cache_ttl` |
+| --- | --- | --- |
+| [`Buffer`](#buffer) | nothing; `opened` stays `false` | nothing |
+| [`LocalFile`](#local) | descriptor and memory mapping | not served |
+| [`Coded`](../media/compression.md) | the decoded value | not served |
+| [IPC](../media/ipc.md) | the origin's field and the dimensions | the same entry |
+| [Parquet](../media/parquet.md) | the footer, which `IOMedia::as_any` answers as a `ParquetFooter`, with the origin's field and the dimensions | the same entry |
+| [Avro](../media/avro.md) | header and block metadata: the origin's field and the dimensions | the same entry |
+| [CSV](../media/csv.md) | the origin's field and the dialect it was inferred under, answered to options reading the document as they did | the same entry |
+| [Text](../media/text.md) | the line count; a line states no record shape of its own, so the origin is none | the same entry |
+| [XML for Analysis](../media/xmla.md) | the origin's field | the same entry |
+| [Excel](../media/excel.md) | the parsed workbook | the same entry |
+| [Iceberg](../media/iceberg.md) `IcebergTable` | nothing at `open`: the current document and the manifest list its last commit wrote, held from first use until `close` or a clone and replaced by each commit | not governed: the table format's own cache |
+
+A media wrapper's entry is one [`MediaCache`](../media/index.md#the-metadata-cache): served while the handle is open and, on a closed handle, while it is younger than the options' `cache_ttl` in milliseconds. A write through the wrapper refreshes it with what the write published where what is written is the origin (IPC, Parquet, Avro) and drops it where the origin is a reading of it (CSV, XMLA, Excel, text); `clear` sets a leaf's entry empty, `pwrite`, `truncate`, `create_bytes`, `set_media_type` and a borrowed `handle_mut` drop it, and `remove` and `close` drop it with the session ([the metadata cache](../media/index.md#the-metadata-cache)). A resource another writer may be changing wants the default.
 
 ### Clear and remove
 
@@ -1691,7 +1698,8 @@ One Arrow batch read and three explicit write intents on every handle. The handl
 
     ```text
     read_arrow_reader(&self, options: &RecordOptions) -> Result<BatchReader>
-    read_arrow_field(&self, options: &RecordOptions) -> Result<Field>
+    read_arrow_field(&self, options: &RecordOptions) -> Result<Field>   // the declared root, else the origin's, narrowed by the select
+    read_origin_field(&self) -> Result<Option<Field>>   // the whole root the origin holds, no declaration, no clause; None where it states no shape
     row_size(&self) -> Result<u64>          // whole media; projection and limits never change it
     column_size(&self) -> Result<usize>
     merge_by(&self) -> Result<Selector>     // the key a merge naming none matches on; empty but on an Iceberg table
@@ -1938,7 +1946,7 @@ fs.rmSync(root, { recursive: true, force: true })
 
 ### Column pushdown
 
-The options' field selects and casts in one pass; `select` narrows by name. [Parquet](../media/parquet.md) skips the column chunks, [Arrow IPC](../media/ipc.md) skips decode and allocation.
+A read decodes the declared field's children - the origin's with none declared, where the medium knows them before it decodes (a Parquet footer, an Avro header; an Arrow IPC stream projects under a declaration alone) - intersected with the columns the `select` and the early half of the `filter` read, and casts what it decoded onto the declared field in the same pass; `select` narrows by name. A declared column outside the selection is never asked for, so a full declaration under a `select` decodes the selected columns alone. [Parquet](../media/parquet.md) skips the column chunks, [Arrow IPC](../media/ipc.md) skips decode and allocation.
 
 === "Rust"
 
@@ -1986,6 +1994,12 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
     // `select` narrows by name instead, in the order the names are given.
     let selecting = plain.clone().with_select("symbol")?;
     let first = handle.read_arrow_reader(&selecting)?.next().unwrap()?;
+    assert_eq!(first.num_columns(), 1);
+    assert_eq!(first.schema().field(0).name(), "symbol");
+
+    // A full declaration under a `select` decodes the selected column alone.
+    let declared = plain.clone().with_field(handle.read_arrow_field(&plain)?).with_select("symbol")?;
+    let first = handle.read_arrow_reader(&declared)?.next().unwrap()?;
     assert_eq!(first.num_columns(), 1);
     assert_eq!(first.schema().field(0).name(), "symbol");
 
@@ -2048,6 +2062,12 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
     selecting = handle.record_options()
     selecting.select = ["symbol"]
     assert handle.read_arrow_reader(options=selecting).read_all().column_names == ["symbol"]
+
+    # A full declaration under a `select` decodes the selected column alone.
+    declared = handle.record_options()
+    declared.field = handle.read_arrow_field()
+    declared.select = ["symbol"]
+    assert handle.read_arrow_reader(options=declared).read_all().column_names == ["symbol"]
     ```
 
 === "JavaScript"
@@ -2091,11 +2111,17 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
     // `select` narrows by name instead, in the order the names are given.
     const selected = handle.readArrowReader(options.withSelect(['symbol'])).intoTable()
     assert.deepEqual(selected.schema.fields.map((field) => field.name), ['symbol'])
+
+    // A full declaration under a `select` decodes the selected column alone.
+    const declared = handle
+      .readArrowReader(options.withField(handle.readArrowField()).withSelect(['symbol']))
+      .intoTable()
+    assert.deepEqual(declared.schema.fields.map((field) => field.name), ['symbol'])
     ```
 
 ### Limits
 
-`row_offset` skips leading result rows, `max_row_size` counts the result rows after it and `max_byte_size` their uncompressed Arrow bytes. All three apply last - a plan's `offset` and `limit` are the first two - and a satisfied limit stops pulling.
+`row_offset` skips leading result rows, `max_row_size` counts the result rows after it and `max_byte_size` their uncompressed Arrow bytes. All three apply last - a plan's `offset` and `limit` are the first two - and a satisfied limit stops pulling. Each is applied once: a medium takes a bound natively only as a fetch plan, the exact trim runs once after it, and `overwrite_records` and its twins pull no row past the skip and the bound where no `where` keeps rows out, leaving the exact trim to the write that shapes its rows, so a skip of 2 and a bound of 3 over ten rows land three rows.
 
 === "Rust"
 

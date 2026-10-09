@@ -170,6 +170,10 @@ impl crate::IOMedia for Coded {
         crate::IOMedia::merge_by(self.as_io())
     }
 
+    fn read_origin_field(&self) -> Result<Option<crate::Field>> {
+        crate::IOMedia::read_origin_field(self.as_io())
+    }
+
     fn read_arrow_field(&self, options: &crate::media::RecordOptions) -> Result<crate::Field> {
         crate::IOMedia::read_arrow_field(self.as_io(), options)
     }

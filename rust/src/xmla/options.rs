@@ -50,6 +50,12 @@ pub struct XmlaOptions {
     /// The threads a write of several parts runs on at once; `None` is the
     /// destination's own answer.
     pub num_threads: Option<usize>,
+    /// How long a closed handle serves the metadata it read - the origin's
+    /// field, its counts - in milliseconds; `0`, the default, reads afresh on
+    /// every ask, and an open handle serves what it holds until it closes.
+    /// Outside the options' identity: it changes when a change is seen,
+    /// never what is.
+    pub cache_ttl: crate::media::CacheTtl,
     /// Compression level applied when the handle declares a coding.
     pub level: Level,
     /// Whether the document is a SOAP message - the response of `method` -
@@ -80,6 +86,7 @@ impl XmlaOptions {
             max_byte_size: None,
             commit_batch_num: None,
             num_threads: None,
+            cache_ttl: crate::media::CacheTtl::REALTIME,
             level: Level::DEFAULT,
             envelope: true,
             method: Method::Execute,

@@ -875,7 +875,7 @@ mod avro {
                     &options,
                 )
                 .unwrap();
-            assert!(!media.opened(), "a closed write must not start a cache");
+            assert!(!media.opened(), "a closed write must not start a session");
             media.open().unwrap();
             assert!(media.opened());
             let derived = media.read_arrow_field(&options).unwrap();
@@ -1300,6 +1300,556 @@ mod avro {
             assert_eq!(read[0].column(0).as_ref(), batch.column(0).as_ref());
             assert_eq!(read[0].column(1).as_ref(), batch.column(1).as_ref());
             assert_eq!(read[0].column(2).as_ref(), batch.column(2).as_ref());
+        }
+
+        /// Every verb that changes what the handle holds without saying what
+        /// ends the answers an open session held: the next ask reads the container,
+        /// and the session holds what it read again.
+        #[test]
+        fn every_byte_verb_drops_what_an_open_session_holds() {
+            use yggdryl::holder::counted::{Calls, Counted, Group};
+
+            for verb in ["handle_mut", "set_media_type", "pwrite", "truncate"] {
+                let (_, template) = batch();
+                let mut writer = Avro::new(handle());
+                let options = writer.record_options().unwrap();
+                writer
+                    .overwrite_arrow_reader(
+                        yggdryl::arrow::batch_reader(template.schema(), [template]),
+                        &options,
+                    )
+                    .unwrap();
+                let counted = Counted::new(writer.into_handle());
+                let calls: Arc<Calls> = Arc::clone(counted.calls());
+                let mut media = Avro::new(counted);
+                media.open().unwrap();
+
+                let asks = |media: &Avro<Counted<Buffer>>| {
+                    media.read_origin_field().unwrap();
+                    media.row_size().unwrap();
+                    media.column_size().unwrap();
+                };
+                asks(&media);
+                calls.reset();
+                asks(&media);
+                assert_eq!(calls.group(Group::Read), 0, "{verb}: warm before");
+                match verb {
+                    "handle_mut" => {
+                        let _ = media.handle_mut();
+                    }
+                    "set_media_type" => {
+                        let media_type = media.media_type().clone();
+                        media.set_media_type(media_type);
+                    }
+                    "pwrite" => {
+                        let first = media.read_range_bytes(0, 1).unwrap();
+                        media.pwrite(0, &first).unwrap();
+                    }
+                    _ => {
+                        let size = media.handle().size();
+                        media.truncate(size).unwrap();
+                    }
+                }
+                calls.reset();
+                asks(&media);
+                assert!(
+                    calls.group(Group::Read) > 0,
+                    "{verb}: the held answers are dropped"
+                );
+                calls.reset();
+                asks(&media);
+                assert_eq!(calls.group(Group::Read), 0, "{verb}: and held again");
+            }
+        }
+
+        /// What a read decodes and what the container states, seen from the
+        /// record surface.
+        mod origin {
+            use arrow_array::RecordBatch;
+
+            use yggdryl::StructType;
+            use yggdryl::avro::Avro;
+            use yggdryl::holder::Buffer;
+            use yggdryl::media::IORecordOptions;
+            use yggdryl::{DataType, Field, IOMedia, Scalar};
+
+            use super::super::{handmade_container, put_bytes, put_long};
+            use super::{batch, handle};
+
+            /// The names of a root's columns.
+            fn names(field: &Field) -> Vec<&str> {
+                field.fields().iter().map(Field::name).collect()
+            }
+
+            /// A container of two rows whose `value` strings are `ok` and bytes
+            /// that are not UTF-8: a column nobody may decode.
+            fn garbled() -> Buffer {
+                let mut payload = Vec::new();
+                put_long(&mut payload, 1);
+                put_bytes(&mut payload, b"ok");
+                put_long(&mut payload, 2);
+                put_bytes(&mut payload, &[0xff]);
+                handmade_container(
+                    r#"{"type":"record","name":"rows","fields":[
+                        {"name":"id","type":"long"},{"name":"value","type":"string"}]}"#,
+                    "null",
+                    &[(2, payload)],
+                )
+            }
+
+            /// The two columns of `garbled`, declared in full.
+            fn declared() -> Field {
+                StructType::from_fields([
+                    DataType::Int64.required_field("id"),
+                    DataType::utf8().required_field("value"),
+                ])
+                .map(DataType::from)
+                .unwrap()
+                .required_field("rows")
+            }
+
+            #[test]
+            fn a_full_declared_field_with_a_select_decodes_the_selected_columns_alone() {
+                let media = Avro::new(garbled());
+                let whole = media.record_options().unwrap().with_field(declared());
+
+                // The control: the column of garbage is decoded when it is asked for.
+                let failed = match media.read_arrow_reader(&whole) {
+                    Err(_) => true,
+                    Ok(mut reader) => reader.any(|batch| batch.is_err()),
+                };
+                assert!(failed, "the whole row decodes");
+                let rows = (|| -> yggdryl::Result<Vec<Scalar>> {
+                    IOMedia::read_serie(&media, Some(&whole))?
+                        .into_stream()?
+                        .collect_rows()
+                })();
+                assert!(rows.is_err(), "and so does the stream");
+
+                // The declared field names both columns and the select keeps one.
+                let selected = whole.with_select("id").unwrap();
+                let batches: Vec<RecordBatch> = media
+                    .read_arrow_reader(&selected)
+                    .unwrap()
+                    .collect::<Result<_, _>>()
+                    .expect("the selected column decodes");
+                assert_eq!(batches.iter().map(RecordBatch::num_rows).sum::<usize>(), 2);
+                assert!(batches.iter().all(|batch| batch.num_columns() == 1));
+                let rows = IOMedia::read_serie(&media, Some(&selected))
+                    .unwrap()
+                    .into_stream()
+                    .unwrap()
+                    .collect_rows()
+                    .unwrap();
+                assert_eq!(
+                    rows,
+                    [1_i64, 2].map(|id| Scalar::from_sequence([Scalar::from(id)]))
+                );
+            }
+
+            #[test]
+            fn one_schema_answer_under_a_select_whether_the_field_is_declared_or_stored() {
+                let (field, batch) = batch();
+                let mut writer = Avro::new(handle()).with_name("trades");
+                let options = writer.record_options().unwrap();
+                writer
+                    .overwrite_arrow_reader(
+                        yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+                        &options,
+                    )
+                    .unwrap();
+                let media = Avro::new(writer.into_handle()).with_name("trades");
+
+                let selected = media.record_options().unwrap().with_select("id").unwrap();
+                let stored = media.read_arrow_field(&selected).unwrap();
+                assert_eq!(names(&stored), ["id"]);
+                let declared = media
+                    .read_arrow_field(&selected.clone().with_field(field.clone()))
+                    .unwrap();
+                assert_eq!(names(&declared), ["id"]);
+                assert_eq!(stored.fields()[0].dtype(), declared.fields()[0].dtype());
+
+                // It is the shape the read publishes, too.
+                let read = media
+                    .read_arrow_reader(&selected.with_field(field))
+                    .unwrap()
+                    .schema();
+                assert_eq!(
+                    names(&Field::from_arrow_schema("trades", read.as_ref()).unwrap()),
+                    ["id"]
+                );
+            }
+
+            #[test]
+            fn the_origin_is_what_the_container_states_whatever_the_options_declare_or_select() {
+                let media = Avro::new(garbled()).with_options(
+                    yggdryl::avro::AvroOptions::new()
+                        .with_field(
+                            StructType::from_fields([DataType::Int64.required_field("id")])
+                                .map(DataType::from)
+                                .unwrap()
+                                .required_field("rows"),
+                        )
+                        .with_select("id")
+                        .unwrap(),
+                );
+                let origin = media.read_origin_field().unwrap().expect("a stated shape");
+                assert_eq!(names(&origin), ["id", "value"]);
+                let published = media
+                    .read_arrow_field(&media.record_options().unwrap())
+                    .unwrap();
+                assert_eq!(names(&published), ["id"]);
+            }
+
+            #[test]
+            fn an_empty_container_states_no_origin_and_no_schema_unless_one_is_declared() {
+                let media = Avro::new(Buffer::new());
+                assert!(media.read_origin_field().unwrap().is_none());
+                let options = media.record_options().unwrap();
+                let error = media.read_arrow_field(&options).unwrap_err().to_string();
+                assert!(error.contains("$.field"), "{error}");
+                assert!(error.contains("no schema"), "{error}");
+                assert_eq!(
+                    media
+                        .read_arrow_field(&options.with_field(declared()))
+                        .unwrap(),
+                    declared()
+                );
+            }
+        }
+
+        /// What a closed container's metadata cache serves under the options'
+        /// `cache_ttl`, with the clock the cache doors read installed by hand, and
+        /// what every write and every byte verb does to it.
+        #[cfg(feature = "internals")]
+        mod ttl {
+            use std::sync::Arc;
+            use std::time::{Duration, Instant};
+
+            use yggdryl::avro::{Avro, AvroOptions};
+            use yggdryl::holder::Buffer;
+            use yggdryl::holder::counted::{Calls, Counted, Group};
+            use yggdryl::internals::media_cache::with_clock;
+            use yggdryl::media::IORecordOptions;
+            use yggdryl::{Field, IOBase, IOMedia};
+
+            use super::{Shared, batch, handle};
+
+            /// The names of a root's columns.
+            fn names(field: &Field) -> Vec<&str> {
+                field.fields().iter().map(Field::name).collect()
+            }
+
+            /// A container of `copies` copies of the three-row batch.
+            fn encoded(copies: usize) -> Buffer {
+                let (_, template) = batch();
+                let schema = template.schema();
+                let batches = std::iter::repeat_n(template, copies);
+                let mut media = Avro::new(handle());
+                let options = media.record_options().unwrap();
+                media
+                    .overwrite_arrow_reader(yggdryl::arrow::batch_reader(schema, batches), &options)
+                    .unwrap();
+                media.into_handle()
+            }
+
+            /// A container of `copies` batches over a counted handle, read under a
+            /// `ttl` of milliseconds.
+            fn counted(copies: usize, ttl: u64) -> (Avro<Counted<Buffer>>, Arc<Calls>) {
+                let counted = Counted::new(encoded(copies));
+                let calls = Arc::clone(counted.calls());
+                let media = Avro::new(counted).with_options(AvroOptions::new().with_cache_ttl(ttl));
+                (media, calls)
+            }
+
+            /// The three answers the cache serves: the origin, the rows, the columns.
+            fn ask<H: IOBase>(media: &Avro<H>) -> (Option<Field>, u64, usize) {
+                (
+                    media.read_origin_field().unwrap(),
+                    media.row_size().unwrap(),
+                    media.column_size().unwrap(),
+                )
+            }
+
+            /// The bytes read from the store while `ask` runs.
+            fn reads(calls: &Calls, ask: impl FnOnce()) -> u64 {
+                calls.reset();
+                ask();
+                calls.group(Group::Read)
+            }
+
+            #[test]
+            fn a_warm_closed_read_under_a_ttl_costs_no_store_call_until_the_entry_is_as_old_as_the_ttl()
+             {
+                let (media, calls) = counted(1, 1_000);
+                let options = media.record_options().unwrap();
+                let t0 = Instant::now();
+                let at = |milliseconds: u64| t0 + Duration::from_millis(milliseconds);
+
+                let (origin, rows, columns) = with_clock(t0, || ask(&media));
+                assert_eq!((rows, columns), (3, 4));
+                assert_eq!(
+                    names(origin.as_ref().expect("a stated shape")),
+                    ["id", "symbol", "price", "legs"]
+                );
+                assert!(
+                    calls.group(Group::Read) > 0,
+                    "the first ask reads the header"
+                );
+
+                let cost = reads(&calls, || {
+                    let warm = with_clock(at(999), || ask(&media));
+                    assert_eq!(warm.0, origin);
+                    assert_eq!((warm.1, warm.2), (rows, columns));
+                    let field = with_clock(at(999), || media.read_arrow_field(&options).unwrap());
+                    assert_eq!(field.field_len(), 4);
+                });
+                assert_eq!(cost, 0, "a warm closed read is free");
+
+                assert!(reads(&calls, || drop(with_clock(at(1_000), || ask(&media)))) > 0);
+                assert_eq!(
+                    reads(&calls, || drop(with_clock(at(1_999), || ask(&media)))),
+                    0
+                );
+                assert!(reads(&calls, || drop(with_clock(at(2_000), || ask(&media)))) > 0);
+            }
+
+            #[test]
+            fn a_realtime_closed_handle_reads_afresh_on_every_ask() {
+                let (media, calls) = counted(1, 0);
+                let first = reads(&calls, || drop(ask(&media)));
+                let second = reads(&calls, || drop(ask(&media)));
+                assert!(first > 0, "a closed realtime ask reads the container");
+                assert_eq!(second, first, "and what it read is not served again");
+            }
+
+            #[test]
+            fn an_open_handle_serves_whatever_the_ttl_says_until_it_closes() {
+                let t0 = Instant::now();
+                for ttl in [0, 1_000] {
+                    let (mut media, calls) = counted(1, ttl);
+                    media.open().unwrap();
+                    with_clock(t0, || drop(ask(&media)));
+                    let hour = t0 + Duration::from_secs(3_600);
+                    assert_eq!(
+                        reads(&calls, || drop(with_clock(hour, || ask(&media)))),
+                        0,
+                        "an open session serves, ttl {ttl}"
+                    );
+                    media.close().unwrap();
+                    assert!(
+                        reads(&calls, || drop(with_clock(hour, || ask(&media)))) > 0,
+                        "closing dropped the entry, ttl {ttl}"
+                    );
+                }
+            }
+
+            #[test]
+            fn an_out_of_band_write_is_seen_after_the_ttl_and_not_before() {
+                let shared = Shared::new(encoded(1));
+                let mut external = shared.clone();
+                let media = Avro::new(Counted::new(shared))
+                    .with_options(AvroOptions::new().with_cache_ttl(1_000_u64));
+                let t0 = Instant::now();
+                let at = |milliseconds: u64| t0 + Duration::from_millis(milliseconds);
+                assert_eq!(with_clock(t0, || media.row_size().unwrap()), 3);
+
+                external.write_all_bytes(encoded(2).as_slice()).unwrap();
+                assert_eq!(
+                    with_clock(at(999), || media.row_size().unwrap()),
+                    3,
+                    "the entry is younger than the TTL"
+                );
+                assert_eq!(with_clock(at(1_000), || media.row_size().unwrap()), 6);
+            }
+
+            #[test]
+            fn an_overwrite_answers_the_origin_and_the_rows_with_zero_reads() {
+                let (mut media, calls) = counted(1, 1_000);
+                let options = media.record_options().unwrap();
+                let (_, template) = batch();
+                let t0 = Instant::now();
+
+                with_clock(t0, || {
+                    media
+                        .overwrite_arrow_reader(
+                            yggdryl::arrow::batch_reader(
+                                template.schema(),
+                                [template.clone(), template.clone()],
+                            ),
+                            &options,
+                        )
+                        .unwrap();
+                });
+                let mut answers = None;
+                let cost = reads(&calls, || {
+                    answers = Some(with_clock(t0 + Duration::from_millis(500), || ask(&media)));
+                });
+                let (origin, rows, columns) = answers.unwrap();
+                assert_eq!(cost, 0, "the write said what it published");
+                assert_eq!((rows, columns), (6, 4));
+                assert_eq!(
+                    names(&origin.expect("the published root")),
+                    ["id", "symbol", "price", "legs"]
+                );
+            }
+
+            #[test]
+            fn an_overwrite_of_an_open_handle_answers_with_zero_reads_whatever_the_ttl() {
+                let (mut media, calls) = counted(1, 0);
+                media.open().unwrap();
+                let options = media.record_options().unwrap();
+                let (_, template) = batch();
+                media
+                    .overwrite_arrow_reader(
+                        yggdryl::arrow::batch_reader(
+                            template.schema(),
+                            [template.clone(), template.clone()],
+                        ),
+                        &options,
+                    )
+                    .unwrap();
+
+                let mut answers = None;
+                let cost = reads(&calls, || answers = Some(ask(&media)));
+                let (origin, rows, columns) = answers.unwrap();
+                assert_eq!(cost, 0, "the open session kept what the write published");
+                assert_eq!((rows, columns), (6, 4));
+                assert_eq!(
+                    names(&origin.expect("the published root")),
+                    ["id", "symbol", "price", "legs"]
+                );
+                assert!(media.opened());
+            }
+
+            #[test]
+            fn a_closed_realtime_write_keeps_nothing_it_could_serve() {
+                let (mut media, calls) = counted(1, 0);
+                let options = media.record_options().unwrap();
+                let (_, template) = batch();
+                media
+                    .overwrite_arrow_reader(
+                        yggdryl::arrow::batch_reader(
+                            template.schema(),
+                            [template.clone(), template],
+                        ),
+                        &options,
+                    )
+                    .unwrap();
+                assert!(reads(&calls, || assert_eq!(media.row_size().unwrap(), 6)) > 0);
+                assert!(!media.opened(), "a write starts no session");
+            }
+
+            #[test]
+            fn an_append_adds_the_rows_it_wrote_to_the_rows_it_holds() {
+                let (mut media, calls) = counted(1, 1_000);
+                let options = media.record_options().unwrap();
+                let (_, template) = batch();
+                let t0 = Instant::now();
+                assert_eq!(with_clock(t0, || media.row_size().unwrap()), 3);
+
+                with_clock(t0, || {
+                    media
+                        .append_arrow_reader(
+                            yggdryl::arrow::batch_reader(template.schema(), [template]),
+                            &options,
+                        )
+                        .unwrap();
+                });
+                let mut rows = 0;
+                let cost = reads(&calls, || {
+                    rows = with_clock(t0 + Duration::from_millis(1), || media.row_size().unwrap());
+                });
+                assert_eq!(rows, 6, "three held rows and three appended");
+                assert_eq!(cost, 0, "the append said what the container now holds");
+            }
+
+            #[test]
+            fn clear_answers_no_origin_and_zero_rows_with_zero_reads() {
+                let (mut media, calls) = counted(1, 1_000);
+                let t0 = Instant::now();
+                with_clock(t0, || {
+                    assert_eq!(ask(&media).1, 3);
+                    media.clear().unwrap();
+                });
+                let mut answers = None;
+                let cost = reads(&calls, || {
+                    answers = Some(with_clock(t0 + Duration::from_millis(10), || ask(&media)));
+                });
+                assert_eq!(cost, 0);
+                let (origin, rows, columns) = answers.unwrap();
+                assert!(origin.is_none(), "an emptied container states no shape");
+                assert_eq!((rows, columns), (0, 0));
+            }
+
+            /// Every verb that changes what the handle holds without saying what
+            /// leaves the next ask to read it - `set_media_type` among them, which
+            /// no cache dropped before.
+            #[test]
+            fn every_byte_verb_drops_the_entry() {
+                let t0 = Instant::now();
+                for verb in ["handle_mut", "set_media_type", "pwrite", "truncate"] {
+                    let (mut media, calls) = counted(1, 1_000);
+                    with_clock(t0, || drop(ask(&media)));
+                    assert_eq!(
+                        reads(&calls, || drop(with_clock(t0, || ask(&media)))),
+                        0,
+                        "{verb}: warm before"
+                    );
+                    match verb {
+                        "handle_mut" => {
+                            let _ = media.handle_mut();
+                        }
+                        "set_media_type" => {
+                            let media_type = media.media_type().clone();
+                            media.set_media_type(media_type);
+                        }
+                        "pwrite" => {
+                            let first = media.read_range_bytes(0, 1).unwrap();
+                            media.pwrite(0, &first).unwrap();
+                        }
+                        _ => {
+                            let size = media.handle().size();
+                            media.truncate(size).unwrap();
+                        }
+                    }
+                    assert!(
+                        reads(&calls, || drop(with_clock(t0, || ask(&media)))) > 0,
+                        "{verb}: the entry is dropped"
+                    );
+                    assert_eq!(
+                        reads(&calls, || drop(with_clock(t0, || ask(&media)))),
+                        0,
+                        "{verb}: and read again"
+                    );
+                }
+            }
+
+            #[test]
+            fn a_merge_and_a_removal_leave_no_stale_answer() {
+                let t0 = Instant::now();
+                let (mut media, _) = counted(1, 1_000);
+                with_clock(t0, || drop(ask(&media)));
+                media
+                    .options_mut()
+                    .set_merge_by(yggdryl::expression::Selector::from_columns(["id"]));
+                let options = media.record_options().unwrap();
+                let (_, template) = batch();
+                with_clock(t0, || {
+                    media
+                        .merge_arrow_reader(
+                            yggdryl::arrow::batch_reader(template.schema(), [template]),
+                            &options,
+                        )
+                        .unwrap();
+                });
+                // The same three ids: the merge replaced every row and added none.
+                assert_eq!(with_clock(t0, || media.row_size().unwrap()), 3);
+
+                media.remove(false).unwrap();
+                assert_eq!(with_clock(t0, || media.row_size().unwrap()), 0);
+                assert!(with_clock(t0, || media.read_origin_field().unwrap()).is_none());
+            }
         }
     }
 

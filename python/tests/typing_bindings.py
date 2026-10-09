@@ -862,6 +862,9 @@ record_options.commit_batch_num = 10
 record_options.num_threads = 4
 record_options.num_threads = None
 record_num_threads: int | None = record_options.num_threads
+record_options.cache_ttl = 1000
+record_options.cache_ttl = "1000"
+record_cache_ttl: int = record_options.cache_ttl
 record_options.name = "trade"
 record_options.safe = True
 record_mime_type: MimeType = record_options.mime_type
@@ -892,7 +895,7 @@ record_handle.write_arrow_reader(record_batches, "invalid")  # type: ignore[arg-
 record_handle.overwrite_arrow_reader(ForeignArrowReader())
 record_handle.overwrite_arrow_reader(NotArrowReader())  # type: ignore[arg-type]
 record_series: StreamChunkedSerie = StreamChunkedSerie.from_serie(record_handle.read_serie())
-record_series = StreamChunkedSerie.from_serie(record_handle.read_serie(options=record_options, num_threads=2))
+record_series = StreamChunkedSerie.from_serie(record_handle.read_serie(options=record_options, num_threads=2, cache_ttl=1000))
 record_handle.write_serie(record_series)
 record_handle.write_serie(record_batches, "append", options=record_options, num_threads=...)
 record_handle.overwrite_serie(lit_serie, commit_batch_num=1)
@@ -940,6 +943,8 @@ text_rownum: int | None = text_record_options.start_rownum
 text_parse_mtime: bool = text_record_options.parse_mtime
 text_record_options.num_threads = 2
 text_num_threads: int | None = text_record_options.num_threads
+text_record_options.cache_ttl = 1000
+text_cache_ttl: int = text_record_options.cache_ttl
 regex_dtype: DataType = DataType.from_regex(r"(?<id>\d+)")
 text_handle: IOBase = IOBase(Path("app.log")).into_text(text_record_options)
 line_batches: pa.RecordBatchReader = text_handle.read_arrow_reader(

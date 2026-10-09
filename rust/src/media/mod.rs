@@ -48,6 +48,7 @@
 //! # }
 //! ```
 
+pub mod cache;
 pub mod codec;
 pub mod format;
 mod inference;
@@ -57,6 +58,7 @@ pub(crate) mod options;
 pub mod partition;
 pub(crate) mod structured;
 
+pub use cache::{CacheTtl, Entry, MediaCache};
 pub use codec::{EXTERNAL_RANK, MediaCodec, MediaWrapper, codec_for, codec_of, codecs};
 pub use format::{LocatedTable, TableFormat, format_named, formats};
 pub use magic::MAGIC_PROBE_LEN;
@@ -274,6 +276,10 @@ impl crate::IOMedia for Media {
 
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         self.as_media().as_any()
+    }
+
+    fn read_origin_field(&self) -> crate::Result<Option<crate::Field>> {
+        crate::IOMedia::read_origin_field(self.as_media())
     }
 
     fn read_arrow_field(

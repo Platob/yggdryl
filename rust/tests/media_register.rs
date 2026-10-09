@@ -96,6 +96,7 @@ macro_rules! test_options {
             max_byte_size: Option<u64>,
             commit_batch_num: Option<usize>,
             num_threads: Option<usize>,
+            cache_ttl: yggdryl::media::CacheTtl,
             level: Level,
         }
 
@@ -115,6 +116,7 @@ macro_rules! test_options {
                     max_byte_size: None,
                     commit_batch_num: None,
                     num_threads: None,
+                    cache_ttl: yggdryl::media::CacheTtl::REALTIME,
                     level: Level::DEFAULT,
                 }
             }

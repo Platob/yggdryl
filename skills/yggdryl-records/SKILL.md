@@ -25,8 +25,10 @@ medium does the work before a byte is decoded.
 | --- | --- | --- | --- |
 | options for this handle's encoding | `handle.record_options()?` | `handle.record_options()` | `handle.recordOptions()` |
 | options from a name or type, no handle | `RecordOptions::for_media_type(&url.media_type())?`, `RecordOptions::for_mime_type(&MimeType::PARQUET)?` | `RecordOptions("trades.parquet")` | `RecordOptions.from('trades.parquet')`, `RecordOptions.forMimeType(MimeType.ARROW_STREAM)` |
-| stored schema, no rows decoded | `read_arrow_field(&options)?` | `read_arrow_field()` | `readArrowField()` |
+| stored schema, no rows decoded | `read_arrow_field(&options)?` (the declared root, else the origin's, narrowed by the `select`) | `read_arrow_field()` | `readArrowField()` |
+| the origin's whole stored root, no declaration or clause applied | `read_origin_field()?` -> `Option<Field>` (`None`: the origin states no shape) | - | - |
 | row and column counts from metadata | `row_size()?`, `column_size()?` | `.row_size()`, `.column_size()` | `.rowSize()`, `.columnSize()` |
+| serve a closed handle's cached metadata for a while (milliseconds; `0`, the default, asks the store every call) | `options.with_cache_ttl(1000_u64)` | `cache_ttl=1000` | - |
 | stream batches out | `read_arrow_reader(&options)?` -> `arrow::BatchReader` | `read_arrow_reader()` -> `pyarrow.RecordBatchReader` | `readArrowReader()` -> `BatchReader` of Arrow JS batches |
 | stream record columns out | `read_serie(Some(&options))?` (`None`: the handle's own) -> `Serie` | `read_serie()` -> `Serie` | `readSerie()` -> `Serie` |
 | rows out as native values | `read_serie` + `serie.child(name)` / `scalar(i)` | `read_records()`, `read_records(Cls)` | `readRecords()`, `readRecords(Cls)` |
@@ -78,9 +80,14 @@ medium does the work before a byte is decoded.
    filter out; IPC skips decoding unprojected columns; a folder skips leaves
    whose `column=value` path contradicts a filter equality; Iceberg skips
    manifests and files. Filtering rows after the read throws all of that away.
-3. **Declare the `field` to cast once.** A narrower field is a projection; a
-   wider one fills missing nullable columns with nulls; the cast runs in the
-   same pass as the decode. A `not null` column refuses a value, a null or a
+3. **Declare the `field` to cast once.** What a read decodes is the declared
+   field's children - the stored ones with none declared, where the medium
+   knows them before it decodes (an Arrow IPC stream projects under a
+   declaration alone) - intersected with the
+   columns the `select` and the early `filter` read, so a narrower field is a
+   projection and a full one under a `select` still decodes only the selected
+   columns; a wider one fills missing nullable columns with nulls; the cast
+   runs in the same pass as the decode. A `not null` column refuses a value, a null or a
    missing column by name - it never stores a default. A `TRANSFORM:`,
    `PARTITION:` or `DIGEST:` declaration on the field is metadata the cast
    carries, never a column it fills. A nullable declared column takes a value
@@ -115,7 +122,11 @@ medium does the work before a byte is decoded.
    partition groups an Iceberg commit writes at once.
 6. **`row_size`/`column_size`/`read_arrow_field` read metadata only.** They
    answer from a footer, a stream header or the manifests; `open()` caches the
-   answer until `close()`. In Python and JavaScript they - and `size()`,
+   answer until `close()`, and on a closed handle the options' `cache_ttl`
+   (milliseconds, `0` realtime by default; Rust and Python) serves it while it
+   is younger - a write through the handle keeps it true or drops it, and
+   `remove`, `pwrite` and `truncate` drop it, so reserve a TTL for a resource
+   no other writer changes. In Python and JavaScript they - and `size()`,
    `kind()` - are methods, never properties: call them.
 7. **The name picks the encoding and the outer coding.** `.arrows` (IPC
    stream), `.arrow`/`.feather`/`.ipc` (IPC file), `.parquet`, `.avro`,

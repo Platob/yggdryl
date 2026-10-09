@@ -80,6 +80,15 @@ pub trait LocatedTable: fmt::Debug + Send {
     /// Returns a metadata failure.
     fn stored_field(&self) -> Result<Field>;
 
+    /// The table's whole stored root, its metadata whole, from its metadata:
+    /// what [`IOMedia::read_origin_field`](crate::IOMedia::read_origin_field)
+    /// answers for the container it is located in.
+    ///
+    /// # Errors
+    ///
+    /// Returns a metadata failure.
+    fn read_origin_field(&self) -> Result<Option<Field>>;
+
     /// The table's schema under the options' root name, from its metadata.
     ///
     /// # Errors

@@ -740,7 +740,7 @@ fn the_properties_are_the_sections_of_one_plan() {
 }
 
 #[test]
-fn a_section_the_plan_does_not_spell_is_cleared() {
+fn a_section_the_plan_does_not_spell_is_cleared_and_the_declared_field_stands() {
     let mut options = XmlaOptions::new()
         .with_field(schema())
         .with_filter("id > 1")
@@ -748,7 +748,7 @@ fn a_section_the_plan_does_not_spell_is_cleared() {
         .with_merge_by("id")
         .unwrap();
     options.set_plan_scalar(&Scalar::from("select id")).unwrap();
-    assert_eq!(options.field(), None);
+    assert_eq!(options.field(), Some(schema()));
     assert!(options.filter().is_always_true());
     assert!(options.merge_by().is_empty());
     assert_eq!(options.select().to_string(), "id");

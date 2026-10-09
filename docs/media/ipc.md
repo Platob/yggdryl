@@ -15,7 +15,7 @@ The Arrow IPC streaming format: one schema message, then one record-batch messag
 
 ## Read
 
-The stream carries its schema, so a read needs no declaration, and `read_arrow_field` stops at the schema message before any batch body. A narrower `field` is a column pushdown: skipped columns are never decoded. A stored batch reads back as long as its writer made it unless `batch_row_size` or `batch_byte_size` bounds the read, which cuts it into views over its own buffers. A stream that is not there reads as no batches.
+The stream carries its schema, so a read needs no declaration, and `read_arrow_field` stops at the schema message before any batch body - and an `Ipc<H>` keeps that schema and the dimensions in its [metadata cache](index.md#the-metadata-cache) while it is open, and on a closed handle for the options' `cache_ttl`. Under a declared `field`, what a read decodes is its children intersected with the columns the `select` and the early `filter` read: skipped columns are never decoded, so a full declaration under a `select` decodes the selected columns alone. With none declared every column is decoded, since the schema message is read off the same stream as the batches it frames. A stored batch reads back as long as its writer made it unless `batch_row_size` or `batch_byte_size` bounds the read, which cuts it into views over its own buffers. A stream that is not there reads as no batches.
 
 === "Rust"
 

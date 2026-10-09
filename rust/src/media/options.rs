@@ -66,6 +66,7 @@ use arrow_array::RecordBatch;
 use arrow_schema::{Schema, SchemaRef};
 use smol_str::SmolStr;
 
+use super::cache::CacheTtl;
 use crate::arrow::field_from_arrow_schema;
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred};
 use crate::expression::{Bound, BoundSelector, IntoFilter, IntoPlan, IntoSelector, Plan, Term};
@@ -189,7 +190,7 @@ pub trait MediumSettings {
 /// registered medium's options as.
 ///
 /// Written once by the blanket impl over every `IORecordOptions +
-/// MediumSettings` struct: the fourteen shared sections, the medium, the
+/// MediumSettings` struct: the fifteen shared sections, the medium, the
 /// stable hash, and what a trait object owes a derive-heavy enum - clone,
 /// equality, order, hash and the downcast.
 pub trait MediumOptions: std::fmt::Debug + Send + Sync + 'static {
@@ -252,6 +253,10 @@ pub trait MediumOptions: std::fmt::Debug + Send + Sync + 'static {
     fn level(&self) -> Level;
     /// See [`IORecordOptions::set_level`].
     fn set_level(&mut self, level: Level);
+    /// See [`IORecordOptions::cache_ttl`].
+    fn cache_ttl(&self) -> CacheTtl;
+    /// See [`IORecordOptions::set_cache_ttl`].
+    fn set_cache_ttl(&mut self, ttl: CacheTtl);
     /// See [`IORecordOptions::merge_by`].
     fn merge_by(&self) -> &Selector;
     /// See [`IORecordOptions::set_merge_by`].
@@ -410,6 +415,14 @@ where
 
     fn set_level(&mut self, level: Level) {
         IORecordOptions::set_level(self, level);
+    }
+
+    fn cache_ttl(&self) -> CacheTtl {
+        IORecordOptions::cache_ttl(self)
+    }
+
+    fn set_cache_ttl(&mut self, ttl: CacheTtl) {
+        IORecordOptions::set_cache_ttl(self, ttl);
     }
 
     fn merge_by(&self) -> &Selector {
@@ -733,6 +746,21 @@ pub trait IORecordOptions: Sized {
     /// Set the compression level.
     fn set_level(&mut self, level: Level);
 
+    /// Return how long a closed handle serves the metadata its medium
+    /// cached - the origin's root, its row and column counts, a footer.
+    ///
+    /// [`CacheTtl::REALTIME`] (`0`, the default) reads them afresh on every
+    /// ask; `n` serves an entry younger than `n` milliseconds, so what
+    /// another writer changes is seen once the entry is that old. An open
+    /// handle serves what it read until it closes whatever this says, and a
+    /// write through the handle refreshes or drops the entry either way.
+    /// Outside the options' identity, like the thread share a file decodes
+    /// on: two options differing only here compare, hash and order as equal.
+    fn cache_ttl(&self) -> CacheTtl;
+
+    /// Set how long a closed handle serves the metadata its medium cached.
+    fn set_cache_ttl(&mut self, ttl: CacheTtl);
+
     /// Borrow the selector whose columns form an explicit merge's match key.
     ///
     /// A merge matches on it: a row whose key is already stored updates it,
@@ -791,10 +819,12 @@ pub trait IORecordOptions: Sized {
     ///
     /// A plan's `create` section declares the field, its `where` clause is
     /// the filter, its `select` clause the selector, its upsert keys the
-    /// merge key; a section the plan does not spell clears the property. A
-    /// `limit` is the row bound and an `offset` the row skip. The plan's
-    /// targets and source are not read:
-    /// the handle these options are given to is both.
+    /// merge key; a section the plan does not spell clears the property, but
+    /// for the declared field, which a plan with no `create` section leaves
+    /// as it was - the medium's own declaration survives a plan that only
+    /// narrows the read. A `limit` is the row bound and an `offset` the row
+    /// skip. The plan's targets and source are not read: the handle these
+    /// options are given to is both.
     ///
     /// # Errors
     ///
@@ -825,7 +855,9 @@ pub trait IORecordOptions: Sized {
                 ),
             });
         }
-        self.set_declared(declared);
+        if declared.is_some() {
+            self.set_declared(declared);
+        }
         self.set_filter(plan.filter_section().clone());
         self.set_select(plan.selector().clone());
         self.set_merge_by(plan.merge_by().clone());
@@ -854,15 +886,31 @@ pub trait IORecordOptions: Sized {
 
     /// The stored columns the plan reads, when it narrows them.
     ///
-    /// The `select` clause and the clauses beside it name the columns a read
-    /// has to decode; `None` - no selector, or one that keeps every column -
-    /// is the read that already happens. This is projection pushdown without
-    /// a declared field.
+    /// The columns the `select` clause reads, and the ones the `where`
+    /// clause reads before it: a conjunct naming only what the `select`
+    /// publishes - an alias - runs after it and reads no stored column. With
+    /// a declared field its children are the stored columns that split is
+    /// made against; without one every column the `where` names is asked
+    /// for, and a name the medium does not store is skipped by its
+    /// projection rather than read. `None` - no selector, or one with a `*` -
+    /// is every column, the read that already happens. This is projection
+    /// pushdown without a declared field.
     fn apply_columns(&self) -> Option<Vec<String>> {
         if self.select().has_star() {
             return None;
         }
-        let mut columns = self.filter().columns();
+        let filter = match self.declared() {
+            Some(declared) => {
+                crate::expression::filter_phases(
+                    self.filter(),
+                    self.select(),
+                    declared.fields().iter().map(Field::name),
+                )
+                .0
+            }
+            None => std::borrow::Cow::Borrowed(self.filter()),
+        };
+        let mut columns = filter.columns();
         for column in self.select().columns() {
             if !columns
                 .iter()
@@ -888,96 +936,7 @@ pub trait IORecordOptions: Sized {
         &self,
         reader: crate::arrow::BatchReader,
     ) -> Result<crate::arrow::BatchReader> {
-        use arrow_array::RecordBatchReader as _;
-        let schema = reader.schema();
-        let (early, late) = crate::expression::filter_phases(
-            self.filter(),
-            self.select(),
-            schema.fields().iter().map(|field| field.name().as_str()),
-        );
-        late.apply_arrow_reader(
-            self.select()
-                .apply_arrow_reader(early.apply_arrow_reader(reader)?)?,
-        )
-    }
-
-    /// Apply scan clauses and limits to a row stream.
-    ///
-    /// # Errors
-    /// Clause binding, schema and limit failures.
-    fn apply_stream(&self, mut rows: crate::StreamSerie) -> Result<crate::StreamSerie> {
-        rows.require_record_field()?;
-        self.require_write_limits()?;
-        let select = self.select().bind(rows.field())?;
-        // These operations require Arrow storage: a byte limit counts its
-        // buffers, and unnest multiplies one input into multiple output rows.
-        if self.max_byte_size().is_some() || select.unnested().is_some() {
-            let reader =
-                self.limit_arrow_reader(self.apply_arrow_expressions(rows.into_arrow_reader()?)?)?;
-            return crate::StreamChunkedSerie::from_arrow_reader(
-                None,
-                reader,
-                crate::ArrowCastOptions::new(),
-            )?
-            .into_stream();
-        }
-        let (early, late) = crate::expression::filter_phases(
-            self.filter(),
-            self.select(),
-            rows.field().fields().iter().map(|field| field.name()),
-        );
-        let early = if early.is_always_true() {
-            None
-        } else {
-            Some(early.bind(rows.field())?)
-        };
-        let late = if late.is_always_true() {
-            None
-        } else {
-            Some(late.bind(select.output())?)
-        };
-        let field = select.output().clone();
-        let mut limit =
-            WriteLimitState::new(self.row_offset().unwrap_or(0), self.max_row_size(), None);
-        Ok(crate::StreamSerie::from_rows(
-            field,
-            std::iter::from_fn(move || {
-                loop {
-                    if limit.satisfied() {
-                        return None;
-                    }
-                    let row = match rows.next()? {
-                        Ok(row) => row,
-                        Err(error) => return Some(Err(error)),
-                    };
-                    if let Some(filter) = &early {
-                        match filter.matches(&row) {
-                            Ok(false) => continue,
-                            Ok(true) => {}
-                            Err(error) => return Some(Err(error)),
-                        }
-                    }
-                    let row = if select.is_identity() {
-                        row
-                    } else {
-                        match select.apply_scalar(&row) {
-                            Ok(row) => row,
-                            Err(error) => return Some(Err(error)),
-                        }
-                    };
-                    if let Some(filter) = &late {
-                        match filter.matches(&row) {
-                            Ok(false) => continue,
-                            Ok(true) => {}
-                            Err(error) => return Some(Err(error)),
-                        }
-                    }
-                    if limit.apply_row() {
-                        return Some(Ok(row));
-                    }
-                }
-            }),
-        ))
+        expressions(self.filter(), self.select(), reader)
     }
 
     /// Build the declared field, or say that one is required.
@@ -1241,6 +1200,14 @@ pub trait IORecordOptions: Sized {
         self
     }
 
+    /// Return these options serving a closed handle's cached metadata for
+    /// `ttl` milliseconds; `0` is realtime.
+    #[must_use]
+    fn with_cache_ttl(mut self, ttl: impl Into<CacheTtl>) -> Self {
+        self.set_cache_ttl(ttl.into());
+        self
+    }
+
     /// Return these options with a match key for an explicit merge.
     ///
     /// Text parses through the selector grammar and a list of names is a list
@@ -1360,13 +1327,7 @@ pub trait IORecordOptions: Sized {
             return Ok(reader);
         }
         self.require_write_limits()?;
-        use arrow_array::RecordBatchReader as _;
-        let schema = reader.schema();
-        Ok(Box::new(Limited {
-            inner: reader,
-            schema,
-            state: WriteLimitState::new(skip, max_rows, max_bytes),
-        }))
+        Ok(limited(reader, skip, max_rows, max_bytes))
     }
 
     /// Validate deterministic write-limit combinations without an input.
@@ -1605,6 +1566,145 @@ pub(crate) fn partition_pairs(filter: &Filter) -> Vec<(String, String)> {
     pairs
 }
 
+/// Run `filter`, then `select`, over a reader: each conjunct of the filter
+/// at the schema its columns belong to - the ones over the reader's own
+/// columns before the projection, the ones naming what only the `select`
+/// publishes after it.
+///
+/// Each clause binds once against the schema the clause before it produced,
+/// so a stream pays for its plan once; a clause that keeps or publishes
+/// everything costs nothing. The one place a read's or a write's clauses
+/// meet its batches.
+pub(crate) fn expressions(
+    filter: &Filter,
+    select: &Selector,
+    reader: crate::arrow::BatchReader,
+) -> Result<crate::arrow::BatchReader> {
+    use arrow_array::RecordBatchReader as _;
+    let schema = reader.schema();
+    let (early, late) = crate::expression::filter_phases(
+        filter,
+        select,
+        schema.fields().iter().map(|field| field.name().as_str()),
+    );
+    late.apply_arrow_reader(select.apply_arrow_reader(early.apply_arrow_reader(reader)?)?)
+}
+
+/// `reader` skipping `skip` leading rows, then bounded by `max_rows` rows and
+/// `max_bytes` Arrow bytes, over one [`WriteLimitState`] - the reader itself
+/// where nothing bounds it: the one owner of a read's and a write's row
+/// bounds.
+pub(crate) fn limited(
+    reader: crate::arrow::BatchReader,
+    skip: u64,
+    max_rows: Option<u64>,
+    max_bytes: Option<u64>,
+) -> crate::arrow::BatchReader {
+    use arrow_array::RecordBatchReader as _;
+
+    if max_rows.is_none() && max_bytes.is_none() && skip == 0 {
+        return reader;
+    }
+    let schema = reader.schema();
+    Box::new(Limited {
+        inner: reader,
+        schema,
+        state: WriteLimitState::new(skip, max_rows, max_bytes),
+    })
+}
+
+/// [`expressions`] then [`limited`] over a row stream: the filter's
+/// conjuncts in their phases around the selection, then the skip and the
+/// bounds, row by row with no batch built. A byte bound counts Arrow
+/// buffers and an `unnest` lays out one row per element, so either crosses
+/// the stream through Arrow instead.
+///
+/// # Errors
+///
+/// Returns a stream that is not of records, or a clause that does not bind
+/// against its rows.
+pub(crate) fn shaped_stream(
+    mut rows: crate::StreamSerie,
+    filter: &Filter,
+    select: &Selector,
+    skip: u64,
+    max_rows: Option<u64>,
+    max_bytes: Option<u64>,
+) -> Result<crate::StreamSerie> {
+    rows.require_record_field()?;
+    let bound = select.bind(rows.field())?;
+    if max_bytes.is_some() || bound.unnested().is_some() {
+        let reader = limited(
+            expressions(filter, select, rows.into_arrow_reader()?)?,
+            skip,
+            max_rows,
+            max_bytes,
+        );
+        return crate::StreamChunkedSerie::from_arrow_reader(
+            None,
+            reader,
+            crate::ArrowCastOptions::new(),
+        )?
+        .into_stream();
+    }
+    let (early, late) = crate::expression::filter_phases(
+        filter,
+        select,
+        rows.field().fields().iter().map(|field| field.name()),
+    );
+    let early = if early.is_always_true() {
+        None
+    } else {
+        Some(early.bind(rows.field())?)
+    };
+    let late = if late.is_always_true() {
+        None
+    } else {
+        Some(late.bind(bound.output())?)
+    };
+    let field = bound.output().clone();
+    let mut limit = WriteLimitState::new(skip, max_rows, None);
+    Ok(crate::StreamSerie::from_rows(
+        field,
+        std::iter::from_fn(move || {
+            loop {
+                if limit.satisfied() {
+                    return None;
+                }
+                let row = match rows.next()? {
+                    Ok(row) => row,
+                    Err(error) => return Some(Err(error)),
+                };
+                if let Some(filter) = &early {
+                    match filter.matches(&row) {
+                        Ok(false) => continue,
+                        Ok(true) => {}
+                        Err(error) => return Some(Err(error)),
+                    }
+                }
+                let row = if bound.is_identity() {
+                    row
+                } else {
+                    match bound.apply_scalar(&row) {
+                        Ok(row) => row,
+                        Err(error) => return Some(Err(error)),
+                    }
+                };
+                if let Some(filter) = &late {
+                    match filter.matches(&row) {
+                        Ok(false) => continue,
+                        Ok(true) => {}
+                        Err(error) => return Some(Err(error)),
+                    }
+                }
+                if limit.apply_row() {
+                    return Some(Ok(row));
+                }
+            }
+        }),
+    ))
+}
+
 /// Implement [`IORecordOptions`] over one struct's own fields.
 ///
 /// Every encoding stores the same shared settings under the same names, so the
@@ -1728,6 +1828,14 @@ macro_rules! record_options_fields {
 
         fn set_level(&mut self, level: $crate::Level) {
             self.level = level;
+        }
+
+        fn cache_ttl(&self) -> $crate::media::CacheTtl {
+            self.cache_ttl
+        }
+
+        fn set_cache_ttl(&mut self, ttl: $crate::media::CacheTtl) {
+            self.cache_ttl = ttl;
         }
     };
 }

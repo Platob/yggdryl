@@ -1417,6 +1417,8 @@ mod iceberg {
             .map(|(venue, id)| (venue.to_owned(), id))
             .collect();
         assert_eq!(rows, expected);
+        // One answer: the schema a caller reads declares the order the rows
+        // it gets declare, the part of the order the selection publishes.
         assert_eq!(
             table
                 .read_arrow_field(&options)
@@ -1424,6 +1426,45 @@ mod iceberg {
                 .get_metadata("SORT:by"),
             Some(r#"["venue"]"#)
         );
+    }
+
+    /// The schema a select answers and the rows it reads declare one order:
+    /// the whole of it where the selection publishes every key unchanged,
+    /// none where it drops the leading one.
+    #[test]
+    fn a_select_publishes_the_same_order_in_the_schema_and_in_the_rows() {
+        use yggdryl::IOMedia;
+        use yggdryl::media::IORecordOptions;
+
+        let table = quotes_table(
+            "ordered-select-answer",
+            &quotes_schema(&["venue", "ts", "id"]),
+            None,
+            &[
+                &[("XNAS", 20, 1), ("XLON", 5, 2)],
+                &[("XNAS", 10, 3), ("XLON", 1, 4)],
+            ],
+        );
+        let whole = Some(r#"["venue","ts","id"]"#);
+        for (select, order) in [("venue, ts, id", whole), ("ts, id", None)] {
+            let options = table.record_options().unwrap().with_select(select).unwrap();
+            let reader =
+                yggdryl::StreamChunkedSerie::from_serie(table.read_serie(Some(&options)).unwrap())
+                    .expect("native record stream");
+            assert_eq!(
+                reader.field().get_metadata("SORT:by"),
+                order,
+                "{select}: the rows"
+            );
+            assert_eq!(
+                table
+                    .read_arrow_field(&options)
+                    .unwrap()
+                    .get_metadata("SORT:by"),
+                order,
+                "{select}: the schema"
+            );
+        }
     }
 
     /// The same read under one decode thread and under four yields the

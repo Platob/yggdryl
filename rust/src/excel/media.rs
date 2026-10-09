@@ -7,14 +7,16 @@
 //! again with that sheet replaced and every other member carried over, and
 //! hands the handle the whole once.
 
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use arrow_array::RecordBatchIterator;
 use smol_str::SmolStr;
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
 use crate::holder::Holder;
-use crate::media::{IORecordOptions, Media, MediaCodec, MediaWrapper, RecordOptions};
+use crate::media::{
+    CacheTtl, Entry, IORecordOptions, Media, MediaCache, MediaCodec, MediaWrapper, RecordOptions,
+};
 use crate::{
     ArrowCastOptions, DataType, Error, Field, IOBase, IOMedia, MimeType, Result,
     StreamChunkedSerie, StructType,
@@ -139,11 +141,17 @@ pub(crate) fn stated_field<H: IOBase + ?Sized>(
     if handle.size() == 0 {
         return Ok(None);
     }
-    let workbook = open(handle)?;
-    let Some(name) = addressed(&workbook, options)? else {
+    stated(&open(handle)?, options)
+}
+
+/// The field the sheet `options` address states in `workbook`, every column
+/// nullable; `None` where it states none: a workbook with no worksheet, a
+/// sheet with no rows.
+fn stated(workbook: &Workbook, options: &ExcelOptions) -> Result<Option<Field>> {
+    let Some(name) = addressed(workbook, options)? else {
         return Ok(None);
     };
-    let field = inferred(&workbook, &name, options)?;
+    let field = inferred(workbook, &name, options)?;
     if field.fields().is_empty() {
         return Ok(None);
     }
@@ -359,15 +367,25 @@ impl MediaCodec for ExcelCodec {
 ///
 /// Rows flow through the ordinary [`IOMedia`] methods, and the wrapper
 /// retains the [`ExcelOptions`] that [`IOMedia::record_options`] answers
-/// with. [`IOBase::open`] holds the workbook - its package documents, and
-/// the sheets and parts read since - until [`IOBase::close`], so the schema
-/// and the row count of an open handle cost the package once.
+/// with. The workbook - its package documents, and the sheets and parts read
+/// since - is held in a [`MediaCache`] beside what the addressed sheet
+/// states, from [`IOBase::open`] until [`IOBase::close`], or for the
+/// options' `cache_ttl` on a closed handle, so the schema and the row count
+/// of an open handle cost the package once.
 #[derive(Debug)]
 pub struct Excel<H: IOBase> {
     handle: H,
     options: ExcelOptions,
-    opened: bool,
-    cached: OnceLock<Workbook>,
+    /// The workbook as the entry's state, and what the sheet the retained
+    /// options address states; never held for a container.
+    cache: MediaCache,
+}
+
+/// The workbook an entry holds as its state.
+fn book_of(entry: &Entry) -> Option<Arc<Workbook>> {
+    Arc::clone(entry.state.as_ref()?)
+        .downcast::<Workbook>()
+        .ok()
 }
 
 impl<H: IOBase> Excel<H> {
@@ -377,15 +395,16 @@ impl<H: IOBase> Excel<H> {
         Self {
             handle,
             options: ExcelOptions::new(),
-            opened: false,
-            cached: OnceLock::new(),
+            cache: MediaCache::new(),
         }
     }
 
-    /// Return this media with a complete configuration.
+    /// Return this media with a complete configuration, dropping what the
+    /// cache holds of the sheet the previous one addressed.
     #[must_use]
     pub fn with_options(mut self, options: ExcelOptions) -> Self {
         self.options = options;
+        self.cache.invalidate();
         self
     }
 
@@ -396,10 +415,12 @@ impl<H: IOBase> Excel<H> {
         self
     }
 
-    /// Return this media addressing the sheet `sheet`.
+    /// Return this media addressing the sheet `sheet`, dropping what the
+    /// cache holds of the sheet addressed before.
     #[must_use]
     pub fn with_sheet(mut self, sheet: impl Into<SmolStr>) -> Self {
         self.options.sheet = Some(sheet.into());
+        self.cache.invalidate();
         self
     }
 
@@ -408,8 +429,10 @@ impl<H: IOBase> Excel<H> {
         &self.options
     }
 
-    /// Borrow the retained options mutably.
+    /// Borrow the retained options mutably, dropping what the cache holds:
+    /// the sheet, the header and the range they name decide what is stated.
     pub fn options_mut(&mut self) -> &mut ExcelOptions {
+        self.cache.invalidate();
         &mut self.options
     }
 
@@ -418,33 +441,16 @@ impl<H: IOBase> Excel<H> {
         &self.handle
     }
 
-    /// Borrow the underlying byte handle mutably.
+    /// Borrow the underlying byte handle mutably, dropping the held workbook
+    /// before any byte mutation can occur.
     pub fn handle_mut(&mut self) -> &mut H {
+        self.cache.invalidate();
         &mut self.handle
     }
 
     /// Consume this media and return its byte handle.
     pub fn into_handle(self) -> H {
         self.handle
-    }
-
-    /// Whether this session already holds the leaf's workbook, which answers
-    /// every dimension ask with no call - and which a container's session
-    /// never holds.
-    fn warm(&self) -> bool {
-        self.opened && self.cached.get().is_some()
-    }
-
-    /// The workbook, held while open, opened afresh otherwise.
-    fn workbook(&self) -> Result<Held<'_>> {
-        if self.opened {
-            if let Some(workbook) = self.cached.get() {
-                return Ok(Held::Cached(workbook));
-            }
-            let workbook = open(&self.handle)?;
-            return Ok(Held::Cached(self.cached.get_or_init(|| workbook)));
-        }
-        open(&self.handle).map(Held::Fresh)
     }
 
     fn require_options<'a>(&self, options: &'a RecordOptions) -> Result<&'a ExcelOptions> {
@@ -456,25 +462,41 @@ impl<H: IOBase> Excel<H> {
             })
     }
 
-    fn invalidate(&mut self) {
-        self.cached = OnceLock::new();
+    /// The package opened as an entry: the workbook as its state, and the
+    /// field the sheet the retained options address states.
+    fn read_entry(&self) -> Result<Entry> {
+        let workbook = open(&self.handle)?;
+        let origin = stated(&workbook, &self.options)?;
+        let state: Arc<dyn std::any::Any + Send + Sync> = Arc::new(workbook);
+        Ok(Entry {
+            columns: Some(origin.as_ref().map_or(0, Field::field_len)),
+            origin,
+            rows: None,
+            state: Some(state),
+        })
     }
-}
 
-/// The workbook a media call reads: the one the open scope holds, or one
-/// opened for this call and dropped with it.
-enum Held<'a> {
-    Cached(&'a Workbook),
-    Fresh(Workbook),
-}
+    /// The leaf's entry under `ttl`, `served` where the cache had one: the
+    /// package opened and kept where the cache keeps, else opened for this
+    /// call alone.
+    fn entry(&self, ttl: CacheTtl, served: Option<Entry>) -> Result<Entry> {
+        if let Some(entry) = served {
+            return Ok(entry);
+        }
+        if self.cache.keeps(ttl) {
+            self.cache
+                .get_or_fill(ttl, crate::media::cache::now(), || self.read_entry())
+        } else {
+            self.read_entry()
+        }
+    }
 
-impl std::ops::Deref for Held<'_> {
-    type Target = Workbook;
-
-    fn deref(&self) -> &Workbook {
-        match self {
-            Self::Cached(workbook) => workbook,
-            Self::Fresh(workbook) => workbook,
+    /// The workbook `entry` holds, else - an emptied handle's entry holds
+    /// none - the package opened for this call.
+    fn workbook_of(&self, entry: &Entry) -> Result<Arc<Workbook>> {
+        match book_of(entry) {
+            Some(workbook) => Ok(workbook),
+            None => Ok(Arc::new(open(&self.handle)?)),
         }
     }
 }
@@ -489,56 +511,100 @@ impl<H: IOBase> IOMedia for Excel<H> {
     }
 
     fn row_size(&self) -> Result<u64> {
-        if !self.warm() && self.handle.is_container() {
+        let ttl = self.options.cache_ttl;
+        let now = crate::media::cache::now();
+        let served = self.cache.entry(ttl, now);
+        if let Some(rows) = served.as_ref().and_then(|entry| entry.rows) {
+            return Ok(rows);
+        }
+        // Past the cache, which only a leaf ever fills.
+        if served.is_none() && self.handle.is_container() {
             return crate::iomedia::container_row_size(
                 &self.handle,
                 &crate::iomedia::dimension_options(self)?,
             );
         }
-        let workbook = self.workbook()?;
-        let Some(name) = addressed(&workbook, &self.options)? else {
-            return Ok(0);
+        let held = served.is_some();
+        let entry = self.entry(ttl, served)?;
+        let workbook = self.workbook_of(&entry)?;
+        let count = match addressed(&workbook, &self.options)? {
+            Some(name) => {
+                let source = source(&workbook, &name, &self.options)?;
+                super::reader::row_count(&source, rows(&workbook, &name)?)?
+            }
+            None => 0,
         };
-        let source = source(&workbook, &name, &self.options)?;
-        let rows = rows(&workbook, &name)?;
-        super::reader::row_count(&source, rows)
+        // Added to the entry served - the one held, or the one this ask just
+        // kept - its stamp kept: its TTL counts from the one reading it was.
+        if held || self.cache.keeps(ttl) {
+            self.cache.add(ttl, now, |entry| entry.rows = Some(count));
+        }
+        Ok(count)
     }
 
     fn column_size(&self) -> Result<usize> {
         if let Some(field) = self.options.field() {
             return Ok(field.field_len());
         }
-        if !self.warm() && self.handle.is_container() {
-            return Ok(crate::iomedia::container_field(
+        let ttl = self.options.cache_ttl;
+        let served = self.cache.entry(ttl, crate::media::cache::now());
+        if served.is_none() && self.handle.is_container() {
+            return Ok(crate::iomedia::container_origin(
                 &self.handle,
-                &crate::iomedia::dimension_options(self)?,
+                crate::iomedia::dimension_options(self)?,
             )?
-            .field_len());
+            .map_or(0, |field| field.field_len()));
         }
-        let workbook = self.workbook()?;
-        match addressed(&workbook, &self.options)? {
-            Some(name) => Ok(inferred(&workbook, &name, &self.options)?.field_len()),
-            None => Ok(0),
-        }
+        Ok(self.entry(ttl, served)?.columns.unwrap_or_default())
     }
 
     fn record_options(&self) -> Result<RecordOptions> {
         Ok(self.options.clone().into())
     }
 
+    /// The field the sheet the retained options address states - every
+    /// column nullable, since a worksheet records none - named as the
+    /// options name it; `None` for an empty handle, a workbook with no
+    /// worksheet, a sheet with no rows.
+    fn read_origin_field(&self) -> Result<Option<Field>> {
+        let ttl = self.options.cache_ttl;
+        let served = self.cache.entry(ttl, crate::media::cache::now());
+        if served.is_none() && self.handle.is_container() {
+            return crate::iomedia::container_origin(
+                &self.handle,
+                crate::iomedia::dimension_options(self)?,
+            );
+        }
+        Ok(self
+            .entry(ttl, served)?
+            .origin
+            .map(|origin| origin.with_name(self.options.name())))
+    }
+
+    /// The one schema answer, the declared root else the field the addressed
+    /// sheet's cells prove, as the `where` and `select` leave it - kept here
+    /// because the sheet, the header and the range `options` state may not
+    /// be the retained ones, and are read off the held workbook, and because
+    /// options of another encoding are refused by name.
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
-        let options = self.require_options(options)?;
-        if let Some(field) = options.field() {
-            return Ok(field);
-        }
-        if !self.warm() && self.handle.is_container() {
-            return crate::iomedia::container_field(&self.handle, &options.clone().into());
-        }
-        let workbook = self.workbook()?;
-        match addressed(&workbook, options)? {
-            Some(name) => inferred(&workbook, &name, options),
-            None => super::reader::empty_root(options.name()),
-        }
+        let excel = self.require_options(options)?;
+        let root = match excel.field() {
+            Some(field) => field,
+            None => {
+                let ttl = excel.cache_ttl;
+                let served = self.cache.entry(ttl, crate::media::cache::now());
+                // Past the cache, which only a leaf ever fills.
+                if served.is_none() && self.handle.is_container() {
+                    return crate::iomedia::container_field(&self.handle, options);
+                }
+                let workbook = self.workbook_of(&self.entry(ttl, served)?)?;
+                match addressed(&workbook, excel)? {
+                    Some(name) => inferred(&workbook, &name, excel)?,
+                    None => super::reader::empty_root(excel.name())?,
+                }
+            }
+        };
+        crate::iomedia::field_under(options, &root)
     }
 
     fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::Serie> {
@@ -556,9 +622,15 @@ impl<H: IOBase> IOMedia for Excel<H> {
         let options = options.as_ref();
         let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_options(options)?;
-        self.invalidate();
-        crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options)
-            .map(|(_, result)| result)
+        let result =
+            crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options)
+                .map(|(_, result)| result);
+        // A sheet's field is what its cells prove when read, which the field
+        // written does not decide, and the writer renders the sheet's XML as
+        // the batches arrive without a parsed workbook to keep: the next ask
+        // opens the package afresh.
+        self.cache.invalidate();
+        result
     }
 
     fn overwrite_prepared_serie(
@@ -568,8 +640,9 @@ impl<H: IOBase> IOMedia for Excel<H> {
     ) -> Result<()> {
         let batches = value.into_arrow_reader();
         self.require_options(options)?;
-        self.invalidate();
-        crate::iobase::leaf_writer(self, batches, options)
+        let result = crate::iobase::leaf_writer(self, batches, options);
+        self.cache.invalidate();
+        result
     }
 
     fn append_serie(
@@ -581,8 +654,9 @@ impl<H: IOBase> IOMedia for Excel<H> {
         let options = options.as_ref();
         let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_options(options)?;
-        self.invalidate();
-        crate::iobase::append_arrow_reader_default(self, batches, options)
+        let result = crate::iobase::append_arrow_reader_default(self, batches, options);
+        self.cache.invalidate();
+        result
     }
 
     fn merge_serie(
@@ -594,8 +668,9 @@ impl<H: IOBase> IOMedia for Excel<H> {
         let options = options.as_ref();
         let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_options(options)?;
-        self.invalidate();
-        crate::iobase::merge_arrow_reader_default(self, batches, options)
+        let result = crate::iobase::merge_arrow_reader_default(self, batches, options);
+        self.cache.invalidate();
+        result
     }
 }
 
@@ -606,22 +681,22 @@ impl<H: IOBase> IOBase for Excel<H> {
         child_by_path, ls, kind, is_container);
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
-        self.invalidate();
+        self.cache.invalidate();
         self.handle.pwrite(offset, bytes)
     }
 
     fn truncate(&mut self, size: u64) -> Result<()> {
-        self.invalidate();
+        self.cache.invalidate();
         self.handle.truncate(size)
     }
 
     fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
-        self.invalidate();
+        self.cache.invalidate();
         self.handle.create_bytes(bytes)
     }
 
     fn set_media_type(&mut self, media_type: crate::MediaType) {
-        self.invalidate();
+        self.cache.invalidate();
         self.handle.set_media_type(media_type);
     }
 
@@ -636,34 +711,46 @@ impl<H: IOBase> IOBase for Excel<H> {
         false
     }
 
+    /// Materialize the handle and hold the workbook, opened as it is first
+    /// asked for, until [`close`](IOBase::close).
     fn open(&mut self) -> Result<()> {
-        if self.opened {
+        if self.cache.is_open() {
             return Ok(());
         }
         self.handle.open()?;
-        self.invalidate();
-        self.opened = true;
+        self.cache.invalidate();
+        self.cache.open();
         Ok(())
     }
 
     fn opened(&self) -> bool {
-        self.opened
+        self.cache.is_open()
     }
 
     fn close(&mut self) -> Result<()> {
-        self.invalidate();
-        self.opened = false;
+        self.cache.close();
         self.handle.close()
     }
 
+    /// Empty the workbook; the cache then holds what an empty handle states
+    /// - no sheet, no row, no column - where it keeps.
     fn clear(&mut self) -> Result<()> {
-        self.invalidate();
-        self.handle.clear()
+        self.cache.invalidate();
+        self.handle.clear()?;
+        // A container caches nothing: its leaves answer for it on every ask.
+        if self.cache.keeps(self.options.cache_ttl) && !self.handle.is_container() {
+            self.cache.update(crate::media::cache::now(), |entry| {
+                entry.origin = None;
+                entry.rows = Some(0);
+                entry.columns = Some(0);
+                entry.state = None;
+            });
+        }
+        Ok(())
     }
 
     fn remove(&mut self, recursive: bool) -> Result<()> {
-        self.invalidate();
-        self.opened = false;
+        self.cache.close();
         self.handle.remove(recursive)
     }
 }

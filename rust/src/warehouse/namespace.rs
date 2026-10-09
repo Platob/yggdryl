@@ -505,6 +505,10 @@ macro_rules! container_object_io {
                 Err(super::namespace::no_table(self))
             }
 
+            fn read_origin_field(&self) -> Result<Option<Field>> {
+                Err(super::namespace::no_table(self))
+            }
+
             fn read_arrow_field(&self, _options: &RecordOptions) -> Result<Field> {
                 Err(super::namespace::no_table(self))
             }

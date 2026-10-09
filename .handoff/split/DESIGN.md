@@ -1632,6 +1632,144 @@ Decided:
    open scope (it reverses D19, D21 and D26 and moves 35 pins for nothing
    the rule above lacks).
 
+### P2 results
+
+Committed as "Hold the origin field and its cache on the medium; compose
+the pushdown once" (on `d100439d3`). Five workers wrote the slice in the
+`wip/p2` worktree with no compiler (A the core, B the seven wrappers, C the
+readers that are not wrappers, D the tests, E the bindings, the docs and
+the inventories); it was merged onto the program branch, conflicting only
+in AGENTS.md (the `media_serie.rs` row, the `ipc/` row beside the new
+`media/cache.rs` row) and `docs/media/index.md` (the Read paragraph), both
+resolved to the accepted design below; every Rust file merged clean.
+
+| figure | value |
+| --- | --- |
+| the slice, the handoff files apart | 70 files, +7755 / -1377: `rust/src` 34 files +3090/-1260, `rust/tests` 18 files +4285/-42, Python 5 files +182/-6, docs, skills, AGENTS.md and the inventories 13 files +198/-69; Node and the CLI untouched |
+| new files | `rust/src/media/cache.rs` 323 lines (`CacheTtl`, `Entry`, `MediaCache`, the clock), `rust/tests/media/cache.rs` 466 |
+| tests | all-features lane 9298 passed (S2b 9170), default lane 6580 (6523), Python 2784 passed (2780) |
+| caches | six hand-rolled ones (IPC, Parquet, Avro, CSV, XMLA, Excel) replaced and the text wrapper given one, one `MediaCache` per wrapper; the two missing drop sites (`set_media_type` on Parquet and Avro, `handle_mut` on CSV, XMLA and Excel) pinned by each wrapper's `every_byte_verb_drops_...` tests |
+| residual copies | five gone (`http/request.rs` two, `iceberg/table.rs`, `coding/mod.rs`, `csv/media.rs`) and `RecordOptions::apply_stream`: `compose` and `Residual` in `media_serie.rs` are the one owner |
+
+The design departures, accepted by the coordinator before the settle (the
+first four were worker A's) and kept by the review:
+
+1. The default `read_arrow_field` reads the leaf's stated field through the
+   codec of the options it is given - the declared root, else the stated
+   one, then `field_under(options, root)` - not through the medium's own
+   `record_options`, which on a bare handle is two questions more; a
+   wrapper answers the same rule over its cached origin
+   (`held_arrow_field`, the one body of IPC, Parquet and Avro).
+2. The serie keeps `root`: D34.4 deleted `source_field` and bound the
+   serie's field through the composed options; built, the serie keeps the
+   root it bound - the medium's declared field, else its origin - so a
+   re-plan reads nothing, its field `field_under(options, root)`.
+3. The residual holds the whole `where` and splits it before and after the
+   selection against the reader's own schema where it is applied, rather
+   than carrying the half `compose` split: a medium prunes by its early
+   half and filters no row, so the rows the residual meets are unfiltered.
+4. The medium's read door composes once: the serie hands the medium its own
+   options with only what its verbs stated laid over them, and the door
+   (`read_record_serie`) composes, so no second composition sits in the
+   serie.
+5. `RecordOptions::apply_stream` is deleted: `Residual::apply_stream` is the
+   one native-row shaping, reached by its pull pin through
+   `yggdryl::internals::media_serie::apply_stream`.
+6. `open()` drops an entry a closed handle held under a TTL, so a session
+   serves what the store states from its start; opening an open handle keeps
+   its entry. D35.2 said only that `open` holds the entry until `close`.
+7. A folder is read per unit: each leaf composes with the conjuncts its path
+   settles (`of_unit`) and the folder's residual runs once over the units
+   (`over_units`), Iceberg's `file_residual` early and `over_units` the rest.
+
+The settle, on the merged tree (`cargo check` clean in every lane after
+one fix; the smoke rows in the all-features lane):
+
+1. `rust/tests/media_register.rs`' `test_options!` lacked `cache_ttl`: the
+   field added; `held_arrow_field` made the one body of three wrappers.
+2. `root/iomedia.rs` `native_rows_stop_at_the_global_row_limit_without_one_extra_pull`
+   measured 4 pulls against 3: the write-records row reader had lost its
+   cap, a pull bound moving up - fixed at its cause (`records_pull_bound`
+   hands the reader `row_offset + max_row_size` where every pulled row is
+   one the bound counts, `WriteLimitState` still the one owner of the exact
+   trim), never re-pinned.
+3. `ipc/mod_.rs` `a_late_alias_reads_no_stored_column_and_a_star_reads_them_all`
+   (new) read with no declared field, and an IPC projection rides a declared
+   root: re-spelled under the full declared field, the D34.3 rule it pins.
+4. `xmla/options.rs` `a_section_the_plan_does_not_spell_is_cleared`, moved by
+   D34.5: re-spelled `..._and_the_declared_field_stands`, asserting the
+   declared field kept.
+5. `media_serie.rs` `settles`: a `year = 'null'` conjunct against a
+   `year=null` directory was proven through `partition_text` and dropped; a
+   null on either side now proves nothing - `media/partition.rs`
+   `a_path_settles_the_equalities_it_proves_and_a_null_directory_proves_none`,
+   red without the guard.
+6. New pins for worker C's `with (cache_ttl = ...)` knob
+   (`expression/plan.rs` `a_target_reads_its_cache_ttl_as_whole_milliseconds`:
+   `1s`, `1.5`, `-1`, `soon` refused at `$.with.cache_ttl`) and the text
+   wrapper's cache (`text/handle.rs` `mod ttl`, three tests).
+
+The review (the `code-review` skill at high effort over the whole diff,
+plus the manager's pass over the brief's checklist) named fourteen points:
+
+| # | point | outcome |
+| --- | --- | --- |
+| 1 | `compose` narrowed a declared root a headerless medium (CSV, Excel) pairs by position, so `select c` over `(a, b, c)` read column a | fixed: such a root is handed whole; `csv/media.rs` `without_a_header_a_selection_reads_each_declared_column_from_its_own_position`, red without the guard |
+| 2 | `clear()` over a container stored the empty entry, served after a later folder write | fixed: `clear` keeps the empty entry for a leaf alone |
+| 3 | IPC, Parquet and Avro `read_arrow_field` accepted another encoding's options | fixed: `require_record_options` restored before `held_arrow_field` |
+| 4 | `Parquet::size()` served the cached length on a closed handle under a TTL, and the default `append_bytes` offsets by `size()` | fixed: a byte length is served while open alone |
+| 5 | CSV and Excel `row_size` never kept a count learned on a closed handle under a TTL | fixed: `MediaCache::add(ttl, now, edit)` lays it on the served entry, its stamp kept |
+| 6 | CSV `row_size` on a miss reads the document for the count and the sample for the origin | kept: the second read is the bounded inference sample |
+| 7 | `update` creating a default entry stood for "no shape" | fixed with 5: read-learned facts go through `add`, `update` stays the write doors' |
+| 8 | seven copies of the `keeps(ttl)` rule | fixed: one `MediaCache::keeps(ttl)` |
+| 9 | `ParquetFooter::held` swallows a fill error, so a root this crate cannot type reads the file's end twice per read under a session or a TTL | kept: an error path, the decode still reports the failure |
+| 10 | the Python `plan` setter docstrings said every section is replaced | fixed: every one but the declared field, which a plan with no `create` section leaves standing |
+| 11 | `container_origin` copied five times and inlined twice | fixed: one `iomedia::container_origin(handle, options)` |
+| 12 | Python `cache_ttl` refused a NumPy integer | fixed: any `__index__` integer; the stub `SupportsIndex \| str \| None` |
+| 13 | Python `cache_ttl=None` was a `TypeError` | fixed: `None` is a value and clears, to `0` |
+| 14 | `Text::opened()` answers the wrapper's session, not the handle's | kept: as the six other wrappers did at HEAD |
+
+Known edge, recorded: under a declared root whose `PARTITION:by` names a
+column the `select` drops, the narrowed root handed to the codec prunes that
+entry while `read_arrow_field` keeps the root's metadata.
+
+Pins. The `s2_pins` are byte-identical (`CacheTtl` hashes nothing,
+`ParquetOptionsIdentity` omits it) and no cost pin moved: `iobase_calls` 67
+passed, its one new row `a_closed_wrapper_under_a_ttl_answers_a_warm_ask_with_no_call`,
+the media-serie construction row measured unmoved (`pstream_bytes=1
+media_type=2 is_container=2`), its doc now saying why - the serie keeps the
+root it bound; `allocations` 184 passed, unmoved. The Parquet overwrite's
+footer re-read is gone, pinned by `an_overwrite_answers_the_origin_and_the_rows_with_zero_reads`
+and `a_read_after_a_ttl_overwrite_reads_no_footer_and_a_realtime_one_reads_it`;
+no `iobase_calls` row measured a write, so none moved. Re-spelled with
+their reason: the XMLA `set_plan` test above (D34.5); the pull pin of the
+deleted `RecordOptions::apply_stream`, moved into `root/media_serie.rs`'s
+`internals` module over `Residual::apply_stream`, its three pulls
+unchanged; the `RowMedia` double's own `read_arrow_field` deleted for the
+default; the Avro and Parquet "a closed write must not start a cache"
+messages now say "session"; the Python identity test calls `stable_hash()`
+rather than comparing the bound methods.
+
+| check | result |
+| --- | --- |
+| `cargo fmt --all -- --check` | clean |
+| `cargo check -p yggdryl --all-targets`, with `--all-features`; `cargo check --workspace --all-targets --all-features` | clean, 0 diagnostics |
+| the smoke, all-features lane, after the review's fixes (`--test <t>`) | media 205, root 1871, ipc 52, parquet 88, avro 142, csv 102, xmla 761, excel 332, text 236, iobase_calls 67, iceberg 528, expression 244, http 503, warehouse 139, allocations 184 passed; media_register 14; 0 failed |
+| `cargo test -p yggdryl --all-targets --all-features --no-fail-fast` | 63 targets, 9298 passed, 0 failed, 3 ignored |
+| `cargo test -p yggdryl --all-targets --no-fail-fast` | 63 targets, 6580 passed, 0 failed |
+| `cargo test -p yggdryl-cli --all-targets --no-fail-fast` | 35 passed, 6 ignored |
+| `cargo test -p yggdryl --doc` | 628 passed |
+| clippy, workspace all features and `-p yggdryl` default, `-D warnings` | exit 0 both |
+| `RUSTDOCFLAGS="-D warnings" cargo doc -p yggdryl --no-deps --all-features` | exit 0 |
+| Python: maturin develop, pytest (Spark deselected), mypy --strict | 2784 passed, 4 skipped; no issues in 70 files |
+| Node: build:debug, the CLI build, npm test, tsc, the generated files, `test:package:debug` | 1120 of 1122 passed, the sandbox `TextDecoder` pair failing as at every slice; tsc 0; loader and declarations unchanged; the package audit passed |
+| the two docs manifests | current |
+| `mkdocs build --strict` | clean |
+| the inventories, `generate_internals.py --check` | current (180 source files and 587 `pub` names not described) |
+| the page examples, Rust / Python / JavaScript | 940 passed / 837 run, 3 skipped, 0 failed / 789 run, 2 skipped, 0 failed |
+| no test code under `src/` | the grep is empty |
+| local-only checks (charset tables and interop, ISIN seed, country and MIC tables), benches | not run: nothing the slice touches makes them stale |
+
 ## S2: what was built
 
 The media extension point, in place: four claim-once registers on
@@ -1815,8 +1953,8 @@ S6 cuts the other 99. S3 needs no answer from the user.
 | D30 | `Catalog`/`Namespace`/`Table::Registered`; `CatalogFactory` by type word and scheme; `Locator` by scheme; `Site::Store` under `s3` | `warehouse/catalog.rs:72-143`, `holder/mod.rs:348-451`, `handle.rs:19-47` | S2 |
 | D31 | `Error::External { origin, reason, source }`; `From<ParquetError>` deleted for `map_err`; `IOMedia::as_any` answering the Parquet footer cache; the statistics as free functions over `&dyn IOMedia` | `error.rs:166-172`, `parquet/mod.rs:2524`, `iomedia.rs:369-411` | S2 |
 | D32 | `filter_phases` published; logging and D17 unchanged | `expression/mod.rs:1036`; `logging/facade.rs:72-76` | S2 |
-| D34 | the medium holds its origin (`read_origin_field`), one schema answer, one projection rule (declared ∩ the columns the select and early filter read), one composer in `media_serie.rs` that `read_record_serie` also calls, `source_field` and the five residual copies gone; S8 amended | the user's instruction; `pushdown_map/design_inputs.md` | P2 |
-| D35 | `MediaCache` on every wrapper under `cache_ttl` (milliseconds, 0 realtime, outside the hash feed as `file_threads`), served while open or younger than the TTL, every write door updating or invalidating it | the user's instruction; `pushdown_map/metadata_caches.md` | P2 |
+| D34 | the medium holds its origin (`read_origin_field`), one schema answer, one projection rule (declared ∩ the columns the select and early filter read), one composer in `media_serie.rs` that `read_record_serie` also calls, `source_field` and the five residual copies gone; S8 amended | the user's instruction; `pushdown_map/design_inputs.md`; "P2 results" | S2b, built P2 |
+| D35 | `MediaCache` on every wrapper under `cache_ttl` (milliseconds, 0 realtime, outside the hash feed as `file_threads`), served while open or younger than the TTL, every write door updating or invalidating it | the user's instruction; `pushdown_map/metadata_caches.md`; "P2 results" | S2b, built P2 |
 | D33 | `yggdryl-xmla`, an eighth crate through the media point, `soap/` with it; registered in place in S2b (the core's own media three: `RecordOptions::Xmla`, `Media::Xmla`, `Serie::Xmla` deleted), moved in S6c; the Python `Xmla` class stays in the one native module; the CLI's `xmla serve` depends on it | the user's instruction; the 32 core sites and the 26 import lines above; crates.io 404 | S2b, built S6c |
 | D25 | the seventeen codes stay core and flat; the register holds enum kinds alone (`Code8`/`Code16`), `MarketPayload`, `is_canonical`, `respell` and `CODE_VALUE_RANK` deleted; `yggdryl-market` carries the enums, `graph/` and the ISIN registry | the user's instruction; the S0 pins; one free Code byte | S1 |
 

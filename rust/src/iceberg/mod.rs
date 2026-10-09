@@ -285,6 +285,12 @@ impl LocatedTable for Located {
         self.table.schema().cloned()
     }
 
+    /// The table's stored schema, as the table answers its origin: from its
+    /// metadata, with no scan planned.
+    fn read_origin_field(&self) -> Result<Option<crate::Field>> {
+        crate::IOMedia::read_origin_field(&self.table)
+    }
+
     /// The table's schema under the options' root name, as the table
     /// answers it: from its metadata, with no scan planned.
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field> {

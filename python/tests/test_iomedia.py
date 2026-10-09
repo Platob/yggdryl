@@ -1391,6 +1391,78 @@ def test_num_threads_is_a_thread_count_every_options_value_carries() -> None:
         text.num_threads = 1
 
 
+def test_cache_ttl_is_milliseconds_every_options_value_carries() -> None:
+    options = RecordOptions("trades.parquet", cache_ttl=1000)
+    assert options.cache_ttl == 1000
+    # Realtime by default: a closed handle re-reads on every ask.
+    assert RecordOptions("trades.parquet").cache_ttl == 0
+    assert TextOptions().cache_ttl == 0
+    # The setter, the per-call keyword and the pickle read one number.
+    options.cache_ttl = 250
+    assert options.cache_ttl == 250
+    options.cache_ttl = "60000"  # type: ignore[assignment]
+    assert options.cache_ttl == 60_000
+    assert pickle.loads(pickle.dumps(options)).cache_ttl == 60_000
+    options.cache_ttl = 0
+    assert options.cache_ttl == 0
+    text = TextOptions(cache_ttl=5)
+    assert text.cache_ttl == 5
+    assert pickle.loads(pickle.dumps(text)).cache_ttl == 5
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        RecordOptions("trades.arrows", cache_ttl=1)
+        TextOptions(cache_ttl=1)
+
+
+def test_cache_ttl_is_outside_the_options_identity() -> None:
+    patient = RecordOptions("trades.parquet", cache_ttl=60_000)
+    eager = RecordOptions("trades.parquet", cache_ttl=1)
+    # It changes when a change is seen, never what is: two options that differ
+    # only here are one value, whichever protocol compares them.
+    assert patient == eager
+    assert not patient < eager
+    assert patient.cache_ttl != eager.cache_ttl
+    assert patient.stable_hash() == eager.stable_hash()
+    assert patient.stable_hash() == RecordOptions("trades.parquet").stable_hash()
+    assert hash(patient) == hash(eager)
+    assert TextOptions(cache_ttl=9) == TextOptions()
+    assert hash(TextOptions(cache_ttl=9)) == hash(TextOptions())
+
+
+def test_cache_ttl_refuses_what_is_no_whole_number_of_milliseconds() -> None:
+    options = RecordOptions("trades.parquet")
+    with pytest.raises(TypeError, match="cache_ttl must be an integer of milliseconds, not bool"):
+        options.cache_ttl = True  # type: ignore[assignment]
+    with pytest.raises(TypeError, match="cache_ttl must be an integer of milliseconds"):
+        options.cache_ttl = [1]  # type: ignore[assignment]
+    # The core's one integer grammar reads the number and names the setting.
+    for refused in (-1, 1.5, "1.5", "-1", "soon", 2**64):
+        with pytest.raises(ValueError, match=r"\$\.cache_ttl.*whole number of milliseconds"):
+            options.cache_ttl = refused  # type: ignore[assignment]
+        with pytest.raises(ValueError, match=r"\$\.cache_ttl"):
+            RecordOptions("trades.parquet", cache_ttl=refused)
+    # A refusal leaves the options as they were.
+    assert options.cache_ttl == 0
+    options.cache_ttl = 2**64 - 1
+    assert options.cache_ttl == 2**64 - 1
+    # `None` is a value, and it clears the setting to its default.
+    options.cache_ttl = None
+    assert options.cache_ttl == 0
+    assert RecordOptions("trades.parquet", cache_ttl=None).cache_ttl == 0
+
+    # Any integer `__index__` reads is a number of milliseconds.
+    class Millis:
+        def __index__(self) -> int:
+            return 500
+
+    options.cache_ttl = Millis()
+    assert options.cache_ttl == 500
+    text = TextOptions()
+    hash(text)
+    with pytest.raises(TypeError, match="hashed"):
+        text.cache_ttl = 1
+
+
 def test_a_zero_thread_count_is_refused_by_name_at_every_record_write(
     tmp_path: pathlib.Path,
 ) -> None:

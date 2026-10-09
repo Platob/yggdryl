@@ -3062,8 +3062,9 @@ pub trait IOMedia: Send
   fn record_options(&self) -> Result<RecordOptions>
   fn merge_by(&self) -> Result<crate::Selector>  (the key this resource states for its own rows, which a merge whose options name none matches on: an Iceberg table's identity partition columns then the columns its schema's identifier-field-ids name, a column below structs by its path, read off the metadata with no data file opened; empty for every other handle; forwarded by Holder, warehouse Table, Handle, Uri, Box<dyn IOBase>, Buffered, Coded, Media and delegate_iomedia!)
   fn write_options<'o>(&self, mode: crate::IOMode, options: &'o RecordOptions) -> Result<std::borrow::Cow<'o, RecordOptions>>  (#[doc(hidden)], what every generic write door and the bindings' preflight resolve their options through: the options as they stand, refused as require_write_mode refuses them - a merge into a structured text document refused naming $.mode before any key is asked for - but a merge naming no key keyed by merge_by() where it is non-empty - resolved once, before a source is pulled; borrows the options, never self)
-  fn as_any(&self) -> Option<&dyn std::any::Any>  (the medium's own state, which a caller who knows the medium downcasts: a Parquet wrapper answers its `ParquetFooter`, the footer its `open` read, so a record read of it reads none of the file's end again; forwarded by Holder, Media, Buffered, Coded, Table, MediaTable, Handle and delegate_iomedia!, `None` for every other handle)
-  fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field>
+  fn as_any(&self) -> Option<&dyn std::any::Any>  (the medium's own state, which a caller who knows the medium downcasts: a Parquet wrapper answers its `ParquetFooter`, the footer its cache holds, so a record read of it reads none of the file's end again; forwarded by Holder, Media, Buffered, Coded, Table, MediaTable, Handle and delegate_iomedia!, `None` for every other handle)
+  fn read_origin_field(&self) -> Result<Option<crate::Field>>  (the whole root this resource's origin holds, its metadata whole, with no declaration and no clause applied; None where it states no shape - an empty resource, a document carrying no schema, plain text; a leaf through its codec's stated_field under the medium's own options with their declared field and clauses taken off, a container through the table located in it or its leaves, uncached; a media wrapper serves it from its MediaCache - open, or closed for the options' cache_ttl - and a write through it refreshes or drops the entry; forwarded by Holder, Media, Buffered, Coded, Table, Namespace, MediaTable, Handle, LocatedTable, IcebergTable and delegate_iomedia!)
+  fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field>  (one rule in the trait default: the declared root, else read_origin_field's, narrowed by the options' where and select in the phases a read runs them in; a SORT:by the root declares is kept only where the selection publishes every column its keys read unchanged; refused at $.field where the origin states no shape and none is declared)
   fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader>
   fn read_serie(&self, options: Option<&RecordOptions>) -> Result<Serie>  (the generic Serie: a record encoding one record Serie per batch; None the handle's own record_options() - a container the table its leaves hold; a structured text document is the one column its rows parse into, reading only the declared field off the options; forwarded by Holder, Uri, Box<dyn IOBase> and delegate_iomedia!, the HTTP request walking its pages)
   fn overwrite_serie( &mut self, value: crate::Serie, options: Option<&RecordOptions>, ) -> Result<crate::IOResult>  (write_serie under IOMode::Overwrite)
@@ -3858,6 +3859,28 @@ pub enum Media  (Ipc(Ipc<Holder>), Text(Text<Holder>), Csv(Csv<Holder>), Registe
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
 
+### yggdryl::media::cache  [rust/src/media/cache.rs]  (the medium's metadata cache: one MediaCache per media wrapper - Arrow IPC, Parquet, Avro, CSV, text, XMLA, a workbook - holds one Entry, served while the handle is open or while it is younger than the options' CacheTtl; a container caches nothing; the types re-exported from yggdryl::media)
+pub struct CacheTtl(pub u64)  (milliseconds a closed handle serves a cached entry, 0 the default and realtime; equal, ordered equal and hashing nothing, so it sits outside every options value's identity; Clone, Copy, Debug, Default)
+  pub const REALTIME: Self = Self(0)  (a closed handle reads afresh on every ask)
+  pub const fn millis(self) -> u64
+  pub const fn is_realtime(self) -> bool
+  pub fn serves(self, at: Instant, now: Instant) -> bool  (whether an entry stamped at is served at now: strictly younger than the TTL, so one exactly as old is read again; never under REALTIME)
+  impl From<u64> for CacheTtl, and FromStr: a whole number of milliseconds through the one integer grammar, refused at `$.cache_ttl`
+pub struct Entry  (what a medium knows of its origin at one instant: origin, the whole root or None where it states no shape; rows; columns; state, the medium's own object behind Arc<dyn Any + Send + Sync> - a Parquet footer, an Avro container's dimensions, CSV's inferred dialect and field, a Workbook - reached by downcast; Clone, Debug, Default)
+pub struct MediaCache  (the entry, when it was stamped, whether the handle is open and a generation bumped by every invalidation, behind one lock never held across a read; Debug, Default)
+  pub fn new() -> Self
+  pub fn open(&self)  (the explicit session starts: what is read from then on is served until close, whatever the TTL)
+  pub fn close(&self)  (the session ends and the entry is dropped with it)
+  pub fn is_open(&self) -> bool
+  pub fn keeps(&self, ttl: CacheTtl) -> bool  (whether what a read or a write learns is kept: while open, or under a TTL above zero)
+  pub fn generation(&self) -> u64  (how many invalidations the cache has seen)
+  pub fn invalidate(&self)  (drops the entry and bumps the generation, keeping the session: what a verb that changed the store without saying what calls)
+  pub fn entry(&self, ttl: CacheTtl, now: Instant) -> Option<Entry>  (the entry if served at now: while open, or while ttl.serves)
+  pub fn fill(&self, now: Instant, entry: Entry)  (replace the entry, stamped now)
+  pub fn update(&self, now: Instant, edit: impl FnOnce(&mut Entry))  (edit the entry in place, an empty one if none, stamped now: what a write door calls with what it knows)
+  pub fn add(&self, ttl: CacheTtl, now: Instant, edit: impl FnOnce(&mut Entry))  (add a fact read since to the entry served at now under ttl, its stamp kept; nothing where no entry is served)
+  pub fn get_or_fill(&self, ttl: CacheTtl, now: Instant, read: impl FnOnce() -> Result<Entry>) -> Result<Entry>  (serve or fill; the read's answer is stored only when the handle is open or ttl is not realtime, and never over an invalidation that happened while it ran)
+
 ### yggdryl::media::codec  [rust/src/media/codec.rs]  (the medium extension point: what every record medium states about itself once, as a static in its own file, and the register every intake door reads it from - claimed under each MIME type the codec names, all or none, once for the life of the process; Media::open, RecordOptions::for_mime_type and Holder::into_media ask it once and a RecordOptions in hand answers its medium through RecordOptions::codec; the core claims its own seven before the register answers anything, until they move to the crates that hold them; the types re-exported from yggdryl::media, claim as yggdryl::media::codec::claim)
 pub const EXTERNAL_RANK: u8 = 32  (the rank a medium outside the core takes at least; the core's seven hold the positions below it, in the order their options sort: ipc 0, parquet 1, avro 2, text 3, xmla 4, csv 5, excel 6)
 pub trait MediaCodec: fmt::Debug + Send + Sync + 'static
@@ -3935,6 +3958,8 @@ pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024  (the cadence a push-
   fn set_commit_batch_num(&mut self, commit_batch_num: Option<usize>)
   fn num_threads(&self) -> Option<usize>  (the parts a write of several parts runs at once - an Iceberg commit's partition groups, each group's file encoding its columns on its share - None the destination's own: write.parallelism, else read.parallelism, else the host; a leaf of one file is written on the thread that writes it and reads nothing from it; zero refused at every write door; inside the options' identity)
   fn set_num_threads(&mut self, num_threads: Option<usize>)
+  fn cache_ttl(&self) -> CacheTtl  (how long a closed handle serves the metadata its medium cached, in milliseconds - the origin's root, the row and column counts, a footer; CacheTtl::REALTIME, 0, the default, reads them afresh on every ask; an open handle serves what it read until close whatever this says; outside the options' identity, so two options differing only here compare, order and hash as equal and every medium's default stable_hash is the one it always was)
+  fn set_cache_ttl(&mut self, ttl: CacheTtl)
   fn level(&self) -> Level
   fn set_level(&mut self, level: Level)
   fn merge_by(&self) -> &Selector
@@ -3946,7 +3971,7 @@ pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024  (the cadence a push-
   fn plan(&self) -> Plan
   fn set_plan(&mut self, plan: Plan) -> Result<()>
   fn partition_pairs(&self) -> Vec<(String, String)>
-  fn apply_columns(&self) -> Option<Vec<String>>
+  fn apply_columns(&self) -> Option<Vec<String>>  (the stored columns a read decodes: the ones the select reads and the where reads before it, the split made by filter_phases against a declared root's children - a late alias names none; None for a select with a star, every column)
   fn apply_arrow_expressions( &self, reader: crate::arrow::BatchReader, ) -> Result<crate::arrow::BatchReader>
   fn require_field(&self) -> Result<Field>
   fn with_field(mut self, field: Field) -> Self
@@ -3971,6 +3996,7 @@ pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024  (the cadence a push-
   fn with_max_byte_size(mut self, max_byte_size: u64) -> Self
   fn with_commit_batch_num(mut self, commit_batch_num: usize) -> Self
   fn with_num_threads(mut self, num_threads: usize) -> Self
+  fn with_cache_ttl(mut self, ttl: impl Into<CacheTtl>) -> Self
   fn with_level(mut self, level: Level) -> Self
   fn with_merge_by(mut self, merge_by: impl IntoSelector) -> Result<Self>
   fn require_merge_by(&self) -> Result<()>
@@ -3986,7 +4012,7 @@ pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024  (the cadence a push-
     fn set_header(&mut self, header: bool) -> bool  (provided false: whether the medium took the setting)
     fn file_threads(&self) -> Option<usize>  (provided None: the thread share one file decodes or encodes on, when one was handed down)
     fn set_file_threads(&mut self, threads: usize)  (provided: nothing; Parquet splits its row groups and columns across the share and Avro its blocks)
-  pub trait MediumOptions: fmt::Debug + Send + Sync + 'static  (the object-safe twin of IORecordOptions, written once by the blanket impl over every IORecordOptions + MediumSettings + Clone + Eq + Ord + Hash + Debug + Send + Sync + 'static struct: the fourteen shared sections with their setters, codec, mime_type, stable_hash, header, file_threads, and what a trait object owes a derive-heavy enum - clone_box, dyn_eq, dyn_cmp, dyn_hash, as_any, as_any_mut)
+  pub trait MediumOptions: fmt::Debug + Send + Sync + 'static  (the object-safe twin of IORecordOptions, written once by the blanket impl over every IORecordOptions + MediumSettings + Clone + Eq + Ord + Hash + Debug + Send + Sync + 'static struct: the fifteen shared sections with their setters, cache_ttl among them, codec, mime_type, stable_hash, header, file_threads, and what a trait object owes a derive-heavy enum - clone_box, dyn_eq, dyn_cmp, dyn_hash, as_any, as_any_mut)
   pub struct RegisteredOptions(Box<dyn MediumOptions>)  (a registered medium's whole options struct, shared sections included, so its hash and its order are the struct's; Clone, Debug, Eq, Ord, Hash; Deref and DerefMut to the object-safe contract)
     pub fn new<T: MediumOptions>(settings: T) -> Self
   pub enum RecordOptions  (Ipc(IpcOptions), Text(Box<TextOptions>), Csv(CsvOptions), Registered(RegisteredOptions) - the core's three media as variants of their own and every other medium's options held whole; Clone, Debug, Eq, Ord by the medium's rank then the options, Hash)
@@ -4045,12 +4071,12 @@ pub struct ParquetOptions
   pub fn read_batch_reader<H: IOBase + ?Sized>( handle: &H, field: Option<&Field>, options: &ParquetOptions, ) -> Result<BatchReader>
   pub fn overwrite_arrow_reader<H>( handle: &mut H, batches: BatchReader, options: &ParquetOptions, ) -> Result<()> where H: IOBase + ?Sized,
   pub fn read_statistics<H: IOBase + ?Sized>(handle: &H) -> Result<FileStatistics>
-  pub fn read_media_statistics(media: &dyn crate::IOMedia) -> crate::Result<FileStatistics>  (the footer statistics of any media that is one Parquet leaf, decoding no row: an opened `Parquet` answers from the footer its `open` read at no call; `expected Parquet media, got {mime}` at `$.encoding` for another encoding and `expected one Parquet leaf for file statistics, got a container` at `$`)
+  pub fn read_media_statistics(media: &dyn crate::IOMedia) -> crate::Result<FileStatistics>  (the footer statistics of any media that is one Parquet leaf, decoding no row: a `Parquet` whose cache serves its footer - open, or closed for the options' cache_ttl - answers from it at no call; `expected Parquet media, got {mime}` at `$.encoding` for another encoding and `expected one Parquet leaf for file statistics, got a container` at `$`)
   pub fn read_media_geospatial_statistics(media: &dyn crate::IOMedia, column: &str) -> crate::Result<GeospatialStatistics>  (a projected column scan of the named top-level binary column's WKB, the refusals of `read_media_statistics`)
   pub struct ParquetCodec  (Parquet as the record register holds it - the free functions of this module behind MediaCodec; Debug)
   pub static PARQUET_CODEC: ParquetCodec  (claimed by the core under `application/vnd.apache.parquet`, rank 1, named `parquet`, titled `Parquet`, compresses internally; options held as RecordOptions::Registered)
-  pub struct ParquetFooter  (the decoded footer an opened `Parquet` holds, what IOMedia::as_any answers for it; Debug)
-  pub fn footer(&self) -> Option<Arc<ParquetMetaData>>
+  pub struct ParquetFooter  (the decoded footer a `Parquet`'s cache holds, what IOMedia::as_any answers for it; Debug)
+  pub fn footer(&self, ttl: CacheTtl) -> Option<Arc<ParquetMetaData>>  (the footer served under ttl - while open, whatever ttl says, else while the entry is younger than it; None where it holds none)
   pub struct Parquet<H: IOBase>
   pub fn new(handle: H) -> Self
   pub fn with_options(mut self, options: ParquetOptions) -> Self
@@ -4878,7 +4904,7 @@ pub struct Element<'a>
     pub fn is_held(&self) -> bool
 
 ### yggdryl::root::media_serie  [rust/src/media_serie.rs]
-  pub struct MediaSerieState<T: IOMedia + Send + 'static> (the medium under its own options, the schema read once, the clauses the serie's verbs stated; lazy read, explicit snapshot mutation)
+  pub struct MediaSerieState<T: IOMedia + Send + 'static> (the medium, which holds the options and the origin's whole field, the root the medium answered when the serie bound it, the clauses the serie's verbs stated; every read composes them over the medium's options through the crate-private compose, the one composition of every record read - the early where and the columns the select reads and the bounds the medium takes natively handed to it over the declared root narrowed to them, the late where, the select and the exact bounds applied once as the Residual; lazy read, explicit snapshot mutation)
     pub fn new(media: T) -> Result<Self>
   pub trait MediaSerieValue<T: IOMedia + Send + 'static>: SerieValue
 

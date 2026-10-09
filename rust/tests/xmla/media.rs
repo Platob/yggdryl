@@ -2761,3 +2761,452 @@ fn a_whitespace_only_cell_is_text_and_a_carriage_return_survives_the_round_trip(
         owned(&rows)
     );
 }
+
+/// Every verb that changes what the handle holds without saying what
+/// ends the answers an open session held: the next ask reads the document,
+/// and the session holds what it read again - `handle_mut` among them, which
+/// no cache dropped before.
+#[test]
+fn every_byte_verb_drops_what_an_open_session_holds() {
+    use yggdryl::holder::counted::Group;
+
+    for verb in ["handle_mut", "set_media_type", "pwrite", "truncate"] {
+        let counted = Counted::new(stored(&bare_root(TRADES_SCHEMA, TRADES_ROWS)));
+        let calls: Arc<Calls> = Arc::clone(counted.calls());
+        let mut media = Xmla::new(counted);
+        media.open().unwrap();
+
+        let asks = |media: &Xmla<Counted<Buffer>>| {
+            media.read_origin_field().unwrap();
+            media.row_size().unwrap();
+            media.column_size().unwrap();
+        };
+        asks(&media);
+        calls.reset();
+        asks(&media);
+        assert_eq!(calls.group(Group::Read), 0, "{verb}: warm before");
+        match verb {
+            "handle_mut" => {
+                let _ = media.handle_mut();
+            }
+            "set_media_type" => {
+                let media_type = media.media_type().clone();
+                media.set_media_type(media_type);
+            }
+            "pwrite" => {
+                let first = media.read_range_bytes(0, 1).unwrap();
+                media.pwrite(0, &first).unwrap();
+            }
+            _ => {
+                let size = media.handle().size();
+                media.truncate(size).unwrap();
+            }
+        }
+        calls.reset();
+        asks(&media);
+        assert!(
+            calls.group(Group::Read) > 0,
+            "{verb}: the held answers are dropped"
+        );
+        calls.reset();
+        asks(&media);
+        assert_eq!(calls.group(Group::Read), 0, "{verb}: and held again");
+    }
+}
+
+/// What the document states and the one schema answer, seen from the record
+/// surface.
+mod origin {
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::xmla::{Xmla, XmlaOptions};
+    use yggdryl::{DataType, Field, IOMedia};
+
+    use super::{TRADES_ROWS, TRADES_SCHEMA, bare_root, buffer, stored, trades_field};
+
+    /// The names of a root's columns.
+    fn column_names(field: &Field) -> Vec<&str> {
+        field.fields().iter().map(Field::name).collect()
+    }
+
+    #[test]
+    fn one_schema_answer_under_a_select_whether_the_field_is_declared_or_stored() {
+        let media = Xmla::new(stored(&bare_root(TRADES_SCHEMA, TRADES_ROWS)));
+        let selected = media.record_options().unwrap().with_select("id").unwrap();
+
+        let by_document = media.read_arrow_field(&selected).unwrap();
+        assert_eq!(column_names(&by_document), ["id"]);
+        let by_declaration = media
+            .read_arrow_field(&selected.clone().with_field(trades_field()))
+            .unwrap();
+        assert_eq!(column_names(&by_declaration), ["id"]);
+        assert_eq!(by_document.fields()[0].dtype(), &DataType::Int64);
+        assert_eq!(by_document, by_declaration);
+
+        // It is the shape the read publishes, too.
+        let read = media
+            .read_arrow_reader(&selected.with_field(trades_field()))
+            .unwrap()
+            .schema();
+        assert_eq!(
+            column_names(&Field::from_arrow_schema("row", read.as_ref()).unwrap()),
+            ["id"]
+        );
+    }
+
+    #[test]
+    fn the_origin_is_what_the_document_states_whatever_the_options_declare_or_select() {
+        let narrow = yggdryl::StructType::from_fields([DataType::Int64.required_field("id")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+        let media = Xmla::new(stored(&bare_root(TRADES_SCHEMA, TRADES_ROWS))).with_options(
+            XmlaOptions::new()
+                .with_field(narrow)
+                .with_select("id")
+                .unwrap(),
+        );
+
+        let origin = media.read_origin_field().unwrap().expect("a stated shape");
+        assert_eq!(column_names(&origin), ["id", "symbol"]);
+        let published = media
+            .read_arrow_field(&media.record_options().unwrap())
+            .unwrap();
+        assert_eq!(column_names(&published), ["id"]);
+    }
+
+    #[test]
+    fn an_empty_document_states_no_origin_and_no_schema_unless_one_is_declared() {
+        let media = Xmla::new(buffer("empty.xmla"));
+        assert!(media.read_origin_field().unwrap().is_none());
+        let options = media.record_options().unwrap();
+        let error = media.read_arrow_field(&options).unwrap_err().to_string();
+        assert!(error.contains("no schema"), "{error}");
+        assert_eq!(
+            media
+                .read_arrow_field(&options.with_field(trades_field()))
+                .unwrap(),
+            trades_field()
+        );
+    }
+}
+
+/// What a closed document's metadata cache serves under the options'
+/// `cache_ttl`, with the clock the cache doors read installed by hand, and
+/// what every write and every byte verb does to it.
+#[cfg(feature = "internals")]
+mod ttl {
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    use yggdryl::holder::Buffer;
+    use yggdryl::holder::counted::{Calls, Counted, Group};
+    use yggdryl::internals::media_cache::with_clock;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::xmla::{Xmla, XmlaOptions};
+    use yggdryl::{Field, IOBase, IOMedia, MediaType, Url};
+
+    use super::{TRADES_SCHEMA, bare_root, batch, reader, stored, two_batches};
+
+    /// Two independent handles over one in-memory byte value.
+    #[derive(Clone, Debug)]
+    struct Shared {
+        handle: Arc<Mutex<Buffer>>,
+        media_type: MediaType,
+    }
+
+    impl Shared {
+        fn new(handle: Buffer) -> Self {
+            let media_type = handle.media_type().clone();
+            Self {
+                handle: Arc::new(Mutex::new(handle)),
+                media_type,
+            }
+        }
+    }
+
+    impl IOMedia for Shared {
+        yggdryl::impl_default_iomedia!();
+    }
+
+    impl IOBase for Shared {
+        fn pread(&self, offset: u64, buffer: &mut [u8]) -> yggdryl::Result<usize> {
+            self.handle.lock().unwrap().pread(offset, buffer)
+        }
+
+        fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> yggdryl::Result<usize> {
+            self.handle.lock().unwrap().pwrite(offset, bytes)
+        }
+
+        fn create_bytes(&mut self, bytes: &[u8]) -> yggdryl::Result<()> {
+            self.handle.lock().unwrap().create_bytes(bytes)
+        }
+
+        fn size(&self) -> u64 {
+            self.handle.lock().unwrap().size()
+        }
+
+        fn capacity(&self) -> u64 {
+            self.handle.lock().unwrap().capacity()
+        }
+
+        fn reserve(&mut self, capacity: u64) -> yggdryl::Result<()> {
+            self.handle.lock().unwrap().reserve(capacity)
+        }
+
+        fn truncate(&mut self, size: u64) -> yggdryl::Result<()> {
+            self.handle.lock().unwrap().truncate(size)
+        }
+
+        fn uri(&self) -> Option<&yggdryl::Uri> {
+            None
+        }
+
+        fn url(&self) -> Option<&Url> {
+            None
+        }
+
+        fn media_type(&self) -> &MediaType {
+            &self.media_type
+        }
+
+        fn set_media_type(&mut self, media_type: MediaType) {
+            self.handle
+                .lock()
+                .unwrap()
+                .set_media_type(media_type.clone());
+            self.media_type = media_type;
+        }
+    }
+
+    /// The names of a root's columns.
+    fn column_names(field: &Field) -> Vec<&str> {
+        field.fields().iter().map(Field::name).collect()
+    }
+
+    /// A document of `rows` records, ids from zero.
+    fn document(rows: usize) -> String {
+        let records: String = (0..rows)
+            .map(|id| format!("<row><id>{id}</id><symbol>SYM{id}</symbol></row>"))
+            .collect();
+        bare_root(TRADES_SCHEMA, &records)
+    }
+
+    /// A document of `rows` records over a counted handle, read under a `ttl`
+    /// of milliseconds.
+    fn counted(rows: usize, ttl: u64) -> (Xmla<Counted<Buffer>>, Arc<Calls>) {
+        let counted = Counted::new(stored(&document(rows)));
+        let calls = Arc::clone(counted.calls());
+        let media = Xmla::new(counted).with_options(XmlaOptions::new().with_cache_ttl(ttl));
+        (media, calls)
+    }
+
+    /// The three answers the cache serves: the origin, the rows, the columns.
+    fn ask<H: IOBase>(media: &Xmla<H>) -> (Option<Field>, u64, usize) {
+        (
+            media.read_origin_field().unwrap(),
+            media.row_size().unwrap(),
+            media.column_size().unwrap(),
+        )
+    }
+
+    /// The bytes read from the store while `ask` runs.
+    fn reads(calls: &Calls, ask: impl FnOnce()) -> u64 {
+        calls.reset();
+        ask();
+        calls.group(Group::Read)
+    }
+
+    #[test]
+    fn a_warm_closed_read_under_a_ttl_costs_no_store_call_until_the_entry_is_as_old_as_the_ttl() {
+        let (media, calls) = counted(2, 1_000);
+        let options = media.record_options().unwrap();
+        let t0 = Instant::now();
+        let at = |milliseconds: u64| t0 + Duration::from_millis(milliseconds);
+
+        let (origin, rows, columns) = with_clock(t0, || ask(&media));
+        assert_eq!((rows, columns), (2, 2));
+        assert_eq!(
+            column_names(origin.as_ref().expect("a stated shape")),
+            ["id", "symbol"]
+        );
+        assert!(
+            calls.group(Group::Read) > 0,
+            "the first ask reads the document"
+        );
+
+        let cost = reads(&calls, || {
+            let warm = with_clock(at(999), || ask(&media));
+            assert_eq!(warm.0, origin);
+            assert_eq!((warm.1, warm.2), (rows, columns));
+            let field = with_clock(at(999), || media.read_arrow_field(&options).unwrap());
+            assert_eq!(column_names(&field), ["id", "symbol"]);
+        });
+        assert_eq!(cost, 0, "a warm closed read is free");
+
+        assert!(reads(&calls, || drop(with_clock(at(1_000), || ask(&media)))) > 0);
+        assert_eq!(
+            reads(&calls, || drop(with_clock(at(1_999), || ask(&media)))),
+            0
+        );
+        assert!(reads(&calls, || drop(with_clock(at(2_000), || ask(&media)))) > 0);
+    }
+
+    #[test]
+    fn a_realtime_closed_handle_reads_afresh_on_every_ask() {
+        let (media, calls) = counted(2, 0);
+        let first = reads(&calls, || drop(ask(&media)));
+        let second = reads(&calls, || drop(ask(&media)));
+        assert!(first > 0, "a closed realtime ask reads the document");
+        assert_eq!(second, first, "and what it read is not served again");
+    }
+
+    #[test]
+    fn an_open_handle_serves_whatever_the_ttl_says_until_it_closes() {
+        let t0 = Instant::now();
+        for ttl in [0, 1_000] {
+            let (mut media, calls) = counted(2, ttl);
+            media.open().unwrap();
+            with_clock(t0, || drop(ask(&media)));
+            let hour = t0 + Duration::from_secs(3_600);
+            assert_eq!(
+                reads(&calls, || drop(with_clock(hour, || ask(&media)))),
+                0,
+                "an open session serves, ttl {ttl}"
+            );
+            media.close().unwrap();
+            assert!(
+                reads(&calls, || drop(with_clock(hour, || ask(&media)))) > 0,
+                "closing dropped the entry, ttl {ttl}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_out_of_band_write_is_seen_after_the_ttl_and_not_before() {
+        let shared = Shared::new(stored(&document(2)));
+        let mut external = shared.clone();
+        let media = Xmla::new(Counted::new(shared))
+            .with_options(XmlaOptions::new().with_cache_ttl(1_000_u64));
+        let t0 = Instant::now();
+        let at = |milliseconds: u64| t0 + Duration::from_millis(milliseconds);
+        assert_eq!(with_clock(t0, || media.row_size().unwrap()), 2);
+
+        external.write_all_bytes(document(5).as_bytes()).unwrap();
+        assert_eq!(
+            with_clock(at(999), || media.row_size().unwrap()),
+            2,
+            "the entry is younger than the TTL"
+        );
+        assert_eq!(with_clock(at(1_000), || media.row_size().unwrap()), 5);
+    }
+
+    #[test]
+    fn an_overwrite_leaves_no_stale_answer_under_a_ttl() {
+        let (mut media, _) = counted(1, 1_000);
+        let options = media.record_options().unwrap();
+        let t0 = Instant::now();
+        assert_eq!(with_clock(t0, || ask(&media).1), 1);
+
+        with_clock(t0, || {
+            media
+                .overwrite_arrow_reader(two_batches(), &options)
+                .unwrap();
+        });
+        let (origin, rows, columns) = with_clock(t0 + Duration::from_millis(1), || ask(&media));
+        assert_eq!((rows, columns), (4, 2));
+        assert_eq!(
+            column_names(&origin.expect("the document's rowset")),
+            ["id", "symbol"]
+        );
+        // What an XMLA read states is the rowset the document carries, its
+        // schema only where the options' content wrote one, so an overwrite
+        // drops the entry rather than stating it, and the next ask reads the
+        // document afresh: the answer is the fresh one.
+    }
+
+    #[test]
+    fn clear_answers_no_origin_and_zero_rows_with_zero_reads() {
+        let (mut media, calls) = counted(3, 1_000);
+        let t0 = Instant::now();
+        with_clock(t0, || {
+            assert_eq!(ask(&media).1, 3);
+            media.clear().unwrap();
+        });
+        let mut answers = None;
+        let cost = reads(&calls, || {
+            answers = Some(with_clock(t0 + Duration::from_millis(10), || ask(&media)));
+        });
+        assert_eq!(cost, 0);
+        let (origin, rows, columns) = answers.unwrap();
+        assert!(origin.is_none(), "an emptied document states no rowset");
+        assert_eq!((rows, columns), (0, 0));
+    }
+
+    /// Every verb that changes what the handle holds without saying what
+    /// leaves the next ask to read it - `handle_mut` among them, which no
+    /// cache dropped before.
+    #[test]
+    fn every_byte_verb_drops_the_entry() {
+        let t0 = Instant::now();
+        for verb in ["handle_mut", "set_media_type", "pwrite", "truncate"] {
+            let (mut media, calls) = counted(2, 1_000);
+            with_clock(t0, || drop(ask(&media)));
+            assert_eq!(
+                reads(&calls, || drop(with_clock(t0, || ask(&media)))),
+                0,
+                "{verb}: warm before"
+            );
+            match verb {
+                "handle_mut" => {
+                    let _ = media.handle_mut();
+                }
+                "set_media_type" => {
+                    let media_type = media.media_type().clone();
+                    media.set_media_type(media_type);
+                }
+                "pwrite" => {
+                    let first = media.read_range_bytes(0, 1).unwrap();
+                    media.pwrite(0, &first).unwrap();
+                }
+                _ => {
+                    let size = media.handle().size();
+                    media.truncate(size).unwrap();
+                }
+            }
+            assert!(
+                reads(&calls, || drop(with_clock(t0, || ask(&media)))) > 0,
+                "{verb}: the entry is dropped"
+            );
+            assert_eq!(
+                reads(&calls, || drop(with_clock(t0, || ask(&media)))),
+                0,
+                "{verb}: and read again"
+            );
+        }
+    }
+
+    #[test]
+    fn a_merge_and_a_removal_leave_no_stale_answer() {
+        let t0 = Instant::now();
+        let (mut media, _) = counted(2, 1_000);
+        with_clock(t0, || drop(ask(&media)));
+        media
+            .options_mut()
+            .set_merge_by(yggdryl::expression::Selector::from_columns(["id"]));
+        let options = media.record_options().unwrap();
+        with_clock(t0, || {
+            media
+                .merge_arrow_reader(
+                    reader(vec![batch(&[(1, Some("X")), (7, Some("Y"))])]),
+                    &options,
+                )
+                .unwrap();
+        });
+        // Ids 0 and 1 were held: 1 is updated, 7 is added.
+        assert_eq!(with_clock(t0, || media.row_size().unwrap()), 3);
+
+        media.remove(false).unwrap();
+        assert_eq!(with_clock(t0, || media.row_size().unwrap()), 0);
+        assert!(with_clock(t0, || media.read_origin_field().unwrap()).is_none());
+    }
+}
