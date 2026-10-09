@@ -1856,7 +1856,9 @@ def prune_imports(text: str) -> str:
         pos = item.end
         if item.kind != "use":
             body = inline_body(item)
-            if body is None:
+            # A module that imports to prove the names exist says so with
+            # `#[allow(unused_imports)]`: its list is the test, never pruned.
+            if body is None or "#[allow(unused_imports)]" in item.text[: body[0]]:
                 out.append(item.text)
             else:
                 start, end = body
