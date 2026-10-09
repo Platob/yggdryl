@@ -31,7 +31,7 @@ static WARNINGS: Repeats = Repeats::new();
 static OVERFLOW: AtomicU64 = AtomicU64::new(0);
 
 /// The key one warning is deduplicated under: the logger name its site
-/// carries - so `yggdryl_fix::market` and `yggdryl::fix::market` are one
+/// carries - so `yggdryl_fix::market` and `yggdryl.fix.market` are one
 /// site, as their records are one logger - then what went wrong and its
 /// subject.
 fn key(site: &str, what: &str, subject: &str) -> u64 {
@@ -141,7 +141,7 @@ pub mod internals {
     }
 
     /// How many times the warning `what` about `subject` was raised at
-    /// `site` - a module path, such as `yggdryl::graph::book`, under
+    /// `site` - a module path, such as `yggdryl::local::file`, under
     /// whichever of the workspace's crates holds the module - `0` for
     /// one never raised.
     #[must_use]

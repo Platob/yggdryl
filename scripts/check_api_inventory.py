@@ -113,7 +113,9 @@ def tokens(crate: Path) -> set[str]:
     """
     if crate not in _TOKENS:
         found: set[str] = set()
-        for path in crate.rglob("*.rs"):
+        # A leaf's surface holds what the core's macros write in it.
+        core = ROOT / "rust" / "src"
+        for path in [p for tree in {crate, core} for p in tree.rglob("*.rs")]:
             found.update(WORD.findall(path.read_text(errors="replace")))
         _TOKENS[crate] = found
     return _TOKENS[crate]
@@ -321,7 +323,7 @@ def omitted(inventory: Path) -> tuple[int, int]:
     )
     files = 0
     names: set[str] = set()
-    for path in sorted((ROOT / "rust" / "src").rglob("*.rs")):
+    for path in sorted(p for src in [ROOT / "rust" / "src", *sorted((ROOT / "rust").glob("*/src"))] for p in src.rglob("*.rs")):
         if path.relative_to(ROOT).as_posix() not in listed:
             files += 1
         for line in path.read_text(errors="replace").splitlines():

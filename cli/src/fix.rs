@@ -5,10 +5,8 @@ use std::process::ExitCode;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use yggdryl::holder::Holder;
-use yggdryl::{
-    DataType, Field, FixCategory, FixDirection, FixField, FixFieldMut, FixMerge, FixRegistry,
-    IOKind, Result, Url,
-};
+use yggdryl::{DataType, Field, IOKind, Result, Url};
+use yggdryl_fix::{FixCategory, FixDirection, FixField, FixFieldMut, FixMerge, FixRegistry};
 
 use crate::{diff, quality, registry, schema, shell, style, warnings};
 
@@ -243,7 +241,9 @@ pub struct DefinitionArgs {
 impl DefinitionArgs {
     fn field(&self) -> Result<Field> {
         if let Some(path) = &self.input {
-            return yggdryl::from_fix_document(yggdryl::from_json_scalar(std::fs::read(path)?)?);
+            return yggdryl_fix::from_fix_document(yggdryl::from_json_scalar(std::fs::read(
+                path,
+            )?)?);
         }
         let name = self.name.as_deref().ok_or_else(|| yggdryl::Error::Absent {
             expected: "a definition name or --input",

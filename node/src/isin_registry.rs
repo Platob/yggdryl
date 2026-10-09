@@ -10,7 +10,7 @@ use napi::Either;
 use napi::bindgen_prelude::{Either11, FromNapiValue, Null, Result, Unknown};
 use napi_derive::napi;
 use yggdryl::holder::Holder;
-use yggdryl::{IdType, IsinEntry, IsinRegistry, MatchTier, Resolution, Unmatched};
+use yggdryl_market::{IdType, IsinEntry, IsinRegistry, MatchTier, Resolution, Unmatched};
 
 use crate::field::JsField;
 

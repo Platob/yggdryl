@@ -1,10 +1,12 @@
 # yggdryl-market-data in Rust
 
-The leaves, `MarketData`, the iterators and views live in `yggdryl::graph`;
-`Decimal`, `Side`, `MarketDataKind`, `State`, `Ccy`, `Mic`, `IdType`,
-`IdSource`, `Identifier`, `Identifiers`, `Uuid` and `Limit` at the crate root. Getters and setters are
-trait methods: import `yggdryl::graph::{Element, Event, Market, Operation}` as
-needed. Setters do not finalize - call `finalize()` once the facts are in.
+The leaves, `MarketData`, the iterators and views live in
+`yggdryl_market::graph`; `Side`, `MarketDataKind`, `IdType`, `IdSource`,
+`Identifier`, `Identifiers` and `Limit` at `yggdryl_market`'s root, and
+`Decimal`, `State`, `Ccy`, `Mic` and `Uuid` at `yggdryl`'s. Getters and
+setters are trait methods: import `yggdryl::graph::{Element, Event}` and
+`yggdryl_market::graph::{Market, Operation}` as needed. Setters do not
+finalize - call `finalize()` once the facts are in.
 
 ## Build an order event from named facts
 
@@ -13,8 +15,11 @@ the national number an ISIN embeds, the side an order's or an execution's
 cross code is stored under.
 
 ```rust
-use yggdryl::graph::{Element, Event, Market, Operation, OrderEvent};
-use yggdryl::{Ccy, Decimal, IdKey, IdType, Identifier, MarketDataKind, Side, State};
+use yggdryl::graph::{Element, Event};
+use yggdryl_market::graph::{Market, Operation, OrderEvent};
+use yggdryl::{Ccy, Decimal, State};
+use yggdryl_market::{IdKey, IdType, Identifier, MarketDataKind, Side};
+yggdryl_market::install()?;
 
 // Instants are i64 nanoseconds since the Unix epoch, UTC.
 const T: i64 = 1_700_000_000_000_000_000;
@@ -65,8 +70,11 @@ under side `0`; its `side` is a tag, so a quote stating a side and a price
 states the leg that side takes. A market-data entry carries a `BookRef`.
 
 ```rust
-use yggdryl::graph::{BookRef, Element, Market, MarketKind, MdUpdateAction, Order, OrderEvent, QuoteEvent};
-use yggdryl::{Ccy, Decimal, MarketDataKind, Side, Uuid};
+use yggdryl_market::graph::{BookRef, Market, MarketKind, MdUpdateAction, Order, OrderEvent, QuoteEvent};
+use yggdryl::graph::Element;
+use yggdryl::{Ccy, Decimal, Uuid};
+use yggdryl_market::{MarketDataKind, Side};
+yggdryl_market::install()?;
 
 const T: i64 = 1_700_000_000_000_000_000;
 let mut order = Order::new();
@@ -124,8 +132,11 @@ folds another statement of the same event (the later `sendunix` leads, sources
 union).
 
 ```rust
-use yggdryl::graph::{Element, Event, Market, OrderEvent};
-use yggdryl::{Decimal, Side, State, Uuid};
+use yggdryl::graph::{Element, Event};
+use yggdryl_market::graph::{Market, OrderEvent};
+use yggdryl::{Decimal, State, Uuid};
+use yggdryl_market::Side;
+yggdryl_market::install()?;
 
 const T: i64 = 1_700_000_000_000_000_000;
 let event = |unix: i64, state: &str| -> yggdryl::Result<OrderEvent> {
@@ -182,8 +193,11 @@ under one cross code are two chains), and every walked element leaves stating
 `creaunix`.
 
 ```rust
-use yggdryl::graph::{Element, Event, EventIterator, Market, OrderEvent};
-use yggdryl::{Side, State};
+use yggdryl::graph::{Element, Event};
+use yggdryl_market::graph::{EventIterator, Market, OrderEvent};
+use yggdryl_market::Side;
+use yggdryl::State;
+yggdryl_market::install()?;
 
 const T: i64 = 1_700_000_000_000_000_000;
 const SECOND: i64 = 1_000_000_000;
@@ -264,8 +278,11 @@ itself is not sided: it keeps the root's base code under its own kind and side
 `0` (`21:0:T-1`).
 
 ```rust
-use yggdryl::graph::{Element, Event, ExecutionEvent, Market, OrderEvent, TradeEvent};
-use yggdryl::{Decimal, Side};
+use yggdryl::graph::{Element, Event};
+use yggdryl_market::graph::{ExecutionEvent, Market, OrderEvent, TradeEvent};
+use yggdryl::Decimal;
+use yggdryl_market::Side;
+yggdryl_market::install()?;
 
 const T: i64 = 1_700_000_000_000_000_000;
 let fill = |code: &str, side: Side| -> yggdryl::Result<ExecutionEvent> {
@@ -299,8 +316,10 @@ and it answers `Element` and `Market` by delegating, so generic code reads it
 through the traits.
 
 ```rust
-use yggdryl::graph::{Element, Market, MarketData, MarketKind, OrderEvent, QuoteEvent};
-use yggdryl::{MarketDataKind, Side};
+use yggdryl::graph::Element;
+use yggdryl_market::graph::{Market, MarketData, MarketKind, OrderEvent, QuoteEvent};
+use yggdryl_market::{MarketDataKind, Side};
+yggdryl_market::install()?;
 
 // Generic over anything that stands in a market.
 fn label(value: &(impl Element + Market)) -> String {
@@ -337,8 +356,10 @@ use std::sync::Arc;
 use arrow_array::{Int32Array, Int64Array, RecordBatch, StringArray};
 use arrow_schema::{DataType, Field, Schema};
 use yggdryl::arrow::batch_reader;
-use yggdryl::graph::{BookEvent, Element, Event, MarketData, Order, OrderEvent};
-use yggdryl::MarketDataKind;
+use yggdryl_market::graph::{BookEvent, MarketData, Order, OrderEvent};
+use yggdryl::graph::{Element, Event};
+use yggdryl_market::MarketDataKind;
+yggdryl_market::install()?;
 
 let mut order = OrderEvent::at(1_700_000_000_000_000_000);
 order.set_crosscode("O-1001".to_owned());
@@ -386,9 +407,11 @@ Any record medium stores the batches as they stream; reading back is the same
 `from_arrow_reader`.
 
 ```rust
-use yggdryl::graph::{Element, MarketData, OrderEvent};
+use yggdryl::graph::Element;
+use yggdryl_market::graph::{MarketData, OrderEvent};
 use yggdryl::holder::Buffer;
 use yggdryl::{IOBase, IOMedia, MimeType};
+yggdryl_market::install()?;
 
 let values: Vec<MarketData> = (0..3_i64)
     .map(|at| {
@@ -419,8 +442,11 @@ before it rebuilds it whole. A filter over the `marketdata` row
 narrows what folds.
 
 ```rust
-use yggdryl::graph::{BookEvent, BookIterator, Element, Event, ExecutionEvent, Market, MarketData, Order, OrderEvent};
-use yggdryl::{Decimal, IdKey, IdType, Identifier, Isin, Side, State};
+use yggdryl_market::graph::{BookEvent, BookIterator, ExecutionEvent, Market, MarketData, Order, OrderEvent};
+use yggdryl::graph::{Element, Event};
+use yggdryl::{Decimal, Isin, State};
+use yggdryl_market::{IdKey, IdType, Identifier, Side};
+yggdryl_market::install()?;
 
 const T: i64 = 1_700_000_000_000_000_000;
 const SECOND: i64 = 1_000_000_000;
@@ -495,8 +521,11 @@ reads by kind as `orddelta` and `quotes`, which partition it, and its
 `events` as `executions` and `controls`. A book built by hand is complete.
 
 ```rust
-use yggdryl::graph::{BookEvent, Element, Market, MarketData, Operation, OrderEvent};
-use yggdryl::{Decimal, Limit, Side};
+use yggdryl_market::graph::{BookEvent, Market, MarketData, Operation, OrderEvent};
+use yggdryl::graph::Element;
+use yggdryl::Decimal;
+use yggdryl_market::{Limit, Side};
+yggdryl_market::install()?;
 
 const T: i64 = 1_700_000_000_000_000_000;
 let entry = |code: &str, side: Side, price: Option<&str>, quantity: i64| -> yggdryl::Result<OrderEvent> {
@@ -554,8 +583,11 @@ A `SnapshotEvent` clears its `(book, scope)` partition on both sides - an
 empty FIX `W` is one.
 
 ```rust
-use yggdryl::graph::{BookEvent, Element, Market, MarketData, MdUpdateAction, OrderEvent, SnapshotEvent};
-use yggdryl::{Decimal, Side};
+use yggdryl_market::graph::{BookEvent, Market, MarketData, MdUpdateAction, OrderEvent, SnapshotEvent};
+use yggdryl::graph::Element;
+use yggdryl::Decimal;
+use yggdryl_market::Side;
+yggdryl_market::install()?;
 
 const T: i64 = 1_700_000_000_000_000_000;
 let order = |code: &str, side: Side, price: &str| -> yggdryl::Result<MarketData> {
@@ -593,8 +625,11 @@ columns.
 
 ```rust
 use arrow_array::RecordBatch;
-use yggdryl::graph::{Element, ExecutionEvent, Market, MarketData, MarketView, Operation, OrderEvent, TradeEvent};
-use yggdryl::{FieldPath, IdKey, IdType, Identifier, Plan, Side};
+use yggdryl::graph::Element;
+use yggdryl_market::graph::{ExecutionEvent, Market, MarketData, MarketView, Operation, OrderEvent, TradeEvent};
+use yggdryl::{FieldPath, Plan};
+use yggdryl_market::{IdKey, IdType, Identifier, Side};
+yggdryl_market::install()?;
 
 const T: i64 = 1_700_000_000_000_000_000;
 let mut order = OrderEvent::at(T);
@@ -645,9 +680,11 @@ snapshot input, so its book is complete; the `X` after it states its delta.
 ```rust
 use std::sync::Arc;
 
-use yggdryl::graph::MarketData;
+use yggdryl_market::graph::MarketData;
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind, Side};
+use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
+use yggdryl_market::{MarketDataKind, Side};
+yggdryl_fix::install()?;
 
 // `config/fix` of a yggdryl checkout (see the yggdryl-fix skill).
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -682,8 +719,11 @@ reads a book's top of book alone, so delta books fold as complete ones do.
 align to; `Candle::field()` is the twenty-three-cell row candles cross as.
 
 ```rust
-use yggdryl::graph::{BookIterator, Candle, CandleIterator, CandleOptions, Element, Event, Market, MarketData, QuoteEvent};
-use yggdryl::{ArrowCastOptions, Decimal, Serie, Side, State, Timezone};
+use yggdryl_market::graph::{BookIterator, Candle, CandleIterator, CandleOptions, Market, MarketData, QuoteEvent};
+use yggdryl::graph::{Element, Event};
+use yggdryl::{ArrowCastOptions, Decimal, Serie, State, Timezone};
+use yggdryl_market::Side;
+yggdryl_market::install()?;
 
 // 2023-11-14T22:13:20Z.
 const T: i64 = 1_700_000_000_000_000_000;

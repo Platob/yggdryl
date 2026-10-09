@@ -2,7 +2,7 @@
 //! `MarketDataKind` is built from.
 
 use napi_derive::napi;
-use yggdryl::MarketDataKind;
+use yggdryl_market::MarketDataKind;
 
 /// One member of the core's market data kind enum - FIX's `MsgCat` code set:
 /// its stored name, the code a `marketdatakind` column stores, and what it

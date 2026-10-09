@@ -24,7 +24,9 @@ What `as_str` answers and every text format writes is the member's stored name -
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, DataTypeKind, TimeInForce};
+    use yggdryl::{DataType, DataTypeKind};
+    use yggdryl_market::TimeInForce;
+    yggdryl_market::install()?;
 
     assert!(matches!(TimeInForce::dtype(), DataType::Market(kind) if kind.id() == TimeInForce::ID));
     assert_eq!(DataType::from_str("timeinforce")?, TimeInForce::dtype());
@@ -63,7 +65,8 @@ What `as_str` answers and every text format writes is the member's stored name -
 === "Rust"
 
     ```rust
-    use yggdryl::{TimeInForce, TimeInForceField};
+    use yggdryl_market::{TimeInForce, TimeInForceField};
+    yggdryl_market::install()?;
 
     let tif = TimeInForceField::unit("timeinforce", true);
     assert_eq!(tif.dtype(), &TimeInForce::dtype());
@@ -100,7 +103,9 @@ The value is the member, whichever spelling named it: `GTC` for `GTC`, `gtc`, FI
 === "Rust"
 
     ```rust
-    use yggdryl::{Scalar, TimeInForce};
+    use yggdryl::Scalar;
+    use yggdryl_market::TimeInForce;
+    yggdryl_market::install()?;
 
     let gtc = TimeInForce::dtype().scalar("GTC")?;
     assert_eq!(gtc, Scalar::from(TimeInForce::GoodTillCancel));
@@ -176,7 +181,9 @@ The value is the member, whichever spelling named it: `GTC` for `GTC`, `gtc`, FI
 
     use arrow_array::{Array, ArrayRef, Int64Array, StringArray, UInt8Array};
     use arrow_schema::DataType as ArrowDataType;
-    use yggdryl::{ArrowCastOptions, Field, Serie, TimeInForce};
+    use yggdryl::{ArrowCastOptions, Field, Serie};
+    use yggdryl_market::TimeInForce;
+    yggdryl_market::install()?;
 
     let tif = Field::new("timeinforce", TimeInForce::dtype(), false);
     let arrow = tif.clone().into_arrow_field()?;
@@ -261,12 +268,14 @@ Three vocabularies name one member: the stored name, the specification's name an
 | `13` | `C` | `GFM` | `GoodForMonth` | Good for the month. |
 | `99` | any other | `OTHER` | - | A time in force no member names. |
 
-`from_spelling` answers the member or nothing, and `read` is the same reading as a refusal - the value door. `from_fix` is the wire reading and never refuses: the wire value, else any spelling - a bridge writing `day` where the standard writes `0` - else `OTHER`, because a venue's own value is still a time in force. `fix_code` answers the wire value, `None` for `UKNW` and `OTHER`. `StringEnum::TIMESINFORCE` is the thirteen wire values, sorted, the listing the logical name `timeinforce` prebuilds for a US-ASCII column declaring the vocabulary it holds; `DataType::from_logical_name("timeinforce")` is this enum.
+`from_spelling` answers the member or nothing, and `read` is the same reading as a refusal - the value door. `from_fix` is the wire reading and never refuses: the wire value, else any spelling - a bridge writing `day` where the standard writes `0` - else `OTHER`, because a venue's own value is still a time in force. `fix_code` answers the wire value, `None` for `UKNW` and `OTHER`. `yggdryl_market::TIMESINFORCE` is the thirteen wire values, sorted, the listing the logical name `timeinforce` prebuilds - once `install()` registers it - for a US-ASCII column declaring the vocabulary it holds; `DataType::from_logical_name("timeinforce")` is this enum.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{StringEnum, TimeInForce};
+    use yggdryl::StringEnum;
+    use yggdryl_market::{TIMESINFORCE, TimeInForce};
+    yggdryl_market::install()?;
 
     assert_eq!(TimeInForce::ALL.len(), 15);
     assert_eq!(TimeInForce::from_spelling("0"), Some(TimeInForce::Day));
@@ -286,7 +295,8 @@ Three vocabularies name one member: the stored name, the specification's name an
     assert_eq!(TimeInForce::Unknown.fix_code(), None);
 
     assert!(TimeInForce::read("Z").is_err());
-    assert_eq!(StringEnum::TIMESINFORCE.len(), 13);
+    assert_eq!(TIMESINFORCE.len(), 13);
+    assert_eq!(StringEnum::prebuilt_values("timeinforce"), TIMESINFORCE);
     ```
 
 === "Python"
@@ -342,8 +352,11 @@ A venue that states how long an order stands in a field of its own, or spells `T
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::Operation;
-    use yggdryl::{DataType, FixCodec, FixFieldMut, FixRegistry, TimeInForce};
+    use yggdryl_market::graph::Operation;
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixCodec, FixFieldMut, FixRegistry};
+    use yggdryl_market::TimeInForce;
+    yggdryl_fix::install()?;
 
     let mut venue = DataType::utf8().nullable_field("VenueTif");
     FixFieldMut::new(&mut venue).set_tag(20059)?;
@@ -441,7 +454,7 @@ A venue that states how long an order stands in a field of its own, or spells `T
 === "Rust"
 
     ```bash
-    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test root -- timeinforce::
+    cargo test -p yggdryl-market --test root -- timeinforce::
     ```
 
 === "Python"

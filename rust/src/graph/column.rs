@@ -23,9 +23,17 @@ use super::Event;
 /// reached.
 ///
 /// ```
-/// use yggdryl::graph::{Event, EventColumn, OrderEvent};
+/// use std::sync::Arc;
+///
+/// use yggdryl::graph::{Event, EventColumn};
+/// use yggdryl::text::{TextBytes, TextLine, TextOptions};
 ///
 /// # fn main() -> yggdryl::Result<()> {
+/// let line = |transunix: i64| -> yggdryl::Result<TextLine> {
+///     let mut line = TextLine::from_bytes(0, TextBytes::from_bytes(b"x")?, Arc::new(TextOptions::new()))?;
+///     line.set_transunix(transunix);
+///     Ok(line)
+/// };
 /// let fields = EventColumn::fields()?;
 /// assert_eq!(fields.len(), 9);
 /// assert_eq!(fields[0].name(), "transunix");
@@ -36,9 +44,9 @@ use super::Event;
 /// assert_eq!(EventColumn::of_name("uuid"), None);
 /// assert_eq!(EventColumn::of_name("execunix"), None);
 /// // What an event states under a column, and the same fact stated back.
-/// let event = OrderEvent::at(1_700_000_000_000_000_000);
+/// let event = line(1_700_000_000_000_000_000)?;
 /// let instant = EventColumn::TransUnix.fact(&event).expect("an instant");
-/// let mut again = OrderEvent::default();
+/// let mut again = line(0)?;
 /// EventColumn::TransUnix.record(&mut again, &instant);
 /// assert_eq!(again.get_transunix(), 1_700_000_000_000_000_000);
 /// // Nothing stated is a null: no predecessor, no earlier instant.

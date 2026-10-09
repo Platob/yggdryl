@@ -2,8 +2,9 @@
 
 use napi::bindgen_prelude::{Result, Unknown};
 use napi_derive::napi;
-use yggdryl::graph::{
-    Event, ExecutionEvent as CoreExecutionEvent, MarketData as CoreMarketData, Operation,
+use yggdryl::graph::Event;
+use yggdryl_market::graph::{
+    ExecutionEvent as CoreExecutionEvent, MarketData as CoreMarketData, Operation,
     TradeEvent as CoreTradeEvent,
 };
 

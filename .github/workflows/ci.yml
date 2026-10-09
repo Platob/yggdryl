@@ -761,9 +761,11 @@ jobs:
 
   cli:
     # The CLI's tests start the `yggdryl` binary and drive it - `yggdryl fix`
-    # over a dictionary, `yggdryl xmla serve` over a socket. The binary links
-    # the default-feature core plus `http`, a feature set no lane builds, so
-    # it builds here, at once.
+    # over a dictionary, `yggdryl xmla serve` over a socket - and pin what
+    # only the member linking every crate sees, the market register's whole
+    # listing (`cli/tests/market_register.rs`). The binary links the
+    # default-feature core plus `http` and the market and FIX crates, a
+    # feature set no lane builds, so it builds here, at once.
     name: CLI tests
     needs: [changes]
     if: contains(needs.changes.outputs.jobs, ' cli ')
@@ -849,13 +851,15 @@ jobs:
   # 772 examples were shipping unrun.
   #
   # One job per language, each behind what it runs on: the Rust half
-  # generates an integration target and compiles it against `parquet iceberg
-  # s3 s3tables http3`, the Python half runs under `python/.venv` with the
-  # wheel, and the JavaScript half needs the built addon and the Arrow
-  # package beside it.
+  # generates the CLI's integration target `docs_examples` - the CLI is the
+  # one member linking every crate a page names - and compiles it against
+  # the core's `parquet iceberg s3 s3tables http3`, the Python half runs
+  # under `python/.venv` with the wheel, and the JavaScript half needs the
+  # built addon and the Arrow package beside it.
   docs-rust:
-    # The examples' feature set is every feature but `internals`, which adds
-    # no dependency, so the full lane's cache holds every crate it links.
+    # The examples' feature set is every core feature but `internals`, which
+    # adds no dependency, so the full lane's cache holds every crate the core
+    # links under it; the CLI's own few compile in place.
     name: Documentation examples (Rust)
     needs: [changes]
     if: contains(needs.changes.outputs.jobs, ' docs-rust ')
@@ -936,11 +940,12 @@ jobs:
         run: python scripts/check_api_inventory.py
 
   leaves:
-    # Every leaf crate `rows.toml` lists under `rust/<name>` - none until S4 -
-    # proven the way the core is: clippy and rustdoc at `-D warnings`, its
-    # tests and benchmark smoke tests in both feature lanes, sharded where
-    # `rows.toml` says, its rustdoc examples, the optimized benchmark
-    # configuration, and a check at the declared MSRV where it names one.
+    # Every leaf crate `rows.toml` lists under `rust/<name>` - `market` and
+    # `fix` since S4 - proven the way the core is: clippy and rustdoc at
+    # `-D warnings`, its tests and benchmark smoke tests in both feature
+    # lanes, sharded where `rows.toml` says, its rustdoc examples, the
+    # optimized benchmark configuration, and a check at the declared MSRV
+    # where it names one.
     # A leaf compiles the core under its own feature unification, so it
     # builds in place, at once, over its own dependency cache, which its full
     # lane's `rest` shard saves on `main`. `FLAGS` is split on spaces: a leaf

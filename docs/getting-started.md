@@ -138,6 +138,8 @@ Metadata belongs to the field and behaves like each language's mapping type; a n
 | Orders, quotes, executions, books, and candles | [Graph](graph/index.md) |
 | FIX messages, registries, and captures | [FIX](fix/index.md) |
 
+In Rust, market data and FIX are the `yggdryl-market` and `yggdryl-fix` crates over the core: a caller depends on the one it uses and runs its `install()` once before anything reads a market kind or a FIX name ([Crates](architecture.md#crates)); Python and JavaScript carry both and install them on import.
+
 ## Agent skills
 
 The repository ships [agent skills](https://github.com/Platob/yggdryl/tree/main/skills) that teach a coding agent this package in all three languages: which door answers a task, the rules that keep reads streamed and casts compiled once, and the spellings an agent gets wrong when it guesses. Every example in them runs in CI beside this site's. In Claude Code they install as one plugin:

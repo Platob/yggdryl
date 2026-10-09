@@ -104,8 +104,7 @@ impl Fisn {
     /// How alike two short names are, from `0` to `1`: one less the
     /// Levenshtein distance between their bytes over the longer's length,
     /// both already upper case. Symmetric, `1` for two equal names; what
-    /// [`IsinRegistry::resolve`](crate::IsinRegistry::resolve) scores an
-    /// economic match by. The distance is never less than the two lengths'
+    /// an ISIN registry scores an economic match by. The distance is never less than the two lengths'
     /// difference, so `1 - |a - b| / max(a, b)` bounds it from above: a pair
     /// whose lengths differ by more than `(1 - threshold) * max(a, b)` is
     /// below `threshold` without the distance being computed. Allocates

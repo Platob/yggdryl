@@ -6,7 +6,7 @@
 
 | Key | Rule |
 | --- | --- |
-| Owner | `yggdryl::IdKey` (root `idkey.rs`), `yggdryl::Identifier` and `yggdryl::Identifiers` (root `identifier.rs`), the vocabularies `yggdryl::IdType` (`idtype.rs`) and `yggdryl::IdSource` (`idsource.rs`), `yggdryl::IdWord` the folded word beside a member; the national number an ISIN embeds is `securityid::embedded`; Python `yggdryl.Identifier`, `yggdryl.Identifiers`; JavaScript `Identifier`, `Identifiers` - a binding takes a key as its text, and `IdKey` is Rust-only |
+| Owner | `yggdryl_market::IdKey` (root `idkey.rs`), `yggdryl_market::Identifier` and `yggdryl_market::Identifiers` (root `identifier.rs`), the vocabularies `yggdryl_market::IdType` (`idtype.rs`) and `yggdryl_market::IdSource` (`idsource.rs`), `yggdryl_market::IdWord` the folded word beside a member; the national number an ISIN embeds is `securityid::embedded`; Python `yggdryl.Identifier`, `yggdryl.Identifiers`; JavaScript `Identifier`, `Identifiers` - a binding takes a key as its text, and `IdKey` is Rust-only |
 | `IdKey` | a source and a type, `IdKey::new(src, kind)`; `IdKey::base(kind)` the type's base key; `src()`, `kind()`, `is_base()`, `with_kind(kind)`. It displays as `src:type`, a base key as its type alone - `isin`, `ullink:isin` - and orders by that spelling's bytes, so `cusip` < `derived:cusip` < `isin` < `oms:instrumentid` < `ullink:isin`; a key of two member words spells as a static string |
 | Reading a key | `"text".parse::<IdKey>()` reads exactly: `src:type` is that source and that type, each folded, and a bare word is that type from the base source - `ISIN`, `ISIN_Number`, `base:isin`, `BASE:ISIN` and `fix:isin` are all `isin`, `marketorderid` is the type `marketorderid`. An empty half (`fix:`, `:isin`), a second `:` and a word no fold reads are refused, `expected an identifier key src:type or type`. Nothing is inferred: an inferred reading is [`Identifier::from_key`](#reading-a-name)'s |
 | Words | a source and a type are trimmed and lower-cased, the `_`, `-`, space and `#` a spelling breaks them with dropped - `Executing Trader` and `executing_trader` are `executingtrader` - ASCII letters, digits and `.` only, at most 64 bytes (`IDENTIFIER_WORD_WIDTH`); anything else is refused. A value is never folded to lower case - an ISIN is still `US0378331005` |
@@ -27,7 +27,8 @@
 === "Rust"
 
     ```rust
-    use yggdryl::{IdKey, IdSource, IdType, Identifier, Identifiers};
+    use yggdryl_market::{IdKey, IdSource, IdType, Identifier, Identifiers};
+    yggdryl_market::install()?;
 
     // A key is a source and a type; the base source's is the type alone.
     let isin = Identifier::new(IdKey::base(IdType::Isin), " us0378331005 ")?;
@@ -164,7 +165,8 @@ Replacing or removing a named source of one rank leaves the base key as it was. 
 === "Rust"
 
     ```rust
-    use yggdryl::{IdKey, IdType, Identifier, Identifiers};
+    use yggdryl_market::{IdKey, IdType, Identifier, Identifiers};
+    yggdryl_market::install()?;
 
     let id = |key: &str, value: &str| Identifier::new(key.parse().expect("a key"), value);
     let mut ids = Identifiers::new();
@@ -244,7 +246,8 @@ So a real value replaces a placeholder wherever the two meet - a lifecycle, a me
 === "Rust"
 
     ```rust
-    use yggdryl::{IdKey, IdType, Identifier, Identifiers};
+    use yggdryl_market::{IdKey, IdType, Identifier, Identifiers};
+    yggdryl_market::install()?;
 
     let isin = |value: &str| Identifier::new(IdKey::base(IdType::Isin), value);
     assert_eq!((IdType::Isin.rank("US0378331005"), IdType::Isin.max_rank()), (2, 2));
@@ -327,7 +330,8 @@ A security type is refused where another instrument's word - `leg`, `underlying`
 === "Rust"
 
     ```rust
-    use yggdryl::Identifier;
+    use yggdryl_market::Identifier;
+    yggdryl_market::install()?;
 
     let read = |key: &str, value: &str| Identifier::from_key(key, value).map(|id| id.to_string());
     assert_eq!(read("firm.x.ParentOrderID", "P-1").as_deref(), Some("firm.x:parentorderid=P-1"));
@@ -451,7 +455,8 @@ Two predicates sort a type into the set it belongs to: `IdType::is_security()` i
 === "Rust"
 
     ```rust
-    use yggdryl::{IdSource, IdType};
+    use yggdryl_market::{IdSource, IdType};
+    yggdryl_market::install()?;
 
     // A spelling folds to the member it names, an alias included.
     assert_eq!("ISIN_Number".parse::<IdType>()?, IdType::Isin);
@@ -524,7 +529,8 @@ The code's rank is read beside the type's, and the identifier ranks by the lower
 === "Rust"
 
     ```rust
-    use yggdryl::{IdKey, IdSource, IdType, Identifier, Identifiers};
+    use yggdryl_market::{IdKey, IdSource, IdType, Identifier, Identifiers};
+    yggdryl_market::install()?;
 
     let firm = |value: &str| Identifier::new(IdKey::new(IdSource::Bic, IdType::ExecutingFirm), value);
     // A value under `bic` is a BIC whatever its role: upper-cased, or refused on its key.
@@ -613,8 +619,10 @@ An order identifier chain `A`, `B`, `C`, `D` ends with `parentorderid` `C` and `
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Operation, OrderEvent};
-    use yggdryl::{IdKey, IdType, Identifier};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Operation, OrderEvent};
+    use yggdryl_market::{IdKey, IdType, Identifier};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let order = |unix: i64, orderid: &str, clordid: &str| -> yggdryl::Result<OrderEvent> {
@@ -723,8 +731,10 @@ An element that states where it came from but not what it is now is what it came
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Operation, OrderEvent};
-    use yggdryl::{IdType, Identifier, Identifiers};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Operation, OrderEvent};
+    use yggdryl_market::{IdType, Identifier, Identifiers};
+    yggdryl_market::install()?;
 
     // A replacement stating only its parents is the order of its nearest one.
     let mut order = OrderEvent::at(1_700_000_000_000_000_000);
@@ -808,7 +818,9 @@ An element that states where it came from but not what it is now is what it came
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::{Field, IdKey, IdType, Identifier, Identifiers, Scalar, Serie};
+    use yggdryl::{Field, Scalar, Serie};
+    use yggdryl_market::{IdKey, IdType, Identifier, Identifiers};
+    yggdryl_market::install()?;
 
     let mut ids = Identifiers::new();
     assert!(ids.insert(Identifier::new(IdKey::base(IdType::Isin), "US0378331005")?));
@@ -896,7 +908,7 @@ An element that states where it came from but not what it is now is what it came
 | `marketdata/ids_read_4096` | 39.4 ms (104 K rows/s) | those batches read back into orders |
 
 ```bash
-cargo bench -p yggdryl --bench graph -- 'graph/identifier'
+cargo bench -p yggdryl-market --bench graph -- 'graph/identifier'
 ```
 
 ## Commands
@@ -904,8 +916,8 @@ cargo bench -p yggdryl --bench graph -- 'graph/identifier'
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --test root -- idkey identifier idtype idsource
-    cargo test -p yggdryl --test graph -- operation
+    cargo test -p yggdryl-market --test root -- idkey identifier idtype idsource
+    cargo test -p yggdryl-market --test graph -- operation
     ```
 
 === "Python"

@@ -8,9 +8,10 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 use yggdryl::{
-    Field as CoreField, FixField, FixFieldMut, FixId as CoreFixId,
-    ProtocolField as CoreProtocolField, Scheme as CoreScheme, expression::Projection,
+    Field as CoreField, ProtocolField as CoreProtocolField, Scheme as CoreScheme,
+    expression::Projection,
 };
+use yggdryl_fix::{FixField, FixFieldMut, FixId as CoreFixId};
 
 use crate::{
     JsDifferenceIterator,
@@ -56,7 +57,7 @@ pub struct FixIdSource {
 }
 
 impl FixIdSource {
-    pub(crate) fn from_core(source: &yggdryl::FixIdSource) -> Self {
+    pub(crate) fn from_core(source: &yggdryl_fix::FixIdSource) -> Self {
         Self {
             map: source.map().as_str().to_owned(),
             key: source.key().to_string(),
@@ -2415,7 +2416,7 @@ impl JsProtocolField {
         FixField::new(&self.field.inner)
             .directions()
             .map(|entry| {
-                let rule = yggdryl::FixDirection::from(entry.map_err(napi_error)?);
+                let rule = yggdryl_fix::FixDirection::from(entry.map_err(napi_error)?);
                 Ok(FixDirection {
                     code: rule.code().to_owned(),
                     patterns: rule.patterns().iter().map(ToString::to_string).collect(),
@@ -2429,9 +2430,9 @@ impl JsProtocolField {
     #[napi(setter)]
     pub fn set_directions(&mut self, env: Env, values: Vec<FixDirection>) -> Result<()> {
         self.require_fix(env, "directions")?;
-        let rules: Vec<yggdryl::FixDirection> = values
+        let rules: Vec<yggdryl_fix::FixDirection> = values
             .into_iter()
-            .map(|rule| yggdryl::FixDirection::new(rule.code, rule.patterns))
+            .map(|rule| yggdryl_fix::FixDirection::new(rule.code, rule.patterns))
             .collect();
         FixFieldMut::new(&mut self.field.inner)
             .set_directions(&rules)
@@ -2459,11 +2460,14 @@ impl JsProtocolField {
         for value in values {
             let map = value
                 .map
-                .parse::<yggdryl::FixIdMapKind>()
+                .parse::<yggdryl_fix::FixIdMapKind>()
                 .map_err(napi_error)?;
-            let key = value.key.parse::<yggdryl::IdType>().map_err(napi_error)?;
+            let key = value
+                .key
+                .parse::<yggdryl_market::IdType>()
+                .map_err(napi_error)?;
             let mut source =
-                yggdryl::FixIdSource::new(map, key).with_follow(value.follow.unwrap_or(false));
+                yggdryl_fix::FixIdSource::new(map, key).with_follow(value.follow.unwrap_or(false));
             if let Some(role) = value.role {
                 source = source.with_role(role);
             }
@@ -2497,8 +2501,8 @@ impl JsProtocolField {
         self.require_fix(env, "marketdatatypes")?;
         let mut types = Vec::with_capacity(values.len());
         for value in &values {
-            let member =
-                yggdryl::MarketDataType::from_spelling(&value.marketdatatype).ok_or_else(|| {
+            let member = yggdryl_market::MarketDataType::from_spelling(&value.marketdatatype)
+                .ok_or_else(|| {
                     napi_error(format!(
                         "{:?} is no marketdatatype member",
                         value.marketdatatype
@@ -2534,8 +2538,8 @@ impl JsProtocolField {
         self.require_fix(env, "timeinforces")?;
         let mut members = Vec::with_capacity(values.len());
         for value in &values {
-            let member =
-                yggdryl::TimeInForce::from_spelling(&value.timeinforce).ok_or_else(|| {
+            let member = yggdryl_market::TimeInForce::from_spelling(&value.timeinforce)
+                .ok_or_else(|| {
                     napi_error(format!("{:?} is no timeinforce member", value.timeinforce))
                 })?;
             members.push((value.wire.as_str(), member));

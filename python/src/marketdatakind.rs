@@ -2,7 +2,7 @@
 //! `yggdryl.MarketDataKind` is built from.
 
 use pyo3::prelude::*;
-use yggdryl::MarketDataKind;
+use yggdryl_market::MarketDataKind;
 
 /// Every member of the core enum, in code order: its stored name - the
 /// four-letter `MsgCat` code - the code a column stores, and what it means.

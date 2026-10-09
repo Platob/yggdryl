@@ -6,7 +6,8 @@ use std::process::Command;
 use std::time::Instant;
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{DataType, FixCategory, FixCode, FixFieldMut, FixRegistry, StructType};
+use yggdryl::{DataType, StructType};
+use yggdryl_fix::{FixCategory, FixCode, FixFieldMut, FixRegistry};
 
 struct Fixture(PathBuf, PathBuf);
 
@@ -87,6 +88,10 @@ impl Drop for Fixture {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // What the command links is claimed before the registry is built, as
+    // its `main` claims it.
+    yggdryl_market::install()?;
+    yggdryl_fix::install()?;
     let fixture = Fixture::new()?;
     fixture.measure("help baseline", &["--help"])?;
     for (category, name) in [

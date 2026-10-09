@@ -385,7 +385,7 @@ fn drain_lines(handle: &(impl yggdryl::IOBase + ?Sized), options: &TextOptions) 
 /// The bridge's own capture, for the scan shapes below.
 const ULBRIDGE_LOG: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/tests/fix/ulbridge.log"
+    "/tests/support/ulbridge.log"
 ));
 
 /// One line of the capture, stripped of its row header, checked to be the
@@ -413,10 +413,9 @@ fn capture_body(index: usize, expects: &[u8]) -> Vec<u8> {
 
 /// The one shallow scan every line pays, one shape at a time.
 ///
-/// Four questions the text reader asks of a line before any message is read:
-/// where its payload opens and which way it moved, what it is, and what pairs
-/// it states - each of which locates the frame and decides what separates
-/// its fields. The shapes are the ones a capture actually mixes: a bridge row
+/// Two questions the text reader asks of a line before any message is read:
+/// what it is, and what pairs it states - each of which locates the frame
+/// and decides what separates its fields. The shapes are the ones a capture actually mixes: a bridge row
 /// framed on pipes, a numeric frame on pipes, the same frame on raw SOH, a
 /// frame spelled `^A`, one spelled `<SOH>`, prose that states pairs but names
 /// no separator, and a document. Per shape rather than over the whole
@@ -449,13 +448,9 @@ pub(crate) fn text_scan_benchmarks(criterion: &mut Criterion) {
         ),
     ];
 
-    let reading = yggdryl::FixRegistry::new().msgdirection();
     let mut group = criterion.benchmark_group("text_scan");
     for (shape, body) in &shapes {
         group.throughput(Throughput::Bytes(body.len() as u64));
-        group.bench_function(format!("{shape}/payload"), |bencher| {
-            bencher.iter(|| reading.read_bytes(black_box(body)));
-        });
         group.bench_function(format!("{shape}/classify"), |bencher| {
             bencher.iter(|| MimeType::infer_bytes(black_box(body)));
         });

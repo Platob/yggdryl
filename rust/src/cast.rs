@@ -3077,9 +3077,10 @@ impl ArrayCastPlan {
 /// keep what was stored. A bounded byte source crosses the same way. An
 /// enum source is member codes of its own leaf: its own leaf, an integer
 /// and text take them, and another enum leaf refuses them by name, as the
-/// value door refuses a member of another leaf - `Side` stores `BUYS` as
-/// `1` and `TimeInForce` stores `DAY` as `1`, and a code that reads alike
-/// under two vocabularies is still a value of one of them.
+/// value door refuses a member of another leaf - the market crate's kinds,
+/// read through the register, store `side`'s `BUYS` as `1` and
+/// `timeinforce`'s `DAY` as `1`, and a code that reads alike under two
+/// vocabularies is still a value of one of them.
 fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) -> Result<()> {
     let Some(source) = source else {
         return Ok(());

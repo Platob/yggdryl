@@ -9,9 +9,9 @@ A book is live depth over time: `BookEvent` one book at an instant - complete, h
 | `BookEvent` | on a [complete](#complete-books-and-delta-books) book the orders and quotes alive on its bid and ask sides; on every book its `delta` - the orders and quotes applied since the book before - and its `events` - every other event its instant recorded - each in the order applied, and the top of book they settled on | `Element`, `Event`, `Market` |
 | `SnapshotEvent` | an empty FIX `W`'s full-snapshot control: event + replaced scope, no entry | `Element`, `Event`, `Market` |
 | `BookIterator` | the [fold](#book-fold) from a sorted stream to books | `Iterator<Item = Result<BookEvent>>` |
-| `yggdryl::Limit` | one [price level](#limits) of a side, a root value type | - |
+| `yggdryl_market::Limit` | one [price level](#limits) of a side, a root value type | - |
 
-All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY_REF_ID` (`mdentryrefid`); `Limit` in the root `limit.rs`. A book is keyed by its [book key](market.md#the-book-key) - the instrument's ISIN, else the ticker, else `XX0000000000` - and stores it as its cross code `3:0:{key}`. A book holds both sides - its side is `Side::Both` (`BOTH`), whatever it is set to, a side set on it moving no price or level - and neither a book nor a snapshot control is [sided](market.md#sides-and-cross-codes): its stored cross code states side `0`, and a snapshot control over an order takes the order's base code under its own kind. A book places no execution: a fill moves it through its order's or quote's own report, and an execution of its instant is recorded among its `events`, resting on no side; every input [`MarketDataKind::is_recorded`](../types/enum/marketdatakind.md) does not admit - a trade, a batch - is pruned before it folds. Its row nests `alive`, `delta`, `events`, `bidlimits` and `asklimits`, and its `executions` cell is null ([Market data](market-data.md#arrow)).
+All in `yggdryl_market::graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY_REF_ID` (`mdentryrefid`); `Limit` in the market crate's root `limit.rs`. A book is keyed by its [book key](market.md#the-book-key) - the instrument's ISIN, else the ticker, else `XX0000000000` - and stores it as its cross code `3:0:{key}`. A book holds both sides - its side is `Side::Both` (`BOTH`), whatever it is set to, a side set on it moving no price or level - and neither a book nor a snapshot control is [sided](market.md#sides-and-cross-codes): its stored cross code states side `0`, and a snapshot control over an order takes the order's base code under its own kind. A book places no execution: a fill moves it through its order's or quote's own report, and an execution of its instant is recorded among its `events`, resting on no side; every input [`MarketDataKind::is_recorded`](../types/enum/marketdatakind.md) does not admit - a trade, a batch - is pruned before it folds. Its row nests `alive`, `delta`, `events`, `bidlimits` and `asklimits`, and its `executions` cell is null ([Market data](market-data.md#arrow)).
 
 ## Complete books and delta books
 
@@ -125,8 +125,11 @@ Three bids and three offers on Apple, plus a market order to buy 50.
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, Element, Market, MarketData, OrderEvent};
-    use yggdryl::{Decimal, Limit, Side};
+    use yggdryl_market::graph::{BookEvent, Market, MarketData, OrderEvent};
+    use yggdryl::graph::Element;
+    use yggdryl::Decimal;
+    use yggdryl_market::{Limit, Side};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let entry = |code: &str, side: Side, price: Option<&str>, quantity: i64| -> yggdryl::Result<MarketData> {
@@ -296,8 +299,11 @@ The best bid is the best level that can trade: a halted top level is skipped, ne
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, Element, Market, MarketData, Operation, OrderEvent};
-    use yggdryl::{Ccy, Decimal, Side};
+    use yggdryl_market::graph::{BookEvent, Market, MarketData, Operation, OrderEvent};
+    use yggdryl::graph::Element;
+    use yggdryl::{Ccy, Decimal};
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let bid = |code: &str, price: &str, quantity: i64, tradable: Option<bool>| -> yggdryl::Result<MarketData> {
@@ -409,8 +415,11 @@ Two bids and an offer on Apple; a second later the first bid is cancelled, a fil
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, Element, Event, ExecutionEvent, Market, MarketData, OrderEvent, QuoteEvent};
-    use yggdryl::{Decimal, Side, State};
+    use yggdryl_market::graph::{BookEvent, ExecutionEvent, Market, MarketData, OrderEvent, QuoteEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl::{Decimal, State};
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let order = |unix: i64, code: &str, price: &str, state: State| -> yggdryl::Result<MarketData> {
@@ -547,8 +556,11 @@ An empty snapshot of the book's scope a second later: the stale depth goes, noth
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, Element, Market, MarketData, MdUpdateAction, OrderEvent, SnapshotEvent};
-    use yggdryl::{Decimal, Side};
+    use yggdryl_market::graph::{BookEvent, Market, MarketData, MdUpdateAction, OrderEvent, SnapshotEvent};
+    use yggdryl::graph::Element;
+    use yggdryl::Decimal;
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let order = |unix: i64, code: &str, side: Side, price: &str| -> yggdryl::Result<MarketData> {
@@ -635,8 +647,11 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, BookIterator, Element, Event, ExecutionEvent, Market, MarketData, Order, OrderEvent};
-    use yggdryl::{Decimal, Side};
+    use yggdryl_market::graph::{BookEvent, BookIterator, ExecutionEvent, Market, MarketData, Order, OrderEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl::Decimal;
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     const SECOND: i64 = 1_000_000_000;
@@ -803,8 +818,11 @@ A bid, an offer and a fill: the fill is recorded among its book's `events`, and 
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookIterator, Element, Event, ExecutionEvent, Market, MarketData, OrderEvent};
-    use yggdryl::{Decimal, Side};
+    use yggdryl_market::graph::{BookIterator, ExecutionEvent, Market, MarketData, OrderEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl::Decimal;
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let order = |unix: i64, code: &str, side: Side| -> yggdryl::Result<MarketData> {
@@ -910,8 +928,11 @@ One instant, three instruments: one with an ISIN and a ticker, one with a ticker
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookIterator, Element, Market, MarketData, OrderEvent};
-    use yggdryl::{Decimal, IdKey, IdType, Identifier, Side};
+    use yggdryl_market::graph::{BookIterator, Market, MarketData, OrderEvent};
+    use yggdryl::graph::Element;
+    use yggdryl::Decimal;
+    use yggdryl_market::{IdKey, IdType, Identifier, Side};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let order = |code: &str, ticker: Option<&str>, isin: Option<&str>| -> yggdryl::Result<MarketData> {
@@ -1010,8 +1031,11 @@ An order stated by its ticker alone, then restated a millisecond later once its 
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookIterator, Element, Event, Market, MarketData, OrderEvent};
-    use yggdryl::{Decimal, IdKey, IdType, Identifier, Side, State};
+    use yggdryl_market::graph::{BookIterator, Market, MarketData, OrderEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl::{Decimal, State};
+    use yggdryl_market::{IdKey, IdType, Identifier, Side};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     const MS: i64 = 1_000_000;

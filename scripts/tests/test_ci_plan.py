@@ -118,6 +118,31 @@ class TheTableAgrees(unittest.TestCase):
                 self.assertIn("Cargo.lock", patterns)
                 self.assertTrue(set(CONFIG.rows["workflow"].paths) <= set(patterns))
 
+    def test_a_leaf_row_reads_what_its_sources_include_from_outside_its_folder(self) -> None:
+        # A leaf's tests replay the core's capture and share its bench
+        # profile: a file a `#[path]` module, an `include_bytes!` or an
+        # `include_str!` names, or a path built under `CARGO_MANIFEST_DIR`,
+        # is an input of the leaf's jobs wherever it lies, so the leaf's row
+        # reads it and a change to that file alone runs the leaf.
+        included = re.compile(r'#\[path = "([^"]+)"\]|include_(?:bytes|str)!\("([^"]+)"\)')
+        manifest = re.compile(r'env!\("CARGO_MANIFEST_DIR"\)\)?((?:\s*(?:,|\.join\()\s*"[^"]*"\s*\)?)+)')
+        for name in CONFIG.leaves:
+            folder = ROOT / "rust" / name
+            patterns = CONFIG.resolved(plan.crate_row(name))
+            for source in sorted(folder.rglob("*.rs")):
+                text = source.read_text(encoding="utf-8")
+                named = [source.parent / (module or file) for module, file in included.findall(text)]
+                named += [
+                    folder.joinpath(*(part.lstrip("/") for part in re.findall(r'"([^"]*)"', chain)))
+                    for chain in manifest.findall(text)
+                ]
+                for path in named:
+                    read = path.resolve().relative_to(ROOT).as_posix()
+                    if read.startswith(f"rust/{name}/"):
+                        continue
+                    with self.subTest(leaf=name, source=source.relative_to(ROOT).as_posix(), path=read):
+                        self.assertTrue(plan.matches(read, patterns))
+
     def test_every_artifact_outlives_a_next_day_rerun(self) -> None:
         # "Re-run failed jobs" downloads what the passed jobs uploaded.
         for path in [plan.WORKFLOW, ROOT / ".github" / "actions" / "rust-lane" / "action.yml"]:
@@ -176,26 +201,30 @@ class TheTableAgrees(unittest.TestCase):
                 self.assertEqual(WORKFLOW[job].needs, ("changes",))
                 self.assertNotIn("mode: restore", WORKFLOW[job].body)
 
-    def test_the_named_shards_are_targets_the_core_has(self) -> None:
-        manifest = tomllib.loads((ROOT / "rust" / "Cargo.toml").read_text(encoding="utf-8"))
-        tests = [{"kind": ["test"], "name": path.stem} for path in (ROOT / "rust" / "tests").glob("*.rs")]
-        benches = [{"kind": ["bench"], "name": bench["name"]} for bench in manifest["bench"]]
-        targets = [{"kind": ["lib"], "name": "yggdryl"}, *tests, *benches]
-        for lane in plan.LANES:
-            arguments = {
-                shard: plan.shard_arguments(CONFIG, "yggdryl", lane, shard, targets)
-                for shard in [*CONFIG.shards["yggdryl"][lane], "rest"]
-            }
-            selected = [
-                (flag, name)
-                for flags in arguments.values()
-                for flag, name in zip(flags, flags[1:])
-                if flag in ("--test", "--bench")
-            ]
-            with self.subTest(lane=lane):
-                self.assertEqual(len(selected), len(set(selected)))
-                self.assertEqual(len(selected), len(tests) + len(benches))
-                self.assertEqual(arguments["rest"][0], "--lib")
+    def test_the_named_shards_are_targets_their_package_has(self) -> None:
+        folders = {"yggdryl": ROOT / "rust"}
+        folders |= {leaf.package: ROOT / "rust" / name for name, leaf in CONFIG.leaves.items()}
+        for package, lanes in CONFIG.shards.items():
+            folder = folders[package]
+            manifest = tomllib.loads((folder / "Cargo.toml").read_text(encoding="utf-8"))
+            tests = [{"kind": ["test"], "name": path.stem} for path in (folder / "tests").glob("*.rs")]
+            benches = [{"kind": ["bench"], "name": bench["name"]} for bench in manifest.get("bench", [])]
+            targets = [{"kind": ["lib"], "name": package.replace("-", "_")}, *tests, *benches]
+            for lane in plan.LANES:
+                arguments = {
+                    shard: plan.shard_arguments(CONFIG, package, lane, shard, targets)
+                    for shard in [*lanes.get(lane, {}), "rest"]
+                }
+                selected = [
+                    (flag, name)
+                    for flags in arguments.values()
+                    for flag, name in zip(flags, flags[1:])
+                    if flag in ("--test", "--bench")
+                ]
+                with self.subTest(package=package, lane=lane):
+                    self.assertEqual(len(selected), len(set(selected)))
+                    self.assertEqual(len(selected), len(tests) + len(benches))
+                    self.assertEqual(arguments["rest"][0], "--lib")
 
 
 class ThePlan(unittest.TestCase):
@@ -217,7 +246,7 @@ class ThePlan(unittest.TestCase):
         })
 
     def test_the_capture_the_bindings_replay_runs_them_too(self) -> None:
-        jobs = planned(["rust/tests/fix/ulbridge.log"]).jobs
+        jobs = planned(["rust/tests/support/ulbridge.log"]).jobs
         self.assertTrue({"python", "node", "cli", "core-tests-full"} <= jobs)
 
     def test_a_python_change_runs_the_python_jobs(self) -> None:
@@ -393,6 +422,19 @@ class TheLeaves(unittest.TestCase):
         self.assertEqual({entry["name"] for entry in result.leaves}, {"market", "fix"} | set(CONFIG.leaves))
         self.assertEqual(result.python_legs, list(config.python_legs))
 
+    def test_a_core_file_a_leaf_includes_runs_that_leaf(self) -> None:
+        config = with_leaves("market", "fix")
+        for name, leaf in config.leaves.items():
+            for path in leaf.paths:
+                with self.subTest(leaf=name, path=path):
+                    result = planned([path], config=config)
+                    self.assertIn(name, {entry["name"] for entry in result.leaves})
+                    self.assertIsNone(result.full)
+        # The capture the FIX crate's tests replay runs that leaf, and the
+        # market crate's, which never reads it, stays proven.
+        result = planned(["rust/tests/support/ulbridge.log"], config=config)
+        self.assertEqual({entry["name"] for entry in result.leaves}, {"fix"})
+
     def test_a_leaf_manifest_runs_everything(self) -> None:
         # A manifest can move the lock and every cargo command loads it.
         config = with_leaves("market")
@@ -430,7 +472,6 @@ class TheLeaves(unittest.TestCase):
 class Shards(unittest.TestCase):
     TARGETS = [
         {"kind": ["lib"], "name": "crate"},
-        {"kind": ["test"], "name": "fix"},
         {"kind": ["test"], "name": "graph"},
         {"kind": ["test"], "name": "root"},
         {"kind": ["bench"], "name": "fix"},
@@ -444,16 +485,16 @@ class Shards(unittest.TestCase):
         return config
 
     def test_rest_is_every_target_no_shard_names(self) -> None:
-        config = self.config(full={"fix": ["test:fix", "bench:fix"]})
+        config = self.config(full={"fix": ["test:root", "bench:fix"]})
         self.assertEqual(plan.shard_arguments(config, "crate", "full", "fix", self.TARGETS),
-                         ["--test", "fix", "--bench", "fix"])
+                         ["--test", "root", "--bench", "fix"])
         self.assertEqual(plan.shard_arguments(config, "crate", "full", "rest", self.TARGETS),
-                         ["--lib", "--examples", "--test", "graph", "--test", "root", "--bench", "types"])
+                         ["--lib", "--examples", "--test", "graph", "--bench", "types"])
 
     def test_an_unsharded_lane_is_all_targets(self) -> None:
         config = self.config()
         self.assertEqual(plan.shard_arguments(config, "crate", "default", "rest", self.TARGETS), [
-            "--lib", "--examples", "--test", "fix", "--bench", "fix",
+            "--lib", "--examples", "--bench", "fix",
             "--test", "graph", "--test", "root", "--bench", "types",
         ])
 
@@ -461,7 +502,7 @@ class Shards(unittest.TestCase):
         missing = self.config(full={"gone": ["test:gone"]})
         with self.assertRaisesRegex(plan.PlanError, "no target of"):
             plan.shard_arguments(missing, "crate", "full", "rest", self.TARGETS)
-        doubled = self.config(full={"a": ["test:fix"], "b": ["test:fix"]})
+        doubled = self.config(full={"a": ["test:root"], "b": ["test:root"]})
         with self.assertRaisesRegex(plan.PlanError, "is in shards"):
             plan.shard_arguments(doubled, "crate", "full", "rest", self.TARGETS)
 

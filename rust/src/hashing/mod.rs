@@ -6,7 +6,7 @@
 //! dispatch vocabulary remains [`crate::DigestAlgorithm`] and [`crate::Digest`].
 //!
 //! A digest identifies the bytes or values its owner selects, not an assumed
-//! schema. For example, [`crate::FixMsg::digest`] identifies the arrival body
+//! schema. For example, a FIX message's digest identifies the arrival body
 //! independently of its delivery envelope. A message's `hashcode` is the
 //! XXH3-64 of what its event states and the canonical named content behind
 //! it; its `crosshashcode` is the XXH3-64 of the chain identifier it shares.

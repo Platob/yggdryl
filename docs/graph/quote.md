@@ -21,8 +21,11 @@ A two-sided Apple quote resting on both sides of a book, then a one-sided offer.
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, BookRef, Element, Event, Market, MarketData, MdUpdateAction, QuoteEvent};
-    use yggdryl::{Decimal, Side};
+    use yggdryl_market::graph::{BookEvent, BookRef, Market, MarketData, MdUpdateAction, QuoteEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl::Decimal;
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
 

@@ -871,7 +871,9 @@ fn every_foreign_engine_reads_an_enum_as_its_int32_code_and_a_code_as_its_text()
             dtype
         );
     }
-    assert!(enums >= 5, "{enums} enums seen");
+    // The core holds one enum leaf, `state`; the kinds a market crate
+    // claims are listed only once it has claimed them.
+    assert!(enums >= 1, "{enums} enums seen");
     assert!(codes >= 12, "{codes} codes seen");
 }
 

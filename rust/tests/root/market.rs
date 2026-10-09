@@ -1,67 +1,40 @@
-//! `rust/src/market.rs`: the market extension point - what a registered
-//! kind is to the four root enums, and what the register answers for the
-//! core's own four enum kinds and refuses for a name, a byte or a tag no
-//! claim holds. The kinds a crate claims are pinned in
-//! `rust/tests/market_register.rs`, which owns its process. The seventeen
-//! codes are the core's own, flat variants, and no claim's: each is pinned
-//! in its own file beside this one.
+//! `rust/src/market.rs`: the market extension point - what the register
+//! answers in a process no crate has claimed a kind in, and what it refuses
+//! for a name, a byte or a tag no claim holds. The kinds `yggdryl-market`
+//! claims are pinned in `rust/market/tests/root/market.rs`, and a claim's
+//! own refusals in `rust/market/tests/market_register.rs`, which owns its
+//! process. The seventeen codes are the core's own, flat variants, and no
+//! claim's: each is pinned in its own file beside this one.
 
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::market::{kind_for_extension, kind_named, kind_of, kinds};
-use yggdryl::{
-    DataType, DataTypeId, DataTypeKind, Field, MarketDataKind, MarketDataType, MarketStorage,
-    Scalar, Serie, Side, TimeInForce,
-};
+use yggdryl::{DataType, DataTypeId, Field, Scalar, Serie};
 
+/// The core claims no kind: its listing is its own, the seventeen codes
+/// among them, and a reserved kind is a name no claim answers until the
+/// crate that owns it installs, refused naming that install.
 #[test]
-fn the_core_claims_its_own_four_enum_kinds_in_byte_order() {
-    let claimed = kinds();
-    let names: Vec<&str> = claimed.iter().map(|kind| kind.name).collect();
-    assert_eq!(
-        names,
-        ["marketdatakind", "side", "marketdatatype", "timeinforce"]
-    );
-    for kind in claimed {
-        assert_eq!(
-            DataType::from_str(kind.name).unwrap(),
-            kind.dtype(),
-            "{}",
-            kind.name
-        );
-        assert!(std::ptr::eq(kind_of(kind.id).unwrap(), kind));
-        assert!(std::ptr::eq(kind_named(kind.name).unwrap(), kind));
-        assert!(std::ptr::eq(
-            kind_for_extension(kind.extension_name).unwrap(),
-            kind
-        ));
-        assert_eq!(kind.extension_name, format!("yggdryl.{}", kind.name));
-        assert_eq!(kind.id.as_str(), kind.name);
-        assert_eq!(kind.id.arrow_extension_name(), Some(kind.extension_name));
-        assert_eq!(kind.id.kind(), DataTypeKind::Enum);
-        assert!(!kind.members.is_empty());
+fn the_core_claims_no_kind_and_a_code_is_no_kind() {
+    assert!(kinds().is_empty(), "nothing installed in this process");
+    assert_eq!(DataTypeId::all(), DataTypeId::ALL);
+    for reserved in ["marketdatakind", "side", "marketdatatype", "timeinforce"] {
+        assert!(kind_named(reserved).is_none(), "{reserved}");
+        let refused = DataType::from_str(reserved).unwrap_err().to_string();
         assert!(
-            kind.members
-                .windows(2)
-                .all(|pair| pair[0].code < pair[1].code)
+            refused.contains("no registered datatype answers"),
+            "{refused}"
         );
         assert!(
-            kind.members
-                .iter()
-                .all(|member| kind.storage.fits(member.code))
+            refused.contains(&format!(
+                "`{reserved}` is read only once the crate that claims it is installed \
+                 (`yggdryl_market::install()`)"
+            )),
+            "{refused}"
         );
-        assert!(!kind.id.is_core());
-        assert!(kind.id.is_registered());
     }
-    // The listing is the core's ninety-two - the seventeen codes among
-    // them - with the four kinds spliced in after `state`.
-    assert_eq!(DataTypeId::ALL.len(), 92);
-    assert_eq!(DataTypeId::all().len(), 96);
-    let all = DataTypeId::all();
-    let state = all.iter().position(|id| *id == DataTypeId::State).unwrap();
-    assert_eq!(
-        &all[state + 1..],
-        [0xc2, 0xc3, 0xc4, 0xc5].map(DataTypeId::market)
-    );
+    for byte in 0xc2..=0xc5 {
+        assert!(DataTypeId::from_u8(byte).is_none(), "{byte:#04x}");
+    }
     // A code is no kind: the core's own, at its own byte.
     assert!(DataTypeId::ALL.contains(&DataTypeId::Isin));
     assert!(DataTypeId::Isin.is_core());
@@ -95,7 +68,8 @@ fn a_name_a_byte_and_a_tag_no_claim_answers_are_refused_naming_the_registration(
             refused.contains("no registered datatype answers"),
             "{refused}"
         );
-        assert!(refused.contains("call its `install()`"), "{refused}");
+        // No reserved kind's word: there is no install to name.
+        assert!(!refused.contains("install"), "{refused}");
     }
     // The Arrow fallback stays lossless: an unregistered name imports as
     // its storage, exactly as any foreign extension does.
@@ -113,77 +87,76 @@ fn a_name_a_byte_and_a_tag_no_claim_answers_are_refused_naming_the_registration(
     );
 }
 
-/// The datatype and the field a kind states of itself are what the register
-/// holds for it: the four enum kinds each answer through their own associated
-/// items, and `DataType` holds no constructor of any of them.
+/// A reserved kind is claimed only at its byte, its name and its extension
+/// name together, by the crate that owns it: in a process `yggdryl-market`
+/// never installed in, a claim of `side` by another crate, or of one of its
+/// keys without the others, is refused and registers nothing.
 #[test]
-fn each_enum_kind_states_the_datatype_and_field_the_register_holds_for_it() {
-    for (name, dtype, field) in [
+fn a_reserved_kind_is_claimed_only_at_its_keys_by_its_owner() {
+    use yggdryl::market::claim;
+    use yggdryl::{MarketDescriptor, MarketMember, MarketStorage};
+
+    const MEMBERS: &[MarketMember] = &[MarketMember {
+        code: 0,
+        name: "UKNW",
+        description: "Nothing stated.",
+    }];
+    fn read_none(_: &str) -> yggdryl::Result<u16> {
+        Ok(0)
+    }
+    const fn side_like(byte: u8, extension_name: &'static str) -> MarketDescriptor {
+        MarketDescriptor {
+            id: DataTypeId::market(byte),
+            name: "side",
+            extension_name,
+            storage: MarketStorage::Code8,
+            members: MEMBERS,
+            value_rank: 29,
+            dtype_rank: 53,
+            shape: 28,
+            read: read_none,
+        }
+    }
+    static SIDE: MarketDescriptor = side_like(0xc3, "yggdryl.side");
+    static OTHER_BYTE: MarketDescriptor = side_like(0xc9, "yggdryl.side");
+    static OTHER_EXTENSION: MarketDescriptor = side_like(0xc3, "yggdryl.notside");
+    for (kind, by, reason) in [
         (
-            "marketdatakind",
-            MarketDataKind::dtype(),
-            MarketDataKind::field("value"),
+            &SIDE,
+            "another",
+            "expected \"yggdryl-market\", the crate that owns the reserved kind `side`, got \"another\"",
         ),
-        ("side", Side::dtype(), Side::field("value")),
         (
-            "marketdatatype",
-            MarketDataType::dtype(),
-            MarketDataType::field("value"),
+            &OTHER_BYTE,
+            "yggdryl-market",
+            "expected `side` at 0xc3 under \"yggdryl.side\"",
         ),
         (
-            "timeinforce",
-            TimeInForce::dtype(),
-            TimeInForce::field("value"),
+            &OTHER_EXTENSION,
+            "yggdryl-market",
+            "got `side` at 0xc3 under \"yggdryl.notside\"",
         ),
     ] {
-        let claimed = kind_named(name).unwrap();
-        assert_eq!(dtype, claimed.dtype(), "{name}");
-        assert_eq!(dtype, DataType::from_str(name).unwrap(), "{name}");
-        assert_eq!(dtype.id(), claimed.id, "{name}");
-        assert_eq!(field, claimed.field("value", true), "{name}");
-        assert!(field.is_nullable(), "{name}");
-        assert_eq!(field.dtype(), &dtype, "{name}");
+        let refused = claim(kind, by).unwrap_err().to_string();
+        assert!(refused.contains(reason), "{refused}");
     }
+    assert!(kind_named("side").is_none());
+    assert!(kinds().is_empty());
 }
 
+/// The order across the codes and `State`: the seventeen codes share value
+/// rank 18 and order by identifier byte then text, and `state` keeps its
+/// own rank, 27, and orders by code within it. The rank is wire-visible: it
+/// is the order of an Arrow dictionary's values and of any caller's sort.
+/// The market kinds' ranks beside them are
+/// `rust/market/tests/root/market.rs`'s.
 #[test]
-fn a_market_type_compares_as_its_kind_states() {
-    let side = DataType::from_str("side").unwrap();
-    let DataType::Market(kind) = &side else {
-        panic!("a registered kind");
-    };
-    assert_eq!(kind.name(), "side");
-    assert_eq!(kind.id().as_u8(), 0xc3);
-    assert_eq!(kind.storage(), MarketStorage::Code8);
-    assert_eq!(kind.kind().dtype_rank, 53);
-    assert_eq!(kind.kind().shape, 28);
-    assert_eq!(kind.kind().value_rank, 29);
-    assert_eq!(side.clone().nullable_field("value").dtype(), &side);
-    // A kind stated twice is one kind: the byte is the identity.
-    assert_eq!(Side::dtype(), side);
-    assert_ne!(DataType::from_str("timeinforce").unwrap(), side);
-    assert!(
-        side < DataType::from_str("marketdatatype").unwrap(),
-        "rank 53 before 74"
-    );
-    // A code orders among the datatypes by its own rank, as a variant.
-    assert!(DataType::Country < DataType::Isin, "rank 30 before 58");
-    assert!(DataType::Cfi < side, "rank 33 before 53");
-}
-
-/// The order across the market kinds and `State` the split keeps (D19): the
-/// seventeen codes share value rank 18 and order by identifier byte then
-/// text, each enum kind keeps its own rank - `state` 27, `marketdatakind`
-/// 28, `side` 29, `marketdatatype` 30, `timeinforce` 31 - and orders by
-/// code within it. The rank is wire-visible: it is the order of an Arrow
-/// dictionary's values and of any caller's sort. Pinned on `2ae975674`.
-#[test]
-fn the_market_kinds_and_state_order_by_rank_then_by_identity() {
+fn the_codes_and_state_order_by_rank_then_by_identity() {
     use arrow_array::types::Int32Type;
     use arrow_array::{Array, DictionaryArray, StringArray};
 
     // (value, rank, identifier byte), ascending.
-    let ascending: [(Scalar, u8, u8); 22] = [
+    let ascending: [(Scalar, u8, u8); 18] = [
         (
             DataType::from_str("lei")
                 .unwrap()
@@ -307,35 +280,6 @@ fn the_market_kinds_and_state_order_by_rank_then_by_identity() {
             27,
             0xc1,
         ),
-        (
-            DataType::from_str("marketdatakind")
-                .unwrap()
-                .scalar("ORDR")
-                .unwrap(),
-            28,
-            0xc2,
-        ),
-        (
-            DataType::from_str("side").unwrap().scalar("BUYS").unwrap(),
-            29,
-            0xc3,
-        ),
-        (
-            DataType::from_str("marketdatatype")
-                .unwrap()
-                .scalar("ORDLIMIT")
-                .unwrap(),
-            30,
-            0xc4,
-        ),
-        (
-            DataType::from_str("timeinforce")
-                .unwrap()
-                .scalar("GTC")
-                .unwrap(),
-            31,
-            0xc5,
-        ),
     ];
     for pair in ascending.windows(2) {
         assert!(pair[0].0 < pair[1].0, "{:?} !< {:?}", pair[0].0, pair[1].0);
@@ -344,7 +288,7 @@ fn the_market_kinds_and_state_order_by_rank_then_by_identity() {
     // The values order by identifier byte and the datatypes by their rank
     // (`rust/tests/root/datatype.rs`), and the two disagree for the five
     // reference-data codes, whose bytes precede every other code's and whose
-    // ranks follow them: a wire fact the split keeps as it is.
+    // ranks follow them: a wire fact that stays as it is.
     let fisn = &ascending[4].0;
     let country = &ascending[5].0;
     assert!(fisn < country && fisn.dtype().unwrap() > country.dtype().unwrap());
@@ -355,7 +299,7 @@ fn the_market_kinds_and_state_order_by_rank_then_by_identity() {
         assert_eq!(*rank, if value.is_code() { 18 } else { *rank });
     }
     // Below the codes: text (5) and every container (11-13); above them a
-    // URL (20), and above every code every enum kind (27-31).
+    // URL (20), and above every code the enum leaf (27).
     let text = Scalar::from("ZZZ");
     let url = Scalar::from(yggdryl::Url::from_str("https://example.com/a").unwrap());
     let sequence = Scalar::from_sequence([]);
@@ -367,10 +311,8 @@ fn the_market_kinds_and_state_order_by_rank_then_by_identity() {
     assert!(last_code < first_enum);
     // Within one code the text orders; within one enum the code does.
     let isin = DataType::from_str("isin").unwrap();
-    let side = DataType::from_str("side").unwrap();
     let state = DataType::from_str("state").unwrap();
     assert!(isin.scalar("FR0000120271").unwrap() < isin.scalar("US0378331005").unwrap());
-    assert!(side.scalar("BUYS").unwrap() < side.scalar("SELL").unwrap());
     assert!(state.scalar("PENDING_NEW").unwrap() < state.scalar("UPDATED").unwrap());
     // A dictionary over a code column lays its values out in that order,
     // which is what an Arrow reader sees.

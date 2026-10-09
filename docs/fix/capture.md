@@ -27,7 +27,9 @@ One line in, one row per message out, with the columns named as the dictionary n
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, Scalar, fix_schema};
+    use yggdryl_fix::{FixCodec, FixRegistry, fix_schema};
+    use yggdryl::Scalar;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -57,7 +59,7 @@ One line in, one row per message out, with the columns named as the dictionary n
     assert_eq!(keys, ["9999"]);
     // In memory the message holds every pair it read as an entry, the
     // unknown key under tag 0 and its own spelling.
-    let names: Vec<&str> = order.entries().iter().map(yggdryl::FixEntry::name).collect();
+    let names: Vec<&str> = order.entries().iter().map(yggdryl_fix::FixEntry::name).collect();
     assert_eq!(names, ["symbol", "side", "execinst", "9999", "timeinforce"]);
     let unresolved: Vec<_> = order.entries().iter().filter(|entry| entry.tag() == 0).collect();
     assert_eq!(unresolved.len(), 1);
@@ -160,7 +162,9 @@ Every one of them ends in the same builder, so a document is typed by the rules 
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, Scalar};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    use yggdryl::Scalar;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     // A bridge row states its fields and not its type, so this reader is told
@@ -169,7 +173,7 @@ Every one of them ends in the same builder, so a document is typed by the rules 
         .with_exclude_msgtypes::<[&str; 0], &str>([]);
 
     let bridge: &[u8] = b"|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1\
-|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|";
+    |#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|";
     let held = reader.parse_line(bridge)?.next().expect("one frame")?;
     assert_eq!(held.by_tag(55)?.as_str(), Some("TTF"));
     assert_eq!(held.by_tag(44)?, Scalar::from(yggdryl::Decimal::parse("41.25")?));
@@ -302,7 +306,8 @@ A bridge logs what it exchanged over JMX beside what it exchanged over FIX, so a
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     // A document states no message type, so this reader reads the untyped row
@@ -399,7 +404,7 @@ Data is never an error. A parse, a market projection, a [lifecycle](lifecycle.md
 | Left out | a line that is not a row, and a frame that builds no message, the frames after it still read; a batch row whose cell the Arrow landing refuses - a `state` code no member takes - the rest of its batch still read; a batch of another schema than the first; a [book entry that cannot stand](message.md#market-data); in a book walk, an operation dated before its book and a group the book refuses - an order or a quote resting on neither side is warned of and still the book's delta ([Book](../graph/book.md#entries)) |
 | Kept as stated | an observation whose content merge is refused is walked unmerged, its clocks and provenance folded; an order link or a side the rebuild refuses leaves the message as it stated itself ([lifecycle](lifecycle.md#edges)); a message citing two live chains stands under its own identity, beside a [`FixAnomaly`](message.md#anomalies) under `crosscode` ([lifecycle](lifecycle.md#a-message-citing-two-chains-is-a-conflict)) |
 | Deduplication | keyed by where it is raised, what went wrong and the column, tag or kind it is about - never the value or the row: logged the first time with its detail, then again as `seen N times` at the tenfold counts 10, 100, 1000; process-wide, and bounded at 4096 distinct warnings: a warning of a kind past them is not said, and one line on `yggdryl.warning` counts such warnings together at the first and each tenfold one - `4096 distinct warnings were logged; N of other kinds were not` |
-| Level | `WARN` on Rust's `log` facade, its target the module path that raised it - `yggdryl::fix::messages`, the logger `yggdryl.fix.messages` - and its call site that module's last segment and the line of the raising call, `messages:<line>` |
+| Level | `WARN` on Rust's `log` facade, its target the module path that raised it - `yggdryl_fix::messages`, the logger `yggdryl.fix.messages` - and its call site that module's last segment and the line of the raising call, `messages:<line>` |
 | Surfaces | Rust: the core's tree ([`yggdryl::logging`](../logging.md#the-log-facade), `install`, or `basic_config` for the [terminal line](../logging.md#terminal) on standard error) or any other `log` backend, `env_logger` for one. Python: the standard `logging` module ([hosted by `logging`](../logging.md#python-hosted-by-logging)), logger `yggdryl.<module path>` - `yggdryl.fix.messages` - at `WARNING`; a level changed at any time applies to the next record. JavaScript: standard error as the [terminal line](../logging.md#terminal) through the tree's last resort - `2026-10-03 07:49:27,953 ! WARNING  [main] yggdryl.fix.build build:<line> › FIX clock left unstated: ...`, `[worker-N]` in a worker - or a handler on `logging.getLogger('yggdryl')` ([JavaScript](../logging.md#javascript)). CLI: printed on standard output once the command's progress line is done, one `!` line counting them, then each as a `·` note |
 
 ```text
@@ -414,7 +419,8 @@ The clock below names no instant, so it is data: the message is read, dated as o
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -505,7 +511,7 @@ The order opens with the columns every generated schema of the crate opens with 
 
 A market or an operation column FIX names alike - `Price(44)`, `StopPx(99)`, `Currency(15)`, `Quantity(53)`, `DisplayQty(1138)`, `Side(54)`, `CFICode(461)`, `LastPx(31)`, `LastQty(32)`, `AvgPx(6)`, `CumQty(14)`, `LeavesQty(151)`, `CxlQty(84)`, `BidPx(132)` and the operation's `TimeInForce(59)` - is that FIX field, holding what the message states there. Every other one is the crate's own: the ones FIX states under a name of its own are [derived](#the-crates-own-columns) from those fields and stated a second time beside them - `ticker` beside `Symbol`, `askpx` beside `OfferPx`, `ordqty` beside `OrderQty`, `hiddenqty` the quantity past the part shown - so both spellings are columns and neither is lost.
 
-`cargo run --example fix_schema --features arrow` prints that row as the Arrow batch schema a consumer reads, one column a line: its tag, its name, its Arrow type, and whether it is required.
+The example below builds that row as the schema a consumer reads - each column's name, its tag through `fix_schema_tags` and `FixField::tag`, and the band it stands in.
 
 A Serie group column carries `FIX:counter` beside the `FIX:tag` its definition derives from its own name, and `FIX:counter` is only the wire tag that names it: the NumInGroup tag that frames the group on the wire and finds the column, never a column of its own. The group's length is its count, and the column holds the occurrences. The semantic collections are `trdregtimestamps` / `TrdRegTimestamps`, found by tag 768, and `regulatorytradeids` / `RegulatoryTradeIDs`, found by tag 1907 - `fix_column_of(schema, 1907)` answers the `regulatorytradeids` column - while `NoTrdRegTimestamps(768)` and `NoRegulatoryTradeIDs(1907)` stay fields of the dictionary and are no columns. The crate's `metadata` Map carries tag and counter on one group column, 65037, the same way; a Map's entries already determine its cardinality.
 
@@ -515,7 +521,8 @@ A proprietary group that reuses a standard counter but maps none of that standar
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{fix_column_of, fix_schema, fix_schema_tags, FixField, FixRegistry};
+    use yggdryl_fix::{fix_column_of, fix_schema, fix_schema_tags, FixField, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
@@ -696,9 +703,11 @@ FIX keeps the market facts it names alike under their standard tags - the price,
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::Market;
+    use yggdryl_market::graph::Market;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{Decimal, FixCodec, FixRegistry, STRIKEPX_TAG_NAME, Scalar};
+    use yggdryl::{Decimal, Scalar};
+    use yggdryl_fix::{FixCodec, FixRegistry, STRIKEPX_TAG_NAME};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -771,9 +780,13 @@ There is no partition column. How a layout is cut is the target's to decide: an 
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Market};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::Market;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, FixSource, Scalar, Side, MSGPLUGINSIDE_TAG_NAME};
+    use yggdryl_fix::{FixCodec, FixRegistry, FixSource, MSGPLUGINSIDE_TAG_NAME};
+    use yggdryl::Scalar;
+    use yggdryl_market::Side;
+    yggdryl_fix::install()?;
 
     let seed = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("config").join("fix");
     let mut registry = FixRegistry::from_handle(&LocalFolder::new(seed)?)?;
@@ -863,7 +876,9 @@ Dated, each message takes its [place](lifecycle.md#a-place-counts-one-instant) b
     use std::sync::Arc;
     use yggdryl::graph::{Element, Event};
     use yggdryl::local::LocalFolder;
-    use yggdryl::{CREAUNIX_TAG_NAME, FixCodec, FixRegistry, Scalar, TimeUnit, Timezone, TRANSUNIX_TAG_NAME, fix_crate_fields};
+    use yggdryl_fix::{CREAUNIX_TAG_NAME, FixCodec, FixRegistry, TRANSUNIX_TAG_NAME, fix_crate_fields};
+    use yggdryl::{Scalar, TimeUnit, Timezone};
+    yggdryl_fix::install()?;
 
     let fields = fix_crate_fields()?;
     assert_eq!(fields.len(), 52);
@@ -1046,7 +1061,8 @@ This is parse behavior and depends on the one message being parsed, so it compos
     use std::sync::Arc;
     use yggdryl::graph::Event;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -1196,7 +1212,7 @@ What each rule reads, in words:
 | `Product(460)` | `SecurityType(167)`, else `CFICode(461)` | the group the dictionary's `SecurityType` code set files the value under, as the `Product` code set spells it - `Agency` is `1`, `Corporate` `3`, `Currency` `4`, `Equity` `5`, `Government` `6`, `Loan` `8`, `Money Market` `9`, `Mortgage` `10`, `Municipal` `11`, `Financing` `13`; `Derivatives` and `Other` answer nothing. A CFI in category `E` is `5` and in `L` is `13` |
 | `TimeInForce(59)` | nothing, on an order `D`, a replace `G` or a report `8` | the field's own definition: absent means `0`, a day order |
 | `OrdStatus(39)` | `ExecType(150)`; else `LeavesQty(151)` and `CumQty(14)` on a trade | the values the two code sets spell alike - not `D`, Restated in one and AcceptedForBidding in the other; a trade leaving nothing is filled, `2`, and one leaving something after doing something is partially filled, `1` - each landing under `OrdStatus`'s own code set, which is where `get_state` reads the element's [state](../types/enum/state.md) |
-| `LeavesQty(151)`, `OrderQty(38)`, `CumQty(14)` | the other two, on a report | Appendix D, by where the order stands as its `OrdStatus(39)` reads ([`fix::state::from_status`](../types/enum/state.md)): nothing is left once it ended, and live or filled `OrderQty = CumQty + LeavesQty`; ended any other way - canceled, done for the day, expired, calculated, rejected - what it asked for is what it did plus `CxlQty(84)`: `OrderQty` answers `CumQty + CxlQty`, and `CumQty` `OrderQty - LeavesQty - CxlQty`, nothing where the report states no `CxlQty`. A report with nothing left that states a positive canceled quantity answers `CumQty + CxlQty` too, and `CxlQty` is read last where nothing says what is left |
+| `LeavesQty(151)`, `OrderQty(38)`, `CumQty(14)` | the other two, on a report | Appendix D, by where the order stands as its `OrdStatus(39)` reads ([`yggdryl_fix::state::from_status`](../types/enum/state.md)): nothing is left once it ended, and live or filled `OrderQty = CumQty + LeavesQty`; ended any other way - canceled, done for the day, expired, calculated, rejected - what it asked for is what it did plus `CxlQty(84)`: `OrderQty` answers `CumQty + CxlQty`, and `CumQty` `OrderQty - LeavesQty - CxlQty`, nothing where the report states no `CxlQty`. A report with nothing left that states a positive canceled quantity answers `CumQty + CxlQty` too, and `CxlQty` is read last where nothing says what is left |
 | `GrossTradeAmt(381)` | `LastQty(32)` x `LastPx(31)` | Appendix D's execution reports; each operand is stated at scale nine, half the target scale, so the product lands back at eighteen digits |
 | `SettlCurrAmt(119)` | `GrossTradeAmt(381)` x `SettlCurrFxRate(155)` | Appendix O, at the same scales |
 | `Currency(15)`, `SettlCurrency(120)` | each other | Appendix O: a trade settling in the currency it was dealt in states it once - except on a currency product, `Product(460)` `4`, whose two currencies are the pair's two legs |
@@ -1220,9 +1236,13 @@ What the pass leaves null it leaves null on purpose, and a reader needs to be ab
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::graph::{Event, Market};
+    use yggdryl::graph::Event;
+    use yggdryl_market::graph::Market;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, IdType, Scalar};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    use yggdryl_market::IdType;
+    use yggdryl::Scalar;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -1339,9 +1359,11 @@ A symbol naming no pair detects nothing, and so does a message stating a class t
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::Market;
+    use yggdryl_market::graph::Market;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, IdKey, IdSource, IdType};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    use yggdryl_market::{IdKey, IdSource, IdType};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -1403,9 +1425,12 @@ The [identifier maps](message.md#the-identifier-maps) `Operation` answers - `get
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Operation};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::Operation;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, IdKey, IdType, Identifier};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    use yggdryl_market::{IdKey, IdType, Identifier};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -1453,7 +1478,8 @@ The cancel reject the corpus ends on shows the fill and its bound side by side: 
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -1585,7 +1611,9 @@ A carried column whose folded name a FIX column already takes - a `MsgCtxId` cap
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FixRegistry, StructType, fix_schema, fix_schema_carrying};
+    use yggdryl::{DataType, StructType};
+    use yggdryl_fix::{FixRegistry, fix_schema, fix_schema_carrying};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
@@ -1687,8 +1715,8 @@ What one line of each shape costs the codec - a framed tag stream, a bare one, a
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --test fix schema::
-    cargo test -p yggdryl --test fix codec::a_bridge_frame
+    cargo test -p yggdryl-fix --test root schema::
+    cargo test -p yggdryl-fix --test root codec::a_bridge_frame
     cargo run -p yggdryl-cli -- fix schema --root config/fix
     ```
 

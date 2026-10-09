@@ -8,7 +8,8 @@
 use std::path::{Path, PathBuf};
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{Field, FixCategory, FixCommit, FixField, FixKey, FixRegistry, FixSource, Result};
+use yggdryl::{Field, Result};
+use yggdryl_fix::{FixCategory, FixCommit, FixField, FixKey, FixRegistry, FixSource};
 
 use crate::style;
 
@@ -181,7 +182,7 @@ pub fn read(store: &Store, category: FixCategory, key: &str, json: bool) -> Resu
         // handed back through `--input` or dropped into a store tree.
         outln!(
             "{}",
-            yggdryl::into_json_scalar(&yggdryl::into_fix_document(field.clone())?)?
+            yggdryl::into_json_scalar(&yggdryl_fix::into_fix_document(field.clone())?)?
         );
         return Ok(());
     }
@@ -289,7 +290,7 @@ pub fn read_codeset(store: &Store, name: &str, json: bool) -> Result<()> {
 
 /// States one code set's members, replacing or folding into what it held.
 pub fn write_codeset(store: &mut Store, name: &str, document: &str, merge: bool) -> Result<()> {
-    let codes = yggdryl::FixCodes::parse(document)?;
+    let codes = yggdryl_fix::FixCodes::parse(document)?;
     let registry = store.registry_mut();
     if merge {
         registry.merge_codeset(name, &codes)?;

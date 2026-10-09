@@ -23,7 +23,9 @@ A `Side` is one byte in memory and its code in a column. What `as_str` answers a
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, DataTypeKind, Side};
+    use yggdryl::{DataType, DataTypeKind};
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     assert!(matches!(Side::dtype(), DataType::Market(kind) if kind.id() == Side::ID));
     assert_eq!(DataType::from_str("side")?, Side::dtype());
@@ -62,7 +64,9 @@ A `Side` is one byte in memory and its code in a column. What `as_str` answers a
 === "Rust"
 
     ```rust
-    use yggdryl::{Field, Side, SideField};
+    use yggdryl::Field;
+    use yggdryl_market::{Side, SideField};
+    yggdryl_market::install()?;
 
     let side = SideField::unit("side", false);
     assert_eq!(side.dtype(), &Side::dtype());
@@ -99,7 +103,9 @@ The value is the member, whichever vocabulary named it: `BUYS` for FIX's `1`, it
 === "Rust"
 
     ```rust
-    use yggdryl::{Scalar, Side};
+    use yggdryl::Scalar;
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     let buy = Side::dtype().scalar("BUYS")?;
     assert_eq!(buy, Scalar::from(Side::Buy));
@@ -165,7 +171,9 @@ The value is the member, whichever vocabulary named it: `BUYS` for FIX's `1`, it
 
     use arrow_array::{Array, ArrayRef, StringArray, UInt8Array};
     use arrow_schema::DataType as ArrowDataType;
-    use yggdryl::{ArrowCastOptions, Field, Serie, Side};
+    use yggdryl::{ArrowCastOptions, Field, Serie};
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     let side = Field::new("side", Side::dtype(), false);
     let arrow = side.clone().into_arrow_field()?;
@@ -243,7 +251,8 @@ A FIX `Side(54)` wire code, the specification's own name, and the four-letter co
 === "Rust"
 
     ```rust
-    use yggdryl::Side;
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     assert_eq!(Side::from_spelling("1"), Some(Side::Buy));
     assert_eq!(Side::from_spelling("sell_short"), Some(Side::SShort));
@@ -301,7 +310,8 @@ A FIX `Side(54)` wire code, the specification's own name, and the four-letter co
 === "Rust"
 
     ```rust
-    use yggdryl::Side;
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     assert!(Side::Buy.is_bid() && !Side::Buy.is_ask());
     assert!(Side::SShortEx.is_ask() && !Side::SShortEx.is_bid());
@@ -331,7 +341,8 @@ A FIX `Side(54)` wire code, the specification's own name, and the four-letter co
 `UKNW` is what a value that must state a side states where none was said: a market element's side is never null, and holds `UKNW` until something states one ([Market](../../graph/market.md#contract)). `merge_with` folds two statements of one side: a side stated as none takes the other, and anything stated stands. Rust only.
 
 ```rust
-use yggdryl::Side;
+use yggdryl_market::Side;
+yggdryl_market::install()?;
 
 assert_eq!(Side::default(), Side::Unknown);
 assert_eq!(Side::Unknown.merge_with(Side::Sell), Side::Sell);
@@ -347,8 +358,11 @@ assert_eq!(Side::Buy.merge_with(Side::Unknown), Side::Buy);
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, Element, Market, QuoteEvent};
-    use yggdryl::{Decimal, Side};
+    use yggdryl_market::graph::{BookEvent, Market, QuoteEvent};
+    use yggdryl::graph::Element;
+    use yggdryl::Decimal;
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     let book = BookEvent::new(1, "ACME");
     assert_eq!(book.get_side(), Side::Both);
@@ -404,14 +418,17 @@ assert_eq!(Side::Buy.merge_with(Side::Unknown), Side::Buy);
 
 ## A FIX plugin's role is a side
 
-A FIX plugin stands on one side of its session: a Buy-Side plugin originates orders and cancels and receives execution reports, a Sell-Side one receives them and answers. That role is a side - `BUYS`, `SELL`, or `UKNW` where none is stated - so `BuySide` and `SellSide` are two spellings of the two members, folded the way every name folds (`buy-side`, `sell_side`, `SELL SIDE`), and there is no second enum for it. An Ullink CBlock names its plugin's class in its root's `type` attribute - `com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.SellSideFIXCPluginCBlock` - and `yggdryl::fix::plugin_side` (Python `yggdryl.fix.plugin_side`, JavaScript `fix.pluginSide`) reads the role off that class: the last `.`-separated segment alone, folded, so `BuySide` anywhere in it is `BUYS` and `SellSide` is `SELL`; a class naming neither, a package naming a role rather than the class, and no attribute at all are `UKNW`, never a refusal, because a plugin whose class states no role is a plugin of no stated role - the one reading that turns an unknown spelling into `UKNW` where the value door refuses it. Reading a CBlock under a dialect (`FixRegistry::from_cfb_file`, `add_cfb_file`, `add_cfb_files`, [`yggdryl fix ingest`](../../fix/cli.md#ingest-and-sync)) records that role on the dialect's [catalog entry](../../fix/registry.md#membership), beside the file it was read from, and a codec reading under that source stamps it on every message as the required [`msgpluginside`](../../fix/capture.md#the-plugins-role-is-the-sources) column, tag 65043 - the session's role, never the order's `Side(54)`. The role is the entry's and never a field's: a field states only which sources contributed it.
+A FIX plugin stands on one side of its session: a Buy-Side plugin originates orders and cancels and receives execution reports, a Sell-Side one receives them and answers. That role is a side - `BUYS`, `SELL`, or `UKNW` where none is stated - so `BuySide` and `SellSide` are two spellings of the two members, folded the way every name folds (`buy-side`, `sell_side`, `SELL SIDE`), and there is no second enum for it. An Ullink CBlock names its plugin's class in its root's `type` attribute - `com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.SellSideFIXCPluginCBlock` - and `yggdryl_fix::plugin_side` (Python `yggdryl.fix.plugin_side`, JavaScript `fix.pluginSide`) reads the role off that class: the last `.`-separated segment alone, folded, so `BuySide` anywhere in it is `BUYS` and `SellSide` is `SELL`; a class naming neither, a package naming a role rather than the class, and no attribute at all are `UKNW`, never a refusal, because a plugin whose class states no role is a plugin of no stated role - the one reading that turns an unknown spelling into `UKNW` where the value door refuses it. Reading a CBlock under a dialect (`FixRegistry::from_cfb_file`, `add_cfb_file`, `add_cfb_files`, [`yggdryl fix ingest`](../../fix/cli.md#ingest-and-sync)) records that role on the dialect's [catalog entry](../../fix/registry.md#membership), beside the file it was read from, and a codec reading under that source stamps it on every message as the required [`msgpluginside`](../../fix/capture.md#the-plugins-role-is-the-sources) column, tag 65043 - the session's role, never the order's `Side(54)`. The role is the entry's and never a field's: a field states only which sources contributed it.
 
 === "Rust"
 
     ```rust
-    use yggdryl::fix::plugin_side;
+    use yggdryl_fix::plugin_side;
     use yggdryl::local::LocalFile;
-    use yggdryl::{FixRegistry, Scalar, Side};
+    use yggdryl_fix::FixRegistry;
+    use yggdryl::Scalar;
+    use yggdryl_market::Side;
+    yggdryl_fix::install()?;
 
     let cblock = "com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock";
     assert_eq!(plugin_side(&format!("{cblock}.BuySideFIXCPluginCBlock")), Side::Buy);
@@ -517,15 +534,15 @@ A FIX plugin stands on one side of its session: a Buy-Side plugin originates ord
 - A Hive partition over a `side` column is named by the member, `side=BUYS`.
 - JSON, TOML, YAML and XML write a side as its four-letter code, the [value stream](../value-stream.md) and a digest feed its four-byte little-endian code under the side's own identifier, so a side, a [state](state.md) and an integer of one code are three values.
 - `utf8` under `yggdryl.side` is a foreign field wearing the name and imports as the text it is; a side packs into no US-ASCII integer, because its column already holds its code.
-- A FIX plugin's role is a side ([above](#a-fix-plugins-role-is-a-side)): `BuySide` and `SellSide` are spellings of `BUYS` and `SELL`, `fix::plugin_side` reads a CBlock's class into one and refuses nothing - a class naming no role is `UKNW` - where the value door refuses a spelling that names none. A FIX dictionary renders the nineteen members as its intrinsic `msgpluginsidecodeset`, which no [registry](../../fix/registry.md#a-field-names-the-code-set-it-reads-by) write may change and a [store](../../fix/store.md#edges) document is held to member for member; `msgpluginside` is outside a FIX message's `hashcode`, `uuid` and wire, so one line read under two sources is one message stamped two ways.
-- `StringEnum::SIDES` is the listing of the nineteen four-letter codes, sorted, reached by the logical name `side` for a US-ASCII column declaring the vocabulary it holds; `DataType::from_logical_name("side")` is this enum. Python's `yggdryl.enums` declares no side: `yggdryl.Side` is the vocabulary.
+- A FIX plugin's role is a side ([above](#a-fix-plugins-role-is-a-side)): `BuySide` and `SellSide` are spellings of `BUYS` and `SELL`, `yggdryl_fix::plugin_side` reads a CBlock's class into one and refuses nothing - a class naming no role is `UKNW` - where the value door refuses a spelling that names none. A FIX dictionary renders the nineteen members as its intrinsic `msgpluginsidecodeset`, which no [registry](../../fix/registry.md#a-field-names-the-code-set-it-reads-by) write may change and a [store](../../fix/store.md#edges) document is held to member for member; `msgpluginside` is outside a FIX message's `hashcode`, `uuid` and wire, so one line read under two sources is one message stamped two ways.
+- `yggdryl_market::SIDES` is the listing of the nineteen four-letter codes, sorted, reached by the logical name `side` once `install()` registers it, for a US-ASCII column declaring the vocabulary it holds; `DataType::from_logical_name("side")` is this enum. Python's `yggdryl.enums` declares no side: `yggdryl.Side` is the vocabulary.
 
 ## Commands
 
 === "Rust"
 
     ```bash
-    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test root -- side::
+    cargo test -p yggdryl-market --test root -- side::
     ```
 
 === "Python"

@@ -12,7 +12,7 @@ A fact has one name and one datatype in every row, so a reader who knows one row
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | Nothing of its own. The column names come from `ElementColumn::ALL` (6), `EventColumn::ALL` (9), `MarketColumn::ALL` (36) and `OperationColumn::ALL` (5) in `yggdryl::graph`. The rows are built by `MarketData::field`, `fix_schema` and the text record reader |
+| Owns | Nothing of its own. The column names come from `ElementColumn::ALL` (6) and `EventColumn::ALL` (9) in `yggdryl::graph`, and `MarketColumn::ALL` (36) and `OperationColumn::ALL` (5) in `yggdryl_market::graph`. The rows are built by `MarketData::field`, `fix_schema` and the text record reader |
 | Order | Element, event, market, operation - the order of the traits that answer them (`Element`, `Event`, `Market`, `Operation`) - then the row's own columns |
 | Names | Every fact has one name and one datatype in every row. Every generated column carries a display name in its `display` metadata |
 | Text line | The 15 element and event columns, then `body`, then one column per row-header capture |
@@ -25,7 +25,9 @@ A fact has one name and one datatype in every row, so a reader who knows one row
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{ElementColumn, EventColumn, MarketColumn, MarketData, OperationColumn};
+    use yggdryl::graph::{ElementColumn, EventColumn};
+    use yggdryl_market::graph::{MarketColumn, MarketData, OperationColumn};
+    yggdryl_market::install()?;
 
     let prefix: Vec<&str> = ElementColumn::ALL
         .iter()
@@ -369,7 +371,8 @@ This is `MarketData::field()`: the prefix, then the book.
 
     ```bash
     cargo test -p yggdryl --test graph -- column
-    cargo test -p yggdryl --test fix -- schema
+    cargo test -p yggdryl-market --test graph -- column
+    cargo test -p yggdryl-fix --test root -- schema
     ```
 
 === "Python"

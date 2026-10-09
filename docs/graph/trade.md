@@ -6,7 +6,7 @@
 
 | Key | Rule |
 | --- | --- |
-| Owner | `yggdryl::graph::TradeEvent` in `graph::trade`: `Element`, `Event`, `Market` and `Operation` over its root, filed under `TRAD` |
+| Owner | `yggdryl_market::graph::TradeEvent` in `graph::trade`: `Element`, `Event`, `Market` and `Operation` over its root, filed under `TRAD` |
 | Construction | `TradeEvent::from_parts(&root, executions)`, the one door, from any `Event + Operation` root and a `Vec<ExecutionEvent>`; a `TRAD` row decodes only through it. A trade is not [sided](market.md#sides-and-cross-codes): it takes the root's base code under its own kind and side `0` (`21:0:T-1`), whatever side it states |
 | Refusals | `InvalidRecord` at `$.executions` when there is none, and at `$.executions[i]` for a child at another instant (`.transunix`), naming another ticker (`.ticker`) or repeating a cross code (`.crosscode`); a child may state any side, `UKNW` included, because a fill nobody sided is still a fill |
 | Canonical | children are finalized and sorted by side, cross code and identity, so input order never changes the trade; `executions()` answers that order, each child's stored cross code stating its [side](market.md#sides-and-cross-codes) |
@@ -25,8 +25,11 @@ Apple shares crossed between a buyer and a seller at 189.50.
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Event, ExecutionEvent, Market, OrderEvent, TradeEvent};
-    use yggdryl::{Decimal, Side};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::{ExecutionEvent, Market, OrderEvent, TradeEvent};
+    use yggdryl::Decimal;
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let fill = |code: &str, side: Side| -> yggdryl::Result<ExecutionEvent> {

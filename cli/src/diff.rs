@@ -6,7 +6,8 @@
 //! what it became, a membership change shows as metadata, and a renamed field
 //! is what it is under the identity: a removal beside an addition.
 
-use yggdryl::{Field, FixCategory, FixField, FixRegistry};
+use yggdryl::Field;
+use yggdryl_fix::{FixCategory, FixField, FixRegistry};
 
 use crate::style;
 

@@ -2048,7 +2048,7 @@ impl<'env> JsEncoder<'env> {
             crate::identifier::JsIdentifier,
             "Identifier",
             8,
-            |inner: &yggdryl::Identifier| Scalar::Map(yggdryl::Map::new(vec![(
+            |inner: &yggdryl_market::Identifier| Scalar::Map(yggdryl::Map::new(vec![(
                 Scalar::from(inner.key().to_string()),
                 Scalar::from(inner.value()),
             )]))
@@ -2057,7 +2057,7 @@ impl<'env> JsEncoder<'env> {
             crate::identifier::JsIdentifiers,
             "Identifiers",
             9,
-            yggdryl::Identifiers::into_scalar
+            yggdryl_market::Identifiers::into_scalar
         );
         Ok(None)
     }

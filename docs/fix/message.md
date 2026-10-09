@@ -59,9 +59,12 @@ The book control retains the effective action (`Snapshot` for `W`, the wire code
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Market, MarketKind};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Market, MarketKind};
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, MarketDataKind};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    use yggdryl_market::MarketDataKind;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -180,9 +183,12 @@ Every message split off has an identity of its own, stands after its source at a
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Event, Market};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::Market;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind};
+    use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
+    use yggdryl_market::MarketDataKind;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -296,9 +302,12 @@ An order list with a buy and a sell is the list, then one order per entry, each 
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Market};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::Market;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind, Side};
+    use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
+    use yggdryl_market::{MarketDataKind, Side};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -366,9 +375,11 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Market, Operation};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Market, Operation};
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -383,7 +394,7 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
     let metadata = leaves[0].get_metadata();
     let keys: Vec<&str> = metadata.keys().map(|key| key.as_str()).collect();
     assert_eq!(keys, ["execinst"]);
-    assert_eq!(leaves[0].get_marketdatatype(), yggdryl::MarketDataType::OrdLimit);
+    assert_eq!(leaves[0].get_marketdatatype(), yggdryl_market::MarketDataType::OrdLimit);
     let order = leaves[0].as_order_event().expect("an order event");
     assert_eq!(order.get_partyids().to_string(), "[orderoriginationtrader=TRADER1, proprietary:orderoriginationtrader=TRADER1]");
     assert_eq!(order.get_identifiers().to_string(), "[clordid=C1, reforderid=R-1]");
@@ -483,8 +494,11 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Event, Market, Operation};
-    use yggdryl::{from_json_scalar_with_field, into_json_scalar, DataType, FieldPath, FixField, FixFieldMut, FixMsg, FixRegistry, Scalar, StructType};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::{Market, Operation};
+    use yggdryl::{from_json_scalar_with_field, into_json_scalar, DataType, FieldPath, Scalar, StructType};
+    use yggdryl_fix::{FixField, FixFieldMut, FixMsg, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut msgtype = DataType::utf8().nullable_field("MsgType");
     FixFieldMut::new(&mut msgtype).set_tag(35)?;
@@ -560,9 +574,9 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
 
     // An identifier is the tag and the name together, under the one fold, and exact.
     let id = FixField::new(registry.field_by_tag(38)?).id()?.expect("a tagged field");
-    assert_eq!(id, yggdryl::FixId::of(38, "order_qty")?);
+    assert_eq!(id, yggdryl_fix::FixId::of(38, "order_qty")?);
     assert_eq!(msg.by_id(id)?, hundred);
-    assert!(msg.get_by_id(yggdryl::FixId::of(38, "Quantity")?).is_none(), "another name is another field");
+    assert!(msg.get_by_id(yggdryl_fix::FixId::of(38, "Quantity")?).is_none(), "another name is another field");
 
     // The row serializes through the paths every field and value share, and
     // a message rebuilt from them holds the same content; its typed facts
@@ -852,7 +866,8 @@ A value that will not type is null in the row rather than a failure - a clock, `
     use std::sync::Arc;
 
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -958,7 +973,9 @@ A written value is then [restated](#restated-under-the-dictionary) exactly as a 
 
     use yggdryl::graph::Element;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry, Scalar, fix_schema};
+    use yggdryl_fix::{FixCodec, FixMsg, FixRegistry, fix_schema};
+    use yggdryl::Scalar;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -1186,10 +1203,12 @@ A bridge's own keys - `FIRM.X.PARENTORDERID=`, `OMS_InstrumentID=` - are no fiel
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::fix::FixIdMapKind;
-    use yggdryl::graph::{Market, Operation};
+    use yggdryl_fix::FixIdMapKind;
+    use yggdryl_market::graph::{Market, Operation};
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, IdType};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    use yggdryl_market::IdType;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -1218,7 +1237,7 @@ A bridge's own keys - `FIRM.X.PARENTORDERID=`, `OMS_InstrumentID=` - are no fiel
     // The client order identifier names the one it replaced as its parent.
     assert_eq!(held.get_identifiers().get(&IdType::OrigClOrdId), Some("C1"));
     // The bridge's instrument key names a security: it is a security identifier.
-    let oms: yggdryl::IdKey = "oms:instrumentid".parse()?;
+    let oms: yggdryl_market::IdKey = "oms:instrumentid".parse()?;
     assert_eq!(held.get_securityids().get_from(&oms), Some("dbi;CH0012214059_XSWX_CHF"));
     ```
 
@@ -1311,9 +1330,11 @@ Two readings are the crate's own rather than a field's `FIX:idmap`, and a settle
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::Operation;
+    use yggdryl_market::graph::Operation;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, IdKey, IdSource, IdType, Identifier};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    use yggdryl_market::{IdKey, IdSource, IdType, Identifier};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -1418,7 +1439,9 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     use std::sync::Arc;
 
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, Scalar, FieldPath};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    use yggdryl::{Scalar, FieldPath};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -1590,13 +1613,13 @@ A boolean value spells no code but a flag, so a rule about one of its characters
 === "Rust"
 
     ```bash
-    cargo test --features internals -p yggdryl --test fix -- mod_::internal::a_message
-    cargo test -p yggdryl --test fix codec::a_message_re_emits_from_its_entries_and_reads_back_equal
-    cargo test -p yggdryl --test fix -- msg
-    cargo test -p yggdryl --test fix latest::
-    cargo test -p yggdryl --test fix latest::a_fix_42_execution_report_restates_at_the_dictionarys_newest_version
-    cargo test -p yggdryl --test fix market::
-    cargo test -p yggdryl --test fix retired::
+    cargo test --features internals -p yggdryl-fix --test root -- lib::internal::a_message
+    cargo test -p yggdryl-fix --test root codec::a_message_re_emits_from_its_entries_and_reads_back_equal
+    cargo test -p yggdryl-fix --test root -- msg
+    cargo test -p yggdryl-fix --test root latest::
+    cargo test -p yggdryl-fix --test root latest::a_fix_42_execution_report_restates_at_the_dictionarys_newest_version
+    cargo test -p yggdryl-fix --test root market::
+    cargo test -p yggdryl-fix --test root retired::
     ```
 
 === "Python"

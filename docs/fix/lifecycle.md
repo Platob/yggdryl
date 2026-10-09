@@ -36,9 +36,12 @@ One order's life: the order under its client identifier, the acknowledgement und
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Event, Market};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::Market;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind, PREVUUID_TAG_NAME, SEQNUM_TAG_NAME};
+    use yggdryl_fix::{FixCodec, FixMsg, FixRegistry, PREVUUID_TAG_NAME, SEQNUM_TAG_NAME};
+    use yggdryl_market::MarketDataKind;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -286,7 +289,8 @@ A message citing two live chains - the `ClOrdID` one chain holds and the `OrderI
 
     use yggdryl::graph::{Element, Event};
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -374,9 +378,12 @@ A replace chain of one order - its identifiers under `fix`, `-` where a message 
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Operation};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::Operation;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry, IdType};
+    use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
+    use yggdryl_market::IdType;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -472,9 +479,12 @@ A trade replaced under a new `TradeID(1003)` and `TradeReportID(571)` - `TradeRe
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Event, Operation};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::Operation;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry, IdType};
+    use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
+    use yggdryl_market::IdType;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -545,7 +555,8 @@ A twin restated is the live message again under its identity, and a hop a bridge
 
     use yggdryl::graph::Element;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -652,9 +663,11 @@ The parse reads the same table: a door opened on a codec sharing a registry fixe
     ```rust
     use std::sync::{Arc, Mutex};
 
-    use yggdryl::graph::Market;
+    use yggdryl_market::graph::Market;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry, IsinRegistry};
+    use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
+    use yggdryl_market::IsinRegistry;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -669,7 +682,7 @@ The parse reads the same table: a door opened on a codec sharing a registry fixe
     // the first learned: the ISIN at the parse, the currency in the walk.
     let later = walk("8=FIX.4.4|35=D|11=B|55=HOLN|207=XSWX|10=0|")?;
     assert_eq!(later[0].get_isincode(), Some("CH0012214059"));
-    assert_eq!(later[0].get_securityids().get(&yggdryl::IdType::Ric), Some("HOLN.S"));
+    assert_eq!(later[0].get_securityids().get(&yggdryl_market::IdType::Ric), Some("HOLN.S"));
     assert_eq!(later[0].get_currency().as_str(), "CHF");
     // A codec without one learns into each walk's own.
     let alone = FixCodec::new(registry);
@@ -748,7 +761,8 @@ At one instant, finite expirations come first, then every source message at that
 
     use yggdryl::graph::{Element, Event};
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -884,7 +898,8 @@ The pin is off by default, because nothing says a capture is in order: a capture
 
     use yggdryl::graph::{Element, Event};
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -987,7 +1002,9 @@ The walk is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a s
     use std::sync::Arc;
 
     use yggdryl::local::LocalFolder;
-    use yggdryl::{ArrowCastOptions, FixCodec, FixMsg, FixRegistry, Scalar, Serie, fix_schema};
+    use yggdryl::{ArrowCastOptions, Scalar, Serie};
+    use yggdryl_fix::{FixCodec, FixMsg, FixRegistry, fix_schema};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -1044,11 +1061,11 @@ The walk is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a s
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --test graph
-    cargo test -p yggdryl --test fix batch::
-    cargo test -p yggdryl --test fix market::
-    cargo test -p yggdryl --test fix schema::
-    cargo test -p yggdryl --test fix enrich::
+    cargo test -p yggdryl-market --test graph
+    cargo test -p yggdryl-fix --test root batch::
+    cargo test -p yggdryl-fix --test root market::
+    cargo test -p yggdryl-fix --test root schema::
+    cargo test -p yggdryl-fix --test root enrich::
     ```
 
 === "Python"

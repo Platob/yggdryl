@@ -6,7 +6,7 @@ What state one thing is in, from asked for to ended: a lifecycle-sorted enum of 
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `state`, `StateType`/`StateField`, the `State` enum and `Scalar::State`; the FIX readings of a state are the FIX module's free functions (`fix::state`), no methods of `State` |
+| Owns | `state`, `StateType`/`StateField`, the `State` enum and `Scalar::State`; the FIX readings of a state are the `yggdryl-fix` crate's free functions (`yggdryl_fix::state`), no methods of `State` |
 | Validates | A member, the code of one, or a spelling one of five vocabularies names - a stored name, a FIX wire code, the specification's name, a scheduler's word, a bridge's short name - reaches one member; anything else is refused rather than stored |
 | Lazy | Nothing - the member table and the vocabularies are static |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
@@ -281,7 +281,7 @@ The three endings are ranked apart deliberately: "did it finish" and "did it wor
 
 ## FIX status fields, one vocabulary
 
-A FIX message states its state in whichever status field its kind answers a request by. `fix::state::from_status(tag, code)` reads each under its own code set, and a [FIX message](../../fix/capture.md) takes the first of `fix::state::STATUS_TAGS` it states - `OrdStatus(39)`, `ExecType(150)`, `ExecAckStatus(1036)`, `TrdRptStatus(939)`, `QuoteStatus(297)`, `AllocStatus(87)`, `ConfirmStatus(665)`, `AffirmStatus(940)`, `MassActionResponse(1375)`, `MassCancelResponse(531)` - else the state its message type asks for by being the message it is (`fix::state::from_msgtype`): a new order is `PENDING_NEW`, a cancel request `PENDING_CANCEL`, a reject `REJECTED`. The three are free functions of the FIX module, so `State` holds no FIX table: it keeps the `OrdStatus(39)`/`ExecType(150)` wire-code table its own `from_spelling` reads, which `from_status` reads for those two tags. Rust; Python keeps the classmethods `State.from_fix_status` and `State.from_fix_msgtype`, redirecting to them, and JavaScript has none.
+A FIX message states its state in whichever status field its kind answers a request by. `yggdryl_fix::state::from_status(tag, code)` reads each under its own code set, and a [FIX message](../../fix/capture.md) takes the first of `yggdryl_fix::state::STATUS_TAGS` it states - `OrdStatus(39)`, `ExecType(150)`, `ExecAckStatus(1036)`, `TrdRptStatus(939)`, `QuoteStatus(297)`, `AllocStatus(87)`, `ConfirmStatus(665)`, `AffirmStatus(940)`, `MassActionResponse(1375)`, `MassCancelResponse(531)` - else the state its message type asks for by being the message it is (`yggdryl_fix::state::from_msgtype`): a new order is `PENDING_NEW`, a cancel request `PENDING_CANCEL`, a reject `REJECTED`. The three are free functions of the FIX crate, so `State` holds no FIX table: it keeps the `OrdStatus(39)`/`ExecType(150)` wire-code table its own `from_spelling` reads, which `from_status` reads for those two tags. Rust; Python keeps the classmethods `State.from_fix_status` and `State.from_fix_msgtype`, redirecting to them, and JavaScript has none.
 
 `OrdStatus(39)` and `ExecType(150)` share their letters and not always their meaning - `D` is Restated in one and AcceptedForBidding in the other - so a [FIX column](../../fix/capture.md) reads a code through the name its own field's [code set](../../fix/registry.md#a-field-names-the-code-set-it-reads-by) gives it before it reads the letter: `150=D` is `RESTATED` and `39=D` is `ACCEPTED`. The FIX dictionary holds the members themselves as the crate's own `statecodeset`, each code's value the integer a column stores and its name the stored name.
 
@@ -289,7 +289,8 @@ A FIX message states its state in whichever status field its kind answers a requ
 
     ```rust
     use yggdryl::State;
-    use yggdryl::fix::state;
+    use yggdryl_fix::state;
+    yggdryl_fix::install()?;
 
     assert_eq!(state::from_status(39, "1"), Some(State::PartiallyFilled));
     assert_eq!(state::from_status(1036, "1"), Some(State::Acknowledged));
@@ -316,7 +317,8 @@ A state that reached none - `UNKNOWN` - takes the other, and otherwise the state
 
 ```rust
 use yggdryl::State;
-use yggdryl::fix::state;
+use yggdryl_fix::state;
+yggdryl_fix::install()?;
 
 assert_eq!(State::unknown(), State::Unknown);
 assert_eq!(State::Unknown.merge_with(State::New), State::New);

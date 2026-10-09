@@ -52,7 +52,7 @@ LEAVES_JOB = "leaves"
 # The pseudo-row a row extends to read every leaf crate.
 CRATES = "crates"
 # Folders under `rust/` that are the core's own, never a leaf crate.
-CORE_FOLDERS = frozenset({"src", "tests", "benchmarks", "examples", "target"})
+CORE_FOLDERS = frozenset({"src", "tests", "benchmarks", "target"})
 # The members the workspace has besides its leaves.
 MEMBERS = frozenset({"rust", "python", "node", "cli"})
 FULL_LABEL = "ci:full"
@@ -83,6 +83,8 @@ class Leaf:
     after: tuple[str, ...]
     msrv: str | None
     jobs: tuple[str, ...]
+    # The files outside `rust/<name>/` and `config/` its sources include.
+    paths: tuple[str, ...]
 
 
 @dataclasses.dataclass
@@ -150,11 +152,14 @@ def load_config(path: pathlib.Path = ROWS) -> Config:
         )
     leaves: dict[str, Leaf] = {}
     for name, body in data.get("leaves", {}).items():
-        unknown = set(body) - {"package", "after", "msrv", "jobs"}
+        unknown = set(body) - {"package", "after", "msrv", "jobs", "paths"}
         if unknown or "package" not in body:
-            raise PlanError(f"rows.toml: leaf `{name}` needs `package` and takes `after`, `msrv` and `jobs`")
+            raise PlanError(
+                f"rows.toml: leaf `{name}` needs `package` and takes `after`, `msrv`, `jobs` and `paths`"
+            )
         leaves[name] = Leaf(
-            name, body["package"], tuple(body.get("after", ())), body.get("msrv"), tuple(body.get("jobs", ()))
+            name, body["package"], tuple(body.get("after", ())), body.get("msrv"), tuple(body.get("jobs", ())),
+            tuple(body.get("paths", ())),
         )
     leaf_jobs = tuple(data.get("leaf", {}).get("jobs", ()))
     for name, leaf in leaves.items():
@@ -167,7 +172,7 @@ def load_config(path: pathlib.Path = ROWS) -> Config:
         rows[row] = Row(
             name=row,
             extends=("corelib",) + tuple(crate_row(upstream) for upstream in leaf.after),
-            paths=(f"rust/{name}/**", "config/**"),
+            paths=(f"rust/{name}/**", "config/**", *leaf.paths),
             jobs=tuple(dict.fromkeys((LEAVES_JOB, *leaf_jobs, *leaf.jobs))),
         )
     shards: dict[str, dict[str, dict[str, tuple[str, ...]]]] = {}

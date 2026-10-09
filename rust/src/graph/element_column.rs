@@ -21,28 +21,32 @@ use super::Element;
 /// was read from.
 ///
 /// ```
-/// use yggdryl::graph::{Element, ElementColumn, OrderEvent};
+/// use std::sync::Arc;
+///
+/// use yggdryl::graph::{Element, ElementColumn};
+/// use yggdryl::text::{TextBytes, TextLine, TextOptions};
 /// use yggdryl::Uuid;
 ///
 /// # fn main() -> yggdryl::Result<()> {
+/// let line = || TextLine::from_bytes(0, TextBytes::from_bytes(b"x")?, Arc::new(TextOptions::new()));
 /// let fields = ElementColumn::fields()?;
 /// assert_eq!(fields.len(), 6);
 /// assert_eq!(fields[0].name(), "uuid");
 /// assert_eq!(fields[5].name(), "srcuuids");
 /// // What an element states under a column, and the same fact stated back.
-/// let mut element = OrderEvent::at(1_700_000_000_000_000_000);
+/// let mut element = line()?;
 /// element.set_srcuuids(vec![Uuid::from_v8(7)]);
 /// let sources = ElementColumn::SrcUuids.fact(&element).expect("a source");
-/// let mut again = OrderEvent::default();
+/// let mut again = line()?;
 /// ElementColumn::SrcUuids.record(&mut again, &sources);
 /// assert_eq!(again.get_srcuuids(), [Uuid::from_v8(7)]);
 /// // A code is always stated, the empty text where the element names
 /// // none; an empty list is a null.
 /// assert_eq!(
-///     ElementColumn::CrossCode.fact(&OrderEvent::default()),
+///     ElementColumn::CrossCode.fact(&line()?),
 ///     Some(yggdryl::Scalar::from(""))
 /// );
-/// assert_eq!(ElementColumn::SrcUuids.fact(&OrderEvent::default()), None);
+/// assert_eq!(ElementColumn::SrcUuids.fact(&line()?), None);
 /// assert_eq!(ElementColumn::of_name("SrcUuids"), Some(ElementColumn::SrcUuids));
 /// // When an element happened is an event's fact, not an element's.
 /// assert_eq!(ElementColumn::of_name("transunix"), None);

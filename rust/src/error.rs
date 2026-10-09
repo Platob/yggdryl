@@ -186,10 +186,16 @@ impl fmt::Display for Error {
             Self::InvalidMetadataValue { key, reason } => {
                 write!(formatter, "invalid metadata value for {key:?}: {reason}")
             }
-            Self::UnknownDataType(name) => write!(
-                formatter,
-                "unknown datatype {name:?}: no registered datatype answers it; install the crate that claims it and call its `install()`"
-            ),
+            Self::UnknownDataType(name) => {
+                write!(
+                    formatter,
+                    "unknown datatype {name:?}: no registered datatype answers it"
+                )?;
+                match crate::market::uninstalled(name) {
+                    Some(install) => write!(formatter, "; {install}"),
+                    None => Ok(()),
+                }
+            }
             Self::InvalidDataType { kind, reason } => {
                 write!(formatter, "invalid {kind} datatype: {reason}")
             }

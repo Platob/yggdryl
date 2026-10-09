@@ -6,11 +6,12 @@ use std::sync::{Mutex, PoisonError};
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 
-use yggdryl::graph::{
+use yggdryl::MarketValue;
+use yggdryl_market::Side as CoreSide;
+use yggdryl_market::graph::{
     BookEvent as CoreBookEvent, BookIterator as CoreBookIterator, MarketData as CoreMarketData,
     SnapshotEvent as CoreSnapshotEvent,
 };
-use yggdryl::{MarketValue, Side as CoreSide};
 
 use super::decimal_scalar;
 use super::market_data::{PyMarketData, event_market_of, market_data_of};

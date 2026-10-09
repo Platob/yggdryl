@@ -23,15 +23,19 @@ use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyDateTime, PyDict, PyInt, PyList, PyType};
 
-use yggdryl::graph::{Element, Event, Market, Operation};
+use yggdryl::graph::{Element, Event};
 use yggdryl::{
-    DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture as CoreFixCapture,
-    FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec,
-    FixEntry as CoreFixEntry, FixField, FixFieldMut, FixHeader as CoreFixHeader,
-    FixId as CoreFixId, FixKey, FixMerge, FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry,
-    FixSource as CoreFixSource, IOBase as CoreIOBase, IdType, MarketValue, MsgType as CoreMsgType,
-    Scalar, Side, StructType, TimeUnit, Timezone,
+    DataType as CoreDataType, Error as CoreError, Field as CoreField, IOBase as CoreIOBase,
+    MarketValue, Scalar, StructType, TimeUnit, Timezone,
 };
+use yggdryl_fix::{
+    FixCapture as CoreFixCapture, FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet,
+    FixCodec as CoreFixCodec, FixEntry as CoreFixEntry, FixField, FixFieldMut,
+    FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey, FixMerge, FixMsg as CoreFixMsg,
+    FixRegistry as CoreFixRegistry, FixSource as CoreFixSource, MsgType as CoreMsgType,
+};
+use yggdryl_market::graph::{Market, Operation};
+use yggdryl_market::{IdType, Side};
 
 use crate::field::{PyField, core_field_from_value};
 use crate::graph::market_data::{PyMarketData, PyMarketDataRowIterator};
@@ -143,7 +147,7 @@ pub(crate) fn pluginside_from_py(given: &Bound<'_, PyAny>) -> PyResult<Side> {
 /// Never raises.
 #[pyfunction]
 pub(crate) fn fix_plugin_side(py: Python<'_>, plugin_type: &str) -> PyResult<Py<PyAny>> {
-    member(py, yggdryl::fix::plugin_side(plugin_type))
+    member(py, yggdryl_fix::plugin_side(plugin_type))
 }
 
 /// An optional text as a `repr` spells it: `None`, or the quoted text.
@@ -1751,9 +1755,9 @@ impl PyFixMsg {
         // The core publishes what a message holds typed, so this walk never
         // keeps a list of its own: a tag lifted or retired there would
         // otherwise drop out of a pickle without a word.
-        let tags = yggdryl::FIX_TYPED_TAGS
+        let tags = yggdryl_fix::FIX_TYPED_TAGS
             .into_iter()
-            .chain(yggdryl::CRATE_TAG_MIN..yggdryl::CRATE_TAG_MAX);
+            .chain(yggdryl_fix::CRATE_TAG_MIN..yggdryl_fix::CRATE_TAG_MAX);
         for tag in tags {
             let Some(value) = self.inner.get_by_tag(tag) else {
                 continue;
@@ -2841,7 +2845,9 @@ impl PyFixCodec {
         };
         if !pins.contains("isin_registry")? {
             let instruments = py
-                .detach(|| yggdryl::IsinRegistry::from_env().map(PyIsinRegistry::from_shared))
+                .detach(|| {
+                    yggdryl_market::IsinRegistry::from_env().map(PyIsinRegistry::from_shared)
+                })
                 .map_err(value_error)?;
             pins.set_item("isin_registry", instruments)?;
         }
@@ -3846,7 +3852,7 @@ pub(crate) fn fix_schema(
     name: &str,
 ) -> PyResult<PyField> {
     let registry = registry_or_env(registry)?;
-    yggdryl::fix_schema(&registry, name.to_owned())
+    yggdryl_fix::fix_schema(&registry, name.to_owned())
         .map(PyField::from_inner)
         .map_err(value_error)
 }
@@ -3875,7 +3881,7 @@ pub(crate) fn fix_schema_carrying(
 ) -> PyResult<PyField> {
     let carrier = core_field_from_value(carrier)?;
     let read = core_field_from_value(read)?;
-    yggdryl::fix_schema_carrying(&carrier, &read)
+    yggdryl_fix::fix_schema_carrying(&carrier, &read)
         .map(PyField::from_inner)
         .map_err(value_error)
 }
@@ -3884,7 +3890,7 @@ pub(crate) fn fix_schema_carrying(
 #[pyfunction]
 #[pyo3(name = "fix_schema_tags")]
 pub(crate) fn fix_schema_tags() -> Vec<i32> {
-    yggdryl::fix_schema_tags()
+    yggdryl_fix::fix_schema_tags()
 }
 
 /// The definitions this crate lists, in tag order from 65001.
@@ -3906,7 +3912,7 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
-    yggdryl::fix_crate_fields()
+    yggdryl_fix::fix_crate_fields()
         .map(|held| held.iter().cloned().map(PyField::from_inner).collect())
         .map_err(value_error)
 }

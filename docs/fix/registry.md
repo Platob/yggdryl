@@ -44,7 +44,9 @@
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FieldPath, FixField, FixFieldMut, FixRegistry, StructType};
+    use yggdryl::{DataType, FieldPath, StructType};
+    use yggdryl_fix::{FixField, FixFieldMut, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
     FixFieldMut::new(&mut counter).set_tag(453)?;
@@ -170,7 +172,9 @@ The generator gives every group a collection display. A unique published plural 
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::{DataType, FixField, FixFieldMut, FixMsg, FixRegistry, Scalar, StructType};
+    use yggdryl::{DataType, Scalar, StructType};
+    use yggdryl_fix::{FixField, FixFieldMut, FixMsg, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut client = DataType::utf8().nullable_field("clordid");
     FixFieldMut::new(&mut client).set_tag(11)?;
@@ -304,7 +308,9 @@ Every name lookup reads four word pairs either way - `offer`/`ask`, `size`/`qty`
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixField, FixFieldMut, FixId, FixKey, FixRegistry};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixField, FixFieldMut, FixId, FixKey, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut msgtype = DataType::utf8().nullable_field("MsgType");
     FixFieldMut::new(&mut msgtype).set_tag(35)?;
@@ -384,7 +390,9 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixField, FixFieldMut, FixId, FixRegistry};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixField, FixFieldMut, FixId, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut symbol = DataType::utf8().nullable_field("Symbol");
     FixFieldMut::new(&mut symbol).set_tag(55)?;
@@ -551,7 +559,10 @@ What is known of a source is recorded once, in the registry's sources catalog ra
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixFieldMut, FixRegistry, FixSource, Side};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixFieldMut, FixRegistry, FixSource};
+    use yggdryl_market::Side;
+    yggdryl_fix::install()?;
 
     let mut registry = FixRegistry::new();
     let mut venue = DataType::utf8().nullable_field("VenueTag");
@@ -664,7 +675,9 @@ These mutations preserve stored canonical spelling for case-only input changes. 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixFieldMut, FixRegistry};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixFieldMut, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut registry = FixRegistry::new();
     let mut symbol = DataType::utf8().nullable_field("Symbol");
@@ -748,7 +761,9 @@ The set is stated first, because a registry refuses a field whose `FIX:codeset` 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixCode, FixField, FixFieldMut, FixRegistry};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixCode, FixField, FixFieldMut, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut registry = FixRegistry::new();
     registry.set_codeset("sidecodeset", &[
@@ -849,7 +864,8 @@ is no key beside the order that states one.
 === "Rust"
 
     ```rust
-    use yggdryl::{FixCode, FixRegistry};
+    use yggdryl_fix::{FixCode, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut registry = FixRegistry::new();
     registry.set_codeset("sidecodeset", &[
@@ -932,7 +948,8 @@ used still reaches the value.
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::FixRegistry;
+    use yggdryl_fix::FixRegistry;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
@@ -981,7 +998,8 @@ metadata documents remain on the field and round-trip through both bindings.
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixField, FixRegistry};
+    use yggdryl_fix::{FixField, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
@@ -1022,7 +1040,7 @@ How one entry is applied at one level - the root, or one occurrence of a repeati
 
 ### What the specification retired
 
-The crate holds the replaced and deprecated features of FIX 4.3 through 5.0 SP2 - the specification's appendices "Replaced features" (6-F) and "Deprecated features" (6-E) - as one table in `rust/src/fix/retired.rs`: 37 retired fields, 100 entries, keyed by the retired tag and in the order the specification retired them, the appendix that stated each named beside it. An entry states only what the appendix states as a value mapping. The crate's own tests hold the table sorted by tag with each tag once, every entry filling something and a catch-all last.
+The crate holds the replaced and deprecated features of FIX 4.3 through 5.0 SP2 - the specification's appendices "Replaced features" (6-F) and "Deprecated features" (6-E) - as one table in `rust/fix/src/retired.rs`: 37 retired fields, 100 entries, keyed by the retired tag and in the order the specification retired them, the appendix that stated each named beside it. An entry states only what the appendix states as a value mapping. The crate's own tests hold the table sorted by tag with each tag once, every entry filling something and a catch-all last.
 
 | FIX | Source | Restated as |
 | --- | --- | --- |
@@ -1105,7 +1123,10 @@ TradeID(1003)  ["origtradeid"]
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FixField, FixFieldMut, FixRegistry, IdType};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixField, FixFieldMut, FixRegistry};
+    use yggdryl_market::IdType;
+    yggdryl_fix::install()?;
 
     // A field states the parents of its identifier, each folded as a type is.
     let mut orderid = DataType::utf8().nullable_field("OrderID");
@@ -1218,8 +1239,11 @@ A message states what type of its kind it is - a limit order, a tradeable quote,
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::Market;
-    use yggdryl::{DataType, FixCodec, FixFieldMut, FixRegistry, MarketDataType};
+    use yggdryl_market::graph::Market;
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixCodec, FixFieldMut, FixRegistry};
+    use yggdryl_market::MarketDataType;
+    yggdryl_fix::install()?;
 
     let mut ordtype = DataType::utf8().nullable_field("OrdType");
     FixFieldMut::new(&mut ordtype).set_tag(40)?;
@@ -1328,7 +1352,7 @@ How long an order stands is a [`TimeInForce`](../types/enum/timeinforce.md) memb
 
 ## Folding a second source in
 
-Rust and Python expose `merge_with`, `add_fields`, `add_cfb_file`, `add_cfb_files` and `add_json_file` as one native fold each, staged and adopted whole: nothing lands until the whole call has folded, a datatype the source states at another precision of the stored one folds under it, and a contradiction is passed over rather than ending the fold - see below for which is which. `FixRegistry::from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and the code sets its fields read by - a CBlock names no set of its own, so each is filed under the name the field supplies, `hedgecurrencycodeset` for `HedgeCurrency` - and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `FIX:sources`, recording the catalog entry `dialect` names - the file's name, and the role the root element's `type` attribute names, a [`Side`](../types/enum/side.md#a-fix-plugins-role-is-a-side) read by `fix::plugin_side`; `None` stamps nothing and records no entry, the role read past with it. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the row's own `beginstring` where the transport states one, else what the line implies. The [CLI](cli.md) exposes ingestion and synchronization.
+Rust and Python expose `merge_with`, `add_fields`, `add_cfb_file`, `add_cfb_files` and `add_json_file` as one native fold each, staged and adopted whole: nothing lands until the whole call has folded, a datatype the source states at another precision of the stored one folds under it, and a contradiction is passed over rather than ending the fold - see below for which is which. `FixRegistry::from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and the code sets its fields read by - a CBlock names no set of its own, so each is filed under the name the field supplies, `hedgecurrencycodeset` for `HedgeCurrency` - and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `FIX:sources`, recording the catalog entry `dialect` names - the file's name, and the role the root element's `type` attribute names, a [`Side`](../types/enum/side.md#a-fix-plugins-role-is-a-side) read by `yggdryl_fix::plugin_side`; `None` stamps nothing and records no entry, the role read past with it. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the row's own `beginstring` where the transport states one, else what the line implies. The [CLI](cli.md) exposes ingestion and synchronization.
 
 A `vocabulary-tag`'s `alt` names its tag where it names only that tag. A dialect that spells one `alt` over two tags - `TRTN_FX_TradeCapture` declares `HedgeCurrency` for the currency a hedge settles in and again for the one it is quoted in - has given a name to neither, and a tag whose `alt` is another tag's own decimal has done the same to that tag's identity. The file's other statement of what a tag is called is read first: a `normalization-binding` spelling one of them by a name of its own names it - `LEGLASTSPOTRATE` for a tag 5190 whose `alt` repeats tag 637's `LegLastPx` - and the contended spelling, then one tag's alone, stays with that tag. A tag the bindings leave unnamed too falls back to its own decimal, the name a tag declaring no `alt` takes as well, and keeps the declared spelling as `display`, so every tag is left named and nothing the file said is lost. A field named by its own decimal is unnamed, and the [fold](#what-one-namespace-means-for-a-field-that-arrives) reads it so: a later file naming that tag names the field, and the members of both files read one field. Contention is decided by the key the spelling's catalog name, below, is indexed under, which folds case and drops `_`, `-` and space, so `Hedge_Currency` and `Hedge Currency` contend with `HedgeCurrency`. Two tags sharing a spelling record each other's tag among their alternate tags and so stay reachable as a pair; three record nothing, because an alternate identifier names one field. A `normalization-binding` cannot spell a contended name back onto one of them, and a `map` naming one decodes neither. The spelling survives where the file made it unambiguous: a `tag-constraint` binds one tag, so the message root, the component and the group each carry it, and a reader resolving a key against the message it arrived in - a bridge row's `MSGTYPE`, and the repeating group the key sits in - reaches the tag the file meant.
 
@@ -1385,7 +1409,9 @@ A time of day against an instant is the contradiction two FIX spellings of one f
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixFieldMut, FixRegistry};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixFieldMut, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut price = DataType::Float64.nullable_field("Price");
     FixFieldMut::new(&mut price).set_tag(44)?;
@@ -1471,7 +1497,9 @@ A member reading a field that merged into a held field by folded name under anot
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixField, FixFieldMut, FixRegistry};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixField, FixFieldMut, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut field = DataType::utf8().nullable_field("MsgType");
     FixFieldMut::new(&mut field).set_tag(35)?;
@@ -1549,7 +1577,8 @@ reads such a row as [one message stating nothing](capture.md#a-json-document-is-
 === "Rust"
 
     ```rust
-    use yggdryl::FixCodec;
+    use yggdryl_fix::FixCodec;
+    yggdryl_fix::install()?;
 
     assert_eq!(FixCodec::infer_msgtype_bytes(b"8=FIX.4.4|35=AE|"), Some(b"AE".as_slice()));
     assert_eq!(FixCodec::infer_msgtype_text("MSGTYPE=P Report Ack|"), Some("P Report Ack"));
@@ -1621,13 +1650,13 @@ Every door fills tag 385 from that reading where the wire states none - `parse_l
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --test fix
-    cargo test --features internals -p yggdryl --test fix -- mod_::internal
-    cargo test --features internals -p yggdryl --test fix -- mod_::internal::the_fold_table_holds_through_add_field_and_through_merge_with mod_::internal::one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one mod_::internal::three_spellings_of_one_name_under_one_tag_are_one_identity mod_::internal::name_indexes_fold_ascii_and_membership_never_resolves
-    cargo test -p yggdryl --test fix -- registry::lenient
-    cargo test -p yggdryl --test fix -- cfb::
-    cargo test -p yggdryl --test fix -- retired:: latest:: enrich::
-    cargo test -p yggdryl --test fix -- aliases:: alias_rule::
+    cargo test -p yggdryl-fix --test root
+    cargo test --features internals -p yggdryl-fix --test root -- lib::internal
+    cargo test --features internals -p yggdryl-fix --test root -- lib::internal::the_fold_table_holds_through_add_field_and_through_merge_with lib::internal::one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one lib::internal::three_spellings_of_one_name_under_one_tag_are_one_identity lib::internal::name_indexes_fold_ascii_and_membership_never_resolves
+    cargo test -p yggdryl-fix --test root -- registry::lenient
+    cargo test -p yggdryl-fix --test root -- cfb::
+    cargo test -p yggdryl-fix --test root -- retired:: latest:: enrich::
+    cargo test -p yggdryl-fix --test root -- aliases:: alias_rule::
     ```
 
 === "Python"
@@ -1675,7 +1704,7 @@ Borrowed Rust lookups, singleton views, compiled group-plan lookups and identifi
 Regenerate from the repository root with release bindings installed:
 
 ```bash
-cargo bench -p yggdryl --bench fix -- 'fix/(resolve|mutate|store)'
+cargo bench -p yggdryl-fix --bench fix -- 'fix/(resolve|mutate|store)'
 python python/benchmarks/fix.py --iterations 2000
 ```
 

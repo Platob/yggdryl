@@ -9,9 +9,8 @@ use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyCapsule, PyDict, PyString};
-use yggdryl::{
-    Field as CoreField, FixField, FixFieldMut, PythonKind as CorePythonKind, Scheme as CoreScheme,
-};
+use yggdryl::{Field as CoreField, PythonKind as CorePythonKind, Scheme as CoreScheme};
+use yggdryl_fix::{FixField, FixFieldMut};
 
 use crate::datatype::{
     PyDataType, PyDataTypeIterator, PyStringEnum, arrow_scalar_to_pyarrow_type, core_arrow_scalar,
@@ -2381,7 +2380,7 @@ impl PyProtocolField {
         Ok(FixField::new(&field.inner)
             .id()
             .map_err(value_error)?
-            .map(yggdryl::FixId::digest))
+            .map(yggdryl_fix::FixId::digest))
     }
 
     /// The canonical FIX tag, on the `fix` view.
@@ -2737,7 +2736,7 @@ impl PyProtocolField {
         let field = self.borrow_field(py)?;
         let mut records = Vec::new();
         for entry in FixField::new(&field.inner).directions() {
-            let rule = yggdryl::FixDirection::from(entry.map_err(value_error)?);
+            let rule = yggdryl_fix::FixDirection::from(entry.map_err(value_error)?);
             let record = PyDict::new(py);
             record.set_item("code", rule.code())?;
             let patterns: Vec<&str> = rule.patterns().iter().map(AsRef::as_ref).collect();
@@ -2758,7 +2757,7 @@ impl PyProtocolField {
             for pattern in item.get_item("patterns")?.try_iter()? {
                 patterns.push(pattern?.extract::<String>()?);
             }
-            rules.push(yggdryl::FixDirection::new(code, patterns));
+            rules.push(yggdryl_fix::FixDirection::new(code, patterns));
         }
         let mut field = self.borrow_field_mut(directions.py())?;
         FixFieldMut::new(&mut field.inner)
@@ -2803,12 +2802,12 @@ impl PyProtocolField {
             let map = item
                 .get_item("map")?
                 .extract::<String>()?
-                .parse::<yggdryl::FixIdMapKind>()
+                .parse::<yggdryl_fix::FixIdMapKind>()
                 .map_err(value_error)?;
             let key = item
                 .get_item("key")?
                 .extract::<String>()?
-                .parse::<yggdryl::IdType>()
+                .parse::<yggdryl_market::IdType>()
                 .map_err(value_error)?;
             let optional = |name: &str| -> PyResult<Option<Bound<'_, PyAny>>> {
                 match item.get_item(name) {
@@ -2826,7 +2825,7 @@ impl PyProtocolField {
                 .map(|value| value.extract::<bool>())
                 .transpose()?
                 .unwrap_or(false);
-            let mut source = yggdryl::FixIdSource::new(map, key).with_follow(follow);
+            let mut source = yggdryl_fix::FixIdSource::new(map, key).with_follow(follow);
             if let Some(role) = optional("role")? {
                 source = source.with_role(role.extract::<String>()?);
             }
@@ -2862,13 +2861,15 @@ impl PyProtocolField {
         for item in types.try_iter()? {
             let (wire, given) = item?.extract::<(String, Bound<'_, PyAny>)>()?;
             let member = match given.extract::<u16>() {
-                Ok(code) => yggdryl::MarketDataType::from_code(code),
-                Err(_) => yggdryl::MarketDataType::from_spelling(&given.extract::<String>()?),
+                Ok(code) => yggdryl_market::MarketDataType::from_code(code),
+                Err(_) => {
+                    yggdryl_market::MarketDataType::from_spelling(&given.extract::<String>()?)
+                }
             }
             .ok_or_else(|| value_error(format!("{given} names no MarketDataType")))?;
             held.push((wire, member));
         }
-        let borrowed: Vec<(&str, yggdryl::MarketDataType)> = held
+        let borrowed: Vec<(&str, yggdryl_market::MarketDataType)> = held
             .iter()
             .map(|(wire, member)| (wire.as_str(), *member))
             .collect();
@@ -2902,13 +2903,13 @@ impl PyProtocolField {
         for item in types.try_iter()? {
             let (wire, given) = item?.extract::<(String, Bound<'_, PyAny>)>()?;
             let member = match given.extract::<u8>() {
-                Ok(code) => yggdryl::TimeInForce::from_code(code),
-                Err(_) => yggdryl::TimeInForce::from_spelling(&given.extract::<String>()?),
+                Ok(code) => yggdryl_market::TimeInForce::from_code(code),
+                Err(_) => yggdryl_market::TimeInForce::from_spelling(&given.extract::<String>()?),
             }
             .ok_or_else(|| value_error(format!("{given} names no TimeInForce")))?;
             held.push((wire, member));
         }
-        let borrowed: Vec<(&str, yggdryl::TimeInForce)> = held
+        let borrowed: Vec<(&str, yggdryl_market::TimeInForce)> = held
             .iter()
             .map(|(wire, member)| (wire.as_str(), *member))
             .collect();

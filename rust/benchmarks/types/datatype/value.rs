@@ -1,17 +1,15 @@
 use std::hint::black_box;
 
 use criterion::Criterion;
-use yggdryl::IdKey;
 use yggdryl::{
-    DataType, Field, FieldScalar, Float16, Float32, Float64, IOMode, MarketDataKind, Scalar, Side,
-    TimeUnit, Timezone, Vocabulary, i256,
+    DataType, Field, FieldScalar, Float16, Float32, Float64, IOMode, Scalar, TimeUnit, Timezone,
+    Vocabulary, i256,
 };
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     {
-        use yggdryl::graph::{Market, Order};
         use yggdryl::{Bic, Dti, Elf, Fisn, Lei};
-        use yggdryl::{Cfi, Figi, Forex, FxSymbol, IdType, Identifier, Isin, Ric};
+        use yggdryl::{Cfi, Figi, Forex, FxSymbol, Isin, Ric};
         let mut codes = criterion.benchmark_group("instrument_codes");
         codes.bench_function("isin", |bench| {
             bench.iter(|| Isin::new(black_box("us0378331005")).unwrap());
@@ -59,14 +57,6 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         codes.bench_function("cfi_refine", |bench| {
             bench.iter(|| Cfi::refined(black_box("ESXXXX"), black_box("ESVUFR")));
         });
-        let isin = Identifier::new(IdKey::base(IdType::Isin), "US0378331005").unwrap();
-        codes.bench_function("market_identifier_setter", |bench| {
-            bench.iter(|| {
-                let mut element = Order::new();
-                let _ = element.insert_securityid(black_box(&isin).clone());
-                black_box(element)
-            });
-        });
         codes.finish();
     }
     {
@@ -80,20 +70,18 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
 
         const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
         let mut enums = criterion.benchmark_group("enums");
-        let leaves: [(&str, DataType, [&str; 5], [i32; 5]); 2] = [
-            (
-                "marketdatakind",
-                MarketDataKind::dtype(),
-                ["ORDR", "QUOT", "EXEC", "TRAD", "BOOK"],
-                [10, 14, 8, 21, 3],
-            ),
-            (
-                "side",
-                Side::dtype(),
-                ["BUY", "SELL", "1", "2", "SellShort"],
-                [1, 2, 5, 1, 2],
-            ),
-        ];
+        let leaves: [(&str, DataType, [&str; 5], [i32; 5]); 1] = [(
+            "state",
+            DataType::State,
+            [
+                "NEW",
+                "FILLED",
+                "Canceled",
+                "partially_filled",
+                "PendingNew",
+            ],
+            [2001, 8003, 9000, 4001, 1001],
+        )];
         for (name, dtype, spellings, codes) in leaves {
             let target = Field::new(name, dtype, true);
             let sources: [(&str, ArrayRef); 2] = [

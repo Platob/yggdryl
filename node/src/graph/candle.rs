@@ -9,7 +9,7 @@
 
 use napi::bindgen_prelude::{BigInt, ClassInstance, Either, Either4, Env, Function, Result};
 use napi_derive::napi;
-use yggdryl::graph::{
+use yggdryl_market::graph::{
     BookEvent as CoreBookEvent, Candle as CoreCandle, CandleIterator as CoreCandleIterator,
     CandleOptions as CoreCandleOptions, Ohlc,
 };

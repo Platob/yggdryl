@@ -208,7 +208,8 @@ An [`IsinRegistry`](../../graph/isin-registry.md) row holds an instrument's shor
 === "Rust"
 
     ```rust
-    use yggdryl::IsinRegistry;
+    use yggdryl_market::IsinRegistry;
+    yggdryl_market::install()?;
 
     let registry = IsinRegistry::seeded();
     let name = registry.get("US0378331005").and_then(|row| row.fisn()).expect("seeded");

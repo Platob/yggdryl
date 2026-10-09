@@ -13,7 +13,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use arrow_array::{ArrayRef, Int32Array, RecordBatch, StringArray};
-use yggdryl::graph::{Element, Event, OrderEvent};
+use yggdryl::graph::{Element, Event};
 use yggdryl::implementer::{
     BBG_WIDTH, BOOLEAN_SPELLINGS, CCY_WIDTH, CFI_UNCLASSIFIED, DEFAULT_BATCH_ROW_SIZE, DTI_WIDTH,
     ELF_WIDTH, ERROR_TEXT_LIMIT, FISN_WIDTH, InstantSequence, LEI_WIDTH, Patterns, RIC_WIDTH,
@@ -32,11 +32,24 @@ use yggdryl::implementer::{
     struct_type_from_unique_fields, struct_type_shares_storage_with, struct_type_storage_address,
     time32_from_fix_text, time64_from_fix_text, trim_ascii, whole_u64, write_named_bytes,
 };
+use yggdryl::text::{TextBytes, TextLine, TextOptions};
 use yggdryl::xxhash::{Xxh3, xxh3};
 use yggdryl::{
-    Cfi, Charset, DataType, Decimal, Error, Field, Isin, Metadata, Mic, SIDE_KIND, Scalar, Serie,
-    Side, State, StructType, Time32, Time64, Timezone, Uuid,
+    Cfi, Charset, DataType, Decimal, Error, Field, Isin, Metadata, Mic, Scalar, Serie, State,
+    StructType, Time32, Time64, Timezone, Uuid,
 };
+
+/// A line at `transunix`: the core's own event, holding one byte of body.
+fn line(transunix: i64) -> TextLine {
+    let mut line = TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes(b"x").unwrap(),
+        Arc::new(TextOptions::new()),
+    )
+    .unwrap();
+    line.set_transunix(transunix);
+    line
+}
 
 /// Every name the door exports, imported by name and used by nothing here:
 /// the tests below use the ones that answer something a caller can compare,
@@ -45,25 +58,26 @@ use yggdryl::{
 #[allow(unused_imports)]
 mod every_name {
     use yggdryl::implementer::{
-        BBG_WIDTH, BOOLEAN_SPELLINGS, CCY_WIDTH, CFI_UNCLASSIFIED, Closing, DEFAULT_BATCH_ROW_SIZE,
-        DTI_WIDTH, ELF_WIDTH, ERROR_TEXT_LIMIT, Elided, ElidedDisplay, FISN_WIDTH, InstantSequence,
-        LEI_WIDTH, Located, Ordered, Path, Patterns, RIC_WIDTH, ROW_OVERHEAD, Resolved,
-        SOH_MARKERS, Segment, Staged, adopt_market_code, arrow_serie, below_threshold,
-        bool_from_text, bool_of, bytes_dtypes, bytes_scalars, canonical_closing_reader,
-        canonicalize_uuids, cfi_from_proven, civil_from_days, crosshash, datetime64_from_fix_clock,
-        datetime64_from_fix_text, declared_charset, define_field_types, digest_u64,
-        document_behind_prefix, earliest, elide_display, elide_to, enum_leaf, expected_got,
-        feed_event_facts, field_from_arrow_schema, field_new_with_metadata, fold_digest,
-        fold_event_instants, folded, folded_spelling, folds_equal, follow_element, follow_timed,
-        inspect, integer_from_text_as, is_null_like, isin_from_proven, json_span,
-        land_unproven_batch, latest, locate, merge_element, merge_event_element, merge_timed,
-        metadata_shares_storage_with, metadata_storage_address, mic_from_market, mic_from_proven,
-        moved, normalized, ordered, payload_at, percent_decode, protocol_field_types,
-        read_enum_spelling, reader, record_parts, restate_event, result_reader, right_is_reference,
-        scalar_from_decimal_text, scalar_leaf_display, scalar_try_build_sequence,
-        scalar_try_fill_sequence, scalar_try_sequence, serie_is_byte_storage,
-        serie_is_string_storage, serie_value_bytes, similarity, stable_hash_of,
-        state_from_wire_code, stated, str_from_value, string_scalars,
+        ArrowDataType, ArrowError, BBG_WIDTH, BOOLEAN_SPELLINGS, CCY_WIDTH, CFI_UNCLASSIFIED,
+        Closing, DEFAULT_BATCH_ROW_SIZE, DTI_WIDTH, ELF_WIDTH, ERROR_TEXT_LIMIT, Elided,
+        ElidedDisplay, ExtensionType, FISN_WIDTH, InstantSequence, LEI_WIDTH, Located, Ordered,
+        Path, Patterns, RIC_WIDTH, ROW_OVERHEAD, Resolved, SOH_MARKERS, Segment, Staged,
+        adopt_market_code, arrow_serie, below_threshold, bool_from_text, bool_of, bytes_dtypes,
+        bytes_scalars, canonical_closing_reader, canonicalize_uuids, cfi_from_proven,
+        civil_from_days, crosshash, datetime64_from_fix_clock, datetime64_from_fix_text,
+        declared_charset, define_field_types, digest_u64, document_behind_prefix, earliest,
+        elide_display, elide_to, enum_leaf, expected_got, feed_event_facts,
+        field_from_arrow_schema, field_new_with_metadata, fold_digest, fold_event_instants, folded,
+        folded_spelling, folds_equal, follow_element, follow_timed, inspect, integer_from_text_as,
+        is_null_like, isin_from_proven, json_span, land_unproven_batch, latest, locate,
+        marker_metadata, marker_supports, market_extension, merge_element, merge_event_element,
+        merge_timed, metadata_shares_storage_with, metadata_storage_address, mic_from_market,
+        mic_from_proven, moved, normalized, ordered, payload_at, percent_decode,
+        protocol_field_types, read_enum_spelling, reader, record_parts, restate_event,
+        result_reader, right_is_reference, scalar_from_decimal_text, scalar_leaf_display,
+        scalar_try_build_sequence, scalar_try_fill_sequence, scalar_try_sequence,
+        serie_is_byte_storage, serie_is_string_storage, serie_value_bytes, similarity,
+        stable_hash_of, state_from_wire_code, stated, str_from_value, string_scalars,
         struct_type_from_checked_fields, struct_type_from_unique_fields,
         struct_type_shares_storage_with, struct_type_storage_address,
         text_entries_from_bytes_direct_located, time32_from_fix_text, time64_from_fix_text,
@@ -266,14 +280,14 @@ fn the_integer_door_narrows_exactly_and_never_wraps() {
 
 #[test]
 fn the_element_doors_fold_two_statements_of_one_element() {
-    let mut this = OrderEvent::default();
-    let mut other = OrderEvent::default();
+    let mut this = line(0);
+    let mut other = line(0);
     other.set_crosscode("T-1".to_owned());
     other.set_srcuuids(vec![Uuid::from_v8(7)]);
 
     assert!(merge_element(&mut this, &other));
-    // An order's cross code is stored under its kind and its unstated side.
-    assert_eq!(this.get_crosscode(), "10:0:T-1");
+    // A line's cross code is stored as it was stated.
+    assert_eq!(this.get_crosscode(), "T-1");
     assert_eq!(this.get_srcuuids(), [Uuid::from_v8(7)]);
     assert!(!merge_element(&mut this, &other), "nothing left to take");
 
@@ -315,13 +329,13 @@ fn the_instant_doors_pick_the_earlier_the_later_and_the_stated() {
 fn the_digest_doors_feed_what_an_event_digest_reads() {
     // What the door feeds is the state and the predecessor's identity: the
     // cross code and the instant are the holder's to feed.
-    let digest = |event: &OrderEvent| {
+    let digest = |event: &TextLine| {
         let mut state = Xxh3::new();
         feed_event_facts(&mut state, event);
         state.as_u64()
     };
-    let plain = OrderEvent::at(1);
-    let mut filled = OrderEvent::at(1);
+    let plain = line(1);
+    let mut filled = line(1);
     filled.set_state(State::Filled);
     assert_eq!(digest(&plain), digest(&plain.clone()));
     assert_ne!(digest(&plain), digest(&filled));
@@ -350,22 +364,14 @@ fn a_cell_states_the_whole_number_or_the_digest_bits_it_holds() {
 #[test]
 fn the_enum_doors_read_a_spelling_as_the_member_it_names() {
     assert_eq!(
-        read_enum_spelling(&Side::dtype(), "Buy").unwrap(),
-        Scalar::from(Side::Buy)
-    );
-    assert_eq!(
         read_enum_spelling(&DataType::State, "Filled").unwrap(),
         Scalar::State(State::Filled)
     );
-    assert!(read_enum_spelling(&Side::dtype(), "zzzz").is_err());
+    assert!(read_enum_spelling(&DataType::State, "zzzz").is_err());
     assert!(read_enum_spelling(&DataType::Int32, "Buy").is_err());
 
     assert_eq!(state_from_wire_code("F"), Some(State::Trade));
     assert_eq!(state_from_wire_code("a"), None);
-    assert_eq!(
-        yggdryl::implementer::adopt_market_code(&SIDE_KIND, 1),
-        Scalar::from(Side::Buy)
-    );
 }
 
 #[test]
@@ -628,15 +634,12 @@ fn an_instant_sequence_places_a_stream_by_order_and_by_content() {
     // By order: the next place of the instant's run, a new instant starting
     // a run of its own.
     let mut run = InstantSequence::default();
-    let mut events: Vec<OrderEvent> = [5, 5, 5, 6].into_iter().map(OrderEvent::at).collect();
+    let mut events: Vec<TextLine> = [5, 5, 5, 6].into_iter().map(line).collect();
     for event in &mut events {
         run.place_naming_sources(event);
     }
     assert_eq!(
-        events
-            .iter()
-            .map(OrderEvent::get_seqnum)
-            .collect::<Vec<_>>(),
+        events.iter().map(TextLine::get_seqnum).collect::<Vec<_>>(),
         [0, 1, 2, 0]
     );
 

@@ -8,13 +8,14 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyTuple;
 
-use yggdryl::graph::{
-    Event, Market, MarketData as CoreMarketData, MarketKind, MarketView as CoreMarketView,
-    Operation,
-};
+use yggdryl::FieldPath;
+use yggdryl::graph::Event;
 use yggdryl::holder::Buffer;
 use yggdryl::ipc::{self, IpcOptions};
-use yggdryl::{FieldPath, FixMsg};
+use yggdryl_fix::FixMsg;
+use yggdryl_market::graph::{
+    Market, MarketData as CoreMarketData, MarketKind, MarketView as CoreMarketView, Operation,
+};
 
 use super::book::{PyBookEvent, PySnapshotEvent};
 use super::operation::{
@@ -318,7 +319,7 @@ graph_methods!(PyMarketData, "MarketData"; [
         kind: Option<&str>,
     ) -> PyResult<PyStreamChunkedSerie> {
         let kind = kind
-            .map(yggdryl::MarketDataKind::read)
+            .map(yggdryl_market::MarketDataKind::read)
             .transpose()
             .map_err(value_error)?;
         let source = serie_source_of(source)?;
@@ -343,7 +344,7 @@ graph_methods!(PyMarketData, "MarketData"; [
         kind: Option<&str>,
     ) -> PyResult<PyStreamChunkedSerie> {
         let kind = kind
-            .map(yggdryl::MarketDataKind::read)
+            .map(yggdryl_market::MarketDataKind::read)
             .transpose()
             .map_err(value_error)?;
         let source = serie_source_of(source)?;

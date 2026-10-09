@@ -9,10 +9,13 @@ use napi::bindgen_prelude::{
     ClassInstance, Either, Either3, Either10, Env, Function, Result, Unknown,
 };
 use napi_derive::napi;
-use yggdryl::graph::{MarketData as CoreMarketData, MarketKind, MarketView as CoreMarketView};
+use yggdryl::FieldPath;
 use yggdryl::holder::Buffer;
 use yggdryl::ipc::{self, IpcOptions};
-use yggdryl::{FieldPath, FixMsg};
+use yggdryl_fix::FixMsg;
+use yggdryl_market::graph::{
+    MarketData as CoreMarketData, MarketKind, MarketView as CoreMarketView,
+};
 
 use super::book::{JsBookEvent, JsSnapshotEvent};
 use super::operation::{
@@ -113,9 +116,9 @@ fn lifts_of(
 }
 
 /// The kind a caller named, read through the core vocabulary once.
-fn market_data_kind_of(kind: Option<String>) -> Result<Option<yggdryl::MarketDataKind>> {
+fn market_data_kind_of(kind: Option<String>) -> Result<Option<yggdryl_market::MarketDataKind>> {
     kind.as_deref()
-        .map(yggdryl::MarketDataKind::read)
+        .map(yggdryl_market::MarketDataKind::read)
         .transpose()
         .map_err(napi_error)
 }

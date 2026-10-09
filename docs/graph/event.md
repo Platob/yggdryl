@@ -6,7 +6,7 @@
 
 | Key | Rule |
 | --- | --- |
-| Owner | trait `yggdryl::graph::Event` (`graph::element`); `EventIterator` walk (`graph::iterator`); Rust-only - dated [leaves](index.md#leaves) answer it in Python/JavaScript |
+| Owner | trait `yggdryl::graph::Event` (`graph::element`); `EventIterator` walk (`yggdryl_market::graph::iterator`); Rust-only - dated [leaves](index.md#leaves) answer it in Python/JavaScript |
 | `transunix` | `get_transunix`/`set_transunix`: the transaction instant - when the operation really happened, the identity and order axis - nanoseconds since the Unix epoch, UTC, signed |
 | `state` | `get_state`/`set_state`: the lifecycle-sorted [`State`](../types/enum/state.md) member, never absent - `UNKNOWN` where none reached |
 | `is_execution` | provided via `State::is_execution` (`PARTIALLY_FILLED`, `TRADE`, `FILLED`); overridable where lifecycle state and report kind differ - an operation leaf's kind decides |
@@ -63,8 +63,11 @@ An Apple order placed, then partly filled a second later.
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Event, Market, Operation, OrderEvent};
-    use yggdryl::{Ccy, Decimal, IdKey, IdType, Identifier, Side, State};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::{Market, Operation, OrderEvent};
+    use yggdryl::{Ccy, Decimal, State};
+    use yggdryl_market::{IdKey, IdType, Identifier, Side};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let event = |unix: i64, state: &str| -> yggdryl::Result<OrderEvent> {
@@ -189,8 +192,10 @@ The same fill report, sent through a gateway at +2ms and an OMS at +5ms, each fr
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Event, OrderEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::OrderEvent;
     use yggdryl::{State, Uuid};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let report = |sent: Option<i64>, line: u128| {
@@ -320,8 +325,11 @@ The same fill report, sent through a gateway at +2ms and an OMS at +5ms, each fr
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Event, EventIterator, Market, OrderEvent};
-    use yggdryl::{Side, State};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::{EventIterator, Market, OrderEvent};
+    use yggdryl_market::Side;
+    use yggdryl::State;
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     const SECOND: i64 = 1_000_000_000;
@@ -574,8 +582,11 @@ A replace under another cross code and a new `ClOrdID`, naming the one it replac
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Event, EventIterator, Operation, OrderEvent};
-    use yggdryl::{IdKey, IdType, Identifier, Uuid};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::{EventIterator, Operation, OrderEvent};
+    use yggdryl_market::{IdKey, IdType, Identifier};
+    use yggdryl::Uuid;
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     const MS: i64 = 1_000_000;

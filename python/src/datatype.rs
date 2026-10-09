@@ -2365,8 +2365,8 @@ impl PyStringEnum {
     #[staticmethod]
     fn prebuilt(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let lists = PyDict::new(py);
-        for (name, values) in CoreStringEnum::PREBUILT {
-            lists.set_item(name, PyList::new(py, *values)?)?;
+        for (name, values) in CoreStringEnum::prebuilt() {
+            lists.set_item(name, PyList::new(py, values)?)?;
         }
         Ok(lists)
     }

@@ -370,7 +370,9 @@ digit that closes, a listed prefix - is its rank (`CodeValue::rank`), which a
 merge decides by and nothing refuses.
 
 ```rust
-use yggdryl::{Ccy, CodeValue, Country, DataType, IdType, Isin, Mic, Scalar, Str, Uuid};
+use yggdryl::{Ccy, CodeValue, Country, DataType, Isin, Mic, Scalar, Str, Uuid};
+use yggdryl_market::IdType;
+yggdryl_market::install()?;
 
 let bounded = DataType::sized_ascii(4)?;
 let usd = bounded.scalar("USD")?;
@@ -422,7 +424,9 @@ which the SSPA's Swiss map numbers the same way, held by its shape alone -
 where it lists the code. An `IsinEntry` holds one as its `eusipacode`.
 
 ```rust
-use yggdryl::{Eusipa, Isin, IsinEntry};
+use yggdryl_market::{Eusipa, IsinEntry};
+use yggdryl::Isin;
+yggdryl_market::install()?;
 
 let constant: Eusipa = "2300".parse()?;
 assert_eq!((constant.code(), constant.group(), constant.level()), (2300, 23, 2));
@@ -456,8 +460,10 @@ its vocabulary has. A side is never absent - `UKNW` (code 0) is unstated. A side
 and never written.
 
 ```rust
-use yggdryl::fix::plugin_side;
-use yggdryl::{MarketDataKind, Scalar, Side, State, TimeInForce};
+use yggdryl_fix::plugin_side;
+use yggdryl_market::{MarketDataKind, Side, TimeInForce};
+use yggdryl::{Scalar, State};
+yggdryl_fix::install()?;
 
 // A side reads its stored name, FIX's wire code or the specification's name.
 assert_eq!(Side::from_spelling("1"), Some(Side::Buy));

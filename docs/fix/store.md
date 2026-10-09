@@ -10,7 +10,7 @@ A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as thre
 | Fields | `fields/<tag / 100>.json`, the shard written as nine digits with leading zeros - tag 55 in `fields/000000000.json`, tag 5001 in `fields/000000050.json` - so the shards list in tag order wherever they are listed; each document is an array of tagged scalar fields, tag-major, the holder of a shared tag first |
 | Named definitions | `components/<name>.json`, `groups/<name>.json`; a message is a component carrying `FIX:msgtype` and is written beside the others; one native `Field` per document, with a derived tag for a component or Serie/LargeSerie group and an own reserved tag for a Map group |
 | Code sets | `codesets/<name>.json`, one document per named [code set](registry.md#a-field-names-the-code-set-it-reads-by), stating the name it is filed under and its members in the set's own order; a scalar's `FIX:codeset` holds that name. Read first, because a field naming a set the dictionary does not hold is refused. Not a `FixCategory`: a set has no tag, no datatype and no reference, so nothing in it resolves against a field |
-| Documents | The `FIX:` properties that hold a canonical document - the entry documents `FIX:directions` and `FIX:idmap`, and the lists `FIX:names`, `FIX:parents`, `FIX:sources` and `FIX:tags` - are written as the JSON arrays they are rather than as one escaped line, so an indented document renders as a document and a person can edit one; a code set's `codes` array is written the same way, which is what makes the tree readable. Reading restates each as the compact canonical text a field's metadata holds, with each entry's keys put back into the order the grammar declares and each list held to its element grammar - a word, a positive tag - so a file may spell them in any order and the field still holds one text. One shape: a file spelling one of these keys as text is refused by name, and so is a field holding text no reader can parse. `yggdryl::into_fix_document`/`from_fix_document` are that pair on one field, which is what `yggdryl fix read --json` prints and `yggdryl fix ... --input` takes; `FIX:codeset` is not among them, because a name is one word |
+| Documents | The `FIX:` properties that hold a canonical document - the entry documents `FIX:directions` and `FIX:idmap`, and the lists `FIX:names`, `FIX:parents`, `FIX:sources` and `FIX:tags` - are written as the JSON arrays they are rather than as one escaped line, so an indented document renders as a document and a person can edit one; a code set's `codes` array is written the same way, which is what makes the tree readable. Reading restates each as the compact canonical text a field's metadata holds, with each entry's keys put back into the order the grammar declares and each list held to its element grammar - a word, a positive tag - so a file may spell them in any order and the field still holds one text. One shape: a file spelling one of these keys as text is refused by name, and so is a field holding text no reader can parse. `yggdryl_fix::into_fix_document`/`from_fix_document` are that pair on one field, which is what `yggdryl fix read --json` prints and `yggdryl fix ... --input` takes; `FIX:codeset` is not among them, because a name is one word |
 | Snapshots | `FixRegistry::into_json`/`from_json` render and read the whole catalog in that same shape, the `codesets` array leading the three category arrays and, where the registry holds an entry, a `sources` array after them; `add_json_file(handle)` folds one such file into a dictionary the way `merge_with` folds any, answering the same [`FixMerge`](registry.md#what-a-source-says-otherwise-than-the-dictionary-is-passed-over), and takes no dialect - a snapshot already carries the `FIX:sources` its writer meant and the catalog those ids name |
 | References | Ordinary compact child fields use `Null` as the unresolved datatype; a Map's referenced entries keep the Struct its datatype requires. Both retain reference metadata and resolve to canonical native fields at intake |
 | Identifiers | `FIX:identifiers` stays on its component; canonical member names and order resolve through the same owner after references load |
@@ -33,7 +33,9 @@ The counter is a scalar field; a reusable component defines one occurrence and t
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FieldPath, FixCode, FixField, FixFieldMut, FixRegistry, FixSource, IOBase, StructType};
+    use yggdryl::{DataType, FieldPath, IOBase, StructType};
+    use yggdryl_fix::{FixCode, FixField, FixFieldMut, FixRegistry, FixSource};
+    yggdryl_fix::install()?;
 
     let path = LocalFolder::temporary()?.path()?.join(format!("ygg-doc-store-{}", std::process::id()));
     let mut root = LocalFolder::new(&path)?;
@@ -336,7 +338,9 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{fix_crate_fields, FieldPath, FixField, FixId, FixRegistry};
+    use yggdryl_fix::{fix_crate_fields, FixField, FixId, FixRegistry};
+    use yggdryl::FieldPath;
+    yggdryl_fix::install()?;
 
     let seed = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("config").join("fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(seed)?)?;
@@ -496,9 +500,9 @@ python scripts/generate_fix_dictionary.py --check
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --test fix store
-    cargo test --features internals -p yggdryl --test fix -- mod_::internal::shard_arithmetic
-    cargo test -p yggdryl --test iobase_calls fix_catalog_storage_resolves_each_root_path_once
+    cargo test -p yggdryl-fix --test root store
+    cargo test --features internals -p yggdryl-fix --test root -- lib::internal::shard_arithmetic
+    cargo test -p yggdryl-fix --test iobase_calls fix_catalog_storage_resolves_each_root_path_once
     ```
 
 === "Python"
@@ -548,7 +552,7 @@ Root navigation is asserted with `Counted`: loading resolves `codesets/`, `sourc
 Regenerate with release bindings installed:
 
 ```bash
-cargo bench -p yggdryl --bench fix -- fix/store
+cargo bench -p yggdryl-fix --bench fix -- fix/store
 python python/benchmarks/fix.py --iterations 2000
 ```
 

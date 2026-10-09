@@ -70,26 +70,35 @@ leaf = ["pyarrow>=18"]
 # lane's shards is `--all-targets` exactly. Retune a shard from the run's
 # step times; a moved target is a failure that names it.
 [shards.yggdryl]
-default = { fix = ["test:fix", "bench:fix"] }
-full = { fix = ["test:fix", "bench:fix"], allocations = ["test:allocations", "test:scale_ulbridge", "test:graph"] }
+full = { allocations = ["test:allocations"] }
+
+[shards.yggdryl-market]
+full = { allocations = ["test:allocations", "test:graph"] }
+
+[shards.yggdryl-fix]
+default = { fix = ["test:root", "bench:fix"] }
+full = { fix = ["test:root", "bench:fix"], allocations = ["test:allocations", "test:scale_ulbridge"] }
 
 # The leaf crates under `rust/<name>`. Each one line, flipped on by deleting
 # its `#` in the change that creates `rust/<name>/Cargo.toml` (S4, S6, S6b,
 # S6c of .handoff/split/DESIGN.md); the planner refuses a crate under
 # `rust/` with no line here and a line with no crate. A leaf becomes the row
 # `crate-<name>` - the core library, the leaves it is `after`, its own
-# folder and `config/` - which runs what proves the leaf and nothing more:
-# the `leaves` matrix (clippy and rustdoc on its package alone, its tests in
-# both feature lanes, sharded by `[shards.<package>]` where it has one, and
-# `cargo check` at the declared MSRV where `msrv` is given), the `[leaf]`
-# jobs below every leaf shares, and its own `jobs` - the exchanges that
-# exercise it. A leaf-only change runs no core test shard, no workspace
+# folder, `config/` and the files of the core's tree its sources include,
+# named by its line's `paths` (a `#[path]` module, an `include_bytes!`, a
+# path built under `CARGO_MANIFEST_DIR`, held to the sources by
+# `scripts/tests/test_ci_plan.py`) - which runs what proves the leaf and
+# nothing more: the `leaves` matrix (clippy and rustdoc on its package
+# alone, its tests in both feature lanes, sharded by `[shards.<package>]`
+# where it has one, and `cargo check` at the declared MSRV where `msrv` is
+# given), the `[leaf]` jobs below every leaf shares, and its own `jobs` -
+# the exchanges that exercise it. A leaf-only change runs no core test shard, no workspace
 # clippy, no free-threaded build, no `pyarrow==18.*` leg, no Python or
 # JavaScript page example and no other exchange; a change to the core, the
 # lock or a manifest, and every push to `main`, still runs everything.
 [leaves]
-# market = { package = "yggdryl-market" }
-# fix = { package = "yggdryl-fix", after = ["market"] }
+market = { package = "yggdryl-market", paths = ["rust/tests/support/counting_filesystem.rs", "rust/benchmarks/bench_profile.rs"] }
+fix = { package = "yggdryl-fix", after = ["market"], paths = ["rust/tests/support/ulbridge.log", "rust/benchmarks/bench_profile.rs", "rust/benchmarks/allocation_measurement.rs"] }
 # avro = { package = "yggdryl-avro", jobs = ["avro-interop"] }
 # parquet = { package = "yggdryl-parquet", jobs = ["pyiceberg-interop", "spark-interop"] }
 # iceberg = { package = "yggdryl-iceberg", after = ["avro", "parquet"], msrv = "--features s3tables", jobs = ["pyiceberg-interop", "spark-interop", "iceberg-msrv"] }
@@ -131,21 +140,23 @@ paths = [
 extends = ["cargo"]
 paths = ["rust/Cargo.toml", "rust/src/**"]
 
-# The core's own proof: its tests, benchmarks and examples in both lanes,
-# its lints, its MSRV, and the dictionary its tests read.
+# The core's own proof: its tests, benchmarks and rustdoc examples in both
+# lanes, its lints and its MSRV. `config/` is no input of theirs: the
+# leaves' rows, the bindings' and the CLI's read it.
 [rows.core]
 extends = ["corelib"]
-paths = ["rust/tests/**", "rust/benchmarks/**", "rust/examples/**", "config/**"]
+paths = ["rust/tests/**", "rust/benchmarks/**"]
 jobs = ["lint-default", "iceberg-msrv", "core-tests-default", "core-tests-full"]
 
-# The core library every binding, the CLI and a Rust example link, and what
-# their suites read from the core's tree: `python/tests/test_fix.py` and
-# `node/tests/fix.test.js` replay `rust/tests/fix/ulbridge.log`. A leaf
+# The core library every binding, the CLI and the Rust page examples link,
+# and what their suites read outside their folders: the dictionary under
+# `config/`, and the capture `python/tests/test_fix.py` and
+# `node/tests/fix.test.js` replay, `rust/tests/support/ulbridge.log`. A leaf
 # crate they link is not here: its own row runs the jobs that prove it
 # (`[leaf]`), so a leaf-only change runs those and no other binding job.
 [rows.libs]
 extends = ["corelib"]
-paths = ["config/**", "rust/tests/fix/ulbridge.log"]
+paths = ["config/**", "rust/tests/support/ulbridge.log"]
 
 # `rustfmt` reads every Rust file and its own settings. A path is known
 # only by a row that `classifies` it, and the sources classify nothing here

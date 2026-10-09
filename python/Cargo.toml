@@ -25,6 +25,8 @@ yggdryl = { path = "../rust", default-features = false, features = [
     "s3",
     "s3tables",
 ] }
+yggdryl-market = { workspace = true, features = ["http"] }
+yggdryl-fix = { workspace = true, features = ["http"] }
 serde_json = "1"
 # The extension's own allocator. Every Arrow buffer a read decodes is a
 # large allocation, and the system allocator maps and unmaps those per call,

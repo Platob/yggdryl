@@ -109,7 +109,7 @@ mod internal {
             assert!(!probes.is_empty(), "the protocol list is empty");
             // The list is the core's own views. The FIX view left it for
             // `fix/field.rs`, which mints it with the exported builder under
-            // `Scheme::FIX` - `rust/tests/fix/field.rs` pins it the same way
+            // `Scheme::FIX` - `rust/fix/tests/root/field.rs` pins it the same way
             // - so the list is 23 and none of them is FIX.
             assert_eq!(probes.len(), 23, "the core's own protocol views");
             assert!(

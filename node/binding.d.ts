@@ -5257,7 +5257,7 @@ export interface FixMsgConstructor {
   readonly prototype: FixMsg
 }
 
-/** `yggdryl::fix`: the FIX dictionary, its message, and the process default. */
+/** The yggdryl-fix crate: the FIX dictionary, its message, and the process default. */
 export interface Fix {
   /**
    * The row header a ULBridge log writes in front of every line, as a

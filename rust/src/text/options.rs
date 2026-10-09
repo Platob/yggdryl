@@ -611,9 +611,8 @@ impl TextOptions {
     /// column per named capture, in the order the row header declares them and
     /// typed by what its syntax can match. Public because a caller composing a
     /// text read with something that reads its payload needs the columns
-    /// before there is a resource to read, exactly as
-    /// [`fix_schema`](crate::fix_schema) answers the codec's before a byte is
-    /// read.
+    /// before there is a resource to read, exactly as a codec's fixed schema
+    /// answers before a byte is read.
     ///
     /// # Errors
     ///

@@ -6,7 +6,7 @@
 
 | Key | Rule |
 | --- | --- |
-| Owner | trait `yggdryl::graph::Operation`, in `graph::market`; Rust-only - operation [leaves](index.md#leaves) answer it in Python/JavaScript |
+| Owner | trait `yggdryl_market::graph::Operation`, in `graph::market`; Rust-only - operation [leaves](index.md#leaves) answer it in Python/JavaScript |
 | `ordqty` | `get_ordqty`/`set_ordqty`: the quantity the operation ordered, FIX's `OrderQty(38)`, never the quantity the element is about ([`get_quantity`](market.md#contract)); it, `get_cumqty`, `get_leavesqty` and `get_cxlqty` fill one another by the state the operation reached - fresh, all of it left; working, any two of ordered, traded and left give the third; filled, nothing left and all of it traded; canceled, done for the day or expired, nothing left and the untraded rest canceled ([Market](market.md#setting-fill-or-overwrite)) |
 | `timeinforce`, `tradable` | `get_`/`set_` each: `timeinforce` how long it stands, an `Option<TimeInForce>` [enum member](../types/enum/timeinforce.md) - `set_timeinforce(TimeInForce::from_spelling("day"), true)` stores `DAY`, code `1`; Python answers the `yggdryl.TimeInForce` member and JavaScript its name, and either takes a member, its code, a name, FIX's name or the wire value; `tradable` (`Option<bool>`) whether the instrument can trade where a status says, `None` if the market said nothing either way |
 | `identifiers` | the operation's own [identifiers](#identifiers), an [`Identifiers`](identifier.md) map keyed `src:type` |
@@ -27,8 +27,10 @@
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Event, Market, Operation, OrderEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::{Market, Operation, OrderEvent};
     use yggdryl::{Decimal, State};
+    yggdryl_market::install()?;
 
     let mut order = OrderEvent::at(1_700_000_000_000_000_000);
     order.set_crosscode("O-1001".to_owned());
@@ -117,8 +119,10 @@ A replacement order following the one it replaces, then an acknowledgment that s
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Market, Operation, OrderEvent};
-    use yggdryl::{IdKey, IdSource, IdType, Identifier, Side, TimeInForce};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Market, Operation, OrderEvent};
+    use yggdryl_market::{IdKey, IdSource, IdType, Identifier, Side, TimeInForce};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let fix = |kind: IdType, value: &str| Identifier::new(IdKey::base(kind), value);

@@ -5,7 +5,7 @@
 //! and the duplicates a spec refuses. All of it is `yggdryl::iceberg` API.
 
 use yggdryl::iceberg::{PartitionField, PartitionSpec};
-use yggdryl::{DataType, Field, Scalar, Serie, Side};
+use yggdryl::{DataType, Field, Scalar, Serie};
 
 #[test]
 fn modern_partition_json_requires_exact_identifiers() {
@@ -1061,7 +1061,7 @@ fn every_iceberg_primitive_is_an_identity_source_and_unknown_and_variant_are_non
         DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
         DataType::utf8(),
         DataType::Ccy,
-        Side::dtype(),
+        DataType::State,
         DataType::Uuid,
         DataType::fixed_binary(16).unwrap(),
         DataType::Binary,

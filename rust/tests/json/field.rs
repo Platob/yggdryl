@@ -144,13 +144,13 @@ fn corpus() -> Vec<(&'static str, Vec<&'static str>)> {
             ],
         ),
         (
-            "struct<d: decimal256(76, 0), s: utf8, e: side, q: decimal128(4, 2), g: float16, h: float32>",
+            "struct<d: decimal256(76, 0), s: utf8, e: state, q: decimal128(4, 2), g: float16, h: float32>",
             vec![
                 r#"{"d":170141183460469231731687303715884105728,"s":340282366920938463463374607431768211455,"e":-170141183460469231731687303715884105729}"#,
                 r#"{"q":100}"#,
                 r#"{"q":"100"}"#,
                 r#"{"g":1e300,"h":-1e300}"#,
-                r#"{"e":"SELL","q":"-0.01"}"#,
+                r#"{"e":"FILLED","q":"-0.01"}"#,
             ],
         ),
         (
@@ -171,10 +171,10 @@ fn corpus() -> Vec<(&'static str, Vec<&'static str>)> {
             ],
         ),
         (
-            "struct<d: date32, t: datetime64(ms, UTC), u: uuid, c: ccy, s: side, a: sized_ascii(4), b: binary, w: url, n: version, h: float32>",
+            "struct<d: date32, t: datetime64(ms, UTC), u: uuid, c: ccy, s: state, a: sized_ascii(4), b: binary, w: url, n: version, h: float32>",
             vec![
-                r#"{"d":"2024-01-02","t":"2024-01-02T03:04:05.006Z","u":"00112233-4455-6677-8899-aabbccddeeff","c":"USD","s":"BUYS","a":"ABCD","b":"AQID","w":"https://example.com/a","n":"1.2.3","h":0.1}"#,
-                r#"{"d":19724,"t":1700000000000,"c":"usd","s":1}"#,
+                r#"{"d":"2024-01-02","t":"2024-01-02T03:04:05.006Z","u":"00112233-4455-6677-8899-aabbccddeeff","c":"USD","s":"NEW","a":"ABCD","b":"AQID","w":"https://example.com/a","n":"1.2.3","h":0.1}"#,
+                r#"{"d":19724,"t":1700000000000,"c":"usd","s":2001}"#,
                 r#"{"a":"ABCDE"}"#,
                 r#"{"a":"é"}"#,
                 r#"{"b":"not base64!"}"#,
@@ -449,8 +449,8 @@ mod internal {
                 r#"{"WTI":{"qty":1}}"#,
             ),
             (
-                "struct<d: date32, t: datetime64(ms, UTC), u: uuid, c: ccy, s: side, a: sized_ascii(4), b: binary, w: url, n: version, h: float32>",
-                r#"{"d":"2024-01-02","t":"2024-01-02T03:04:05.006Z","u":"00112233-4455-6677-8899-aabbccddeeff","c":"USD","s":"BUYS","a":"ABCD","b":"AQID","w":"https://example.com/a","n":"1.2.3","h":0.1}"#,
+                "struct<d: date32, t: datetime64(ms, UTC), u: uuid, c: ccy, s: state, a: sized_ascii(4), b: binary, w: url, n: version, h: float32>",
+                r#"{"d":"2024-01-02","t":"2024-01-02T03:04:05.006Z","u":"00112233-4455-6677-8899-aabbccddeeff","c":"USD","s":"NEW","a":"ABCD","b":"AQID","w":"https://example.com/a","n":"1.2.3","h":0.1}"#,
             ),
         ] {
             let field = target(expression);

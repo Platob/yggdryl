@@ -20,6 +20,7 @@ use pyo3::types::{
     PyWeakrefReference,
 };
 use pyo3::{IntoPyObjectExt, PyTypeInfo, intern};
+use yggdryl::State;
 use yggdryl::bytes::Bytes;
 use yggdryl::decimal::{Decimal32, Decimal64};
 use yggdryl::geospatial::{Geography, Geometry};
@@ -29,7 +30,7 @@ use yggdryl::{
     DataType as CoreDataType, DataTypeId, Error as CoreError, Field as CoreField, Float16, Float32,
     Float64, Ric, Scalar, Serie, TimeUnit, Timezone, Unit, Vocabulary, i256,
 };
-use yggdryl::{MarketDataKind, MarketDataType, Side, State, TimeInForce};
+use yggdryl_market::{MarketDataKind, MarketDataType, Side, TimeInForce};
 
 use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
 use crate::field::{PyField, core_field_from_value};

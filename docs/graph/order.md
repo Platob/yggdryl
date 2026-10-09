@@ -35,10 +35,11 @@ How a book applies each action is the [book's](book.md#entries).
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{
-        BookRef, Element, Event, Market, MarketKind, MdUpdateAction, Order, OrderEvent, QuoteEvent,
-    };
-    use yggdryl::{MarketDataKind, Side, Uuid};
+    use yggdryl_market::graph::{BookRef, Market, MarketKind, MdUpdateAction, Order, OrderEvent, QuoteEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::{MarketDataKind, Side};
+    use yggdryl::Uuid;
+    yggdryl_market::install()?;
 
     // An undated order: its identity is its content, UUIDv8 over its code.
     let mut order = Order::new();

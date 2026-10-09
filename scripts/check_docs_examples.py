@@ -43,7 +43,7 @@ from typing import NamedTuple
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
 SKILLS = ROOT / "skills"
-RUST_TARGET = ROOT / "rust" / "tests" / "docs_examples.rs"
+RUST_TARGET = ROOT / "cli" / "tests" / "docs_examples.rs"
 PYTHON = ROOT / "python" / ".venv" / "Scripts" / "python.exe"
 if not PYTHON.exists():
     PYTHON = ROOT / "python" / ".venv" / "bin" / "python"
@@ -204,7 +204,7 @@ def rust_target(pages) -> tuple[int, list[str]]:
 
 def run_rust() -> int:
     result = subprocess.run(
-        ["cargo", "test", "--locked", "--features", "parquet iceberg s3 s3tables http3", "--test", "docs_examples"],
+        ["cargo", "test", "--locked", "-p", "yggdryl-cli", "--features", "yggdryl/parquet yggdryl/iceberg yggdryl/s3 yggdryl/s3tables yggdryl/http3", "--test", "docs_examples"],
         cwd=ROOT,
         check=False,
     )

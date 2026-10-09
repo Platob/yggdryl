@@ -45,13 +45,14 @@ use napi::bindgen_prelude::{
     Null, Object, Result, Unknown, ValueType,
 };
 use napi_derive::napi;
-use yggdryl::graph::{Element, Event, Market, Metadata, Operation};
-use yggdryl::{
-    DataType as CoreDataType, Field as CoreField, FixCapture, FixCode as CoreFixCode,
-    FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec, FixEntry, FixField, FixHeader,
-    FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar,
-    TimeUnit, Timezone,
+use yggdryl::graph::{Element, Event};
+use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar, TimeUnit, Timezone};
+use yggdryl_fix::{
+    FixCapture, FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec,
+    FixEntry, FixField, FixHeader, FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg,
+    FixRegistry as CoreFixRegistry,
 };
+use yggdryl_market::graph::{Market, Metadata, Operation};
 
 use crate::field::JsField;
 use crate::graph::{JsMarketData, JsMarketDataRowIterator};
@@ -251,7 +252,7 @@ pub struct FixSourceView {
 
 impl FixSourceView {
     /// One borrowed catalog entry, as the object JavaScript reads.
-    fn from_core(source: &yggdryl::FixSource) -> Self {
+    fn from_core(source: &yggdryl_fix::FixSource) -> Self {
         Self {
             id: source.id().to_owned(),
             file: source.file().map(ToOwned::to_owned),
@@ -860,7 +861,7 @@ impl JsFixRegistry {
     /// `["origclordid"]`; a parent type has none.
     #[napi]
     pub fn parents_of(&self, base: String) -> Result<Vec<String>> {
-        let base: yggdryl::IdType = base.parse().map_err(napi_error)?;
+        let base: yggdryl_market::IdType = base.parse().map_err(napi_error)?;
         Ok(self
             .inner
             .parents_of(&base)
@@ -875,7 +876,7 @@ impl JsFixRegistry {
     /// `null` for a type that is no one's parent.
     #[napi]
     pub fn parent_of(&self, kind: String) -> Result<Option<FixParentPlace>> {
-        let kind: yggdryl::IdType = kind.parse().map_err(napi_error)?;
+        let kind: yggdryl_market::IdType = kind.parse().map_err(napi_error)?;
         Ok(self
             .inner
             .parent_of(&kind)
@@ -1015,7 +1016,7 @@ impl JsFixRegistry {
     /// `field.fix.sources`.
     #[napi]
     pub fn add_source(&mut self, id: String, options: Option<FixSourceOptions>) -> Result<bool> {
-        let mut source = yggdryl::FixSource::new(&id).map_err(napi_error)?;
+        let mut source = yggdryl_fix::FixSource::new(&id).map_err(napi_error)?;
         if let Some(options) = options {
             if let Some(file) = options.file {
                 source = source.with_file(file);
@@ -2577,7 +2578,7 @@ impl JsFixCodec {
             .is_none_or(|options| options.isin_registry.is_none());
         let mut codec = Self::open(None, options)?;
         if attach {
-            let instruments = yggdryl::IsinRegistry::from_env().map_err(napi_error)?;
+            let instruments = yggdryl_market::IsinRegistry::from_env().map_err(napi_error)?;
             codec.inner = codec.inner.with_isin_registry(Arc::clone(instruments));
         }
         Ok(codec)
@@ -3443,10 +3444,10 @@ fn sending_time_from_js(value: Either<ClassInstance<'_, JsScalar>, JsDate<'_>>) 
 /// The role `side` names: a spelling read through the core `Side`
 /// vocabulary - the stored name in any case, `BuySide`, `sell-side`, a wire
 /// code - or a `Side` code, what `Side.BUYS` holds.
-fn plugin_side_of(side: Either<String, f64>) -> Result<yggdryl::Side> {
+fn plugin_side_of(side: Either<String, f64>) -> Result<yggdryl_market::Side> {
     match side {
-        Either::A(text) => yggdryl::Side::read(&text),
-        Either::B(code) => yggdryl::Side::read_code(crate::exact_i64(code, "pluginside")?),
+        Either::A(text) => yggdryl_market::Side::read(&text),
+        Either::B(code) => yggdryl_market::Side::read_code(crate::exact_i64(code, "pluginside")?),
     }
     .map_err(|error| napi::Error::from_reason(format!("pluginside: {error}")))
 }
@@ -3457,7 +3458,7 @@ fn plugin_side_of(side: Either<String, f64>) -> Result<yggdryl::Side> {
 /// throws.
 #[napi(js_name = "fixPluginSide")]
 pub fn fix_plugin_side(plugin_type: String) -> String {
-    yggdryl::fix::plugin_side(&plugin_type).as_str().to_owned()
+    yggdryl_fix::plugin_side(&plugin_type).as_str().to_owned()
 }
 
 /// The fixed root every message answers as, built from one dictionary.
@@ -3480,7 +3481,7 @@ pub fn fix_schema(
 ) -> Result<JsField> {
     let registry = registry_or_env(registry)?;
     let name = name.unwrap_or_else(|| "fix".to_owned());
-    yggdryl::fix_schema(&registry, name)
+    yggdryl_fix::fix_schema(&registry, name)
         .map(JsField::from_core)
         .map_err(napi_error)
 }
@@ -3503,7 +3504,7 @@ pub fn fix_schema(
 /// refusing per row. The one-pass readers state every one of them.
 #[napi(js_name = "fixSchemaCarrying")]
 pub fn fix_schema_carrying(carrier: &JsField, read: &JsField) -> Result<JsField> {
-    yggdryl::fix_schema_carrying(&carrier.inner, &read.inner)
+    yggdryl_fix::fix_schema_carrying(&carrier.inner, &read.inner)
         .map(JsField::from_core)
         .map_err(napi_error)
 }
@@ -3513,7 +3514,7 @@ pub fn fix_schema_carrying(carrier: &JsField, read: &JsField) -> Result<JsField>
 /// and this is the half that carries the text across.
 #[napi(js_name = "_fixUlbridgeRowheaderNative", skip_typescript)]
 pub fn fix_ulbridge_rowheader_native() -> &'static str {
-    yggdryl::ULBRIDGE_ROWHEADER
+    yggdryl_fix::ULBRIDGE_ROWHEADER
 }
 
 /// One row's columns, in order, as tags: the crate's leading columns, then
@@ -3522,7 +3523,7 @@ pub fn fix_ulbridge_rowheader_native() -> &'static str {
 #[allow(clippy::cast_lossless)]
 #[napi(js_name = "fixSchemaTags")]
 pub fn fix_schema_tags() -> Vec<f64> {
-    yggdryl::fix_schema_tags()
+    yggdryl_fix::fix_schema_tags()
         .into_iter()
         .map(f64::from)
         .collect()
@@ -3556,7 +3557,7 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// document walks rather than something a caller registers.
 #[napi(js_name = "fixCrateFields")]
 pub fn fix_crate_fields() -> Result<Vec<JsField>> {
-    yggdryl::fix_crate_fields()
+    yggdryl_fix::fix_crate_fields()
         .map(|held| held.iter().cloned().map(JsField::from_core).collect())
         .map_err(napi_error)
 }

@@ -5,9 +5,9 @@ The seed is one JSON array of listings sorted by ISIN then market, each an
 object keyed as the registry's columns are: an instrument listed on several
 markets is one row per market, as the registry holds it. It is the one file maintained by hand;
 the crate embeds a copy of it inside its own package,
-`rust/src/isin_registry/seed.json` (`rust/src/isin_registry/seed.rs`), so a
+`rust/market/src/isin_registry/seed.json` (`rust/market/src/isin_registry/seed.rs`), so a
 published crate and a source distribution carry it too, and
-`rust/tests/isin_registry/seed.rs` pins what that copy holds. This script is
+`rust/market/tests/isin_registry/seed.rs` pins what that copy holds. This script is
 the check run in the change that edits the file, and reports every failure
 before it exits 1; `--sync` first writes the copy from the file, byte for
 byte.
@@ -58,7 +58,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SEED = ROOT / "config" / "isin" / "instruments.json"
-COPY = ROOT / "rust" / "src" / "isin_registry" / "seed.json"
+COPY = ROOT / "rust" / "market" / "src" / "isin_registry" / "seed.json"
 MICS = ROOT / "rust" / "src" / "mic" / "tables.rs"
 
 KEYS = ("isin", "ticker", "miccode", "currency", "origccy", "countrycode", "cficode", "fisn")

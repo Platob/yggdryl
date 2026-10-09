@@ -16,9 +16,8 @@ use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict, PyTuple};
 use yggdryl::holder::Holder;
-use yggdryl::{
-    DataType, IdType, Isin, IsinEntry, IsinRegistry, MatchTier, Mic, Resolution, Scalar, Unmatched,
-};
+use yggdryl::{DataType, Isin, Mic, Scalar};
+use yggdryl_market::{IdType, IsinEntry, IsinRegistry, MatchTier, Resolution, Unmatched};
 
 use crate::field::PyField;
 

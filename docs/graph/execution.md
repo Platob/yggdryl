@@ -22,8 +22,11 @@ The fill of an Apple order a quarter second after it was placed.
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Event, ExecutionEvent, Market, MarketData, Operation, OrderEvent};
-    use yggdryl::{Ccy, Decimal, IdKey, IdType, Identifier, Side, State};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::{ExecutionEvent, Market, MarketData, Operation, OrderEvent};
+    use yggdryl::{Ccy, Decimal, State};
+    use yggdryl_market::{IdKey, IdType, Identifier, Side};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let mut order = OrderEvent::at(T);

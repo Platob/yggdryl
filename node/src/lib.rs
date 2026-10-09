@@ -469,6 +469,11 @@ pub fn hostname_native() -> &'static str {
 #[napi_derive::module_init]
 fn install_logging() {
     logging::install();
+    // The crates split off the core claim what they register before an
+    // export can read a name of theirs, in dependency order; a refusal is
+    // a build linking two claimants, which no caller can repair.
+    yggdryl_market::install().expect("yggdryl-market claims its kinds");
+    yggdryl_fix::install().expect("yggdryl-fix claims its names");
 }
 
 impl Generator for JsDifferenceIterator {

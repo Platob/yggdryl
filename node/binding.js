@@ -5556,9 +5556,9 @@ for (const name of [
   delete binding[name]
 }
 
-// `yggdryl::fix` is a module in the core, so it is one here too: the
-// dictionary, the message it types and the process default are one name rather
-// than four top-level classes.
+// The yggdryl-fix crate is one module here too: the dictionary, the message it
+// types and the process default are one name rather than four top-level
+// classes.
 //
 // A message value is whatever `Scalar.from` reads, and that conversion lives
 // in this loader, so the public constructor is the one widening gate and hands

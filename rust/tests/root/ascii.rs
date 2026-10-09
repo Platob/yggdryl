@@ -31,7 +31,7 @@ mod leaves {
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::{
-        ArrowCastOptions, Charset, DataType, DataTypeId, Field, Scalar, Serie, Side, StringEnum,
+        ArrowCastOptions, Charset, DataType, DataTypeId, Field, Scalar, Serie, StringEnum,
         StructType, Term, Url,
     };
     use yggdryl::{IOBase, IOMedia};
@@ -590,21 +590,21 @@ mod leaves {
         // The members pack into integers through `ascii_packed`, so the
         // vocabulary is accepted on a fixed US-ASCII string of at most sixteen
         // bytes or a code, and refused by name everywhere else.
-        let sides = StringEnum::from_logical_name("side").unwrap();
+        let venues = StringEnum::from_logical_name("mic").unwrap();
         for accepted in [
             DataType::fixed_ascii(8).unwrap(),
             DataType::fixed_ascii(16).unwrap(),
             DataType::Mic,
         ] {
-            let field = Field::new("side", accepted.clone(), false)
-                .try_with_string_enum(&sides)
+            let field = Field::new("venue", accepted.clone(), false)
+                .try_with_string_enum(&venues)
                 .unwrap_or_else(|error| panic!("{accepted}: {error}"));
-            assert_eq!(field.string_enum().unwrap().as_ref(), Some(&sides));
+            assert_eq!(field.string_enum().unwrap().as_ref(), Some(&venues));
             let recovered =
                 Field::from_arrow_field(&field.clone().into_arrow_field().unwrap()).unwrap();
             assert_eq!(recovered, field, "{accepted}");
         }
-        // A side column stores its members' codes, so it packs nothing and
+        // A state column stores its members' codes, so it packs nothing and
         // declares no string listing.
         for refused in [
             DataType::ascii(),
@@ -612,10 +612,10 @@ mod leaves {
             DataType::fixed_ascii(17).unwrap(),
             DataType::fixed_utf8(4).unwrap(),
             DataType::utf8(),
-            Side::dtype(),
+            DataType::State,
         ] {
-            let message = Field::new("side", refused.clone(), false)
-                .try_with_string_enum(&sides)
+            let message = Field::new("venue", refused.clone(), false)
+                .try_with_string_enum(&venues)
                 .unwrap_err()
                 .to_string();
             assert!(

@@ -6,7 +6,7 @@
 
 | Key | Rule |
 | --- | --- |
-| Owner | trait `yggdryl::graph::Market` (`graph::market`), no supertrait; Rust-only - [leaves](index.md#leaves) answer it in Python/JavaScript |
+| Owner | trait `yggdryl_market::graph::Market` (`graph::market`), no supertrait; Rust-only - [leaves](index.md#leaves) answer it in Python/JavaScript |
 | Price, quantity, numbers | `get_price`/`get_quantity` + `set_`: what the element states, exact as [`Decimal`](../types/numeric/decimal.md#decimal), `None` if none - never last-executed, never a default; likewise `lastpx`/`lastqty` (last executed price/quantity), `avgpx`, `cumqty`, `leavesqty`, `prevpx`/`prevqty` (prior step's settlement), `spotrate`/`forwardpoints` (FX parts), `stoppx` (the price a stop order triggers at) and `strikepx` (the strike price of the option the element is about - an instrument fact, which a follower of the same instrument [takes along its chain](#following-and-merging); a FIX message's `StrikePrice(202)`) |
 | Currency, unit | `get_currency`/`set_currency`: [`Ccy::none()`](../types/codes/ccy.md) if unstated; `get_unit`/`set_unit`: [`Unit::none()`](../types/codes/unit.md) if unstated; `get_origccy`/`set_origccy`: the currency the instrument was issued in, `Ccy::none()` where neither the element nor a registry stated one, and `origin_currency()` that or else the currency ([below](#origin-currency)) |
 | Side | `get_side`/`set_side`: the [side](../types/enum/side.md) by value, never absent - `Side::Unknown` (code `0`) where none is stated, which means "not stated": nothing invents a side. An order's or an execution's side is the one side it takes, and its stored cross code states its code ([below](#sides-and-cross-codes)); any other element's is a tag - a [quote](#a-quotes-two-legs) holds its bid and its ask and tags the leg it states, a two-sided one `Side::Both` (`BOTH`, code `99`), and a [book](book.md) is always `BOTH` |
@@ -77,8 +77,11 @@ Every fill is part of the element, so it is a column of the [`marketdata` row](s
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Event, Market, Operation, OrderEvent};
-    use yggdryl::{Decimal, Side, State};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::{Market, Operation, OrderEvent};
+    use yggdryl::{Decimal, State};
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     let dec = |text: &str| text.parse::<Decimal>().expect("a decimal");
 
@@ -209,7 +212,8 @@ A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy`
 
     ```rust
     use yggdryl::Ccy;
-    use yggdryl::graph::{Market, OrderEvent};
+    use yggdryl_market::graph::{Market, OrderEvent};
+    yggdryl_market::install()?;
 
     let mut order = OrderEvent::at(1_700_000_000_000_000_000);
     order.set_currency(Ccy::new("EUR")?, true);
@@ -318,8 +322,11 @@ A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy`
 
     ```rust
     use smol_str::SmolStr;
-    use yggdryl::graph::{Element, Market, Metadata, OrderEvent};
-    use yggdryl::{Ccy, Cfi, Decimal, IdKey, IdSource, IdType, Identifier, Mic, Side};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Market, Metadata, OrderEvent};
+    use yggdryl::{Ccy, Cfi, Decimal, Mic};
+    use yggdryl_market::{IdKey, IdSource, IdType, Identifier, Side};
+    yggdryl_market::install()?;
 
     let mut order = OrderEvent::at(1_700_000_000_000_000_000);
     order.set_crosscode("O-1001".to_owned());
@@ -429,8 +436,11 @@ One identifier, `O-1001`, on each side of the market: two cross codes, two chain
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, Element, ExecutionEvent, Market, OrderEvent, QuoteEvent, TradeEvent};
-    use yggdryl::{IdKey, IdType, Identifier, Isin, Side};
+    use yggdryl_market::graph::{BookEvent, ExecutionEvent, Market, OrderEvent, QuoteEvent, TradeEvent};
+    use yggdryl::graph::Element;
+    use yggdryl_market::{IdKey, IdType, Identifier, Side};
+    use yggdryl::Isin;
+    yggdryl_market::install()?;
 
     let order = |side: Side| {
         let mut order = OrderEvent::at(1_700_000_000_000_000_000);
@@ -541,8 +551,11 @@ A two-sided EUR/USD quote in dollars, and the rate a dollar amount is divided by
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Market, QuoteEvent};
-    use yggdryl::{Ccy, IdKey, IdType, Identifier, Side};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Market, QuoteEvent};
+    use yggdryl::Ccy;
+    use yggdryl_market::{IdKey, IdType, Identifier, Side};
+    yggdryl_market::install()?;
 
     let mut quote = QuoteEvent::at(1_700_000_000_000_000_000);
     quote.set_crosscode("Q-7".to_owned());
@@ -638,7 +651,9 @@ When an element last executed is one of its market facts, stated by an undated e
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Market, Order, OrderEvent};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Market, Order, OrderEvent};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     // An undated element states it like any market fact.
@@ -710,8 +725,10 @@ When an element last executed is one of its market facts, stated by an undated e
 Rust-only: a binding states identifiers when it builds a leaf.
 
 ```rust
-use yggdryl::graph::{Element, Market, OrderEvent};
-use yggdryl::{IdKey, IdType, Identifier};
+use yggdryl::graph::Element;
+use yggdryl_market::graph::{Market, OrderEvent};
+use yggdryl_market::{IdKey, IdType, Identifier};
+yggdryl_market::install()?;
 
 let isin = |code: &str| Identifier::new(IdKey::base(IdType::Isin), code);
 let ids = |order: &OrderEvent| -> Vec<String> {
@@ -751,8 +768,10 @@ An amendment to an Apple order, and one naming Microsoft's ISIN instead.
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Event, Market, OrderEvent};
-    use yggdryl::{IdKey, IdType, Identifier, Identifiers};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::{Market, OrderEvent};
+    use yggdryl_market::{IdKey, IdType, Identifier, Identifiers};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let order = |unix: i64, stated: &[(IdType, &str)]| -> yggdryl::Result<OrderEvent> {
@@ -849,7 +868,9 @@ An amendment states its own `desk` and leaves the `venue` the placement stated t
 
     ```rust
     use smol_str::SmolStr;
-    use yggdryl::graph::{Element, Market, Metadata, OrderEvent};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Market, Metadata, OrderEvent};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let order = |unix: i64, stated: &[(&str, &str)]| {

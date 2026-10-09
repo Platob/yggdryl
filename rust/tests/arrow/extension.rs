@@ -4,8 +4,7 @@
 use arrow_schema::extension::ExtensionType;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::{
-    BytesType, CcyType, DataType, DataTypeId, Field, Side, SideType, StateType, StringType,
-    UuidType, VersionType,
+    BytesType, CcyType, DataType, DataTypeId, Field, StateType, StringType, UuidType, VersionType,
 };
 
 /// The Arrow field the crate writes for one datatype.
@@ -25,7 +24,7 @@ fn a_marker_reads_the_field_the_crate_writes_and_refuses_another_storage() {
     );
     assert_eq!(ccy.extension_type_name(), Some(CcyType::NAME));
     // Another name, or the name over a storage the code is not laid out in.
-    assert!(ccy.try_extension_type::<SideType>().is_err());
+    assert!(ccy.try_extension_type::<StateType>().is_err());
     let mut wrong = ArrowField::new("x", ArrowDataType::Int32, true);
     assert!(wrong.try_with_extension_type(CcyType).is_err());
     // A document a code states none of is refused.
@@ -49,10 +48,6 @@ fn an_arrow_field_typed_by_a_marker_imports_as_its_datatype() {
         (
             ArrowField::new("x", ArrowDataType::UInt16, true).with_extension_type(StateType),
             DataType::State,
-        ),
-        (
-            ArrowField::new("x", ArrowDataType::UInt8, true).with_extension_type(SideType),
-            Side::dtype(),
         ),
         (
             ArrowField::new("x", ArrowDataType::FixedSizeBinary(16), true)
@@ -126,7 +121,9 @@ fn the_names_are_one_per_extension_and_every_datatype_writes_its_own() {
     distinct.sort_unstable();
     distinct.dedup();
     assert_eq!(distinct.len(), names.len(), "{names:?}");
-    assert_eq!(names.len(), 35, "{names:?}");
+    // The core's own: the four a market crate claims are listed only once
+    // it has claimed them.
+    assert_eq!(names.len(), 31, "{names:?}");
     for id in DataTypeId::all() {
         if let Some(name) = id.arrow_extension_name() {
             assert!(names.contains(&name), "{id:?}");

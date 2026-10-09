@@ -93,10 +93,11 @@ fn the_foreign_floor_holds_back_what_lies_outside_this_crate() {
 }
 
 /// A logger is named by its module path under `yggdryl` whatever crate holds
-/// the module: the market crate's modules sat at the core's root, and every
-/// other crate is the folder it left the core as, so a record of a moved
-/// module reaches the logger it reached before the split. The targets here
-/// are synthetic - the crates are not this one's dependencies.
+/// the module - the market crate's modules under `yggdryl` itself, every
+/// other crate under its own name - because the logger names are the names
+/// a Python logger is configured by: one tree, whatever crate a module
+/// lives in. The targets here are synthetic - the crates are not this one's
+/// dependencies.
 #[test]
 fn a_workspace_crate_s_records_are_named_by_their_module_path_under_yggdryl() {
     let _tree = serial();
@@ -107,22 +108,22 @@ fn a_workspace_crate_s_records_are_named_by_their_module_path_under_yggdryl() {
     logging::set_foreign_level(Level::WARNING);
 
     let loggers = [
-        // The fix crate is the `fix` folder: `yggdryl_fix::build` is the
-        // logger `yggdryl::fix::build` was.
+        // The fix crate logs under its name: `yggdryl_fix::build` is the
+        // logger `yggdryl.fix.build`.
         ("yggdryl_fix::build", "yggdryl.fix.build"),
         (
             "yggdryl_fix::market::iterator",
             "yggdryl.fix.market.iterator",
         ),
         ("yggdryl_fix", "yggdryl.fix"),
-        // The market crate's modules sat at the core's root.
+        // The market crate's modules log under `yggdryl` itself.
         ("yggdryl_market::x", "yggdryl.x"),
         ("yggdryl_market::graph::book", "yggdryl.graph.book"),
         ("yggdryl_market", "yggdryl"),
-        // The medium crates are their folders too.
+        // The medium crates log under their names too.
         ("yggdryl_iceberg::table", "yggdryl.iceberg.table"),
         ("yggdryl_parquet::reader", "yggdryl.parquet.reader"),
-        // The core itself, as it always was.
+        // The core itself.
         ("yggdryl::iceberg::table", "yggdryl.iceberg.table"),
         ("yggdryl", "yggdryl"),
     ];

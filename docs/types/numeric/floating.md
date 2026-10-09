@@ -32,7 +32,9 @@ Three parameter-free variants, each spelled several ways by the grammar and disp
     assert_eq!(DataType::from_str("float")?, DataType::Float32);
     assert_eq!(DataType::from_str("half")?, DataType::Float16);
 
-    // A FIX price or quantity is a name for `float64`.
+    // A FIX price or quantity is a name for `float64`, once the FIX crate has
+    // claimed its names.
+    yggdryl_fix::install()?;
     assert_eq!(DataType::from_logical_name("Price")?, DataType::Float64);
     ```
 
@@ -77,7 +79,7 @@ Three parameter-free variants, each spelled several ways by the grammar and disp
 | `float32` | `float`, `real` | `Float32` | 4 |
 | `float64` | `double`, `double precision` | `Float64` | 8 |
 
-The FIX names resolving to `float64` are `Qty`, `Price`, `PriceOffset`, `Percentage` and `Amt`; the specification states no scale for them, so they are a view for arithmetic and an exact column declares a [decimal](decimal.md) instead.
+The FIX names resolving to `float64` - `yggdryl-fix`'s, which a Rust caller's `yggdryl_fix::install()` claims - are `Qty`, `Price`, `PriceOffset`, `Percentage` and `Amt`; the specification states no scale for them, so they are a view for arithmetic and an exact column declares a [decimal](decimal.md) instead.
 
 ## Field
 

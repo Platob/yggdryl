@@ -2539,7 +2539,7 @@ mod typed {
 
         use super::cast_into;
         use yggdryl::cast::ArrowCastOptions;
-        use yggdryl::{DataType, Field, Scalar, Serie, TimeInForce, TimeUnit, Timezone};
+        use yggdryl::{DataType, Field, Scalar, Serie, TimeUnit, Timezone};
 
         /// A failed conversion is an error rather than a null.
         fn conversion_error() -> ArrowCastOptions {
@@ -2619,7 +2619,7 @@ mod typed {
                 DataType::Bbg,
                 DataType::Ric,
                 DataType::Figi,
-                TimeInForce::dtype(),
+                DataType::State,
                 DataType::Forex,
             ]
         }
@@ -2627,7 +2627,7 @@ mod typed {
         /// The codes holding the empty text as their neutral member - which is
         /// their canonical default - and the rest, which read it as absence:
         /// the identifiers, whose default is refused rather than invented, and
-        /// `side`, whose neutral member `UKNW` is a spelling of its own.
+        /// `state`, whose neutral member `UNKNOWN` is a spelling of its own.
         fn codes_by_neutral_member() -> (Vec<DataType>, Vec<DataType>) {
             codes().into_iter().partition(|code| {
                 code.default_value()
@@ -3408,7 +3408,7 @@ mod certification {
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};
-    use yggdryl::{ArrowCastOptions, DataType, Field, Serie, Side};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
     /// Cast `source` into a nullable `target` under the default options - the
     /// certified path - and hold every landed row to the target's contract.
@@ -3501,12 +3501,7 @@ mod certification {
             Some(""),
             None,
         ]);
-        for target in [
-            DataType::Ccy,
-            DataType::Country,
-            Side::dtype(),
-            DataType::State,
-        ] {
+        for target in [DataType::Ccy, DataType::Country, DataType::State] {
             certified(target, Arc::clone(&codes));
         }
     }

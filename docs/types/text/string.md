@@ -775,7 +775,11 @@ sixteen bytes or on a [registered code](../codes/index.md), and refused by name
 elsewhere, because a member's integer is `ascii_packed` - the value's bytes
 padded to the width and read big-endian. The ISO listings ship with the
 package, so a column declares the vocabulary it draws from without a copy per
-language.
+language. A crate above the core adds a listing under a logical name of its
+own, once for the process, through `StringEnum::register_prebuilt(name, values,
+by)` - the market crate's `install()` registers `side` and `timeinforce` - and
+`prebuilt()` lists the core's own, then the registered ones; the registration
+is Rust only.
 
 === "Rust"
 

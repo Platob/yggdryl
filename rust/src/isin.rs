@@ -22,8 +22,8 @@ use crate::{DataType, Result, Scalar, StringEnum, Value};
 /// [`rank`](CodeValue::rank) counts, so a masked line's `XX0000000001` and a
 /// typo are values of a lower rank - which every merge replaces by a real
 /// number whatever the order - rather than refusals, and a derivation that
-/// needs the number to be real ([`securityid::embedded`](crate::securityid::embedded),
-/// a country of issue) asks `is_closed` first.
+/// needs the number to be real (the national number it embeds, a country
+/// of issue) asks `is_closed` first.
 #[repr(transparent)]
 #[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
@@ -34,7 +34,7 @@ impl Isin {
     /// national number of nothing, which closes nowhere and is listed
     /// nowhere - the lowest rank there is, so any stated number replaces it.
     /// What a book is keyed by where its inputs state neither an ISIN nor a
-    /// ticker ([`Market::book_crosscode`](crate::graph::Market::book_crosscode)).
+    /// ticker.
     pub const NONE: &str = "XX0000000000";
 
     /// The two-letter prefixes ISO 6166 gives an agency rather than a

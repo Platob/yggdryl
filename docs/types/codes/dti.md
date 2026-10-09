@@ -186,7 +186,9 @@ The value is the canonical spelling: upper case, the check character as stated. 
 A DTI is written in thirty symbols - the ten digits and the consonants but `Y`, `0123456789BCDFGHJKLMNPQRSTVWXZ` - so no word can be spelled in one, and a symbol's value is its place in that list. The first eight characters are the base, which never opens with `0`, and the ninth is the check character under ISO/IEC 7064 hybrid MOD 31,30: from `p = 30`, each base symbol of value `v` sets `s = (p + v) mod 30` - thirty where that is zero - and `p = 2s mod 31`; the check symbol is the one whose value is `(31 - p) mod 30`. `closing_character` computes it, `is_closed` answers whether it closes an upper-case identifier - the [rank](index.md#rank) a value answers, one where it closes, zero where it does not - `check_character` reads the ninth as stated, and `is_canonical` whether text is the canonical spelling, upper case and the shape, whatever the check says. The algorithm is the rule and nothing else is: the crate keeps no table of exceptions, so a code the registry assigned whose stored check character the algorithm does not give ranks zero, exactly as a typo does, and a merge takes any code that closes over it. Rust only.
 
 ```rust
-use yggdryl::{CodeValue, Dti, IdType};
+use yggdryl::{CodeValue, Dti};
+use yggdryl_market::IdType;
+yggdryl_market::install()?;
 
 let token = Dti::new("X9J9K872S")?;
 assert_eq!(token.check_character(), 'S');

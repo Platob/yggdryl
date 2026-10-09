@@ -9,7 +9,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use pyo3::class::basic::CompareOp;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyList, PyString};
-use yggdryl::{IdKey, IdType, Identifier, Identifiers};
+use yggdryl_market::{IdKey, IdType, Identifier, Identifiers};
 
 use crate::scalar::{as_py, from_py};
 use crate::{compare, python_hash, value_error};

@@ -7,7 +7,7 @@ description: Decodes, encodes and streams FIX messages with yggdryl against a FI
 
 A FIX field is an ordinary `Field` whose `FIX:` metadata (`FIX:tag`, `FIX:names`,
 `FIX:codeset`, ...) the `fix` protocol view reads - in Rust `FixField::new(&field)`
-and `FixFieldMut::new(&mut field)`, the FIX module's own view, `Field` having no
+and `FixFieldMut::new(&mut field)`, the FIX crate's own view, `Field` having no
 `as_fix`; there is no second field class. `FixRegistry` is the dictionary: **one namespace** holding scalar fields,
 components (a message is a component carrying `FIX:msgtype`), groups, and the
 named code sets beside them. `FixCodec` is one dictionary plus the pins of a
@@ -22,6 +22,12 @@ order's report (`ORDR`, `QUOT` naming a `QuoteID`), a filling one adds its
 `EXEC` message, a trade one execution per side, a batch one message per
 entry. A quote is one message holding both its legs. A lifecycle chains
 within one `marketdatakind`, so a fill never follows its order.
+
+In Rust FIX is the `yggdryl-fix` crate (`yggdryl_fix::FixRegistry`,
+`yggdryl_fix::FixCodec`) over `yggdryl-market`: call `yggdryl_fix::install()?`
+once - it installs the market crate first - before anything reads a FIX Latest
+datatype name (`UTCTimestamp`, `Qty`) or a market kind. Python and Node.js
+install both on import.
 
 Hold two speeds apart. **Decoding is per message**: each frame is parsed on its
 own, in parallel (`threads`), answers in input order, and never reads another
@@ -175,7 +181,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     dictionary already holds, stamps each source's id in `FIX:sources` (a JSON
     array of lowercase ids) and records what is known of the source once, in
     the registry's sources catalog (`sources.json` in a store): the file and
-    the `Side` its CBlock root's `type` names, read by `fix::plugin_side`. A datatype a source states at another precision
+    the `Side` its CBlock root's `type` names, read by `yggdryl_fix::plugin_side`. A datatype a source states at another precision
     of the stored one - unbounded text against anything, any two numbers, an
     integer against an enum, a date against a datetime (a CBlock's `float`
     against `decimal128`, `string` against `ccy`) - folds under it and is
@@ -481,7 +487,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 
 ## Language references
 
-- Rust: [references/rust.md](references/rust.md) - `yggdryl::{FixCodec, FixRegistry, FixMsg, fix_schema}`, `Arc`, iterators of `Result`.
+- Rust: [references/rust.md](references/rust.md) - `yggdryl_fix::{FixCodec, FixRegistry, FixMsg, fix_schema}`, `Arc`, iterators of `Result`.
 - Python: [references/python.md](references/python.md) - `yggdryl.fix`, pyarrow readers in and out.
 - JavaScript: [references/javascript.md](references/javascript.md) - the `fix` namespace, `Buffer` input, `BatchReader`.
 - CLI: [references/cli.md](references/cli.md) - `yggdryl fix` catalog commands.

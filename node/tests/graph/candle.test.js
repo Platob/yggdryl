@@ -1,7 +1,7 @@
 'use strict'
 
 // Candles, their options and the candle walk: `node/src/graph/candle.rs`,
-// mirroring `rust/tests/graph/candle.rs`.
+// mirroring `rust/market/tests/graph/candle.rs`.
 
 const assert = require('node:assert/strict')
 const test = require('node:test')

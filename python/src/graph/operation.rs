@@ -7,13 +7,14 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict};
 
-use yggdryl::graph::{
-    BookRef as CoreBookRef, Element, Execution as CoreExecution,
-    ExecutionEvent as CoreExecutionEvent, ExecutionKind, MdUpdateAction as CoreMdUpdateAction,
-    Order as CoreOrder, OrderEvent as CoreOrderEvent, OrderKind, Quote as CoreQuote,
-    QuoteEvent as CoreQuoteEvent, QuoteKind,
-};
+use yggdryl::graph::Element;
 use yggdryl::{DataType, Decimal, Scalar};
+use yggdryl_market::graph::{
+    BookRef as CoreBookRef, Execution as CoreExecution, ExecutionEvent as CoreExecutionEvent,
+    ExecutionKind, MdUpdateAction as CoreMdUpdateAction, Order as CoreOrder,
+    OrderEvent as CoreOrderEvent, OrderKind, Quote as CoreQuote, QuoteEvent as CoreQuoteEvent,
+    QuoteKind,
+};
 
 use super::{decimal_scalar, ellipsis, slot_repr, stated_operation};
 use crate::scalar::{PyScalar, from_py};

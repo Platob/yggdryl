@@ -31,7 +31,8 @@ dictionary derived for it behind the ones that arrived; the frame states its
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -123,7 +124,7 @@ This section renders `assets/fix.json` and needs JavaScript.
 ## Commands
 
 ```bash
-cargo test -p yggdryl --test fix
+cargo test -p yggdryl-fix --test root
 node --test node/tests/fix.test.js node/tests/fix/catalog.test.js
 node scripts/build_docs_fix.js --check
 ```

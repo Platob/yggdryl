@@ -3,7 +3,7 @@
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 
-use yggdryl::graph::{ExecutionEvent as CoreExecutionEvent, TradeEvent as CoreTradeEvent};
+use yggdryl_market::graph::{ExecutionEvent as CoreExecutionEvent, TradeEvent as CoreTradeEvent};
 
 use super::market_data::{event_operation_of, market_data_of};
 use super::operation::PyExecutionEvent;

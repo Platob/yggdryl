@@ -7,8 +7,8 @@
 //! satisfy by accident.
 //!
 //! What FIX states about a state - each status field read under its own code
-//! set, and the state a message type asks for - is `rust/src/fix/state.rs`'s,
-//! pinned by `rust/tests/fix/state.rs`; the wire codes `OrdStatus(39)` and
+//! set, and the state a message type asks for - is `rust/fix/src/state.rs`'s,
+//! pinned by `rust/fix/tests/root/state.rs`; the wire codes `OrdStatus(39)` and
 //! `ExecType(150)` share stay here, because `State::from_spelling` reads them.
 
 use std::sync::Arc;

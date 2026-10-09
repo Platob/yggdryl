@@ -26,6 +26,15 @@ them crosses a boundary.
 
 Hold these facts:
 
+- **In Rust the market half is its own crate.** `Element`, `Event`,
+  `ElementColumn` and `EventColumn` are the core's `yggdryl::graph`; the
+  market traits, the leaves, the walk, the books, the candles, `MarketData`,
+  the identifiers, `IsinRegistry` and the four enums (`Side`,
+  `MarketDataKind`, `MarketDataType`, `TimeInForce`) are `yggdryl-market`'s -
+  `yggdryl_market::graph::OrderEvent`, `yggdryl_market::Side`. Call
+  `yggdryl_market::install()?` once before anything reads a market kind: until
+  then `side` is refused naming the crate. Python and Node.js install it on
+  import.
 - **Instants are `i64` nanoseconds since the Unix epoch, UTC** - `transunix`,
   `creaunix`, `sendunix`, `exprunix`, `prevunix`, `snapunix`, and the market's
   `execunix`, which an undated element states too.
@@ -90,7 +99,7 @@ Hold these facts:
   with no unit takes the currency dealt as its unit.
 - **Identifiers are typed maps.** `securityids`, `identifiers` and `partyids` are
   each an `Identifiers` map from a key to a value, `Identifier { key, value }`
-  (`yggdryl::Identifier`, Python `from yggdryl import Identifier`, JavaScript
+  (`yggdryl_market::Identifier`, Python `from yggdryl import Identifier`, JavaScript
   `require('yggdryl').Identifier`): the key is a source and a type, spelled
   `src:type`, and the base source's key - what a FIX field states - is spelled
   as its type alone (`isin`); one value per key, sorted by that spelling,

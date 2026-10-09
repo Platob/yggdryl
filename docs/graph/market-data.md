@@ -17,8 +17,10 @@
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, MarketData, MarketKind, OrderEvent, QuoteEvent};
-    use yggdryl::MarketDataKind;
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{MarketData, MarketKind, OrderEvent, QuoteEvent};
+    use yggdryl_market::MarketDataKind;
+    yggdryl_market::install()?;
 
     let mut order = OrderEvent::at(1_700_000_000_000_000_000);
     order.set_crosscode("O-1001".to_owned());
@@ -82,9 +84,12 @@
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Market, MarketData, MarketKind};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Market, MarketData, MarketKind};
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind};
+    use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
+    use yggdryl_market::MarketDataKind;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -166,7 +171,7 @@
 
 ## Columns
 
-Four enums - `ElementColumn` (`graph::element_column`), `EventColumn` (`graph::column`), `MarketColumn` (`graph::market_column`), `OperationColumn` (`graph::operation_column`) - name every fact the traits answer, one column each, so a [text line](../media/text.md)'s batch, a [FIX row](../fix/capture.md#the-crates-own-columns) and a [chained message](../fix/lifecycle.md#a-chain-carries-its-creation-and-its-history) join without mapping.
+Four enums - the core's `ElementColumn` (`yggdryl::graph::element_column`) and `EventColumn` (`yggdryl::graph::column`), the market crate's `MarketColumn` (`yggdryl_market::graph::market_column`) and `OperationColumn` (`yggdryl_market::graph::operation_column`) - name every fact the traits answer, one column each, so a [text line](../media/text.md)'s batch, a [FIX row](../fix/capture.md#the-crates-own-columns) and a [chained message](../fix/lifecycle.md#a-chain-carries-its-creation-and-its-history) join without mapping.
 
 | Enum | Columns, in `ALL` order |
 | --- | --- |
@@ -188,8 +193,11 @@ Four enums - `ElementColumn` (`graph::element_column`), `EventColumn` (`graph::c
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, ElementColumn, EventColumn, Market, MarketColumn, MarketData, OperationColumn, OrderEvent};
-    use yggdryl::{Scalar, Side};
+    use yggdryl::graph::{Element, ElementColumn, EventColumn};
+    use yggdryl_market::graph::{Market, MarketColumn, MarketData, OperationColumn, OrderEvent};
+    use yggdryl::Scalar;
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     assert_eq!(
         (ElementColumn::ALL.len(), EventColumn::ALL.len(), MarketColumn::ALL.len(), OperationColumn::ALL.len()),
@@ -319,7 +327,9 @@ The one loss: a complete book holding no live entry that states a delta or an ev
     use arrow_array::{ArrayRef, Int32Array, RecordBatch, StringArray};
     use arrow_schema::{DataType, Field, Schema};
     use yggdryl::arrow::batch_reader;
-    use yggdryl::graph::{BookEvent, Element, Event, MarketData, MarketKind, Order, OrderEvent, SnapshotEvent};
+    use yggdryl_market::graph::{BookEvent, MarketData, MarketKind, Order, OrderEvent, SnapshotEvent};
+    use yggdryl::graph::{Element, Event};
+    yggdryl_market::install()?;
 
     let mut order = OrderEvent::at(1_700_000_000_000_000_000);
     order.set_crosscode("O-1001".to_owned());
@@ -470,8 +480,11 @@ A table of books holds the orders and quotes each book's instant applied in its 
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookIterator, Element, ExecutionEvent, Market, MarketData, OrderEvent};
-    use yggdryl::{ArrowCastOptions, Decimal, MarketDataKind, Serie, Side, StreamChunkedSerie};
+    use yggdryl_market::graph::{BookIterator, ExecutionEvent, Market, MarketData, OrderEvent};
+    use yggdryl::graph::Element;
+    use yggdryl::{ArrowCastOptions, Decimal, Serie, StreamChunkedSerie};
+    use yggdryl_market::{MarketDataKind, Side};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let order = |unix: i64, code: &str, side: Side| {
@@ -594,8 +607,11 @@ MarketData::apply_view(view: &MarketView, lifts: &[FieldPath], reader: BatchRead
 
     ```rust
     use arrow_array::RecordBatch;
-    use yggdryl::graph::{Element, ExecutionEvent, Market, MarketData, MarketView, Operation, OrderEvent, TradeEvent};
-    use yggdryl::{FieldPath, IdKey, IdType, Identifier, Plan, Side};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{ExecutionEvent, Market, MarketData, MarketView, Operation, OrderEvent, TradeEvent};
+    use yggdryl::{FieldPath, Plan};
+    use yggdryl_market::{IdKey, IdType, Identifier, Side};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let mut order = OrderEvent::at(T);

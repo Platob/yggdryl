@@ -119,6 +119,12 @@ fn on_runner() -> Result<bool, String> {
 
 fn main() -> ExitCode {
     warnings::install();
+    // The crates split off the core claim what they register before an
+    // argument can name a kind of theirs, in dependency order.
+    if let Err(refusal) = yggdryl_market::install().and_then(|()| yggdryl_fix::install()) {
+        style::bad(&refusal.to_string());
+        return ExitCode::FAILURE;
+    }
     let cli = Cli::parse();
     let on_runner = match on_runner() {
         Ok(on_runner) => on_runner,

@@ -32,7 +32,9 @@ One column of frames in, batches out, the capture's own columns carried right af
     use std::sync::Arc;
 
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FixCodec, FixRegistry, Scalar, Serie, StructType};
+    use yggdryl::{DataType, Scalar, Serie, StructType};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -198,9 +200,12 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64, filter: Optio
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{BookIterator, MarketData, MarketKind};
+    use yggdryl_market::graph::{BookIterator, MarketData, MarketKind};
     use yggdryl::local::LocalFolder;
-    use yggdryl::{Filter, FixCodec, FixMsg, FixRegistry, Side, fix_schema};
+    use yggdryl::Filter;
+    use yggdryl_fix::{FixCodec, FixMsg, FixRegistry, fix_schema};
+    use yggdryl_market::Side;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -389,7 +394,9 @@ Lines to batches, with a lifecycle stage that sorts the finite capture: the walk
 
     use arrow_array::Array;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{ArrowCastOptions, FixCodec, FixRegistry, Serie, fix_schema};
+    use yggdryl::{ArrowCastOptions, Serie};
+    use yggdryl_fix::{FixCodec, FixRegistry, fix_schema};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -485,7 +492,7 @@ A fill is named the way a key is: a column whose folded name resolves in the reg
 
 ### A bridge log names what it fills
 
-`yggdryl::ULBRIDGE_ROWHEADER` is the [row header](../media/text.md) a ULBridge log writes in front of every line - a clock, a thread bracket, the plugin that wrote the line and its level. Its clock is `mtime`, so the header dates each line it matches; four of the other six captures are named for what they fill, and `msgthreadid` and `loglevel` name no field: they are the line's own columns, and a FIX row parsed from the lines carries them in front of the message's columns, filling nothing. Rust names the constant; the regex has the same meaning, with its final space spelled as `\x20`, in any binding's `rowheader`. A row header capture named `seqnum` or `crosscode`, in any case, is refused because the line derives those facts from its row number and the identifier it was read under. A capture named for another capture-fed [event column](../graph/market-data.md#columns) - `state`, `prevuuid`, or an optional event instant - feeds the line's own fact but no message field: the line states its identity as the message's source, which is all it says about the message. A capture named `execunix` is no event fact - when an element last executed is a [market fact](../graph/market.md#contract), and a line is no market element - so it is an ordinary text column of the line's batch.
+`yggdryl_fix::ULBRIDGE_ROWHEADER` is the [row header](../media/text.md) a ULBridge log writes in front of every line - a clock, a thread bracket, the plugin that wrote the line and its level. Its clock is `mtime`, so the header dates each line it matches; four of the other six captures are named for what they fill, and `msgthreadid` and `loglevel` name no field: they are the line's own columns, and a FIX row parsed from the lines carries them in front of the message's columns, filling nothing. Rust names the constant; the regex has the same meaning, with its final space spelled as `\x20`, in any binding's `rowheader`. A row header capture named `seqnum` or `crosscode`, in any case, is refused because the line derives those facts from its row number and the identifier it was read under. A capture named for another capture-fed [event column](../graph/market-data.md#columns) - `state`, `prevuuid`, or an optional event instant - feeds the line's own fact but no message field: the line states its identity as the message's source, which is all it says about the message. A capture named `execunix` is no event fact - when an element last executed is a [market fact](../graph/market.md#contract), and a line is no market element - so it is an ordinary text column of the line's batch.
 
 ```text
 ^(?P<mtime>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:[.,]\d{3}(?:_\d{3})?)?) \[(?P<msgthreadid>[1-9]\d*)(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<msgpluginid>[^\]]+)\] \((?P<loglevel>[A-Z]+)\)\x20
@@ -513,7 +520,9 @@ The plugin is a fill and nothing more: it lands in the crate's own `msgpluginid`
 
     ```rust
     use yggdryl::text::TextOptions;
-    use yggdryl::{DataType, ULBRIDGE_ROWHEADER};
+    use yggdryl::DataType;
+    use yggdryl_fix::ULBRIDGE_ROWHEADER;
+    yggdryl_fix::install()?;
 
     let options = TextOptions::new().try_with_rowheader(ULBRIDGE_ROWHEADER)?;
     let captures = options.source_field()?;
@@ -570,7 +579,9 @@ A source row is read for every message it carries, so a capture answers one row 
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{ArrowCastOptions, DataType, FixCodec, FixRegistry, Scalar, Serie, StructType};
+    use yggdryl::{ArrowCastOptions, DataType, Scalar, Serie, StructType};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -659,7 +670,8 @@ A source row is read for every message it carries, so a capture answers one row 
     use std::sync::Arc;
 
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry, fix_schema};
+    use yggdryl_fix::{FixCodec, FixMsg, FixRegistry, fix_schema};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -773,7 +785,9 @@ A carried column returns to its place because the message carries it: a message 
 
     use arrow_array::Array;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{ArrowCastOptions, DataType, FixCodec, FixRegistry, Scalar, Serie, StructType};
+    use yggdryl::{ArrowCastOptions, DataType, Scalar, Serie, StructType};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -839,10 +853,10 @@ A carried column returns to its place because the message carries it: a message 
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --test fix batch::
-    cargo test -p yggdryl --test fix batch::a_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix
-    cargo test -p yggdryl --test fix dataset::
-    cargo test -p yggdryl --test fix dataset::ulbridge_dataset_allocation_profile_is_sequential_and_staged -- --exact --nocapture --test-threads=1
+    cargo test -p yggdryl-fix --test root batch::
+    cargo test -p yggdryl-fix --test root batch::a_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix
+    cargo test -p yggdryl-fix --test root dataset::
+    cargo test -p yggdryl-fix --test root dataset::ulbridge_dataset_allocation_profile_is_sequential_and_staged -- --exact --nocapture --test-threads=1
     ```
 
 === "Python"
@@ -866,8 +880,8 @@ and how long it takes, which is a release run on a named machine.
 
 ### Allocations per stage
 
-`a_real_line_costs_the_same_at_every_stage_every_time` in `rust/tests/allocations.rs`
-pins what three real lines of `rust/tests/fix/ulbridge.log` cost at each stage of
+`a_real_line_costs_the_same_at_every_stage_every_time` in `rust/fix/tests/allocations.rs`
+pins what three real lines of `rust/tests/support/ulbridge.log` cost at each stage of
 the pipeline on the committed dictionary, once and sixty-four times over, so a
 stage that grows with a cache or leaks a plan fails its linearity before its
 number: a bridge row of named keys (`bridge_pipe`, line 1), a frame spelled with
@@ -898,12 +912,12 @@ prints one number under its `time` label and `p = 0.00` where a count moved;
 `--quick` is the smoke, and the release configuration adds nothing a count needs.
 
 ```bash
-cargo test -p yggdryl --test allocations a_real_line
-cargo bench -p yggdryl --bench fix_allocations -- --quick
+cargo test -p yggdryl-fix --test allocations a_real_line
+cargo bench -p yggdryl-fix --bench fix_allocations -- --quick
 ```
 
 `ulbridge_dataset_allocation_profile_is_sequential_and_staged` in
-`rust/tests/fix/ulbridge.rs` is the staged profile over the whole capture: it
+`rust/fix/tests/root/ulbridge.rs` is the staged profile over the whole capture: it
 prints first and second passes for text framing, codec parsing, fixed-row
 materialization, typed row holders and Arrow output - requested bytes are
 cumulative requests, never peak memory - and asserts that a second pass of the
@@ -913,7 +927,7 @@ plan table growing per message.
 
 ### Timings
 
-`fix/pipeline`, the whole path a desk takes over a bridge's own log: `rust/tests/fix/ulbridge.log`, a second of a ULBridge's capture beside every shape a bridge writes - a Jolokia exchange whose answer is a JSON document the codec does not read, FIXML behind a verb, frames spelled with `^A` and `<SOH>`, a `35=UL` frame packing a group inside a group, bridge rows of a hundred named keys, a statistics line, an empty body, the bridge's sixteen handed-over lines and the fifteen of a cancel/reject flow - repeated 64 times: 9,216 lines, 6,080 messages, 13.9 MB. Every stage runs over the same corpus on its own, so a figure is per line of a real capture rather than of one shape, and a row is one per message rather than one per line ([decode](decode.md)). The current smoke covers six pool cases: one, two and four workers for each of `parse_text_arrow_reader` and `parse_arrow_messages`; it claims no current speed or throughput. The historical release run used thin LTO, one codegen unit, one Linux x86_64 container, Intel Xeon @ 2.10 GHz, 4 cores, 15 GiB, no other build running, load average 1.1 when the run ended; rustc 1.94.1; the shipped dictionary alone; `cargo bench -p yggdryl --bench fix -j 2 -- 'fix/pipeline/(text_read|parse_text_arrow_reader|parse_lines|parse_text_lines_msgpluginid|into_row|arrow_reader|lifecycle|digest)$' --sample-size 10`, ten samples a case. That release run predates the message becoming a typed market event over a content row, which moved the fill into the parse and the chain onto the graph's one walk, so every figure below is historical and due regeneration.
+`fix/pipeline`, the whole path a desk takes over a bridge's own log: `rust/tests/support/ulbridge.log`, a second of a ULBridge's capture beside every shape a bridge writes - a Jolokia exchange whose answer is a JSON document the codec does not read, FIXML behind a verb, frames spelled with `^A` and `<SOH>`, a `35=UL` frame packing a group inside a group, bridge rows of a hundred named keys, a statistics line, an empty body, the bridge's sixteen handed-over lines and the fifteen of a cancel/reject flow - repeated 64 times: 9,216 lines, 6,080 messages, 13.9 MB. Every stage runs over the same corpus on its own, so a figure is per line of a real capture rather than of one shape, and a row is one per message rather than one per line ([decode](decode.md)). The current smoke covers six pool cases: one, two and four workers for each of `parse_text_arrow_reader` and `parse_arrow_messages`; it claims no current speed or throughput. The historical release run used thin LTO, one codegen unit, one Linux x86_64 container, Intel Xeon @ 2.10 GHz, 4 cores, 15 GiB, no other build running, load average 1.1 when the run ended; rustc 1.94.1; the shipped dictionary alone; `cargo bench -p yggdryl-fix --bench fix -j 2 -- 'fix/pipeline/(text_read|parse_text_arrow_reader|parse_lines|parse_text_lines_msgpluginid|into_row|arrow_reader|lifecycle|digest)$' --sample-size 10`, ten samples a case. That release run predates the message becoming a typed market event over a content row, which moved the fill into the parse and the chain onto the graph's one walk, so every figure below is historical and due regeneration.
 
 | stage | estimate | throughput | per line, row or message |
 | --- | --- | --- | --- |
@@ -937,7 +951,7 @@ What a message costs after it is built, each pass over fresh clones of the 6,080
 
 A row pays `into_row` and its share of the batch; it pays for the walk only when the caller composes that [stage](#a-pin-is-on-the-codec-a-stage-is-a-call), and for the fill inside the parse that built it. Reading a message against the fixed schema is a lookup per column, most of them misses answered by a name table the message builds on its first projection; the batch is the rows canonicalized and built into one `RecordBatch`, of which the residual map is the one column rendering JSON - a group or a component it holds is written as its JSON once per row. The fill inside a parse is every child resolved against the dictionary once, the specification's retirements of its tags applied from the crate's table, a currency pair read off the symbol through the registry's memo, then the crate's [native derivations](capture.md#what-a-message-implied-is-filled-in) read off the message by tag, with no expression tree and no working row, landing everything derived in one rebuild. The walk is a chain lookup, one statement of the predecessor's identity, instant and place, and the identity settled again. The digest is a hash over the arrival record and nothing else.
 
-`decoded_lifecycle` is the walk a bridge capture pays: the messages of the decoded line stream, each carrying its row header's session, context, sequence and wire clock, walked with no parse in front. Most of a bridge's lines are one session event observed again at another hop, so the walk folds every observation of an event into one reference before it chains anything, and a fold merges content - both rows unpacked, merged, sorted and repacked. An observation whose row, lifted facts and text equal a content the reference already merged adds nothing to that union, so it folds its event facts, anomalies and provenance alone; `a_content_merged_once_folds_nothing_more_when_delivered_again` in `rust/tests/fix/ulbridge.rs` pins that a repeated content moves nothing. The redating moves the clock alone: a frame stating no `SendingTime(52)` is dated by its `TransactTime(60)`, and only what the clock moves is settled again - a report's own execution instant and the identity - while the market, the maps and the digest stand, because a parsed message is settled already; `a_redated_message_settles_its_clock_as_the_whole_pass_does` in `rust/tests/fix/enrich.rs` holds that to the whole pass over every message of the bridge's capture. Release build, thin LTO, one codegen unit, one Linux x86_64 container, Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB, rustc 1.94.1, 6,016 messages, both sides measured back to back:
+`decoded_lifecycle` is the walk a bridge capture pays: the messages of the decoded line stream, each carrying its row header's session, context, sequence and wire clock, walked with no parse in front. Most of a bridge's lines are one session event observed again at another hop, so the walk folds every observation of an event into one reference before it chains anything, and a fold merges content - both rows unpacked, merged, sorted and repacked. An observation whose row, lifted facts and text equal a content the reference already merged adds nothing to that union, so it folds its event facts, anomalies and provenance alone; `a_content_merged_once_folds_nothing_more_when_delivered_again` in `rust/fix/tests/root/ulbridge.rs` pins that a repeated content moves nothing. The redating moves the clock alone: a frame stating no `SendingTime(52)` is dated by its `TransactTime(60)`, and only what the clock moves is settled again - a report's own execution instant and the identity - while the market, the maps and the digest stand, because a parsed message is settled already; `a_redated_message_settles_its_clock_as_the_whole_pass_does` in `rust/fix/tests/root/enrich.rs` holds that to the whole pass over every message of the bridge's capture. Release build, thin LTO, one codegen unit, one Linux x86_64 container, Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB, rustc 1.94.1, 6,016 messages, both sides measured back to back:
 
 | pass | before | after | 0.1.17 |
 | --- | --- | --- | --- |
@@ -951,11 +965,11 @@ A row pays `into_row` and its share of the batch; it pays for the walk only when
 The before column is the walk that settled every redated message whole; the before and after figures are each the mean of two ten-sample runs of each side, alternated. The 0.1.17 column is one ten-sample run of the released tree, which also places every message among the messages of its instant - the parse by order, the walk by content - and dates each line of the capture by its own row header, so the decoded passes walk a capture spread over its own clock rather than stamped with one file time; placing costs nothing the run-to-run noise does not exceed. The [identity window](lifecycle.md#an-identity-is-yielded-once) is inside the after column: `decoded_lifecycle_undeduplicated`, the same walk remembering nothing, measured 686 ms and 868 ms in the two runs against 670 ms and 697 ms remembering a minute, so remembering costs nothing the run-to-run noise does not exceed.
 
 ```bash
-cargo bench -p yggdryl --bench fix -- 'fix/pipeline/(lifecycle|lifecycle_same_shape|decoded_lifecycle|decoded_lifecycle_undeduplicated|decoded_lifecycle_sorted|decoded_lines_lifecycle)$|fix/pipeline/lifecycle_snapshots/' --sample-size 10
+cargo bench -p yggdryl-fix --bench fix -- 'fix/pipeline/(lifecycle|lifecycle_same_shape|decoded_lifecycle|decoded_lifecycle_undeduplicated|decoded_lifecycle_sorted|decoded_lines_lifecycle)$|fix/pipeline/lifecycle_snapshots/' --sample-size 10
 ```
 
 Regenerate with:
 
 ```bash
-cargo bench -p yggdryl --bench fix -- fix/pipeline
+cargo bench -p yggdryl-fix --bench fix -- fix/pipeline
 ```

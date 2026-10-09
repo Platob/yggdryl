@@ -703,7 +703,7 @@ def test_a_parse_places_each_message_among_the_messages_of_its_instant(seed_batc
         assert parsed[0].hashcode != parsed[1].hashcode
 
 
-ULBRIDGE_LOG = pathlib.Path(__file__).resolve().parent.parent.parent / "rust" / "tests" / "fix" / "ulbridge.log"
+ULBRIDGE_LOG = pathlib.Path(__file__).resolve().parent.parent.parent / "rust" / "tests" / "support" / "ulbridge.log"
 
 
 def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
@@ -765,7 +765,7 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     # again when every type took its base key, spelled as the type alone -
     # the wire's identifiers digest under `base`, beside the base key a named
     # source fills - and when the bridge's `DETAILEDCFICODE` became a name of
-    # `CFICode(461)`, folded into it: the one value `rust/tests/fix/ulbridge.rs`
+    # `CFICode(461)`, folded into it: the one value `rust/fix/tests/root/ulbridge.rs`
     # pins for the same log. A book rests no execution - a fill moved its
     # book through its order's report - so a book stands at every instant an
     # order states, ten of them with the NOVN order's three steps, and at the
@@ -5089,7 +5089,7 @@ def test_invalid_catalog_reference_preserves_the_complete_field(
 
 
 # A counter is a positive tag: 0 is what an unresolved arrival records, so it
-# is refused with a negative (``rust/tests/fix/entry.rs``).
+# is refused with a negative (``rust/fix/tests/root/entry.rs``).
 @pytest.mark.parametrize(
     "invalid,error",
     [(True, TypeError), (1.5, TypeError), (2**31, OverflowError), (-1, ValueError), (0, ValueError)],

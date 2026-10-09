@@ -8,7 +8,7 @@ An enum is not a [code](../codes/index.md). A code is an identity over a publish
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `state`'s own `DataType` variant, `Field` leaf and `Scalar` variant, and the four registered kinds - `marketdatakind`, `side`, `marketdatatype`, `timeinforce` - each under the one `Market` variant of `DataType`, `Field` and `Scalar` and claimed through the [register](../datatype.md#registered-kinds); the family is the `enum` range of `DataTypeId` bytes, not a type |
+| Owns | `state`'s own `DataType` variant, `Field` leaf and `Scalar` variant, and the four registered kinds - `marketdatakind`, `side`, `marketdatatype`, `timeinforce` - each under the one `Market` variant of `DataType`, `Field` and `Scalar`, held by the `yggdryl-market` crate and claimed through the [register](../datatype.md#registered-kinds) by its `install()`; the family is the `enum` range of `DataTypeId` bytes, not a type |
 | Validates | At the value door, once: a member, the code of one, or a spelling one of its vocabularies names; anything else is refused naming the enum |
 | Lazy | Nothing - the member tables are static |
 | Cached | The Arrow projection of a [`Field`](../field.md), built once per field |
@@ -76,8 +76,11 @@ One rule for every enum value a binding answers, wherever it comes from - a `Sca
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Event, Market, MarketKind, OrderEvent};
-    use yggdryl::{MarketDataKind, Side, State};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::{Market, MarketKind, OrderEvent};
+    use yggdryl_market::{MarketDataKind, Side};
+    use yggdryl::State;
+    yggdryl_market::install()?;
 
     let mut order = OrderEvent::at(1_700_000_000_000_000_000);
     order.set_crosscode("O-1001".to_owned());
@@ -143,7 +146,8 @@ One rule for every enum value a binding answers, wherever it comes from - a `Sca
 === "Rust"
 
     ```bash
-    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test root -- state:: marketdatakind:: marketdatatype:: side:: timeinforce:: datatype_id::
+    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test root -- state:: datatype_id::
+    cargo test -p yggdryl-market --test root -- marketdatakind:: marketdatatype:: side:: timeinforce:: datatype_id::
     ```
 
 === "Python"

@@ -14,8 +14,7 @@ mod coded {
     use yggdryl::CodeValue as _;
     use yggdryl::xxhash::Xxh3;
     use yggdryl::{
-        ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, Scalar, Serie, Side, Unit,
-        UnitField,
+        ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, Scalar, Serie, Unit, UnitField,
     };
 
     fn text(values: &[&str]) -> ArrayRef {
@@ -94,8 +93,8 @@ mod coded {
         // bytes as another code is not that code: the identity leads.
         assert_ne!(value, Scalar::from("Shares"));
         assert_ne!(
-            DataType::Unit.scalar(Scalar::from("BUY")).unwrap(),
-            Side::dtype().scalar(Scalar::from("BUY")).unwrap()
+            DataType::Unit.scalar(Scalar::from("USD")).unwrap(),
+            DataType::Ccy.scalar(Scalar::from("USD")).unwrap()
         );
     }
 

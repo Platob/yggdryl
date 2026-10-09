@@ -36,7 +36,9 @@ Every width is a variant that carries nothing, so the enum is the constructor an
     assert_eq!(DataType::from_str("utinyint")?, DataType::UInt8);
     assert_eq!(DataType::from_str("smallint")?.to_string(), "int16");
 
-    // A FIX name is one more spelling of the width it means.
+    // A FIX name is one more spelling of the width it means, once the FIX
+    // crate has claimed its names.
+    yggdryl_fix::install()?;
     assert_eq!(DataType::from_logical_name("SeqNum")?, DataType::Int64);
     assert_eq!(DataType::from_logical_name("DayOfMonth")?, DataType::Int8);
     ```
@@ -93,7 +95,7 @@ Every width is a variant that carries nothing, so the enum is the constructor an
 | `uint32` | `uint`, `unsignedint`, `unsignedinteger` | `UInt32` |
 | `uint64` | `ubigint`, `unsignedbigint` | `UInt64` |
 
-Case, `_`, `-` and spaces fold, so `unsigned_bigint` and `UnsignedBigInt` are the same keyword; the spelling must still be one word to the tokenizer, so write `unsignedbigint` or `ubigint` rather than two words. The FIX names resolving here are `Length`, `TagNum`, `NumInGroup`, `Reserved100Plus`, `Reserved1000Plus` and `Reserved4000Plus` at `int32`, `SeqNum` at `int64` and `DayOfMonth` at `int8`.
+Case, `_`, `-` and spaces fold, so `unsigned_bigint` and `UnsignedBigInt` are the same keyword; the spelling must still be one word to the tokenizer, so write `unsignedbigint` or `ubigint` rather than two words. The FIX names resolving here - `yggdryl-fix`'s, which a Rust caller's `yggdryl_fix::install()` claims - are `Length`, `TagNum`, `NumInGroup`, `Reserved100Plus`, `Reserved1000Plus` and `Reserved4000Plus` at `int32`, `SeqNum` at `int64` and `DayOfMonth` at `int8`.
 
 ## Field
 

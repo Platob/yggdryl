@@ -2,7 +2,7 @@
 //! from.
 
 use pyo3::prelude::*;
-use yggdryl::TimeInForce;
+use yggdryl_market::TimeInForce;
 
 /// Every member of the core enum, in code order: its stored name, the code a
 /// column stores, what it means, and its `TimeInForce(59)` wire value -

@@ -245,7 +245,8 @@ An identifier has no neutral member, so the empty text is refused at the value d
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- bbg::value bbg::datatype code::datatypes code::securities securityid::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- bbg::value bbg::datatype code::datatypes code::securities
+    cargo test -p yggdryl-market --test root -- securityid::
     ```
 
 === "Python"

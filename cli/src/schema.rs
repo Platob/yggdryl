@@ -5,7 +5,7 @@
 //! edits fields all day and dumps the schema once, when a table is created or
 //! a downstream consumer wants to know what it is going to get.
 //!
-//! Nothing here decides the shape. [`fix_schema`](yggdryl::fix_schema) does,
+//! Nothing here decides the shape. [`fix_schema`](yggdryl_fix::fix_schema) does,
 //! from the dictionary that was loaded, and this prints it - so a schema
 //! printed here and a schema a reader answers `schema()` with are the same
 //! object built by the same code, never two spellings of one intention.
@@ -14,7 +14,8 @@ use std::path::Path;
 
 use yggdryl::text::Formatting;
 use yggdryl::text::TextOptions;
-use yggdryl::{Field, FixField, FixRegistry, Result};
+use yggdryl::{Field, Result};
+use yggdryl_fix::{FixField, FixRegistry};
 
 use crate::style;
 
@@ -33,7 +34,7 @@ use crate::style;
 /// Returns the regex grammar's refusal when the header does not compile, or
 /// the schema grammar's when the columns do not make a struct.
 pub fn build(registry: &FixRegistry, rowheader: Option<&str>, name: &str) -> Result<Field> {
-    let read = yggdryl::fix_schema(registry, name.to_owned())?;
+    let read = yggdryl_fix::fix_schema(registry, name.to_owned())?;
     let Some(header) = rowheader else {
         return Ok(read);
     };
@@ -45,7 +46,7 @@ pub fn build(registry: &FixRegistry, rowheader: Option<&str>, name: &str) -> Res
     options.start_rownum = Some(1);
     options.set_rowheader(Some(header))?;
     let carrier = options.source_field()?;
-    yggdryl::fix_schema_carrying(&carrier, &read)
+    yggdryl_fix::fix_schema_carrying(&carrier, &read)
 }
 
 /// Prints the row, or writes it where it was asked for.

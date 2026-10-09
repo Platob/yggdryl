@@ -66,9 +66,9 @@ Results live beside the method they measure. Each page's Performance section nam
     cargo bench --bench coding
     cargo bench --bench hashing
     cargo bench --bench logging
-    cargo bench --bench fix
-    cargo bench --bench fix_allocations
-    cargo bench --bench graph
+    cargo bench -p yggdryl-fix --bench fix
+    cargo bench -p yggdryl-fix --bench fix_allocations
+    cargo bench -p yggdryl-market --bench graph
     cargo bench --bench holder --features "parquet s3"
     cargo bench --bench media --features "parquet iceberg"
     ```

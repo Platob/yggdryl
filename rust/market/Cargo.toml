@@ -1,0 +1,42 @@
+[package]
+name = "yggdryl-market"
+description = "Market data for yggdryl: the four market enum kinds, the identifiers, the ISIN registry and the market-data graph, its books and their Arrow rows"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["arrow", "market-data", "isin", "orderbook", "finance"]
+categories = ["data-structures", "finance"]
+
+[features]
+default = []
+http = ["yggdryl/http"]
+parquet = ["yggdryl/parquet"]
+iceberg = ["parquet", "yggdryl/iceberg"]
+internals = ["yggdryl/internals"]
+
+[dependencies]
+yggdryl.workspace = true
+arrow-array.workspace = true
+arrow-buffer.workspace = true
+arrow-schema.workspace = true
+serde = { version = "1.0", features = ["derive", "rc"] }
+smallvec = { version = "1", features = ["union"] }
+smol_str = { version = "=0.3.2", features = ["serde"] }
+
+[dev-dependencies]
+arrow-select.workspace = true
+bytes = "1"
+criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
+half.workspace = true
+serde_json = { version = "1.0", features = ["raw_value", "unbounded_depth"] }
+
+# The market graph: a book side's limits, depth and bests, the book's
+# spread and imbalance, and one update on a deep side - the fix pipeline's
+# dense book holds one price level, so it measures none of these.
+[[bench]]
+name = "graph"
+path = "benchmarks/graph.rs"
+harness = false

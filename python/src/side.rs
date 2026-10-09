@@ -1,7 +1,7 @@
 //! FIX's side of a trade: the member table `yggdryl.Side` is built from.
 
 use pyo3::prelude::*;
-use yggdryl::Side;
+use yggdryl_market::Side;
 
 /// Every member of the core enum, in code order: its four-letter code, the
 /// code a column stores, what it means, its `Side(54)` wire character - `None` for

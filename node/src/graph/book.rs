@@ -5,9 +5,10 @@ use napi::bindgen_prelude::{
     Array, BigInt, ClassInstance, Either, Either3, Env, Function, Null, Result, Unknown,
 };
 use napi_derive::napi;
-use yggdryl::Side as CoreSide;
-use yggdryl::graph::{
-    BookEvent as CoreBookEvent, BookIterator as CoreBookIterator, Event, Market,
+use yggdryl::graph::Event;
+use yggdryl_market::Side as CoreSide;
+use yggdryl_market::graph::{
+    BookEvent as CoreBookEvent, BookIterator as CoreBookIterator, Market,
     MarketData as CoreMarketData, SnapshotEvent as CoreSnapshotEvent,
 };
 

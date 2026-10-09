@@ -29,7 +29,8 @@ const TARGETS: usize = 4096;
 /// `::` spelled `.` - `yggdryl::iceberg::table` is `yggdryl.iceberg.table`.
 /// A module of one of the workspace's crates is named by its module path
 /// under `yggdryl` whatever crate holds it - `yggdryl_fix::build` is
-/// `yggdryl.fix.build`, as it was while the core held it.
+/// `yggdryl.fix.build` - because the logger names are the names a Python
+/// logger is configured by: one tree, whatever crate a module lives in.
 /// The facade's ceiling then follows the tree, so a record no logger
 /// handles is refused by the facade before its message is built. Installing
 /// twice is one installation.
@@ -75,11 +76,12 @@ pub fn foreign_level() -> Level {
 
 /// The workspace's crates whose records the tree names as its own, each
 /// with the logger its crate root is named: a logger is named by its module
-/// path under `yggdryl`, whatever crate holds the module. The market
-/// crate's modules sat at the core's root and log under `yggdryl` itself;
-/// every other crate is the folder it leaves the core as, so
-/// `yggdryl_fix::build` is `yggdryl.fix.build`, as `yggdryl::fix::build`
-/// was. A crate this table does not name - `yggdryl_cli`, a binding, a
+/// path under `yggdryl`, whatever crate holds the module: the market
+/// crate's modules log under `yggdryl` itself, so `yggdryl_market::graph`
+/// is `yggdryl.graph`, and every other crate under its own name, so
+/// `yggdryl_fix::build` is `yggdryl.fix.build`. The logger names are the
+/// names a Python logger is configured by, one tree whatever crate a module
+/// lives in. A crate this table does not name - `yggdryl_cli`, a binding, a
 /// dependency - is foreign, its target's `::` spelled `.`.
 const CRATES: [(&str, &str); 8] = [
     ("yggdryl", "yggdryl"),

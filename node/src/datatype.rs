@@ -1215,8 +1215,8 @@ impl JsStringEnum {
     #[napi(ts_return_type = "Record<string, string[]>")]
     pub fn prebuilt(env: &Env) -> Result<Object<'_>> {
         let mut lists = Object::new(env)?;
-        for (name, values) in CoreStringEnum::PREBUILT {
-            lists.set(*name, values.to_vec())?;
+        for (name, values) in CoreStringEnum::prebuilt() {
+            lists.set(name, values.to_vec())?;
         }
         Ok(lists)
     }

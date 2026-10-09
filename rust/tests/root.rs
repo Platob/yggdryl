@@ -79,8 +79,6 @@ mod enumeration;
 mod enums;
 #[path = "root/error.rs"]
 mod error;
-#[path = "root/eusipa.rs"]
-mod eusipa;
 #[path = "root/field.rs"]
 mod field;
 #[path = "root/figi.rs"]
@@ -97,14 +95,6 @@ mod geospatial;
 mod gzip;
 #[path = "root/hostname.rs"]
 mod hostname;
-#[path = "root/identifier.rs"]
-mod identifier;
-#[path = "root/idkey.rs"]
-mod idkey;
-#[path = "root/idsource.rs"]
-mod idsource;
-#[path = "root/idtype.rs"]
-mod idtype;
 #[path = "root/implementer.rs"]
 mod implementer;
 #[path = "root/int256.rs"]
@@ -131,8 +121,6 @@ mod iopath;
 mod ioresult;
 #[path = "root/isin.rs"]
 mod isin;
-#[path = "root/isin_registry.rs"]
-mod isin_registry;
 #[path = "root/join.rs"]
 mod join;
 #[path = "root/key_serie.rs"]
@@ -141,18 +129,12 @@ mod key_serie;
 mod lei;
 #[path = "root/lib.rs"]
 mod lib;
-#[path = "root/limit.rs"]
-mod limit;
 #[path = "root/listing.rs"]
 mod listing;
 #[path = "root/mapping.rs"]
 mod mapping;
 #[path = "root/market.rs"]
 mod market;
-#[path = "root/marketdatakind.rs"]
-mod marketdatakind;
-#[path = "root/marketdatatype.rs"]
-mod marketdatatype;
 #[path = "root/media_serie.rs"]
 mod media_serie;
 #[path = "root/media_type.rs"]
@@ -185,8 +167,6 @@ mod ric;
 mod scalar;
 #[path = "root/scheme.rs"]
 mod scheme;
-#[path = "root/securityid.rs"]
-mod securityid;
 #[path = "root/sedol.rs"]
 mod sedol;
 #[path = "root/serde.rs"]
@@ -195,8 +175,6 @@ mod serde;
 mod serie;
 #[path = "root/shared_stream.rs"]
 mod shared_stream;
-#[path = "root/side.rs"]
-mod side;
 #[path = "root/sort_options.rs"]
 mod sort_options;
 #[path = "root/spill.rs"]
@@ -215,8 +193,6 @@ mod temporal;
 mod time;
 #[path = "root/time_unit.rs"]
 mod time_unit;
-#[path = "root/timeinforce.rs"]
-mod timeinforce;
 #[path = "root/timezone.rs"]
 mod timezone;
 #[path = "root/typed.rs"]

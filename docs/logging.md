@@ -1444,14 +1444,14 @@ A record that reaches no handler on its propagating chain goes to the last resor
 
 ## The log facade
 
-`install` makes the tree the backend of the [`log`](https://docs.rs/log) facade, which the crate's own records, its dependencies' and the application's go through: a record's target names its logger with `::` spelled `.`, so `yggdryl::iceberg::table` is `yggdryl.iceberg.table`. A logger is named by its module path under `yggdryl` whatever crate holds the module: one table names the workspace's crates, `yggdryl` and `yggdryl_market` logging under `yggdryl` and `yggdryl_<folder>` under `yggdryl.<folder>`, so a module that moves to its own crate keeps its logger. The facade's ceiling, `log::max_level`, follows the most verbose level any logger handles, so a record nothing handles is refused by the facade before its message is built.
+`install` makes the tree the backend of the [`log`](https://docs.rs/log) facade, which the crate's own records, its dependencies' and the application's go through: a record's target names its logger with `::` spelled `.`, so `yggdryl::iceberg::table` is `yggdryl.iceberg.table`. A logger is named by its module path under `yggdryl` whatever crate holds the module: one table names the workspace's crates, `yggdryl` and `yggdryl_market` logging under `yggdryl` and `yggdryl_<name>` under `yggdryl.<name>`, because the logger names are the names a Python logger is configured by: one tree, whatever crate a module lives in. The facade's ceiling, `log::max_level`, follows the most verbose level any logger handles, so a record nothing handles is refused by the facade before its message is built.
 
 | Target | Logger |
 | --- | --- |
 | `yggdryl::iceberg::table` | `yggdryl.iceberg.table` |
 | `yggdryl` | `yggdryl` |
 | `yggdryl_fix::build` | `yggdryl.fix.build` |
-| `yggdryl_market::book` | `yggdryl.book` |
+| `yggdryl_market::graph::book` | `yggdryl.graph.book` |
 | `yggdryl_cli::shell` | `yggdryl_cli.shell`, under the foreign floor |
 | `dependency::client` | `dependency.client`, under the foreign floor |
 

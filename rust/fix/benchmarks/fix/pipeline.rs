@@ -1,0 +1,1192 @@
+//! A bridge's own log, read as text records and then as FIX rows.
+//!
+//! The corpus is `rust/tests/support/ulbridge.log` - a second of a ULBridge's
+//! own capture, anonymized, and then every shape a bridge writes that the
+//! second happened not to hold: a Jolokia exchange whose answer is a JSON
+//! document the codec does not read, FIXML behind a verb, frames spelled with `^A` and
+//! `<SOH>`, a `35=UL` frame packing a group inside a group, a bridge row
+//! keyed by name, a statistics line, an empty body, a warning and a
+//! cancel/reject flow - repeated
+//! until the release corpus is about eleven megabytes, so the numbers are
+//! per byte of a real capture rather than of one shape. Throughput is in
+//! bytes of that log.
+//!
+//! Every stage runs over the same corpus, each on its own: the text reader
+//! framing each line under the bridge's row header, the whole path into fixed
+//! rows, the codec alone over the framed bodies, the record reader over the
+//! same bodies with each row naming the plugin that logged it - so the
+//! `msgpluginid` capture's fill is measured on its own - and then what a message
+//! costs after it is built - its row, the batch the rows land in, the one
+//! walk that joins it to its order's life, and its digest. A parse settles
+//! everything a message derives about itself - the dictionary's latest
+//! names, the derivations, the identifiers, the identity - so
+//! there is no pass after it but the walk.
+//!
+//! One walk reads other bytes of the same length: `decoded_lifecycle_distinct`
+//! walks copies rendered by `rust/fix/tests/support/ulbridge.rs`, every copy's
+//! identifiers stepped and clocks moved, so its chains are distinct where the
+//! repeated corpus is retransmissions the walk's deduplication drops.
+//!
+//! The registry is the shipped dictionary: the framed FIX lands on FIX's own
+//! tags, and a JSON document the bridge wrote is one `unknown` row carrying
+//! only what the row stated.
+
+#[path = "../../tests/support/ulbridge.rs"]
+mod ulbridge;
+
+use std::hint::black_box;
+use std::sync::Arc;
+
+use criterion::{BatchSize, Criterion, Throughput};
+use yggdryl::graph::{Element, Event};
+use yggdryl::holder::Buffer;
+use yggdryl::media::RecordOptions;
+use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
+use yggdryl::{
+    ArrowCastOptions, DataType, Field, Filter, IOMedia, State, StreamChunkedSerie, StructType,
+    Timezone, Url,
+};
+use yggdryl_fix::{FixCodec, FixMsg, FixRegistry, fix_schema};
+use yggdryl_market::IdKey;
+use yggdryl_market::Identifier;
+use yggdryl_market::graph::book::ENTRY_ID;
+use yggdryl_market::graph::{
+    BookEvent, BookIterator, ExecutionEvent, Market, MarketData, MdUpdateAction, Operation,
+    OrderEvent, QuoteEvent, TradeEvent,
+};
+
+use super::seed;
+
+/// The capture, exactly as the bridge wrote it; it ends in a newline, so
+/// repeating it repeats whole lines.
+const LOG: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../tests/support/ulbridge.log"
+));
+
+/// How many times the capture is repeated in one measured run.
+const REPEATS: usize = crate::bench_profile::corpus(64, 1);
+
+/// How many messages one copy of the capture carries.
+///
+/// Every codec below refuses nothing, so this is the whole capture and not
+/// the 135 a live session reads: `DEFAULT_REFUSED_MSGTYPES` holds back the
+/// keepalives and the rows that state no type, and those are shapes this
+/// corpus exists to measure. `rust/fix/tests/root/ulbridge.rs` pins both numbers
+/// against each other; every other reader of this capture - the integration
+/// suite, the pages, the two bindings' suites - reads it the same way.
+///
+/// It is the 94 messages the capture carries plus the 57 executions its
+/// parse splits off: one per report that reports a fill, and one of side
+/// `UKNW` off the trade capture's side, which states no `Side(54)` (A12).
+const MESSAGES: usize = 94 + 57;
+
+/// How many three-entry snapshots one market-book measurement consumes.
+const MARKET_REPEATS: usize = crate::bench_profile::corpus(512, 4);
+
+/// Resting entries behind the single-update book measurement.
+const MARKET_DEPTH: usize = crate::bench_profile::corpus(1_024, 16);
+
+/// The log, as the bytes a `.log` file holds.
+/// The thread counts the multi-threaded rows run at: two, four and the
+/// host's own parallelism - what every door defaults to - each once, in
+/// that order, so a host of four cores runs the matrix of two.
+fn thread_matrix() -> Vec<usize> {
+    let host = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    let mut matrix = vec![2, 4];
+    if !matrix.contains(&host) {
+        matrix.push(host);
+    }
+    matrix
+}
+
+fn corpus() -> Vec<u8> {
+    LOG.repeat(REPEATS)
+}
+
+/// A handle whose media type comes from its name, so `.log` reads as records.
+fn handle(bytes: &[u8]) -> Buffer {
+    Buffer::from_bytes(bytes.to_vec()).with_media_type(
+        Url::from_str("file:///ulbridge.log")
+            .expect("a URL")
+            .media_type(),
+    )
+}
+
+/// The text options a bridge log is read under: the bridge's own row header
+/// framed - its clock stamping each row, its bracket filling the session,
+/// context and sequence columns - each line numbered, classified and read
+/// for its direction.
+fn text() -> RecordOptions {
+    let mut options = TextOptions::new()
+        .try_with_rowheader(yggdryl_fix::ULBRIDGE_ROWHEADER)
+        .expect("the row header compiles")
+        .with_timezone(Timezone::UTC);
+    options.start_rownum = Some(1);
+    options.parse_mimetype = true;
+    options.into()
+}
+
+/// The same bridge reader, bounded to make several input batches available
+/// to the ordered parsing pool even in the debug smoke corpus.
+fn batched_text(rows: usize) -> RecordOptions {
+    let RecordOptions::Text(mut options) = text() else {
+        unreachable!("the capture uses text options")
+    };
+    options.batch_row_size = Some(rows);
+    RecordOptions::Text(options)
+}
+
+/// The bodies the text reader hands the codec, framed and stripped.
+///
+/// Each batch lands as one record column, its body narrowed to the text leaf
+/// once and each row's bytes borrowed where they lie.
+fn bodies(source: &Buffer) -> Vec<Vec<u8>> {
+    let read = source.read_arrow_reader(&text()).expect("a reader");
+    let columns = StreamChunkedSerie::from_arrow_reader(None, read, ArrowCastOptions::new())
+        .expect("the text reader's rows are records");
+    let mut held = Vec::new();
+    for records in columns.into_chunks() {
+        let records = records.expect("a batch");
+        let body = records
+            .child("body")
+            .and_then(|column| column.as_utf8())
+            .expect("the body column");
+        for row in 0..records.len() {
+            held.push(body.value(row).map_or(&[][..], str::as_bytes).to_vec());
+        }
+    }
+    held
+}
+
+pub fn benchmarks(criterion: &mut Criterion) {
+    let bytes = corpus();
+    let source = handle(&bytes);
+    let registry = Arc::new(seed());
+    let codec = FixCodec::new(Arc::clone(&registry))
+        .with_threads(1)
+        .with_exclude_msgtypes::<[&str; 0], &str>([]);
+    let schema = fix_schema(&registry, "fix").expect("the fixed schema");
+
+    let mut group = criterion.benchmark_group("fix/pipeline");
+    group.throughput(Throughput::Bytes(bytes.len() as u64));
+
+    // The first stage alone: lines framed under the row header, numbered,
+    // classified and read for their direction.
+    group.bench_function("text_read", |bencher| {
+        bencher.iter(|| {
+            black_box(&source)
+                .read_arrow_reader(&text())
+                .expect("a reader")
+                .map(|batch| batch.expect("a batch").num_rows())
+                .sum::<usize>()
+        });
+    });
+
+    // The whole path: the text reader's batches read straight into FIX rows,
+    // the capture's own columns carried in front of the tags.
+    group.bench_function("parse_text_arrow_reader", |bencher| {
+        bencher.iter(|| {
+            let read = black_box(&source)
+                .read_arrow_reader(&batched_text(8))
+                .expect("a reader");
+            codec
+                .parse_text_arrow_reader(read)
+                .expect("a reader")
+                .map(|batch| batch.expect("a batch").num_rows())
+                .sum::<usize>()
+        });
+    });
+    // The same reader boundary without rebuilding Arrow batches: its small
+    // input batches let the ordered parser pool receive real parallel work.
+    group.bench_function("parse_arrow_messages", |bencher| {
+        bencher.iter(|| {
+            let read = black_box(&source)
+                .read_arrow_reader(&batched_text(16))
+                .expect("a reader");
+            codec
+                .parse_arrow_messages(read)
+                .expect("messages")
+                .filter(Result::is_ok)
+                .count()
+        });
+    });
+    let RecordOptions::Text(options) = text() else {
+        unreachable!("the capture uses text options")
+    };
+    let composed = codec.clone().with_capture_names(options.capture_names());
+    // The decoded line stream, read straight into messages, and then the
+    // same stream walked: each message stated as the one after the live
+    // message of its chain.
+    let read_composed = || {
+        composed
+            .parse_text_lines(read_text_lines(&source, &options).expect("a decoded line stream"))
+            .try_fold(0_usize, |read, message: yggdryl::Result<FixMsg>| {
+                message.map(|_| read + 1)
+            })
+            .expect("a parsed message")
+    };
+    assert_eq!(read_composed(), MESSAGES * REPEATS);
+    group.bench_function("decoded_lines", |bencher| {
+        bencher.iter(|| black_box(read_composed()));
+    });
+    group.bench_function("decoded_lines_lifecycle", |bencher| {
+        bencher.iter(|| {
+            composed
+                .lifecycle(composed.parse_text_lines(
+                    read_text_lines(&source, &options).expect("a decoded line stream"),
+                ))
+                .try_fold(0_usize, |read, message: yggdryl::Result<FixMsg>| {
+                    message.map(|_| read + 1)
+                })
+                .expect("a walked message")
+        });
+    });
+    // The walk alone over the decoded stream's messages: the row header's
+    // captures state each hop's session event and wire clock, so this
+    // is the walk a bridge capture pays - its observations folded, its
+    // frames dated by their transactions - without the parse in front.
+    let decoded: Vec<FixMsg> = composed
+        .parse_text_lines(read_text_lines(&source, &options).expect("a decoded line stream"))
+        .collect::<yggdryl::Result<_>>()
+        .expect("the decoded messages");
+    group.bench_function("decoded_lifecycle", |bencher| {
+        bencher.iter_batched(
+            || decoded.clone(),
+            |held| {
+                composed
+                    .lifecycle(held)
+                    .try_fold(0_usize, |read, message: yggdryl::Result<FixMsg>| {
+                        message.map(|_| read + 1)
+                    })
+                    .expect("a walked message")
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // The same walk remembering no identity it yielded: what the one-minute
+    // deduplication window above costs, beside the walk it filters.
+    let whole = composed.clone().with_dedup_window_ms(0);
+    group.bench_function("decoded_lifecycle_undeduplicated", |bencher| {
+        bencher.iter_batched(
+            || decoded.clone(),
+            |held| {
+                whole
+                    .lifecycle(held)
+                    .try_fold(0_usize, |read, message: yggdryl::Result<FixMsg>| {
+                        message.map(|_| read + 1)
+                    })
+                    .expect("a walked message")
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // The same walk learning into a registry the codec shares, as every
+    // walk of a shared codec does: what the one lock per message costs,
+    // beside the walk-local registry the default walk learns into.
+    group.bench_function("decoded_lifecycle_shared_registry", |bencher| {
+        bencher.iter_batched(
+            || {
+                (
+                    decoded.clone(),
+                    composed
+                        .clone()
+                        .with_isin_registry(Arc::new(std::sync::Mutex::new(
+                            yggdryl_market::IsinRegistry::new(),
+                        ))),
+                )
+            },
+            |(held, shared)| {
+                shared
+                    .lifecycle(held)
+                    .try_fold(0_usize, |read, message: yggdryl::Result<FixMsg>| {
+                        message.map(|_| read + 1)
+                    })
+                    .expect("a walked message")
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // The same walk over the messages as a table read by `transunix` hands
+    // them over, held one hour at a time rather than sorted whole.
+    let mut ordered = decoded.clone();
+    ordered.sort_by_key(yggdryl::graph::Event::get_transunix);
+    let hourly = composed.clone().with_sorted_lifecycle(true);
+    group.bench_function("decoded_lifecycle_sorted", |bencher| {
+        bencher.iter_batched(
+            || ordered.clone(),
+            |held| {
+                hourly
+                    .lifecycle(held)
+                    .try_fold(0_usize, |read, message: yggdryl::Result<FixMsg>| {
+                        message.map(|_| read + 1)
+                    })
+                    .expect("a walked message")
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // The same sorted walk over copies that repeat nothing: each rendered
+    // from the capture with its identifiers stepped and its clocks moved by
+    // the copy, every copy a second after the one before inside one span,
+    // as the scale run stacks them. The copies above are one capture's
+    // bytes again, which the walk's deduplication drops as retransmissions,
+    // so that case is the deduplication's rate; here every copy is chains
+    // of its own, and this is the walk's.
+    let copies = u64::try_from(REPEATS).expect("a copy count");
+    let template = ulbridge::Template::new(copies);
+    let mut rendered = Vec::with_capacity(bytes.len());
+    for copy in 0..copies {
+        template.render(copy, &mut rendered);
+    }
+    assert_eq!(
+        rendered.len(),
+        bytes.len(),
+        "a rendered copy keeps every line's width: the group's throughput is its bytes too"
+    );
+    let rendered_source = handle(&rendered);
+    let mut distinct: Vec<FixMsg> = composed
+        .parse_text_lines(
+            read_text_lines(&rendered_source, &options).expect("a decoded line stream"),
+        )
+        .collect::<yggdryl::Result<_>>()
+        .expect("the decoded copies");
+    assert_eq!(distinct.len(), MESSAGES * REPEATS);
+    distinct.sort_by_key(yggdryl::graph::Event::get_transunix);
+    group.bench_function("decoded_lifecycle_distinct", |bencher| {
+        bencher.iter_batched(
+            || distinct.clone(),
+            |held| {
+                hourly
+                    .lifecycle(held)
+                    .try_fold(0_usize, |read, message: yggdryl::Result<FixMsg>| {
+                        message.map(|_| read + 1)
+                    })
+                    .expect("a walked message")
+            },
+            BatchSize::LargeInput,
+        );
+    });
+
+    // The codec alone, over the framed bodies: what a message costs to
+    // build, without the frame it was cut from or the batch it lands in. A
+    // line the reader refuses - the empty body - is an item the count skips.
+    let held = bodies(&source);
+    group.bench_function("parse_lines", |bencher| {
+        bencher.iter(|| {
+            black_box(&codec)
+                .parse_lines(black_box(&held))
+                .filter(Result::is_ok)
+                .count()
+        });
+    });
+
+    // The record reader over the same bodies, each row naming the plugin
+    // that logged it: the capture fills the crate's `msgpluginid` field and
+    // selects nothing, so this is what a row costs to read with one more
+    // capture on every line.
+    let plugin_codec = FixCodec::new(Arc::clone(&registry))
+        .with_threads(1)
+        .with_capture_names(["msgpluginid"])
+        .with_exclude_msgtypes::<[&str; 0], &str>([]);
+    // A record the row header consumed whole states an empty body, which a
+    // line built by hand refuses; the corpus carries one, and it is skipped
+    // here exactly as the count above skips it.
+    let lines: Vec<TextLine> = held
+        .iter()
+        .enumerate()
+        .filter(|(_, body)| !body.is_empty())
+        .map(|(index, body)| {
+            let plugin = if index % 2 == 0 {
+                "ULB"
+            } else {
+                "OMS_X1_TradeCapture"
+            };
+            TextLine::from_bytes(
+                index as u64,
+                TextBytes::from_bytes(body.as_slice()).expect("a page"),
+                std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+            )
+            .expect("a line")
+            .with_captures(vec![Some(
+                TextBytes::from_bytes(plugin.as_bytes()).expect("a page"),
+            )])
+            .expect("captures")
+        })
+        .collect();
+    group.bench_function("parse_text_lines_msgpluginid", |bencher| {
+        bencher.iter_batched(
+            || lines.clone(),
+            |held| {
+                black_box(&plugin_codec)
+                    .parse_text_lines(held)
+                    .filter(Result::is_ok)
+                    .count()
+            },
+            BatchSize::LargeInput,
+        );
+    });
+
+    // What a message costs after it is built. Every pass runs over fresh
+    // clones, set up outside the measured routine: a clone carries none of
+    // what a message derives about itself on its first projection, so each
+    // number is the pass over a message the stream just built, and a pass
+    // that takes the message by value is the pass alone.
+    let messages: Vec<FixMsg> = codec.parse_lines(&held).filter_map(Result::ok).collect();
+    const MINUTE: i64 = 60_000_000_000;
+    const SNAPSHOT_BASE: i64 = 1_700_000_000_000_000_000;
+    let snapshot_messages: Vec<FixMsg> = messages
+        .iter()
+        .filter(|message| message.header().stated_sendingtime())
+        .take(16)
+        .cloned()
+        .enumerate()
+        .map(|(index, mut message)| {
+            message.set_transunix(
+                SNAPSHOT_BASE + i64::try_from(index).expect("sixteen rows") * MINUTE,
+            );
+            message.set_crosscode(format!("SNAPSHOT-{index}"));
+            message.set_state(State::read("new").expect("the shipped new state"));
+            message.set_exprunix(Some(SNAPSHOT_BASE + 60 * MINUTE));
+            message.set_seqnum(0);
+            message.set_prevunix(None);
+            message.set_prevuuid(None);
+            message.set_snapunix(None);
+            message.finalize();
+            message
+        })
+        .collect();
+    assert_eq!(
+        snapshot_messages.len(),
+        16,
+        "the corpus carries the fixture"
+    );
+    group.bench_function("into_row", |bencher| {
+        bencher.iter_batched(
+            || messages.clone(),
+            |held| {
+                held.iter()
+                    .map(|message| black_box(message).into_row(&schema).expect("a row").len())
+                    .sum::<usize>()
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // This is the same row shape without the residual arrival record. It
+    // retains every ordinary column and all root/child metadata, isolating
+    // the direct final-sequence path from residual coverage.
+    let columns = StructType::from_fields(
+        schema
+            .fields()
+            .iter()
+            .filter(|field| field.name() != yggdryl_fix::FIXENTRIES_COLUMN)
+            .cloned(),
+    )
+    .expect("the fixed columns remain unique");
+    let columns = Field::new(schema.name(), DataType::from(columns), schema.is_nullable())
+        .try_with_metadata_entries(schema.as_metadata().iter())
+        .expect("the fixed metadata remains valid");
+    group.bench_function("into_row_columns", |bencher| {
+        bencher.iter(|| {
+            messages
+                .iter()
+                .map(|message| {
+                    black_box(message)
+                        .into_row(&columns)
+                        .expect("a projected row")
+                        .len()
+                })
+                .sum::<usize>()
+        });
+    });
+    // Rows are prepared once: the measured inverse is only the semantic
+    // reconstruction from the fixed row, not a second projection.
+    let rows: Vec<_> = messages
+        .iter()
+        .map(|message| message.into_row(&schema).expect("a row"))
+        .collect();
+    group.bench_function("from_row", |bencher| {
+        bencher.iter(|| {
+            for row in &rows {
+                black_box(
+                    FixMsg::from_row(Arc::clone(&registry), &schema, black_box(row))
+                        .expect("a rebuilt message"),
+                );
+            }
+        });
+    });
+    // The parse settled the identifiers a message goes by; the walk states
+    // each message's place, and the rows carry both.
+    assert!(
+        messages
+            .iter()
+            .any(|message| !message.get_identifiers().is_empty()),
+        "the parse fills the identifiers"
+    );
+    let walked = codec
+        .lifecycle(messages.clone())
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("the capture walks");
+    assert!(
+        walked
+            .iter()
+            .any(|message| message.get_prevuuid().is_some()),
+        "the walk chains the capture"
+    );
+    for (name, rows) in [
+        ("arrow_reader", &messages),
+        ("arrow_reader_walked", &walked),
+    ] {
+        group.bench_function(name, |bencher| {
+            bencher.iter_batched(
+                || rows.clone(),
+                |held| {
+                    codec
+                        .arrow_reader(schema.clone(), held)
+                        .expect("a reader")
+                        .map(|batch| batch.expect("a batch").num_rows())
+                        .sum::<usize>()
+                },
+                BatchSize::LargeInput,
+            );
+        });
+    }
+    group.bench_function("lifecycle", |bencher| {
+        bencher.iter_batched(
+            || messages.clone(),
+            |held| {
+                codec
+                    .lifecycle(held)
+                    .map(|message| message.expect("walked").entries().len())
+                    .sum::<usize>()
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // The same message a thousand times: the corpus above is every shape a
+    // bridge writes, this is one report logged at every hop it passed, and
+    // the finite capture's delivery set removes every republication after the first.
+    let report = messages
+        .iter()
+        .find(|message| message.header().msgtype() == "8")
+        .expect("the corpus carries an execution report")
+        .clone();
+    let same_shape: Vec<FixMsg> = std::iter::repeat_n(report, 1_000).collect();
+    group.bench_function("lifecycle_same_shape", |bencher| {
+        bencher.iter_batched(
+            || same_shape.clone(),
+            |held| {
+                codec
+                    .lifecycle(held)
+                    .map(|message| message.expect("walked").entries().len())
+                    .sum::<usize>()
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.bench_function("digest", |bencher| {
+        bencher.iter_batched(
+            || messages.clone(),
+            |held| {
+                held.iter()
+                    .map(|message| black_box(message).digest())
+                    .fold(0_u128, |folded, digest| folded ^ digest)
+            },
+            BatchSize::LargeInput,
+        );
+    });
+
+    // The same doors on several threads, against the one-thread rows above:
+    // what the machine's cores buy each door, and what each door leaves on
+    // the thread that pulls it - the text reader in front of the line
+    // doors, the batches closing behind the Arrow ones. The matrix ends at
+    // the host's own parallelism, the default every door runs at.
+    for threads in thread_matrix() {
+        let spread = codec.clone().with_threads(threads);
+        let composed = composed.clone().with_threads(threads);
+        group.bench_function(format!("parse_lines/threads={threads}"), |bencher| {
+            bencher.iter(|| {
+                black_box(&spread)
+                    .parse_lines(black_box(&held))
+                    .filter(Result::is_ok)
+                    .count()
+            });
+        });
+        group.bench_function(format!("decoded_lines/threads={threads}"), |bencher| {
+            bencher.iter(|| {
+                composed
+                    .parse_text_lines(
+                        read_text_lines(&source, &options).expect("a decoded line stream"),
+                    )
+                    .filter(Result::is_ok)
+                    .count()
+            });
+        });
+        group.bench_function(
+            format!("parse_text_arrow_reader/threads={threads}"),
+            |bencher| {
+                bencher.iter(|| {
+                    let read = black_box(&source)
+                        .read_arrow_reader(&batched_text(8))
+                        .expect("a reader");
+                    spread
+                        .parse_text_arrow_reader(read)
+                        .expect("a reader")
+                        .map(|batch| batch.expect("a batch").num_rows())
+                        .sum::<usize>()
+                });
+            },
+        );
+        group.bench_function(
+            format!("parse_arrow_messages/threads={threads}"),
+            |bencher| {
+                bencher.iter(|| {
+                    let read = black_box(&source)
+                        .read_arrow_reader(&batched_text(16))
+                        .expect("a reader");
+                    spread
+                        .parse_arrow_messages(read)
+                        .expect("messages")
+                        .filter(Result::is_ok)
+                        .count()
+                });
+            },
+        );
+        group.bench_function(format!("arrow_reader/threads={threads}"), |bencher| {
+            bencher.iter_batched(
+                || messages.clone(),
+                |held| {
+                    spread
+                        .arrow_reader(schema.clone(), held)
+                        .expect("a reader")
+                        .map(|batch| batch.expect("a batch").num_rows())
+                        .sum::<usize>()
+                },
+                BatchSize::LargeInput,
+            );
+        });
+    }
+    // The text reader's own batching hands the Arrow doors the capture as
+    // one batch: on four threads the pools cut it into row ranges the
+    // workers share rather than hand it to one of them.
+    let spread = codec.clone().with_threads(4);
+    group.bench_function("parse_text_arrow_reader_default/threads=4", |bencher| {
+        bencher.iter(|| {
+            let read = black_box(&source)
+                .read_arrow_reader(&text())
+                .expect("a reader");
+            spread
+                .parse_text_arrow_reader(read)
+                .expect("a reader")
+                .map(|batch| batch.expect("a batch").num_rows())
+                .sum::<usize>()
+        });
+    });
+    group.bench_function("parse_arrow_messages_default/threads=4", |bencher| {
+        bencher.iter(|| {
+            let read = black_box(&source)
+                .read_arrow_reader(&text())
+                .expect("a reader");
+            spread
+                .parse_arrow_messages(read)
+                .expect("messages")
+                .filter(Result::is_ok)
+                .count()
+        });
+    });
+    group.finish();
+
+    let snapshot_codec = codec.with_snapshot_ns(MINUTE);
+    let mut snapshots = criterion.benchmark_group("fix/pipeline/lifecycle_snapshots");
+    snapshots.throughput(Throughput::Elements(snapshot_messages.len() as u64));
+    snapshots.bench_function("16x60", |bencher| {
+        bencher.iter_batched(
+            || snapshot_messages.clone(),
+            |held| {
+                snapshot_codec
+                    .lifecycle(held)
+                    .map(|message| message.expect("walked").entries().len())
+                    .sum::<usize>()
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    snapshots.finish();
+
+    market_benchmarks(criterion, registry);
+}
+
+/// The sole message a compact FIX fixture carries.
+fn market_message(codec: &FixCodec, row: &[u8]) -> FixMsg {
+    let mut messages = codec.parse_line(row).expect("a FIX row");
+    let message = messages
+        .next()
+        .expect("the fixture carries one message")
+        .expect("the fixture is valid");
+    assert!(
+        messages.next().is_none(),
+        "the fixture carries exactly one message"
+    );
+    message
+}
+
+/// FIX's typed market boundary, the two book ingestion paths, and Arrow exchange.
+fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
+    let codec = FixCodec::new(registry)
+        .with_threads(1)
+        .with_exclude_msgtypes::<[&str; 0], &str>([]);
+    let direct = market_message(
+        &codec,
+        b"8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|44=100|38=5|10=0|",
+    );
+    let snapshot = market_message(
+        &codec,
+        b"8=FIX.4.4|35=W|55=AAPL|262=REQ-1|1021=2|1180=MDP|1181=42|268=3|269=0|278=B1|270=100|271=10|290=1|269=1|278=A1|37=O1|270=101|271=12|290=1|269=2|278=T1|270=100.5|271=2|10=0|",
+    );
+    // A trade is market data as the sided executions its parse splits off
+    // (A12), and is no leaf of its own: the composite trade is built over
+    // those parts, as a caller holding both builds it.
+    let trade_row: &[u8] = b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=1|1427=BUY-EXEC|1009=4|37=BUY-ORDER|11=BUY-CLIENT|54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|";
+    let mut trade_messages = codec
+        .parse_line(trade_row)
+        .expect("a FIX row")
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("the trade and its sides");
+    let trade_root = trade_messages.remove(0);
+    let executions = trade_messages
+        .into_iter()
+        .flat_map(|message| message.into_market_data().expect("a sided execution"))
+        .map(|leaf| match leaf {
+            MarketData::ExecutionEvent(execution) => execution,
+            other => panic!(
+                "the AE fixture splits off executions, got {:?}",
+                other.kind()
+            ),
+        })
+        .collect::<Vec<ExecutionEvent>>();
+    assert_eq!(executions.len(), 2);
+    let snapshot_operations = snapshot.market_data().expect("the snapshot expands");
+    assert_eq!(snapshot_operations.len(), 3);
+    let trade_operation = MarketData::from(
+        TradeEvent::from_parts(&trade_root, executions).expect("the composite trade"),
+    );
+    let market_messages = (0..MARKET_REPEATS)
+        .map(|index| {
+            let mut message = snapshot.clone();
+            message.set_transunix(i64::try_from(index + 1).expect("the market corpus fits i64"));
+            message.finalize();
+            message
+        })
+        .collect::<Vec<_>>();
+    let operations: Vec<MarketData> = std::iter::repeat_n(snapshot_operations, MARKET_REPEATS)
+        .flatten()
+        .collect();
+    let trade_operations = std::iter::repeat_n(trade_operation, MARKET_REPEATS).collect::<Vec<_>>();
+    let quote_of = |value: &MarketData| {
+        QuoteEvent::try_from(value.clone()).expect("the snapshot fixture's bid is a quote")
+    };
+    let mut dense_operations = Vec::with_capacity(MARKET_DEPTH);
+    for index in 0..MARKET_DEPTH {
+        let mut operation = quote_of(&operations[0]);
+        let identity = format!("DENSE-{index}");
+        operation.set_crosscode(identity.clone());
+        let _ = operation.remove_identifier(&IdKey::base(ENTRY_ID));
+        operation
+            .insert_identifier(
+                Identifier::new(IdKey::base(ENTRY_ID), &identity).expect("an identifier"),
+            )
+            .expect("a plain holder takes every key");
+        let mut book = operation.book().cloned().unwrap_or_default();
+        book.action = Some(MdUpdateAction::New);
+        operation.set_book(Some(book));
+        operation.finalize();
+        dense_operations.push(MarketData::from(operation));
+    }
+    let mut dense_book = BookEvent::new(quote_of(&dense_operations[0]).get_transunix(), "AAPL");
+    dense_book
+        .add_operations(dense_operations.clone())
+        .expect("the dense initial book");
+    let mut dense_update = quote_of(&dense_operations[0]);
+    let update_unix = dense_update.get_transunix() + 1;
+    dense_update.set_transunix(update_unix);
+    dense_update.set_state(State::read("Replaced").expect("the shipped replaced state"));
+    let mut book = dense_update.book().cloned().unwrap_or_default();
+    book.action = Some(MdUpdateAction::Change);
+    dense_update.set_book(Some(book));
+    dense_update.finalize();
+    let dense_update = MarketData::from(dense_update);
+
+    let mut group = criterion.benchmark_group("fix/pipeline/market");
+    group.throughput(Throughput::Elements(1));
+    group.bench_function("direct_fix_to_single_operation", |bencher| {
+        bencher.iter_batched(
+            || direct.clone(),
+            |message| {
+                yggdryl_fix::FixMsg::into_market_leaf(black_box(message))
+                    .expect("one order operation")
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    let previous = OrderEvent::from(&direct);
+    let mut next = previous.clone();
+    next.set_transunix(previous.get_transunix() + 1);
+    next.set_ticker(None, true);
+    next.finalize();
+    group.bench_function("market_event_with_previous", |bencher| {
+        bencher.iter_batched(
+            || next.clone(),
+            |event| {
+                black_box(event)
+                    .with_previous(black_box(&previous))
+                    .expect("the next event inherits its symbol")
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("direct_fix_to_operation", |bencher| {
+        bencher.iter_batched(
+            || direct.clone(),
+            |message| {
+                black_box(message)
+                    .into_market_data()
+                    .expect("an order operation")
+                    .len()
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    group.throughput(Throughput::Elements(3));
+    group.bench_function("snapshot_fix_to_operations", |bencher| {
+        bencher.iter_batched(
+            || snapshot.clone(),
+            |message| {
+                black_box(message)
+                    .into_market_data()
+                    .expect("three book operations")
+                    .len()
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
+    group.throughput(Throughput::Elements(2));
+    // A two-sided trade row to the market data it is: the parse splits off
+    // one execution per side (A12), each one execution leaf.
+    group.bench_function("two_sided_trade_fix_to_executions", |bencher| {
+        bencher.iter(|| {
+            codec
+                .parse_line(black_box(trade_row))
+                .expect("a FIX row")
+                .skip(1)
+                .map(|message| {
+                    message
+                        .expect("a sided execution")
+                        .into_market_data()
+                        .expect("an execution leaf")
+                        .len()
+                })
+                .sum::<usize>()
+        });
+    });
+
+    // The snapshot's three entries, its trade entry (`269=2`) an execution
+    // the book prunes before it folds the bid and the ask.
+    group.throughput(Throughput::Elements(operations.len() as u64));
+    group.bench_function("book_add_operations", |bencher| {
+        bencher.iter_batched(
+            || (BookEvent::new(0, "AAPL"), operations.clone()),
+            |(mut book, operations)| {
+                book.add_operations(black_box(operations))
+                    .expect("one atomic book update");
+                black_box(book)
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.throughput(Throughput::Elements(1));
+    group.bench_function("book_single_update_dense", |bencher| {
+        bencher.iter_batched(
+            || (dense_book.clone(), dense_update.clone()),
+            |(mut book, update)| {
+                book.add_operations([black_box(update)])
+                    .expect("one journaled book update");
+                black_box(book)
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.bench_function("book_iterator_single_update_dense", |bencher| {
+        bencher.iter_batched(
+            || {
+                let source = dense_operations
+                    .clone()
+                    .into_iter()
+                    .chain([dense_update.clone()]);
+                let mut books = BookIterator::new(source, 0).expect("a sorted book iterator");
+                books
+                    .next()
+                    .expect("initial depth")
+                    .expect("valid initial depth");
+                books
+            },
+            |mut books| black_box(books.next().expect("one update").expect("a valid update")),
+            BatchSize::LargeInput,
+        );
+    });
+    group.throughput(Throughput::Elements(operations.len() as u64));
+    group.bench_function("book_iterator", |bencher| {
+        bencher.iter_batched(
+            || operations.clone(),
+            |operations| {
+                BookIterator::new(black_box(operations).into_iter(), 0)
+                    .expect("a sorted book iterator")
+                    .try_fold(0_usize, |count, book| {
+                        let book = book?;
+                        Ok::<_, yggdryl::Error>(
+                            count + book.alive().count() + book.delta().len() + book.events().len(),
+                        )
+                    })
+                    .expect("the operation stream builds books")
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.throughput(Throughput::Elements(market_messages.len() as u64));
+    group.bench_function("fix_book_arrow_reader", |bencher| {
+        bencher.iter_batched(
+            || market_messages.clone(),
+            |messages| {
+                let rows = codec
+                    .book_arrow_reader(black_box(messages), 0, None)
+                    .expect("a FIX book Arrow reader")
+                    .try_fold(0_usize, |rows, batch| {
+                        batch.map(|batch| rows + batch.num_rows())
+                    })
+                    .expect("the FIX messages build Arrow books");
+                assert_eq!(rows, MARKET_REPEATS);
+                black_box(rows)
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // The same books under a filter keeping the bids: the walk pulls the
+    // snapshots' entries ahead, lays them out as one batch and folds the
+    // bids the expression engine keeps.
+    let bids: Filter = "side = 'BUYS'".parse().expect("a filter over the row");
+    group.bench_function("fix_book_arrow_reader_filtered", |bencher| {
+        bencher.iter_batched(
+            || market_messages.clone(),
+            |messages| {
+                let rows = codec
+                    .book_arrow_reader(black_box(messages), 0, Some(&bids))
+                    .expect("a filtered FIX book Arrow reader")
+                    .try_fold(0_usize, |rows, batch| {
+                        batch.map(|batch| rows + batch.num_rows())
+                    })
+                    .expect("the FIX messages build Arrow books");
+                assert_eq!(rows, MARKET_REPEATS);
+                black_box(rows)
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // The same snapshots through the sorted market door: collected, each
+    // expanded into its three entries, sorted, and laid out as rows.
+    group.bench_function("fix_market_arrow_reader", |bencher| {
+        bencher.iter_batched(
+            || market_messages.clone(),
+            |messages| {
+                let rows = codec
+                    .market_arrow_reader(black_box(messages))
+                    .expect("a FIX market Arrow reader")
+                    .try_fold(0_usize, |rows, batch| {
+                        batch.map(|batch| rows + batch.num_rows())
+                    })
+                    .expect("the FIX messages lay out as market rows");
+                assert_eq!(rows, 3 * MARKET_REPEATS);
+                black_box(rows)
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.throughput(Throughput::Elements(operations.len() as u64));
+    group.bench_function("operation_arrow_roundtrip", |bencher| {
+        bencher.iter_batched(
+            || operations.clone(),
+            |operations| {
+                let batches = MarketData::arrow_reader(
+                    black_box(operations),
+                    Some(crate::bench_profile::corpus(1_024, 4)),
+                    Some(4 * 1024 * 1024),
+                )
+                .expect("an operation Arrow reader");
+                MarketData::from_arrow_reader(batches)
+                    .expect("the canonical operation schema")
+                    .try_fold(0_usize, |count, operation| operation.map(|_| count + 1))
+                    .expect("the operations roundtrip")
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.throughput(Throughput::Elements(trade_operations.len() as u64));
+    group.bench_function("trade_operation_arrow_roundtrip", |bencher| {
+        bencher.iter_batched(
+            || trade_operations.clone(),
+            |operations| {
+                let batches = MarketData::arrow_reader(
+                    black_box(operations),
+                    Some(crate::bench_profile::corpus(1_024, 4)),
+                    Some(4 * 1024 * 1024),
+                )
+                .expect("a trade-operation Arrow reader");
+                MarketData::from_arrow_reader(batches)
+                    .expect("the canonical operation schema")
+                    .try_fold(0_usize, |count, operation| operation.map(|_| count + 1))
+                    .expect("the trade operations roundtrip")
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.finish();
+}
+
+/// One line of the capture, stripped of its row header, checked to be the
+/// shape the benchmark names so an edit to the corpus fails here rather than
+/// silently measuring something else.
+fn capture_body(index: usize, expects: &[u8]) -> Vec<u8> {
+    let line = LOG
+        .split(|byte| *byte == b'\n')
+        .nth(index)
+        .expect("a line of the capture");
+    // The row header closes on the level in parentheses and one space.
+    let at = line
+        .windows(2)
+        .position(|pair| pair == b") ")
+        .expect("a row header")
+        + 2;
+    let body = line[at..].to_vec();
+    assert!(
+        memchr::memmem::find(&body, expects).is_some(),
+        "line {index} of the capture no longer holds {}",
+        String::from_utf8_lossy(expects)
+    );
+    body
+}
+
+/// What one line costs the codec, one shape at a time.
+///
+/// The shapes a capture actually mixes, each measured through the one door
+/// `parse_lines` takes - a bridge row of a hundred named keys, a numeric
+/// frame on pipes, the same frame on raw SOH, a `35=UL` frame packing a
+/// bridge row inside its `XmlData`, and frames spelled `^A` and `<SOH>` -
+/// beside the scan alone, so what the message costs after its pairs are
+/// read is the difference, and beside the direction reading that finds
+/// where its payload opens and which way it moved. Per shape rather than
+/// over the corpus, so a change to the codec is attributed to the shape it
+/// moved.
+pub fn line_benchmarks(criterion: &mut Criterion) {
+    let registry = Arc::new(seed());
+    // Nothing is refused: two of the six shapes below are the session's own
+    // - a Heartbeat and a TestRequest - and a codec on its defaults answers
+    // no message for either, so those two rows would time an empty parse
+    // while still reporting a throughput per byte of the line they skipped.
+    let codec = FixCodec::new(Arc::clone(&registry))
+        .with_threads(1)
+        .with_exclude_msgtypes::<[&str; 0], &str>([]);
+    let frame_pipe = capture_body(72, b"8=FIX.4.4|9=886|35=8|");
+    let frame_soh: Vec<u8> = frame_pipe
+        .iter()
+        .map(|byte| if *byte == b'|' { 0x01 } else { *byte })
+        .collect();
+    let shapes: [(&str, Vec<u8>); 6] = [
+        (
+            "bridge_pipe",
+            capture_body(1, b"MSGTYPE=executionreport|NOPARTYIDS=2|"),
+        ),
+        ("frame_pipe", frame_pipe),
+        ("frame_soh", frame_soh),
+        (
+            "frame_packed",
+            capture_body(111, b"8=FIX.4.2|9=3430|35=UL|"),
+        ),
+        ("frame_caret", capture_body(102, b"8=FIX.4.4^A9=61^A35=0^A")),
+        (
+            "frame_marker",
+            capture_body(103, b"8=FIX.4.4<SOH>9=70<SOH>35=1<SOH>"),
+        ),
+    ];
+
+    let reading = registry.msgdirection();
+    let mut group = criterion.benchmark_group("fix/line");
+    for (shape, body) in &shapes {
+        group.throughput(Throughput::Bytes(body.len() as u64));
+        group.bench_function(format!("{shape}/payload"), |bencher| {
+            bencher.iter(|| reading.read_bytes(black_box(body)));
+        });
+        group.bench_function(format!("{shape}/parse_line"), |bencher| {
+            bencher.iter(|| {
+                black_box(&codec)
+                    .parse_line(black_box(body))
+                    .expect("messages")
+                    .count()
+            });
+        });
+        let page = TextBytes::from_bytes(body).expect("a page");
+        group.bench_function(format!("{shape}/scan"), |bencher| {
+            bencher.iter(|| {
+                yggdryl::text::TextEntries::from_bytes_direct(black_box(&page))
+                    .map_or(0, |held| held.len())
+            });
+        });
+    }
+    group.finish();
+    fill_benchmarks(criterion);
+}
+
+/// What a fill from the seeded instrument registry costs one element: by
+/// its stated ISIN, and - for an instrument the registry knows by no code
+/// the element states - by the short name it states in its currency, the
+/// exact tier's miss alone where the economic match is off and the scan of
+/// every instrument in that currency where it is on.
+fn fill_benchmarks(criterion: &mut Criterion) {
+    use yggdryl::Ccy;
+    use yggdryl_market::{IdType, IsinRegistry};
+    let identified = |kind: IdType, value: &str| {
+        let mut element = OrderEvent::at(1);
+        element
+            .insert_securityid(Identifier::new(IdKey::base(kind), value).expect("an identifier"))
+            .expect("a security identifier");
+        element
+    };
+    let by_isin = identified(IdType::Isin, "US0378331005");
+    let mut by_name = identified(IdType::Fisn, "APPLE INC./SH SH");
+    by_name.set_currency(Ccy::new("USD").expect("a currency"), true);
+    let exact = IsinRegistry::seeded();
+    let economic = IsinRegistry::seeded().with_economic_match(true);
+    assert!(exact.fill(&mut by_isin.clone()), "Apple by its ISIN");
+    assert!(!exact.fill(&mut by_name.clone()), "no exact key");
+    assert!(
+        economic.fill(&mut by_name.clone()),
+        "Apple by its short name"
+    );
+    let mut group = criterion.benchmark_group("fix/fill");
+    for (case, registry, element) in [
+        ("known_isin", &exact, &by_isin),
+        ("unknown_fisn_exact", &exact, &by_name),
+        ("unknown_fisn_economic", &economic, &by_name),
+    ] {
+        group.bench_function(case, |bencher| {
+            bencher.iter_batched(
+                || element.clone(),
+                |mut held| {
+                    black_box(registry).fill(&mut held);
+                    held
+                },
+                BatchSize::SmallInput,
+            );
+        });
+    }
+    group.finish();
+}

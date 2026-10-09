@@ -189,6 +189,10 @@ serialized tag say `serie`. A serie item written without a field is named
 | `Pattern`, `MultipleCharValue`, `MultipleStringValue`, `XID`, `XIDREF` | `utf8` |
 | `data`, `XMLData` | `binary` |
 
+The code names of the first row are the core's; every other row is
+`yggdryl-fix`'s, which a Rust caller reaches after `yggdryl_fix::install()?`
+and Python and Node.js on import.
+
 `int`, `float`, `char`, `String`, `Boolean` keep their grammar meaning
 (`int32`, `float32`, `utf8`, `utf8`, `boolean`), not FIX's. Names fold like
 every keyword: `utc_date_only` is `UTCDateOnly`.

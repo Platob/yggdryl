@@ -634,10 +634,9 @@ impl DataType {
     /// as the code of each, at the leaf's width.
     ///
     /// ```
-    /// use yggdryl::{DataType, Side};
+    /// use yggdryl::DataType;
     ///
     /// assert!(DataType::State.is_enum());
-    /// assert!(Side::dtype().is_enum());
     /// assert!(!DataType::Int32.is_enum());
     /// ```
     #[must_use]

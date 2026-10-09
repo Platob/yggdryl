@@ -115,7 +115,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     return [...registry].slice(registry.toJSON().fields.length)
   }
   // The one intake clock the Rust suites read undated bytes under
-  // (`fixed_codec` in `rust/tests/fix.rs`): 2024-01-02T10:15:30Z. Without it an
+  // (`fixed_codec` in `rust/fix/tests/root.rs`): 2024-01-02T10:15:30Z. Without it an
   // undated message reads UTC now, which is deliberately not deterministic.
   const SENDING = new DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000n)
 
@@ -498,7 +498,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
 
     // The core's own refusals arrive with the full key in the message. A tag
     // is positive: zero is what an unresolved arrival records, never an
-    // identity a field can claim (`rust/tests/fix/entry.rs`).
+    // identity a field can claim (`rust/fix/tests/root/entry.rs`).
     for (const tag of [0, -1, -(2 ** 31)]) {
       assert.throws(() => {
         field.fix.tag = tag
@@ -2702,7 +2702,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // `parentclordid`, `omsdealerparentorderid`, `exchangeclientorderid`,
     // `transversalkey`, `ultraderclordid`, `omsinstrumentid`,
     // `ullinkinstrumentid`) are no crate field - the 52 definitions
-    // `rust/tests/fix/crated.rs` pins, tags 65001 to 65052.
+    // `rust/fix/tests/root/crated.rs` pins, tags 65001 to 65052.
     assert.equal(CRATE.length, 52)
     assert.equal(CRATE_REGISTERED.length, 33)
     assert.equal(CRATE_SCALARS.length, 32)
@@ -2912,7 +2912,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // group as null or as at least one occurrence, so the zero rides the
     // residual record, and PyIceberg reads a null list of structs back as
     // `[]`, which states nothing: each row read back and settled again from
-    // its content is the message the parse wrote (`rust/tests/fix/msg.rs`).
+    // its content is the message the parse wrote (`rust/fix/tests/root/msg.rs`).
     const registry = seed()
     const reader = fixedCodec(registry)
     const party = '8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|453=1|448=X|447=D|452=1|'
@@ -2951,7 +2951,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   test('a root group counting none is stated, and a list read back empty is not', () => {
     // The same rule at the root: `453=0` is stated, and a `parties` column
     // read back as `[]` where the row held null is the group absent
-    // (`rust/tests/fix/msg.rs`).
+    // (`rust/fix/tests/root/msg.rs`).
     const registry = seed()
     const reader = fixedCodec(registry)
     const order = '8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|'
@@ -2979,7 +2979,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   test("a capture's own columns lead the row", () => {
     const registry = seed()
     // Nullable, because a message parsed on its own states none of them and a
-    // row cell is typed by its column (`rust/tests/fix/msg.rs`).
+    // row cell is typed by its column (`rust/fix/tests/root/msg.rs`).
     const carrier = fields.struct(
       'line',
       [fields.utf8('url', { nullable: true }), fields.binary('body', { nullable: true })],
@@ -3170,7 +3170,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   })
 
   // One content record, with tag 0 reserved for what the dictionary did not
-  // resolve. Parity with `rust/tests/fix/entry.rs`.
+  // resolve. Parity with `rust/fix/tests/root/entry.rs`.
 
   test('unresolved counters keep their members in arrival order under tag 0', () => {
     const codec = fixedCodec(seed())
@@ -3223,8 +3223,8 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
 {
   // The codec's streams and Arrow twins, and the message holder's setters.
   //
-  // Every rule here is the core's, pinned in `rust/tests/fix/batch.rs` and
-  // `rust/tests/fix/msg.rs`; what these check is the crossing - that a
+  // Every rule here is the core's, pinned in `rust/fix/tests/root/batch.rs` and
+  // `rust/fix/tests/root/msg.rs`; what these check is the crossing - that a
   // JavaScript iterable is pulled one item at a time, that batch readers cross
   // both ways, that raw-byte batching is observable through `batchByteSize`, and
   // that a write to a message is typed by the dictionary and leaves the wire
@@ -3260,7 +3260,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   const encoder = new TextEncoder()
   const PIPE = '|'.charCodeAt(0)
   // The one intake clock the Rust suites build undated messages under
-  // (`fixed_codec` in `rust/tests/fix.rs`), stated here as a message's own
+  // (`fixed_codec` in `rust/fix/tests/root.rs`), stated here as a message's own
   // SendingTime so two builds settle the same identity.
   const SENDING = new DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000n)
   // The columns a row must carry a value at: the settled identity, the
@@ -4583,7 +4583,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   test('format answers the rows one message field holds, both doors', () => {
     // Pinned by `format_messages_answers_one_row_per_message_under_the_field`
     // and `format_arrow_reader_answers_the_batches_format_messages_answers_rows`
-    // in `rust/tests/fix/messages.rs`.
+    // in `rust/fix/tests/root/messages.rs`.
     const registry = seed()
     const codec = reading(registry)
     // The fixed row itself as the target, so a formatted row keeps every column
@@ -4623,7 +4623,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   // order and an execution under one cross code are two chains), and
   // `lifecycleArrowReader` is the same walk over batches of rows.
   //
-  // Every rule is the core's, pinned in `rust/tests/fix/`; what these check is
+  // Every rule is the core's, pinned in `rust/fix/tests/root/`; what these check is
   // the crossing - the stream a JavaScript iterable feeds one message at a
   // time, the facts each walked message carries, and the batch twin.
 
@@ -4645,8 +4645,8 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     return new fix.FixCodec(registry, { excludeMsgtypes: [], ...(options ?? {}) })
   }
 
-  // `rust/tests/fix/ulbridge.rs` reads.
-  const CAPTURE = path.join(__dirname, '..', '..', 'rust', 'tests', 'fix', 'ulbridge.log')
+  // `rust/fix/tests/root/ulbridge.rs` reads.
+  const CAPTURE = path.join(__dirname, '..', '..', 'rust', 'tests', 'support', 'ulbridge.log')
   // The bridge's own row header, as the core spells it: what a line states
   // about itself in front of the payload. The core exports the text, so this
   // suite reads a bridge log under the same expression the crate ships rather
@@ -4813,7 +4813,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // Every line that carries a message is one message, the JSON documents
     // among them, and the parse splits one execution off each of the 56
     // reports that report a fill and one of side UKNW off the trade
-    // capture (A12; `rust/tests/fix/ulbridge.rs`).
+    // capture (A12; `rust/fix/tests/root/ulbridge.rs`).
     assert.equal(messages.length, 94 + 57)
 
     // What a bridge's row header states reaches the capture, and what its own
@@ -4995,7 +4995,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       defaultSendingTime: SENDING,
       threads: 1,
     })
-    // The capture read off its bytes, as `rust/tests/fix/ulbridge.rs` reads
+    // The capture read off its bytes, as `rust/fix/tests/root/ulbridge.rs` reads
     // it: each line is dated by the clock the bridge wrote in front of it,
     // which is what makes the book identity below the same in every
     // language.
@@ -5065,7 +5065,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.deepEqual([last.limits('BUYS'), last.limits('SELL'), last.alive()], [[], [], []])
     assert.deepEqual(last.delta().map((delta) => delta.price), [null, null])
     assert.deepEqual(last.events(), [])
-    // Re-pinned from the run, as `rust/tests/fix/ulbridge.rs` pins it: the
+    // Re-pinned from the run, as `rust/fix/tests/root/ulbridge.rs` pins it: the
     // book digests its entries and delta rather than side summaries (A2),
     // no book control but its scope (A1), no lanes (A10), and the delta's
     // side-prefixed cross codes (A17), each event's place out of its
@@ -5085,7 +5085,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // when a code's first book stopped being complete, a delta book
     // following no book; and when a book came to be keyed by its
     // instrument's ISIN and to hold it as its `isin` security identifier:
-    // the one value `rust/tests/fix/ulbridge.rs` and the Python binding pin
+    // the one value `rust/fix/tests/root/ulbridge.rs` and the Python binding pin
     // for this log. It moved again when a book came to state `BOTH` as its
     // side, which its own market event feeds where a side nobody stated fed.
     // It moved again when a book split what its instant recorded into its
@@ -5100,7 +5100,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const codec = reading(seed(), { defaultSendingTime: SENDING })
     // `60=20260814` states a day and no clock, and a transaction time dates
     // nothing at the parse anyway: the event is the sending time
-    // (`rust/tests/fix/`).
+    // (`rust/fix/tests/root/`).
     const day = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A|60=20260814|10=0|'))
     assert.equal(day.transunix, 1_704_190_530_000_000_000n)
     assert.equal(day.header().sendingtime, day.transunix)

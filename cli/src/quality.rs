@@ -13,7 +13,8 @@
 
 use std::collections::HashMap;
 
-use yggdryl::{Field, FixCategory, FixField, FixRegistry};
+use yggdryl::Field;
+use yggdryl_fix::{FixCategory, FixField, FixRegistry};
 
 use crate::style;
 

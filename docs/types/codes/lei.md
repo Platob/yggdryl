@@ -186,7 +186,9 @@ The value is the canonical spelling: upper case, the check digits as stated. Low
 Eighteen letters or digits, then two decimal digits. The first four characters are the prefix of the Local Operating Unit that issued the code (`prefix`), and the fourteen after them are the entity's own. ISO 17442:2012 reserved the fifth and sixth characters as `00`; ISO 17442-1:2020 made them part of the entity's code, so `HWUPKR0MPOU8FGXBT394` - Apple Inc.'s LEI, `KR` in those places - is the shape, and a reader holding the 2012 rule would refuse it. The check is ISO/IEC 7064 MOD 97-10: the twenty characters read as one decimal number, a digit as itself and a letter as its two digits from `A` at ten to `Z` at thirty-five, leave a remainder of one modulo 97. `closing_digits` computes the two digits that close eighteen leading characters, `is_closed` answers whether they close an upper-case identifier - the [rank](index.md#rank) a value answers, one where they close, zero where they do not - `check_digits` reads the two as stated, and `is_canonical` whether text is the canonical spelling, upper case and the shape, whatever the digits. Rust only.
 
 ```rust
-use yggdryl::{CodeValue, IdType, Lei};
+use yggdryl::{CodeValue, Lei};
+use yggdryl_market::IdType;
+yggdryl_market::install()?;
 
 let apple = Lei::new("HWUPKR0MPOU8FGXBT394")?;
 assert_eq!(apple.prefix(), "HWUP");

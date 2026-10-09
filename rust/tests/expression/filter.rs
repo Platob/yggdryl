@@ -10,27 +10,9 @@
 #[test]
 fn logical_enum_predicates_keep_native_rows_as_arrow_filters_do() {
     use yggdryl::expression::Filter;
-    use yggdryl::{
-        DataType, Field, MarketDataKind, MarketDataType, Scalar, Serie, Side, State, StructType,
-        TimeInForce,
-    };
+    use yggdryl::{DataType, Field, Scalar, Serie, State, StructType};
 
-    let members = [
-        (Scalar::from(State::ALL[0]), Scalar::from(State::ALL[1])),
-        (
-            Scalar::from(MarketDataKind::ALL[0]),
-            Scalar::from(MarketDataKind::ALL[1]),
-        ),
-        (
-            Scalar::from(MarketDataType::ALL[0]),
-            Scalar::from(MarketDataType::ALL[1]),
-        ),
-        (Scalar::from(Side::ALL[0]), Scalar::from(Side::ALL[1])),
-        (
-            Scalar::from(TimeInForce::ALL[0]),
-            Scalar::from(TimeInForce::ALL[1]),
-        ),
-    ];
+    let members = [(Scalar::from(State::ALL[0]), Scalar::from(State::ALL[1]))];
     for (first, second) in members {
         let dtype = DataType::from_str(first.id().as_str()).unwrap();
         let root =

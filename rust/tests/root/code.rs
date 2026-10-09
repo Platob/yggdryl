@@ -12,7 +12,7 @@ mod datatypes {
     use yggdryl::FieldValue as _;
     use yggdryl::{
         ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Serie,
-        Side, StringEnum, StructType, TimeInForce,
+        StringEnum, StructType,
     };
     use yggdryl::{CcyField, CfiField, CountryField, DxFeedExchangeFeed, Mic, MicField};
 
@@ -283,8 +283,7 @@ mod datatypes {
         assert!(refused.to_string().contains("4 bytes"), "{refused}");
         // An enum is no code: it packs into no integer, because its column
         // stores its member's code already.
-        assert!(Side::dtype().ascii_packed(b"BUY").is_err());
-        assert!(TimeInForce::dtype().ascii_packed(b"GTC").is_err());
+        assert!(DataType::State.ascii_packed(b"NEW").is_err());
     }
 
     #[test]
@@ -373,8 +372,9 @@ mod datatypes {
         // The listing is what a name resolves from, and two readers answer the
         // same members because it is a constant.
         for (name, count) in [
-            ("side", StringEnum::SIDES.len()),
-            ("timeinforce", StringEnum::TIMESINFORCE.len()),
+            ("ccy", StringEnum::CURRENCIES.len()),
+            ("country", StringEnum::COUNTRIES.len()),
+            ("mic", StringEnum::MICS.len()),
         ] {
             let built = StringEnum::from_logical_name(name).unwrap();
             assert_eq!(built.len(), count, "{name}");
@@ -385,12 +385,11 @@ mod datatypes {
             );
         }
         // Every prebuilt member fits the fixed ASCII width its string listing
-        // declares: a side or a time in force column itself stores enum codes
-        // and packs nothing, and the listing is the wire values a FIX field
-        // of that name holds.
+        // declares.
         for (name, dtype) in [
-            ("side", DataType::fixed_ascii(8).unwrap()),
-            ("timeinforce", DataType::fixed_ascii(8).unwrap()),
+            ("ccy", DataType::fixed_ascii(8).unwrap()),
+            ("country", DataType::fixed_ascii(2).unwrap()),
+            ("mic", DataType::fixed_ascii(4).unwrap()),
         ] {
             StringEnum::from_logical_name(name)
                 .unwrap()

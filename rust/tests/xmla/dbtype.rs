@@ -13,8 +13,7 @@ use arrow_schema::{
 };
 use yggdryl::xmla::DbType;
 use yggdryl::{
-    DataType, DataTypeId, DataTypeKind, Field, MarketDataKind, MarketDataType, Side, StructType,
-    TimeInForce, TimeUnit, Timezone, UnionMode,
+    DataType, DataTypeId, DataTypeKind, Field, StructType, TimeUnit, Timezone, UnionMode,
 };
 
 /// Every indicator with the number and the name `oledb.h` gives it, in the
@@ -214,11 +213,7 @@ fn every_datatype() -> Vec<DataType> {
         DataType::Ccy,
         DataType::Mic,
         DataType::Cfi,
-        Side::dtype(),
         DataType::State,
-        MarketDataKind::dtype(),
-        TimeInForce::dtype(),
-        MarketDataType::dtype(),
         DataType::Isin,
         DataType::Cusip,
         DataType::Sedol,
@@ -960,11 +955,7 @@ fn every_registered_code_is_wstr() {
         (DataType::Bbg, DbType::Wstr),
         (DataType::Figi, DbType::Wstr),
         (DataType::Ric, DbType::Wstr),
-        (Side::dtype(), DbType::Wstr),
         (DataType::State, DbType::Wstr),
-        (MarketDataKind::dtype(), DbType::Wstr),
-        (TimeInForce::dtype(), DbType::Wstr),
-        (MarketDataType::dtype(), DbType::Wstr),
         (DataType::Unit, DbType::Wstr),
         (DataType::Forex, DbType::Wstr),
         (DataType::Lei, DbType::Wstr),

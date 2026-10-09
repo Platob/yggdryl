@@ -12,8 +12,8 @@ mod columns {
     use yggdryl::xxhash::arrow::{column_digests, row_digests};
     use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
     use yggdryl::{
-        DataType, DataTypeId, Digest, DigestAlgorithm, Field, MarketDataKind, MarketDataType,
-        Scalar, Side, StructType, TimeInForce, TimeUnit, Timezone,
+        DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, StructType, TimeUnit,
+        Timezone,
     };
 
     fn root(fields: impl IntoIterator<Item = Field>) -> Field {
@@ -345,40 +345,12 @@ mod columns {
                 ]),
             ),
             (
-                Side::field("side"),
-                Scalar::from_sequence([Scalar::from("BUY"), Scalar::from("SELL"), Scalar::Null]),
-            ),
-            (
                 Field::new("msgtype", DataType::utf8(), true),
                 Scalar::from_sequence([Scalar::from("D"), Scalar::from("AE"), Scalar::Null]),
             ),
             (
                 Field::new("state", DataType::State, true),
                 Scalar::from_sequence([Scalar::from("NEW"), Scalar::from("FILLED"), Scalar::Null]),
-            ),
-            (
-                MarketDataKind::field("marketdatakind"),
-                Scalar::from_sequence([Scalar::from("ORDR"), Scalar::from("TRAD"), Scalar::Null]),
-            ),
-            (
-                MarketDataType::field("marketdatatype"),
-                Scalar::from_sequence([
-                    Scalar::from("ORDLIMIT"),
-                    Scalar::from("TRDBLOCK"),
-                    Scalar::Null,
-                ]),
-            ),
-            (
-                TimeInForce::field("timeinforce"),
-                Scalar::from_sequence([Scalar::from("0"), Scalar::from("6"), Scalar::Null]),
-            ),
-            (
-                Side::field("pluginside"),
-                Scalar::from_sequence([
-                    Scalar::from("BUYS"),
-                    Scalar::from("sell-side"),
-                    Scalar::Null,
-                ]),
             ),
             (
                 Field::new("unit", DataType::Unit, true),

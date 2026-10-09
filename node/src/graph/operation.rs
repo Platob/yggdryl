@@ -5,13 +5,13 @@
 
 use napi::bindgen_prelude::{BigInt, Either, Null, Result};
 use napi_derive::napi;
-use yggdryl::graph::{
+use yggdryl::{DataType, Decimal, Scalar};
+use yggdryl_market::graph::{
     BookRef as CoreBookRef, Execution as CoreExecution, ExecutionEvent as CoreExecutionEvent,
     ExecutionKind, MdUpdateAction as CoreMdUpdateAction, Order as CoreOrder,
     OrderEvent as CoreOrderEvent, OrderKind, Quote as CoreQuote, QuoteEvent as CoreQuoteEvent,
     QuoteKind,
 };
-use yggdryl::{DataType, Decimal, Scalar};
 
 use super::{decimal_text, instant_of, stated_operation};
 use crate::napi_error;

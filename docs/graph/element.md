@@ -28,8 +28,10 @@ An undated order read from two lines: one element, two sources.
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Order};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::Order;
     use yggdryl::Uuid;
+    yggdryl_market::install()?;
 
     let mut order = Order::new();
     order.set_crosscode("O-1001".to_owned());

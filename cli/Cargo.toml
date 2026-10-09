@@ -27,6 +27,8 @@ doc = false
 # core a consumer has, and `yggdryl xmla serve` answers on the core's HTTP
 # server.
 yggdryl = { path = "../rust", features = ["http"] }
+yggdryl-market = { workspace = true, features = ["http"] }
+yggdryl-fix = { workspace = true, features = ["http"] }
 # Argument parsing with derived help, so every command documents itself and
 # `--help` is generated from the same declaration the parser uses.
 clap = { version = "4.5", features = ["derive", "wrap_help"] }
@@ -36,12 +38,21 @@ clap = { version = "4.5", features = ["derive", "wrap_help"] }
 crossterm = { version = "0.29", default-features = false, features = ["events", "windows"] }
 shlex = "2.0"
 
+[dev-dependencies]
+# What the pages' Rust blocks name beside the crates, compiled by
+# `scripts/check_docs_examples.py` into `tests/docs_examples.rs`.
+arrow-array.workspace = true
+arrow-schema.workspace = true
+log.workspace = true
+serde_json = "1.0"
+smol_str = "=0.3.2"
+
 [features]
 # `yggdryl xmla serve` over an Iceberg folder needs the core's table reader;
 # without it an Iceberg table is listed and refused on read, by name. The
 # staged binary (`scripts/stage_cli.py`) enables it; the default build stays the
 # schema-only core.
-iceberg = ["yggdryl/iceberg"]
+iceberg = ["yggdryl/iceberg", "yggdryl-market/iceberg", "yggdryl-fix/iceberg"]
 # `yggdryl xmla serve` over an S3 location, and over an Amazon S3 Tables
 # table bucket (`s3tables://<bucket>`): the core's object store and its
 # table-bucket catalog. The staged binary enables `s3tables`, which implies

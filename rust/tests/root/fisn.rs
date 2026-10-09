@@ -128,10 +128,9 @@ mod similarity {
     }
 
     #[test]
-    fn one_edit_in_thirteen_passes_the_default_threshold() {
+    fn one_edit_in_thirteen_scores_twelve_thirteenths() {
         let score = name("APPLE INC/SH").similarity(&name("APPLE INC./SH"));
         assert!((score - 12.0 / 13.0).abs() < 1e-12, "{score}");
-        assert!(score >= yggdryl::IsinRegistry::DEFAULT_ECONOMIC_THRESHOLD);
         assert_eq!(name("ACME CORP/SH").similarity(&name("ACME CORP/SH")), 1.0);
         assert_eq!(
             name("AB/C").similarity(&name("XY/Z")),

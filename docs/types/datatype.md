@@ -71,6 +71,9 @@ A FIX name resolves to, and displays as, an ordinary datatype. `DataType::logica
     ```rust
     use yggdryl::{DataType, StringEnum, TimeUnit, Timezone};
 
+    // The FIX Latest names are yggdryl-fix's, claimed by its `install()`.
+    yggdryl_fix::install()?;
+
     // A name is one more spelling of a datatype, so it displays as that datatype.
     let price = DataType::from_logical_name("Price")?;
     assert_eq!(price, DataType::Float64);
@@ -98,7 +101,7 @@ A FIX name resolves to, and displays as, an ordinary datatype. `DataType::logica
     );
     assert!(DataType::logical_names().contains(&("ccy", DataType::Ccy)));
 
-    // Three of the names also prebuild the vocabulary their codes come from.
+    // A code's name also prebuilds the vocabulary its codes come from.
     assert_eq!(StringEnum::prebuilt_values("MIC"), StringEnum::MICS);
     assert!(StringEnum::prebuilt_values("tenor").is_empty());
     // A name that is a width rather than a code resolves to the fixed string.
@@ -129,7 +132,7 @@ A FIX name resolves to, and displays as, an ordinary datatype. `DataType::logica
     assert DataType("utc_date_only") == DataType("datetime64(ns, UTC)")
     assert DataType.logical_names()["ccy"] == DataType("ccy")
 
-    # Three of the names also prebuild the vocabulary their codes come from.
+    # A code's name also prebuilds the vocabulary its codes come from.
     assert StringEnum.prebuilt()["mic"] == StringEnum.prebuilt()["exchange"]
     assert "tenor" not in StringEnum.prebuilt()
     # A name that is a width rather than a code resolves to the fixed string.
@@ -161,7 +164,7 @@ A FIX name resolves to, and displays as, an ordinary datatype. `DataType::logica
     assert.equal(DataType.from('utc_date_only').id, 'datetime64')
     assert.equal(DataType.logicalNames().ccy.id, 'ccy')
 
-    // Three of the names also prebuild the vocabulary their codes come from.
+    // A code's name also prebuilds the vocabulary its codes come from.
     assert.deepEqual(StringEnum.prebuilt().mic, StringEnum.prebuilt().exchange)
     assert.equal(StringEnum.prebuilt().tenor, undefined)
     // A name that is a width rather than a code resolves to the fixed string.
@@ -172,7 +175,7 @@ A FIX name resolves to, and displays as, an ordinary datatype. `DataType::logica
     assert.equal(DataType.from('float').id, 'float32')
     ```
 
-The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifiers `isin`, `cusip`, `sedol`, `bbg`, `ric` and `figi`, the codes `unit` and `forex`, and the reference-data codes `lei`, `bic`, `elf`, `dti` and `fisn`, each resolving to its own [code](codes/index.md), and `side`, `state`, `marketdatakind`, `marketdatatype` and `timeinforce` to the [Side](enum/side.md), [State](enum/state.md), [MarketDataKind](enum/marketdatakind.md), [MarketDataType](enum/marketdatatype.md) and [TimeInForce](enum/timeinforce.md) enums; `ccy`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
+The registry is the FIX Latest table - `yggdryl-fix`'s, claimed by its `install()` - plus `mic`, `cfi`, the securities identifiers `isin`, `cusip`, `sedol`, `bbg`, `ric` and `figi`, the codes `unit` and `forex`, and the reference-data codes `lei`, `bic`, `elf`, `dti` and `fisn`, each resolving to its own [code](codes/index.md), and `side`, `state`, `marketdatakind`, `marketdatatype` and `timeinforce` to the [Side](enum/side.md), [State](enum/state.md), [MarketDataKind](enum/marketdatakind.md), [MarketDataType](enum/marketdatatype.md) and [TimeInForce](enum/timeinforce.md) enums; `ccy`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md), and `side` and `timeinforce` the market crate's once its `install()` registers them.
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
@@ -303,12 +306,14 @@ Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase string
 
 A registered kind - one of the four market [enums](enum/index.md) `marketdatakind`, `side`, `marketdatatype` and `timeinforce`, or an enum a crate claims - is no variant of its own. It is a `MarketDescriptor`, one `static` in the kind's root file (`SIDE_KIND`), and the one `DataType::Market` variant holds it through a `MarketType`, as `Field::Market`, `Scalar::Market` (a `MarketScalar`) and `Serie::Market` (a `MarketSerie`) do beside it. The descriptor states the kind's byte in the enum range, its name, its Arrow extension name, its storage - `MarketStorage::Code8` or `Code16`, the `uint8` or `uint16` code of a member - its `members` in code order, the ranks its values and its datatype order and hash by, and `read`, the door a spelling crosses into a member's code. The kind's own type answers `ID`, `NAME` and `EXTENSION_NAME` (`Side::ID`), its datatype and a nullable field of it, `dtype()` and `field(name)` (`Side::dtype()`, `Side::field("side")`: written once by `enum_leaf!`'s market arm for every kind, with no constructor per kind on `DataType`), and `MarketValue`, the owned narrowing of a scalar back to it. The seventeen [codes](codes/index.md) are not registered kinds: each is a variant of its own, like every other core leaf, and `DataTypeId::ALL` counts them.
 
-A kind is claimed once, by `yggdryl::market::claim(kind, by)`, under its byte, its name and its extension name, and a second claim of any of the three is refused naming the first claimant. The byte is a free one in the enum range: `0xc2..=0xc5` are the core's four kinds, `0xc1` is `state`, `0xc6` is retired and no kind takes it again, and `0xc7..=0xcf` are free. A claim by a crate other than the core states the reserved ranks, at least one member in code order within the storage's width, a name in its folded spelling that the datatype grammar does not already read, and an extension name the core does not recognize. Every intake - a parsed name, a serde tag, a value-stream byte, an Arrow extension name - reads the register through `market::kind_of(id)`, `market::kind_named(name)` and `market::kind_for_extension(name)`, and `market::kinds()` lists every claim in byte order; a value in hand carries its kind and reads nothing. A name no claim answers is refused as ``unknown datatype "x": no registered datatype answers it; install the crate that claims it and call its `install()` ``. Until the kinds move to `yggdryl-market`, the core claims its own four itself before the register answers anything, so `side` parses with nothing installed.
+A kind is claimed once, by `yggdryl::market::claim(kind, by)`, under its byte, its name and its extension name, and a second claim of any of the three is refused naming the first claimant - read before the ranks, the members and the name the kind states, so a reserved kind claimed again, by any crate, is that conflict. The byte is a free one in the enum range: `0xc2..=0xc5` are the four market kinds `yggdryl-market` owns, each claimed only at the byte, name, extension name and ranks `RESERVED_KINDS` reserves for it, by that crate, `0xc1` is `state`, `0xc6` is retired and no kind takes it again, and `0xc7..=0xcf` are free. Any other kind states the reserved ranks, at least one member in code order within the storage's width, a name in its folded spelling that the datatype grammar does not already read, and an extension name the core does not recognize. Every intake - a parsed name, a serde tag, a value-stream byte, an Arrow extension name - reads the register through `market::kind_of(id)`, `market::kind_named(name)` and `market::kind_for_extension(name)`, and `market::kinds()` lists every claim in byte order; a value in hand carries its kind and reads nothing. A name no claim answers is refused as ``unknown datatype "x": no registered datatype answers it``, and a reserved kind's name or extension name adds the install that claims it - ``unknown datatype "side": no registered datatype answers it; `side` is read only once the crate that claims it is installed (`yggdryl_market::install()`) `` - which `DataType::from_logical_name` says too beside the names it lists, so `side` parses only once `yggdryl_market::install()` has claimed it.
 
-The register is Rust only; Python and JavaScript reach the kinds exactly as before - `DataType("side")`, the field factories and every value door - and gain no door.
+The register is Rust only; Python and JavaScript reach the kinds as every datatype - `DataType("side")`, the field factories and every value door - and gain no door.
 
 ```rust
-use yggdryl::{market, DataType, Side, SIDE_KIND};
+use yggdryl::{market, DataType};
+use yggdryl_market::{Side, SIDE_KIND};
+yggdryl_market::install()?;
 
 let side = DataType::from_str("side")?;
 let DataType::Market(kind) = &side else {

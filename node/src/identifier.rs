@@ -8,7 +8,8 @@ use std::collections::{BTreeMap, HashMap};
 
 use napi::bindgen_prelude::{ClassInstance, Result};
 use napi_derive::napi;
-use yggdryl::{IdKey, IdType, Identifier, Identifiers, Scalar};
+use yggdryl::Scalar;
+use yggdryl_market::{IdKey, IdType, Identifier, Identifiers};
 
 use crate::{napi_error, ordering_value};
 

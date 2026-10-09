@@ -3,7 +3,7 @@
 
 use pyo3::prelude::*;
 
-use yggdryl::graph::{EventIterator as CoreEventIterator, MarketData as CoreMarketData};
+use yggdryl_market::graph::{EventIterator as CoreEventIterator, MarketData as CoreMarketData};
 
 use super::market_data::{PyMarketData, market_data_of};
 use crate::{Failed, Pulled};

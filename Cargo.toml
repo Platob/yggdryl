@@ -4,7 +4,7 @@
 # lints live here so the core and the bindings cannot drift apart.
 [workspace]
 resolver = "3"
-members = ["rust", "python", "node", "cli"]
+members = ["rust", "rust/market", "rust/fix", "python", "node", "cli"]
 # Root commands target the Rust source of truth. Bindings remain explicit
 # workspace members and are selected with `--workspace` or their own tools.
 default-members = ["rust"]
@@ -17,6 +17,11 @@ license = "Apache-2.0"
 repository = "https://github.com/platob/yggdryl"
 
 [workspace.dependencies]
+# The workspace's own crates, pinned to the one version every artifact
+# carries, so a published crate names exactly the core it was built with.
+yggdryl = { path = "rust", version = "=0.1.21" }
+yggdryl-market = { path = "rust/market", version = "=0.1.21" }
+yggdryl-fix = { path = "rust/fix", version = "=0.1.21" }
 # `ffi` on the Arrow crates is what the Python extension's own `arrow-pyarrow`
 # switches on anyway, and neither it nor `std` on `log` adds a crate to any
 # graph. Declared here, they give the core one feature set under

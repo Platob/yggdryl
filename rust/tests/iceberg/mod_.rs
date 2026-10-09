@@ -1698,7 +1698,7 @@ mod types {
     #[test]
     fn an_enum_bound_is_the_int_its_column_stores() {
         use yggdryl::internals::iceberg_value::{is_portable, single_to_value, single_value};
-        use yggdryl::{MarketDataKind, Scalar, Side, State, TimeInForce};
+        use yggdryl::{Scalar, State};
 
         // An enum column stores its member's code, so its bounds are Iceberg
         // ints a planner compares in code order - a state's in lifecycle
@@ -1724,23 +1724,6 @@ mod types {
                 Scalar::State(State::Expired),
                 State::Expired.code(),
             ),
-            (
-                MarketDataKind::dtype(),
-                Scalar::from(MarketDataKind::Order),
-                10,
-            ),
-            (
-                MarketDataKind::dtype(),
-                Scalar::from(MarketDataKind::Unknown),
-                0,
-            ),
-            (Side::dtype(), Scalar::from(Side::Buy), 1),
-            (Side::dtype(), Scalar::from(Side::SellUnd), 17),
-            (
-                TimeInForce::dtype(),
-                Scalar::from(TimeInForce::GoodTillCancel),
-                2,
-            ),
         ];
         for (dtype, exact, code) in members {
             assert!(is_portable(&dtype), "{dtype}");
@@ -1758,11 +1741,6 @@ mod types {
             single_to_value(&7_i32.to_le_bytes(), &DataType::State),
             None
         );
-        assert_eq!(
-            single_to_value(&26_i32.to_le_bytes(), &MarketDataKind::dtype()),
-            None
-        );
-        assert_eq!(single_to_value(&18_i32.to_le_bytes(), &Side::dtype()), None);
     }
 
     #[test]

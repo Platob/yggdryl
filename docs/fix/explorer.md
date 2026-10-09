@@ -29,8 +29,10 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
 === "Rust"
 
     ```rust
-    use yggdryl::{TRANSUNIX_TAG_NAME, DataType, FixField, FixId, FixRegistry};
+    use yggdryl_fix::{TRANSUNIX_TAG_NAME, FixField, FixId, FixRegistry};
+    use yggdryl::DataType;
     use yggdryl::local::LocalFolder;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;

@@ -16,14 +16,13 @@
 //! register, each the code of a member of its closed set; and `state` is
 //! the core's own enum leaf.
 //!
-//! The core's own names are its codes and `state`. The codes keep the
-//! names FIX gives them beside their own: `exchange` is FIX's name for what
+//! The core's own names are its codes and `state`. The codes keep the names
+//! FIX gives them beside their own: `exchange` is FIX's name for what
 //! ISO 10383 calls `mic`, and the dictionary generator resolves FIX's
 //! `Currency` source type to `ccy`, which schema declarations use directly.
 //! The FIX Latest datatype names - `Qty`, `UTCTimestamp`, `Tenor` and the
-//! rest - are the FIX module's own table, which the core's seed claims
-//! beside its names until the FIX crate claims it itself; the listing
-//! reads them as one, in name order.
+//! rest - are `yggdryl-fix`'s own table, which its `install()` claims
+//! beside the core's names; the listing reads them as one, in name order.
 //!
 //! | FIX | base | resolves to | why |
 //! | --- | --- | --- | --- |
@@ -31,7 +30,6 @@
 //! | `Country` | String | `country` | ISO 3166-1 alpha-2, its own two bytes |
 //! | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, exactly 4 bytes |
 //! | `cfi` | - | `cfi` | ISO 10962, exactly 6 bytes |
-//! | `Side` | char | `side` | a code set the standard declares, stored as its `uint8` code |
 //! | `UnitOfMeasure` | String | `unit` | the unit a quantity is stated in, at most 32 bytes |
 
 use std::sync::OnceLock;
@@ -54,8 +52,8 @@ static LOGICAL_NAMES: Register<&'static str, (&'static str, DataType)> =
 static SEEDED: OnceLock<()> = OnceLock::new();
 
 /// The core's own logical names over its own datatypes - its codes and
-/// `state` - claimed first when the register is seeded, the FIX Latest
-/// names of `crate::fix::LOGICAL_NAMES` beside them. The registered enum
+/// `state` - claimed first when the register is seeded; `yggdryl-fix` claims the
+/// FIX Latest names beside them through its `install()`. The registered enum
 /// kinds' names are the kinds' own, answered from the market register
 /// beside these.
 ///
@@ -100,12 +98,10 @@ const CORE_NAMES: &[(&str, DataType)] = &[
     ("fisn", DataType::Fisn),
 ];
 
-/// The core's names claimed, once, before the register answers anything,
-/// and the FIX Latest names beside them: the FIX module's table, which the
-/// core claims until the FIX crate claims it itself.
+/// The core's names claimed, once, before the register answers anything.
 fn seed() {
     SEEDED.get_or_init(|| {
-        for (name, dtype) in CORE_NAMES.iter().chain(crate::fix::LOGICAL_NAMES).cloned() {
+        for (name, dtype) in CORE_NAMES.iter().cloned() {
             // The core states each of its names once.
             LOGICAL_NAMES
                 .claim(name, (name, dtype), CORE)
@@ -123,7 +119,6 @@ impl DataType {
     /// use yggdryl::DataType;
     ///
     /// let names = DataType::logical_names();
-    /// assert!(names.contains(&("price", DataType::Float64)));
     /// assert!(names.contains(&("isin", DataType::isin())));
     /// assert!(names.contains(&("exchange", DataType::mic())));
     /// ```
@@ -190,13 +185,10 @@ impl DataType {
         }
         dtype.validate()?;
         seed();
-        // The market register seeds under its own lock, so it is seeded
-        // before the lock is taken here; then, under that lock from the
-        // first read, a name claimed as a kind and as a logical name is a
-        // conflict on whichever came second. A word the grammar answers
-        // before the register would never reach a name claimed over it; a
-        // claimed name is the claim's conflict.
-        crate::market::seed();
+        // Under the market register's lock, a name claimed as a kind and as a
+        // logical name is a conflict on whichever came second. A word the
+        // grammar answers before the register would never reach a name claimed
+        // over it; a claimed name is the claim's conflict.
         let _claiming = crate::market::claiming();
         if LOGICAL_NAMES.get(name).is_none()
             && (crate::market::kind_named(name).is_some() || DataType::from_str(name).is_ok())
@@ -214,52 +206,45 @@ impl DataType {
     /// name resolves identically alone and inside an expression.
     ///
     /// ```
-    /// use yggdryl::{DataType, DateTimeType, TimeUnit, Timezone};
+    /// use yggdryl::DataType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// // One canonical spelling: a name resolves to a datatype and displays
     /// // as that datatype.
-    /// let price = DataType::from_logical_name("Price")?;
-    /// assert_eq!(price, DataType::Float64);
-    /// assert_eq!(price.to_string(), "float64");
+    /// let venue = DataType::from_logical_name("Exchange")?;
+    /// assert_eq!(venue, DataType::Mic);
+    /// assert_eq!(venue.to_string(), "mic");
     ///
-    /// // The same lookup backs the grammar, so a name types a column. Some
-    /// // of the names answer a datatype of their own rather than a width.
-    /// let row: DataType = "struct<ccy: Ccy, venue: MIC, px: Price, at: UTCTimestamp>".parse()?;
+    /// // The same lookup backs the grammar, so a name types a column. A crate
+    /// // above the core registers names of its own beside these.
+    /// let row: DataType = "struct<ccy: Ccy, venue: Exchange, at: utf8>".parse()?;
     /// assert_eq!(row.get_field_by_path("venue").map(|field| field.dtype().clone()), Some(DataType::Mic));
     /// assert_eq!(row.get_field_by_path("ccy").map(|field| field.dtype().clone()), Some(DataType::Ccy));
-    /// assert_eq!(
-    ///     row.get_field_by_path("at").map(|field| field.dtype().clone()),
-    ///     Some(DataType::DateTime64 {
-    ///         unit: TimeUnit::Nanosecond,
-    ///         timezone: Timezone::UTC,
-    ///     })
-    /// );
     ///
     /// // Separators and case are folded, exactly as elsewhere in the grammar.
-    /// // A FIX date is that day's midnight, so it resolves to an instant.
-    /// assert_eq!(
-    ///     DataType::from_logical_name(" utc_date_only ")?,
-    ///     DataType::DateTime64 {
-    ///         unit: TimeUnit::Nanosecond,
-    ///         timezone: Timezone::UTC,
-    ///     }
-    /// );
+    /// assert_eq!(DataType::from_logical_name(" ex_change ")?, DataType::Mic);
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// # Errors
     ///
-    /// Returns an error naming the registered vocabulary when `name` is not in
-    /// it.
+    /// Returns an error naming the registered vocabulary when `name` is not
+    /// in it, and the install that claims it where `name` is a reserved
+    /// market kind's.
     pub fn from_logical_name(name: &str) -> Result<Self> {
-        folded_logical_name(&normalized(name.trim())).ok_or_else(|| Error::InvalidDataType {
-            kind: "logical",
-            reason: crate::text::expected_got(
-                format_args!("a registered logical name ({})", logical_vocabulary()),
-                format_smolstr!("{name:?}"),
-            ),
+        folded_logical_name(&normalized(name.trim())).ok_or_else(|| {
+            let vocabulary = logical_vocabulary();
+            let expected = match crate::market::uninstalled(name) {
+                Some(install) => {
+                    format_smolstr!("a registered logical name ({vocabulary}; {install})")
+                }
+                None => format_smolstr!("a registered logical name ({vocabulary})"),
+            };
+            Error::InvalidDataType {
+                kind: "logical",
+                reason: crate::text::expected_got(expected, format_smolstr!("{name:?}")),
+            }
         })
     }
 }

@@ -3,7 +3,7 @@
 
 use napi::bindgen_prelude::{BigInt, Either, Env, Function, Result};
 use napi_derive::napi;
-use yggdryl::graph::{EventIterator as CoreEventIterator, MarketData as CoreMarketData};
+use yggdryl_market::graph::{EventIterator as CoreEventIterator, MarketData as CoreMarketData};
 
 use super::market_data::JsMarketData;
 use super::{AnyMarketData, instant_of, market_data_of};

@@ -18,8 +18,10 @@
 //!
 //! What a kind states beside its storage are the three numbers its values
 //! and its datatype order and hash by (`value_rank`, `dtype_rank`, `shape`),
-//! wire contracts the core's kinds carried before they were registered and
-//! never move; a kind claimed later takes the reserved numbers.
+//! wire contracts that never move: a reserved kind - the four
+//! `yggdryl-market` owns - is claimed only at its reserved byte, name,
+//! extension name and numbers, by the crate that owns it, so every wire pin
+//! holds, and any other kind takes the reserved numbers every kind shares.
 
 use std::cmp::Ordering;
 use std::fmt;
@@ -109,11 +111,11 @@ pub struct MarketDescriptor {
 }
 
 impl MarketDescriptor {
-    /// The reserved value rank a kind claimed by another crate takes.
+    /// The value rank every kind but a reserved one takes.
     pub const RESERVED_ENUM_VALUE_RANK: u8 = 33;
-    /// The reserved datatype rank a kind claimed by another crate takes.
+    /// The datatype rank every kind but a reserved one takes.
     pub const RESERVED_DTYPE_RANK: u8 = 81;
-    /// The reserved shape position a kind claimed by another crate takes.
+    /// The shape position every kind but a reserved one hashes as.
     pub const RESERVED_SHAPE: isize = 73;
 
     /// The datatype of this kind.
@@ -520,34 +522,55 @@ static BY_NAME: Register<&'static str, &'static MarketDescriptor> = Register::ne
 static BY_EXTENSION: Register<&'static str, &'static MarketDescriptor> =
     Register::new("market kind extension name");
 static BY_BYTE: [OnceLock<&'static MarketDescriptor>; 256] = [const { OnceLock::new() }; 256];
-static SEEDED: OnceLock<()> = OnceLock::new();
 static CLAIMING: Mutex<()> = Mutex::new(());
 
 /// The bytes no kind may claim again: the one a retired kind held.
 const RETIRED: [u8; 1] = [0xc6];
 
-/// The core's own kinds, in byte order: what the register seeds itself
-/// with before it answers anything, until the crate that owns them claims
-/// them through [`claim`] itself.
-const CORE_KINDS: [&MarketDescriptor; 4] = [
-    &crate::marketdatakind::MARKETDATAKIND_KIND,
-    &crate::side::SIDE_KIND,
-    &crate::marketdatatype::MARKETDATATYPE_KIND,
-    &crate::timeinforce::TIMEINFORCE_KIND,
+/// One reserved kind: the keys it is claimed under and the three numbers
+/// its values and its datatype order and hash by.
+struct ReservedKind {
+    byte: u8,
+    name: &'static str,
+    extension_name: &'static str,
+    /// `(value_rank, dtype_rank, shape)`.
+    numbers: (u8, u8, isize),
+}
+
+/// The reserved kinds, in byte order - the wire contract the value stream,
+/// serde, Arrow, the rank order and the structural hash read. A reserved
+/// kind is claimed only at its byte, name, extension name and numbers
+/// together, by [`RESERVED_OWNER`], so every wire pin holds; every other
+/// kind takes the reserved numbers.
+const RESERVED_KINDS: [ReservedKind; 4] = [
+    ReservedKind {
+        byte: 0xc2,
+        name: "marketdatakind",
+        extension_name: "yggdryl.marketdatakind",
+        numbers: (28, 73, 64),
+    },
+    ReservedKind {
+        byte: 0xc3,
+        name: "side",
+        extension_name: "yggdryl.side",
+        numbers: (29, 53, 28),
+    },
+    ReservedKind {
+        byte: 0xc4,
+        name: "marketdatatype",
+        extension_name: "yggdryl.marketdatatype",
+        numbers: (30, 74, 65),
+    },
+    ReservedKind {
+        byte: 0xc5,
+        name: "timeinforce",
+        extension_name: "yggdryl.timeinforce",
+        numbers: (31, 56, 30),
+    },
 ];
 
-/// The core's own kinds, claimed before the register answers anything;
-/// what every reader runs first, and what a claim of the logical names runs
-/// before it takes the registers' lock, since the seeding takes it too.
-pub(crate) fn seed() {
-    SEEDED.get_or_init(|| {
-        for kind in CORE_KINDS {
-            // The core's claims cannot conflict: each byte, name and
-            // extension name is stated once in the crate.
-            claim_unseeded(kind, CORE).expect("the core's own kinds claim cleanly");
-        }
-    });
-}
+/// The crate that owns the reserved kinds and alone claims them.
+const RESERVED_OWNER: &str = "yggdryl-market";
 
 /// Claim `kind` for the crate `by`: its byte, its name and its extension
 /// name, each once for the life of the process.
@@ -555,26 +578,29 @@ pub(crate) fn seed() {
 /// # Errors
 ///
 /// Returns [`Error::Conflict`] naming the first claimant where the byte,
-/// the name or the extension name is claimed already, and
-/// [`Error::InvalidDataType`] where the kind disagrees with itself or with
-/// the core: a claim in the core's own name, which only the core's seeding
-/// makes; a byte outside the Enum family, the family's own number, the
-/// retired byte, one the core's `state` holds; a claim stating anything
-/// but the reserved `(value_rank, dtype_rank, shape)`; no member, members
+/// the name or the extension name is claimed already - read before the
+/// numbers the kind states, so a claimed kind claimed again is that
+/// conflict whoever claims it - and [`Error::InvalidDataType`] where the
+/// kind disagrees with itself or with the core: a claim in the core's own
+/// name, which claims no kind; a byte outside the Enum family, the family's
+/// own number, the retired byte, one the core's `state` holds; a reserved
+/// kind's byte, name or extension name claimed without the other two, or by
+/// a crate other than the one that owns it (`yggdryl-market`); a
+/// `(value_rank, dtype_rank, shape)` other than the kind's due - a reserved
+/// kind's own numbers, the reserved ones for any other; no member, members
 /// out of code order or one past the storage's width; a name not in its
 /// folded spelling or one the datatype grammar already reads; an extension
 /// name the core recognizes.
 pub fn claim(kind: &'static MarketDescriptor, by: &'static str) -> Result<()> {
-    seed();
     if by == CORE {
         return Err(Error::InvalidDataType {
             kind: kind.name,
             reason: format_smolstr!(
-                "expected the claiming crate's own name, got {CORE:?}, which the core's kinds alone claim as"
+                "expected the claiming crate's own name, got {CORE:?}, the core's, which claims no kind: a reserved kind is {RESERVED_OWNER:?}'s to claim"
             ),
         });
     }
-    claim_unseeded(kind, by)
+    claim_kind(kind, by)
 }
 
 /// The one lock a claim of any register takes: the market kinds' three
@@ -586,7 +612,7 @@ pub(crate) fn claiming() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-fn claim_unseeded(kind: &'static MarketDescriptor, by: &'static str) -> Result<()> {
+fn claim_kind(kind: &'static MarketDescriptor, by: &'static str) -> Result<()> {
     let byte = kind.id.as_u8();
     let family = kind.id.kind();
     let refuse = |reason: SmolStr| Error::InvalidDataType {
@@ -615,22 +641,76 @@ fn claim_unseeded(kind: &'static MarketDescriptor, by: &'static str) -> Result<(
             "expected a free byte, got {byte:#04x}, which the core's `{core}` holds"
         )));
     }
-    // The numbers a kind orders and hashes by are wire contracts the core's
-    // own kinds carried as variants; any other claim takes the reserved
-    // ones, so no rank or shape ever collides with the core's and nothing
-    // sorts or hashes two kinds as one.
-    if by != CORE {
-        let expected = (
+    // One claim at a time: the three keys are checked together and taken
+    // together, so no kind is ever half claimed and a refusal names the
+    // first claimant of whichever key is held - read before the numbers,
+    // the members and the name the kind states.
+    let _claiming = claiming();
+    if let Some(held) = BY_BYTE[usize::from(byte)].get() {
+        return Err(Error::Conflict {
+            expected: "market kind byte",
+            actual: BY_NAME.claimant(held.name).unwrap_or(CORE),
+            path: format_smolstr!("{byte:#04x} ({})", held.name),
+        });
+    }
+    if let Some(first) = BY_NAME.claimant(kind.name) {
+        return Err(Error::Conflict {
+            expected: "market kind",
+            actual: first,
+            path: SmolStr::new(kind.name),
+        });
+    }
+    if let Some(first) = BY_EXTENSION.claimant(kind.extension_name) {
+        return Err(Error::Conflict {
+            expected: "market kind extension name",
+            actual: first,
+            path: SmolStr::new(kind.extension_name),
+        });
+    }
+    // The numbers a kind orders and hashes by are wire contracts: a reserved
+    // kind is claimed at its own byte, name, extension name and numbers by
+    // the crate that owns it, and any other claim states the reserved ones,
+    // so no rank or shape ever collides and nothing sorts or hashes two
+    // kinds as one. Once a reserved kind is claimed, a second claim of any
+    // of its keys is the conflict naming its claimant.
+    let reserved = RESERVED_KINDS.iter().find(|reserved| {
+        reserved.byte == byte
+            || reserved.name == kind.name
+            || reserved.extension_name == kind.extension_name
+    });
+    let expected = match reserved {
+        Some(reserved) => {
+            let ReservedKind {
+                byte: reserved_byte,
+                name,
+                extension_name,
+                numbers,
+            } = *reserved;
+            if (reserved_byte, name, extension_name) != (byte, kind.name, kind.extension_name) {
+                return Err(refuse(format_smolstr!(
+                    "expected `{name}` at {reserved_byte:#04x} under {extension_name:?}, the keys the reserved kind is claimed by together, got `{}` at {byte:#04x} under {:?}",
+                    kind.name,
+                    kind.extension_name
+                )));
+            }
+            if by != RESERVED_OWNER {
+                return Err(refuse(format_smolstr!(
+                    "expected {RESERVED_OWNER:?}, the crate that owns the reserved kind `{name}`, got {by:?}"
+                )));
+            }
+            numbers
+        }
+        None => (
             MarketDescriptor::RESERVED_ENUM_VALUE_RANK,
             MarketDescriptor::RESERVED_DTYPE_RANK,
             MarketDescriptor::RESERVED_SHAPE,
-        );
-        if (kind.value_rank, kind.dtype_rank, kind.shape) != expected {
-            return Err(refuse(format_smolstr!(
-                "expected the reserved (value_rank, dtype_rank, shape) {expected:?}, got {:?}",
-                (kind.value_rank, kind.dtype_rank, kind.shape)
-            )));
-        }
+        ),
+    };
+    if (kind.value_rank, kind.dtype_rank, kind.shape) != expected {
+        return Err(refuse(format_smolstr!(
+            "expected the reserved (value_rank, dtype_rank, shape) {expected:?}, got {:?}",
+            (kind.value_rank, kind.dtype_rank, kind.shape)
+        )));
     }
     // The member table is what the codes are read by, in code order and at
     // the storage's width.
@@ -689,39 +769,12 @@ fn claim_unseeded(kind: &'static MarketDescriptor, by: &'static str) -> Result<(
             kind.extension_name
         )));
     }
-    // One claim at a time: the three keys are checked together and taken
-    // together, so no kind is ever half claimed and a refusal names the
-    // first claimant of whichever key is held.
-    let _claiming = claiming();
-    if let Some(held) = BY_BYTE[usize::from(byte)].get() {
-        return Err(Error::Conflict {
-            expected: "market kind byte",
-            actual: BY_NAME.claimant(held.name).unwrap_or(CORE),
-            path: format_smolstr!("{byte:#04x} ({})", held.name),
-        });
-    }
-    if let Some(first) = BY_NAME.claimant(kind.name) {
-        return Err(Error::Conflict {
-            expected: "market kind",
-            actual: first,
-            path: SmolStr::new(kind.name),
-        });
-    }
-    // The grammar reads the register, which is seeding while the core's
-    // own kinds claim, so the core's names - no word of the grammar, which
-    // their tests pin - are not asked of it here.
-    if by != CORE && DataType::from_str(kind.name).is_ok() {
+    // A name the grammar already reads would never reach the register.
+    if DataType::from_str(kind.name).is_ok() {
         return Err(refuse(format_smolstr!(
             "expected a name the datatype grammar does not read, got {:?}",
             kind.name
         )));
-    }
-    if let Some(first) = BY_EXTENSION.claimant(kind.extension_name) {
-        return Err(Error::Conflict {
-            expected: "market kind extension name",
-            actual: first,
-            path: SmolStr::new(kind.extension_name),
-        });
     }
     // The byte table is written first, so a name or an extension name
     // answered by a reader is a kind whose byte validates already; every
@@ -735,37 +788,56 @@ fn claim_unseeded(kind: &'static MarketDescriptor, by: &'static str) -> Result<(
 /// The kind one identifier byte is claimed by, or `None`.
 #[must_use]
 pub fn kind_of(id: DataTypeId) -> Option<&'static MarketDescriptor> {
-    seed();
     BY_BYTE[usize::from(id.as_u8())].get().copied()
 }
 
 /// The kind one canonical name is claimed by, or `None`.
 #[must_use]
 pub fn kind_named(name: &str) -> Option<&'static MarketDescriptor> {
-    seed();
     BY_NAME.get(name)
 }
 
 /// The kind one Arrow extension name is claimed by, or `None`.
 #[must_use]
 pub fn kind_for_extension(name: &str) -> Option<&'static MarketDescriptor> {
-    seed();
     BY_EXTENSION.get(name)
 }
 
 /// Every claimed kind, in byte order.
 #[must_use]
 pub fn kinds() -> Vec<&'static MarketDescriptor> {
-    seed();
     BY_BYTE
         .iter()
         .filter_map(|slot| slot.get().copied())
         .collect()
 }
 
+/// What a refusal of a word no claim answers adds where the word is a
+/// reserved kind's name - folded as every door folds a datatype word - or
+/// its extension name: the install of the crate [`RESERVED_OWNER`] names,
+/// said once, since [`Error::UnknownDataType`] and the logical names'
+/// refusal both spell it. Any other word - a typo, another crate's kind
+/// before its claim - has no install to name.
+pub(crate) fn uninstalled(word: &str) -> Option<SmolStr> {
+    let word = word.trim();
+    RESERVED_KINDS
+        .iter()
+        .find(|reserved| {
+            crate::parser::folds_equal(word, reserved.name) || word == reserved.extension_name
+        })
+        .map(|reserved| {
+            format_smolstr!(
+                "`{}` is read only once the crate that claims it is installed (`{}::install()`)",
+                reserved.name,
+                RESERVED_OWNER.replace('-', "_")
+            )
+        })
+}
+
 /// The refusal of a name, a byte or a tag no claim answers: `what` names
 /// it - the word parsed, the serde tag, the value-stream byte - and the
-/// refusal says to install the crate that claims it.
+/// refusal names the install that claims it where `what` is a reserved
+/// kind's ([`uninstalled`]).
 pub(crate) fn unregistered(what: fmt::Arguments<'_>) -> Error {
     Error::UnknownDataType(format_smolstr!("{what}"))
 }

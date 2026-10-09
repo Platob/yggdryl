@@ -3,13 +3,13 @@
 use std::collections::HashMap;
 
 use napi_derive::napi;
-use yggdryl::graph::{
-    ElementColumn, EventColumn, MarketColumn, MarketKind, MarketView, MdUpdateAction,
-    OperationColumn,
-};
+use yggdryl::graph::{ElementColumn, EventColumn};
 use yggdryl::{
     Charset, Codec, DataTypeId, DataTypeKind, DigestAlgorithm, IOKind, IOMode, Level, PythonKind,
     Scheme, TimeUnit, UnionMode,
+};
+use yggdryl_market::graph::{
+    MarketColumn, MarketKind, MarketView, MdUpdateAction, OperationColumn,
 };
 
 /// Every static enum vocabulary of the core, as canonical spellings.

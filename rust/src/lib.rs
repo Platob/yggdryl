@@ -10,20 +10,8 @@
 
 #![deny(unsafe_code)]
 
-pub mod arrow;
-mod bytestream;
-pub mod charset;
-mod codec;
-pub mod coding;
-mod datatype_id;
-mod datatype_kind;
-mod digest;
-mod edge_algorithm;
-mod error;
-mod fix_category;
-
-pub use fix_category::FixCategory;
 mod arithmetic;
+pub mod arrow;
 pub mod ascii;
 #[cfg(feature = "http")]
 mod auth;
@@ -35,34 +23,41 @@ pub mod bic;
 pub mod boolean;
 pub(crate) mod budget;
 pub mod bytes;
+mod bytestream;
 pub mod cast;
 pub mod ccy;
 pub mod cfi;
+pub mod charset;
 pub mod chunked_serie;
 pub mod code;
+mod codec;
+pub mod coding;
 mod compatibility;
 pub mod country;
 pub mod cp1252;
 pub mod csv;
 pub mod cusip;
 mod datatype;
+mod datatype_id;
+mod datatype_kind;
 pub mod date;
 pub mod datetime;
 pub mod decimal;
 mod default;
 mod diff;
+mod digest;
 pub mod dti;
 pub mod duration;
+mod edge_algorithm;
 pub mod elf;
 mod enumeration;
 pub mod enums;
-mod eusipa;
+mod error;
 pub mod excel;
 pub mod expression;
 mod field;
 pub mod figi;
 pub mod fisn;
-pub mod fix;
 pub mod floating;
 pub mod forex;
 pub mod fs;
@@ -79,10 +74,6 @@ pub mod iceberg;
 #[cfg(not(feature = "iceberg"))]
 #[path = "iceberg/types.rs"]
 pub mod iceberg;
-pub mod identifier;
-mod idkey;
-mod idsource;
-mod idtype;
 #[doc(hidden)]
 pub mod implementer;
 pub(crate) mod int256;
@@ -99,19 +90,15 @@ mod iopath;
 mod ioresult;
 pub mod ipc;
 pub mod isin;
-mod isin_registry;
 mod join;
 pub mod json;
 mod key_serie;
 pub mod lei;
-pub mod limit;
 mod listing;
 pub mod local;
 pub mod logging;
 pub mod mapping;
 pub mod market;
-pub mod marketdatakind;
-pub mod marketdatatype;
 pub mod media;
 mod media_serie;
 mod media_type;
@@ -136,12 +123,10 @@ pub mod s3;
 pub mod s3tables;
 mod scalar;
 mod scheme;
-pub mod securityid;
 pub mod sedol;
 pub(crate) mod serde;
 pub mod serie;
 mod shared_stream;
-pub mod side;
 pub mod soap;
 mod sort_options;
 mod spill;
@@ -153,7 +138,6 @@ pub mod temporal;
 pub mod text;
 pub mod time;
 mod time_unit;
-pub mod timeinforce;
 pub mod timezone;
 pub mod toml;
 pub mod txhash;
@@ -196,30 +180,6 @@ pub use edge_algorithm::EdgeAlgorithm;
 pub use error::{Error, Result};
 pub use expression::{Expression, Filter, Plan, Selector, Term};
 pub use expression::{FieldPath, FieldSegment};
-pub use fix::MsgType;
-pub use fix::{
-    ASKCCY_TAG_NAME, ASKPX_TAG_NAME, ASKQTY_TAG_NAME, BIDCCY_TAG_NAME, BIDQTY_TAG_NAME,
-    BLOOMBERGCODE_TAG_NAME, CONVERSATIONID_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN,
-    CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME, CROSSUUID_TAG_NAME,
-    DEFAULT_NULL_VALUES, DEFAULT_PAYLOAD_COLUMN, DEFAULT_REFUSED_MSGTYPES, EXECUNIX_TAG_NAME,
-    EXPRUNIX_TAG_NAME, FIGICODE_TAG_NAME, FIX_TYPED_TAGS, FIXMSG_TAG_NAME, FOREXCODE_TAG_NAME,
-    FORWARDPOINTS_TAG_NAME, FXRATES_TAG_NAME, FixAnomaly, FixCapture, FixCode, FixCodeSet,
-    FixCodeValue, FixCodec, FixCodes, FixCommit, FixDedup, FixDirection, FixDirectionEntry,
-    FixDirections, FixDrop, FixEntry, FixFailure, FixField, FixFieldIter, FixFieldMut, FixHeader,
-    FixId, FixIdMapKind, FixIdSource, FixIdSources, FixKey, FixLifted, FixMerge, FixMessages,
-    FixMsg, FixPatterns, FixRegistry, FixSource, FixSpellings, HASHCODE_TAG_NAME,
-    HIDDENQTY_TAG_NAME, IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME, MARKETDATAKIND_TAG_NAME,
-    MARKETDATATYPE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME, MSGCTXID_TAG_NAME,
-    MSGDIRECTION_TAG_NAME, MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGPLUGINSIDE_TAG_NAME,
-    MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME, ORDQTY_TAG_NAME, ORIGCCY_TAG_NAME,
-    PARTYIDS_TAG_NAME, PREVPX_TAG_NAME, PREVQTY_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME,
-    SECURITYIDS_TAG_NAME, SENDUNIX_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH,
-    SOURCEURL_TAG_NAME, SPOTRATE_TAG_NAME, SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS,
-    STANDARD_TRAILER_TAGS, STATE_TAG_NAME, STRIKEPX_TAG_NAME, TICKER_TAG_NAME, TRADABLE_TAG_NAME,
-    TRANSUNIX_TAG_NAME, ULBRIDGE_ROWHEADER, UNIT_TAG_NAME, UUID_TAG_NAME, Words, fix_column_of,
-    fix_column_tags, fix_crate_fields, fix_schema, fix_schema_carrying, fix_schema_tags,
-    from_fix_document, into_fix_document, is_crate_tag, is_derived_tag, plugin_side,
-};
 pub use hostname::HOSTNAME;
 pub use int256::{i256, u256};
 pub use iobase::{ArrowWriteSession, overwrite_serie_default};
@@ -304,7 +264,6 @@ pub use duration::*;
 pub use elf::*;
 pub use enumeration::Vocabulary;
 pub use enums::*;
-pub use eusipa::Eusipa;
 pub use field::*;
 pub use figi::*;
 pub use fisn::*;
@@ -314,23 +273,15 @@ pub use forex::*;
 pub(crate) use geospatial::DEFAULT_CRS;
 pub(crate) use geospatial::GEOARROW_WKB_EXTENSION_NAME;
 pub use geospatial::*;
-pub use identifier::{IdWord, Identifier, Identifiers};
-pub use idkey::IdKey;
-pub use idsource::IdSource;
-pub use idtype::IdType;
 pub use integer::*;
 pub use interval::*;
 pub use isin::*;
-pub use isin_registry::{IsinEntry, IsinRegistry, MatchTier, Resolution, Unmatched};
 pub use lei::*;
-pub use limit::Limit;
 pub use mapping::*;
 pub use market::{
     MarketDescriptor, MarketMember, MarketScalar, MarketSerie, MarketStorage, MarketType,
     MarketValue,
 };
-pub use marketdatakind::*;
-pub use marketdatatype::*;
 pub(crate) use media_type::MEDIATYPE_EXTENSION_NAME;
 pub use media_type::MediaTypeType;
 pub(crate) use merge::Recode;
@@ -346,14 +297,12 @@ pub use scalar::Scalar;
 pub(crate) use scalar::code_scalars;
 pub use sedol::*;
 pub use serie::*;
-pub use side::*;
 pub use state::*;
 pub(crate) use string::trim_padding;
 pub use string::*;
 pub use structure::*;
 pub(crate) use temporal::TemporalKind;
 pub use time::*;
-pub use timeinforce::*;
 pub(crate) use timezone::TIMEZONE_EXTENSION_NAME;
 pub use timezone::{Timezone, TimezoneType};
 pub use typed::{FieldRecord, FieldScalar, UncheckedFieldScalar};
@@ -440,28 +389,9 @@ pub mod internals {
     pub use crate::expression::eval::internals as expression_eval;
     pub use crate::expression::selector::internals as expression_selector;
     pub use crate::fisn::internals as fisn;
-    pub use crate::fix::catalog::internals as fix_catalog;
-    pub use crate::fix::codec::internals as fix_codec;
-    pub use crate::fix::codes::internals as fix_codes;
-    pub use crate::fix::component::internals as fix_component;
-    pub use crate::fix::document::internals as fix_document;
-    pub use crate::fix::enrich::internals as fix_enrich;
-    pub use crate::fix::forex::internals as fix_forex;
-    pub use crate::fix::global::internals as fix_global;
-    pub use crate::fix::group_plan::internals as fix_group_plan;
-    pub use crate::fix::identity::internals as fix_identity;
-    pub use crate::fix::memo::internals as fix_memo;
-    pub use crate::fix::msgtype::internals as fix_msgtype;
-    pub use crate::fix::registry::internals as fix_registry;
-    pub use crate::fix::retired::internals as fix_retired;
-    pub use crate::fix::schema::internals as fix_schema;
-    pub use crate::fix::store::internals as fix_store;
     pub use crate::floating::internals as floating;
     pub use crate::fs::local::internals as fs_local;
-    pub use crate::graph::book::internals as graph_book;
     pub use crate::graph::element::internals as graph_element;
-    pub use crate::graph::facts::internals as graph_facts;
-    pub use crate::graph::iterator::internals as graph_iterator;
     pub use crate::hashing::stable::internals as hashing_stable;
     pub use crate::holder::buffered::internals as holder_buffered;
     pub use crate::hostname::internals as hostname;
@@ -501,15 +431,12 @@ pub mod internals {
     pub use crate::iceberg::value::internals as iceberg_value;
     pub use crate::integer::internals as integer;
     pub use crate::ipc::internals as ipc;
-    pub use crate::isin_registry::env::internals as isin_registry_env;
-    pub use crate::isin_registry::internals as isin_registry;
     pub use crate::json::column::internals as json_column;
     pub use crate::json::field::internals as json_field;
     pub use crate::local::internals as local;
     pub use crate::logging::logger::internals as logging_logger;
     pub use crate::logging::terminal::internals as logging_terminal;
     pub use crate::logging::warning::internals as logging_warning;
-    pub use crate::marketdatakind::internals as marketdatakind;
     pub use crate::media::cache::internals as media_cache;
     pub use crate::media::merge::internals as media_merge;
     pub use crate::media::options::commit::internals as media_options_commit;

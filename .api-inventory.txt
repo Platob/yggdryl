@@ -1,6 +1,7 @@
 # Public Rust API inventory
 #
-# Maintained by hand against the public items in rust/src, grouped by module:
+# Maintained by hand against the public items in rust/src, rust/market/src and
+# rust/fix/src, grouped by crate and module:
 # there is no generator, so a change that adds or retires a public name edits
 # this file too. Use it to check a name before writing it into the
 # documentation.
@@ -23,7 +24,7 @@ pub fn array_memory_size(column: &ArrayRef) -> usize
 pub fn scalar_memory_size(value: &Scalar) -> usize
 
 ### yggdryl::arrow::extension  [rust/src/arrow/extension.rs]  (arrow-rs's typed extension types for the datatypes that ride a name, every method redirecting into the recognizer Field::from_arrow_field imports through: the name over the storage the datatype lays out, a dictionary of it included, is that datatype, and any other storage or a document a parameter-free name states none of is refused)
-impl ExtensionType for UuidType, VariantType, VersionType, TimezoneType, MimeTypeType, MediaTypeType, StateType, MarketDataKindType, MarketDataTypeType, SideType, TimeInForceType, CountryType, CcyType, MicType, CfiType, IsinType, CusipType, SedolType, FigiType, RicType, BbgType, UnitType, ForexType, LeiType, BicType, ElfType, DtiType, FisnType  (NAME the datatype identifier's arrow_extension_name - for the four market enums their kind's own `EXTENSION_NAME`, read in a const context - Metadata = (), no document)
+impl ExtensionType for UuidType, VariantType, VersionType, TimezoneType, MimeTypeType, MediaTypeType, StateType, CountryType, CcyType, MicType, CfiType, IsinType, CusipType, SedolType, FigiType, RicType, BbgType, UnitType, ForexType, LeiType, BicType, ElfType, DtiType, FisnType  (NAME the datatype identifier's arrow_extension_name Metadata = (), no document)
 impl ExtensionType for StringType  (NAME yggdryl.string, Metadata = Self: the leaf written whole as its extension_json document)
 impl ExtensionType for BytesType  (NAME yggdryl.bytes, Metadata = Self)
 
@@ -222,7 +223,7 @@ pub struct ValueStream  (Iterator<Item = Vec<u8>> + FusedIterator: one chunk per
 pub struct DataTypeId(u8)  (Copy, Eq, Ord, Hash; the core's identifiers - the ninety-two of `ALL`, the seventeen codes among them - are associated consts under their CamelCase names - `DataTypeId::Int32`, `DataTypeId::Isin` - usable as values and as patterns; a registered kind's identifier is its own `ID` const, `Side::ID`; Debug and Display the name)
   pub const ALL: [Self; 92] = [the core's own identifiers in canonical declaration order, Null first and State, at 0xc1, last, Lei, Bic, Elf, Dti, Fisn at 0x6b..=0x6f, Figi, Decimal, BigDecimal, Ric at 0x7e and Forex at 0x7f among them];  (every byte is explicit; values are partitioned by DataTypeKind rather than declaration position; 0x75, 0x76 and 0x77 - side, state and timeinforce while each was a code - and 0xc6 - pluginside, until the plugin's role became a side - are retired and never reused; the code family took the text family's never-used tail 0x6a..=0x6f, so Text is 0x50..=0x69 and Code 0x6a..=0x7f; the four market enum identifiers MarketDataKind, Side, MarketDataType and TimeInForce at 0xc2..=0xc5 are their kinds' own `ID` consts, claimed through yggdryl::market)
   pub const fn market(byte: u8) -> Self  (the identifier a registered kind states: `byte` in the Enum range, refused at compile time outside it; whether the byte is free is the register's question, asked at the claim)
-  pub fn all() -> Vec<Self>  (every identifier a value can carry: ALL with every claimed kind spliced in after State, in byte order; 96 with the core's own four claimed; what a binding lists its datatype names from)
+  pub fn all() -> Vec<Self>  (every identifier a value can carry: ALL with every claimed kind spliced in after State, in byte order; 92 in the core alone, 96 once yggdryl_market::install() claims the four; what a binding lists its datatype names from)
   pub const fn core_name(self) -> Option<&'static str>  (a core identifier's canonical name; None for a byte the core does not own)
   pub const fn is_core(self) -> bool
   pub fn is_registered(self) -> bool  (a byte the core does not own that a claim holds)
@@ -271,9 +272,9 @@ pub enum MarketStorage  (Copy, Eq, Ord, Hash; Code8 - the members' codes in Arro
   pub const fn fits(self, code: u16) -> bool  (whether a code is stored at this width)
 pub struct MarketMember { pub code: u16, pub name: &'static str, pub description: &'static str }  (one member of a registered enum kind: its stored code, its stored name, what it means; Copy, Eq, Ord, Hash)
 pub struct MarketDescriptor { pub id: DataTypeId, pub name: &'static str, pub extension_name: &'static str, pub storage: MarketStorage, pub members: &'static [MarketMember], pub value_rank: u8, pub dtype_rank: u8, pub shape: isize, pub read: fn(&str) -> Result<u16> }  (what one registered enum kind states about itself, once - SIDE_KIND, TIMEINFORCE_KIND; the byte, the value rank, the datatype rank and the shape position are the wire contracts the kinds carried as variants and never move; members in code order; read a spelling into a member's code; Eq by byte; Debug, Display the name)
-  pub const RESERVED_ENUM_VALUE_RANK: u8 = 33;  (the value rank a kind another crate claims takes)
-  pub const RESERVED_DTYPE_RANK: u8 = 81;  (the datatype rank a kind another crate claims takes)
-  pub const RESERVED_SHAPE: isize = 73;  (the shape position a kind another crate claims hashes as)
+  pub const RESERVED_ENUM_VALUE_RANK: u8 = 33;  (the value rank every kind but a reserved one takes)
+  pub const RESERVED_DTYPE_RANK: u8 = 81;  (the datatype rank every kind but a reserved one takes)
+  pub const RESERVED_SHAPE: isize = 73;  (the shape position every kind but a reserved one hashes as)
   pub const fn dtype(&'static self) -> DataType  (DataType::Market of this kind)
   pub fn field(&'static self, name: impl Into<SmolStr>, nullable: bool) -> Field
   pub fn member_of(&self, code: u16) -> Option<&'static MarketMember>  (a binary search of the members)
@@ -298,11 +299,11 @@ pub trait MarketValue: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Ha
   const KIND: &'static MarketDescriptor
   fn into_scalar(self) -> Scalar
   fn from_scalar(value: &Scalar) -> Option<Self>  (owned; None for a scalar of any other kind)
-pub fn claim(kind: &'static MarketDescriptor, by: &'static str) -> Result<()>  (the byte, the name and the extension name, each once for the life of the process; Error::Conflict naming the first claimant, Error::InvalidDataType for a byte outside the Enum range, a family's own number, the retired 0xc6, a byte a core leaf holds - State's 0xc1 - a claim by anyone but the core stating anything but the reserved (value_rank, dtype_rank, shape), no member, members out of code order or a Code8 member above 255, a name not in its folded spelling or one the datatype grammar already reads, or an extension name the core recognizes)
+pub fn claim(kind: &'static MarketDescriptor, by: &'static str) -> Result<()>  (the byte, the name and the extension name, each once for the life of the process; Error::Conflict naming the first claimant, read before the numbers the kind states so a claimed kind claimed again by any crate is that conflict, Error::InvalidDataType for a byte outside the Enum range, a family's own number, the retired 0xc6, a byte a core leaf holds - State's 0xc1 - a claim in the core's own name, a reserved kind's byte, name or extension name claimed without the other two or by a crate other than yggdryl-market, which owns it, a claim stating other numbers than the (value_rank, dtype_rank, shape) RESERVED_KINDS reserves for a reserved kind or the reserved ones for any other, no member, members out of code order or a Code8 member above 255, a name not in its folded spelling or one the datatype grammar already reads, or an extension name the core recognizes)
 pub fn kind_of(id: DataTypeId) -> Option<&'static MarketDescriptor>  (one read of a table by byte, what the value stream and the Arrow, serde and grammar doors ask at intake; a cell reader takes the kind off its field's datatype and asks nothing)
 pub fn kind_named(name: &str) -> Option<&'static MarketDescriptor>
 pub fn kind_for_extension(name: &str) -> Option<&'static MarketDescriptor>
-pub fn kinds() -> Vec<&'static MarketDescriptor>  (every claim, in byte order; the core claims its own four before the register answers anything, until they move to yggdryl-market; a name no claim answers is refused as an unknown datatype naming the crate to install)
+pub fn kinds() -> Vec<&'static MarketDescriptor>  (every claim, in byte order; the core claims none - a reserved kind is claimed only at the byte, name, extension name and ranks RESERVED_KINDS reserves for it, by yggdryl-market, which owns the four; a name no claim answers is refused as an unknown datatype, a reserved kind's name or extension name naming yggdryl_market::install())
 
 ### yggdryl::root::plugin  [rust/src/plugin.rs]  (the one claim-once register every extension point lands on - a market kind, a logical name, a medium: a key is claimed once for the life of the process and never replaced, and a second claim is refused naming the first claimant and the key)
 pub struct Claim<V> { pub value: V, pub by: &'static str }  (one claim: what was registered and the crate that registered it; Clone, Debug)
@@ -649,11 +650,11 @@ pub fn from_json(input: &str) -> Result<Self>
 pub fn field(&self, schema: &Field) -> Result<Field>
   pub fn is_predicate(&self, schema: &Field) -> Result<bool>
 
-### yggdryl::fix::cfb  [rust/src/fix/cfb.rs]
+### yggdryl_fix::cfb  [rust/fix/src/cfb.rs]
 impl FixRegistry
   pub fn from_cfb_file(handle: &dyn IOBase, dialect: Option<&str>) -> Result<(Self, Vec<Field>)>  (every field, group, component and message root the file produces is stamped a member of `dialect` in `FIX:sources` and the dialect's entry - its id and the handle's file name - held in the sources catalog, nothing standing in for an absent one and no entry held then; the root element's version and session are read past; the document decoded once in the charset its byte-order mark or declared `encoding` states, else UTF-8 - bytes that charset cannot read transcribed, an unknown charset read as UTF-8, each with a warning; `float` typed float64 and every other type word through the schema grammar, a word nothing reads typing the tag utf8; a tag the vocabulary leaves unnamed named by the one spelling its normalization bindings agree on and no other tag claims, else by its own decimal; an attribute that will not split dropped, one that will not unescape kept as spelled, a repeated one read once; everything else the reader cannot keep dropped or kept another way with one warn-level `log` record, `invalid cfb expression at byte N: line L, column C: expected X, got Y in "<element>"; <what the reader did>`, prefixed `[dialect] ` when one is named; a spelling - an alt, a normalization tag-name, an rg-name, a counter's spelling - filed under its catalog name, lower case with every run of characters outside [a-z0-9_.-] one `_` and `_` trimmed at both ends (`OTC Trade Flags` is otc_trade_flags), the spelling kept as display and one nothing of which folds leaving the tag named by its decimal; a map entry whose key or value is blank, `none` or `null` skipped as stating no code, named in one warning per code set listing up to 16 entries then `and N more`, and a map entry whose name another code claims dropped alone; a group or component a grammar declares structurally alike to one the catalog holds - the same members in order, each its tag and the field it reads, a nested group its counter over the same structure; never the member names, a `required`, an `rg-name` spelling, a description or the sources - read as that definition under its held name whatever the grammar named it, the held definition's members relaxed to the more permissive nullability where the two differ and every member the message read before the relaxation reading it again, so a name a message declares in several shapes is split `{name}_{message}`, then `{name}_{message}_2`, `_3`, in declaration order, only for a shape alike to nothing held; a second grammar-binding of one wire type folded into the first under merge_with's member rules, each member that still disagrees dropped with a warning; a message the catalog will not hold taking back the groups and components its walk wrote; only a document that is not well-formed XML or leaves an element open is refused)
 
-### yggdryl::fix::field  [rust/src/fix/field.rs]  (the FIX protocol view - `FIX:` keys over a field, FixField and FixFieldMut - minted here by the exported protocol_field_types! with public constructors, re-exported at yggdryl::fix and the crate root; Scheme::FIX stays in the core, whose stack-key read of a known scheme is allocation-free, so Field and Metadata carry no accessor for it: `FixField::new(&field)` is the read door and `FixFieldMut::new(&mut field)` the write door, the former `Field::as_fix` pair, and `metadata.protocol(&Scheme::FIX)` the bare snapshot of a Metadata)
+### yggdryl_fix::field  [rust/fix/src/field.rs]  (the FIX protocol view - `FIX:` keys over a field, FixField and FixFieldMut - minted here by the exported protocol_field_types! with public constructors, re-exported at the crate root; Scheme::FIX stays in the core, whose stack-key read of a known scheme is allocation-free, so Field and Metadata carry no accessor for it: `FixField::new(&field)` is the read door and `FixFieldMut::new(&mut field)` the write door, and `metadata.protocol(&Scheme::FIX)` the bare snapshot of a Metadata)
 pub struct FixField<'field>(ProtocolField<'field>);  (a field borrowed as its FIX protocol; Deref to ProtocolField, AsRef<Field>, Clone, Debug, Display, Eq, Ord, Hash, IntoIterator)
   pub fn new(field: &'field Field) -> Self  (borrows a field as its FIX protocol)
 pub struct FixFieldMut<'field>(ProtocolFieldMut<'field>);  (a field mutably borrowed as its FIX protocol; Deref and DerefMut to ProtocolFieldMut, AsRef<Field>, Debug, Display; no path to Field's own mutators)
@@ -684,7 +685,7 @@ impl<'field> FixField<'field>
   pub fn parents(&self) -> Words<'field>  (the FIX:parents array of identifier types - folded words, nearest first - holding the parents of the identifier this field states, `["origclordid"]` on `ClOrdID(11)`; borrowed, nothing where absent; a registry answers it, or the type's - `IdType::parents`, a chain identity's alone - through `parents_of`)
   pub fn is_transient(&self) -> Result<bool>  (the FIX:transient flag, true where absent: whether this column travels from one message of a chain to the next, so a column settled to one message says false)
   impl FixFieldMut<'_>
-  pub fn set_sources<I, S>(&mut self, sources: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,  (each a non-empty id without a quote, a backslash or a control character - the id grammar of fix/source.rs - lowercased, deduplicated under the fold, stored sorted as a JSON array; empty removes; a refusal names FIX:sources and leaves the field unchanged)
+  pub fn set_sources<I, S>(&mut self, sources: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,  (each a non-empty id without a quote, a backslash or a control character - the id grammar of yggdryl_fix's source.rs - lowercased, deduplicated under the fold, stored sorted as a JSON array; empty removes; a refusal names FIX:sources and leaves the field unchanged)
   pub fn add_source(&mut self, source: &str) -> Result<()>  (idempotent under the fold)
   pub fn set_tag(&mut self, tag: i32) -> Result<()>  (any positive tag; zero is unresolved arrival provenance only)
   pub fn set_tags(&mut self, tags: &[i32]) -> Result<()>  (positive, distinct; stored as the compact JSON array; empty removes)
@@ -721,7 +722,7 @@ impl<'field> FixField<'field>
   pub struct FixSpellings<'field>  (the comma-separated properties: identifiers and nulls)
   impl<'field> Iterator for FixSpellings<'field>  (Item = &'field str; also DoubleEndedIterator and FusedIterator)
 
-### yggdryl::fix::codes  [rust/src/fix/codes.rs]
+### yggdryl_fix::codes  [rust/fix/src/codes.rs]
 pub struct FixCode  (one member of a code set as a caller states it, what `FixRegistry::set_codeset` takes; re-exported at the crate root beside FixCodeSet, FixCodeValue and FixCodes)
   pub fn new(name: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Self
   pub fn with_description(mut self, description: impl Into<SmolStr>) -> Self
@@ -759,14 +760,14 @@ pub struct FixCodeSet<'registry>  (one named code set borrowed from the dictiona
   pub fn code_name(self, value: &str) -> Option<&'registry str>
   impl Clone, Copy, Debug, PartialEq, Eq for FixCodeSet<'_>
 
-### yggdryl::fix::document  [rust/src/fix/document.rs]
+### yggdryl_fix::document  [rust/fix/src/document.rs]
 pub fn into_fix_document(field: Field) -> Result<Scalar>  (re-exported at the crate root; the native Field document a FIX store writes, with FIX:directions/FIX:idmap and the FIX:names/fix:tags arrays as the JSON they are. FIX:codeset is not one of them: it names the set the field reads by, and the members are the store's own codesets/<name>.json)
 pub fn from_fix_document(document: Scalar) -> Result<Field>  (re-exported at the crate root; the inverse, restating each document as its canonical text)
 pub struct Words<'doc>  (re-exported at the crate root; a code's aliases, a field's names and its sources alike)
   impl<'doc> Iterator for Words<'doc>  (Item = &'doc str; also FusedIterator)
   impl Clone, Debug for Words<'_>
 
-### yggdryl::fix::directions  [rust/src/fix/directions.rs]
+### yggdryl_fix::directions  [rust/fix/src/directions.rs]
 pub struct FixDirection  (one rule of tag 385's FIX:directions: a code of the set and the regex::bytes patterns that name it; re-exported at the crate root beside FixDirectionEntry, FixDirections and FixPatterns)
   pub fn new<I, S>(code: impl Into<SmolStr>, patterns: I) -> Self where I: IntoIterator<Item = S>, S: Into<SmolStr>,
   pub fn code(&self) -> &str
@@ -787,7 +788,7 @@ pub struct FixDirections<'field>  (the walk FixField::directions answers; an abs
   impl<'field> Iterator for FixDirections<'field>  (Item = Result<FixDirectionEntry<'field>>; also FusedIterator)
   impl Clone, Debug for FixDirections<'_>
 
-### yggdryl::fix::idmap  [rust/src/fix/idmap.rs]
+### yggdryl_fix::idmap  [rust/fix/src/idmap.rs]
 pub enum FixIdMapKind  (Identifiers: the identifier map an operation answers - a message's parties and `Account(1)` are its `partyids`, read off its fields rather than stated by an entry; re-exported at the crate root beside FixIdSource and FixIdSources)
   pub const ALL: [Self; 1]
   pub const fn as_str(self) -> &'static str  (`identifiers`)
@@ -805,12 +806,13 @@ pub struct FixIdSource  (one FIX:idmap entry: a field stating one key of one ide
 pub struct FixIdSources<'field>  (the walk FixField::idmap answers; an absent property yields nothing; `render` and `over` are pub(super))
   impl Iterator for FixIdSources<'_>  (Item = Result<FixIdSource>; fused after the first refusal)
 
-### yggdryl::fix::global  [rust/src/fix/global.rs]
+### yggdryl_fix::global  [rust/fix/src/global.rs]
 impl FixRegistry
   pub fn from_env() -> Result<&'static Arc<Self>>
   pub fn install_env(registry: Self) -> Result<()>
 
-### yggdryl::fix  [rust/src/fix/mod.rs]
+### yggdryl_fix  [rust/fix/src/lib.rs]
+pub fn install() -> yggdryl::Result<()>  (claims the FIX Latest datatype names among the logical names, after `yggdryl_market::install()`, once for the process)
 pub struct FixId(i32)  (re-exported at the crate root beside FixFieldIter, FixKey, FixMsg, FixRegistry; the signed XXH32 of a field's tag and its folded name, derived on every read and never stored)
   pub const DEFINITION_TAG_MIN: i32  (the block a named definition's derived tag is taken from)
   pub const DEFINITION_TAG_MAX: i32
@@ -827,11 +829,11 @@ pub struct FixId(i32)  (re-exported at the crate root beside FixFieldIter, FixKe
   impl<'a> From<&'a String> for FixKey<'a>
   pub fn from_text(text: &'a str) -> Self  (the key a typed text names: a tag where it spells one as the dictionary's own tag reader reads it - ASCII digits alone, `1` to `2147483647`, a leading zero kept, so `035` is tag `35` - and a name otherwise, `+35`, `0` and ` 35` among them; total, like `From`, so one text has one reading)
   impl fmt::Display for FixKey<'_>
-pub mod state  (State's FIX readings as free functions: from_status, STATUS_TAGS and from_msgtype, in yggdryl::fix::state)
-pub use field::{FixField, FixFieldMut, FixSpellings}  (the FIX protocol view, minted in fix/field.rs, re-exported here and at the crate root)
-pub(crate) const LOGICAL_NAMES: &[(&str, DataType)]  (the thirty-two FIX Latest datatype names over the closest core datatype, in normalized spelling: the table the core's vocabulary seed claims on the logical-name register until the FIX crate claims it itself; the listing DataType::logical_names answers is the same constant either way)
+pub mod state  (State's FIX readings as free functions: from_status, STATUS_TAGS and from_msgtype, in yggdryl_fix::state)
+pub use field::{FixField, FixFieldMut, FixSpellings}  (the FIX protocol view, minted in field.rs, re-exported at the crate root)
+pub(crate) const LOGICAL_NAMES: &[(&str, DataType)]  (the thirty-two FIX Latest datatype names over the closest core datatype, in normalized spelling: the table install() claims on the logical-name register through DataType::register_logical_name, after yggdryl_market::install(); DataType::logical_names lists them once it has run)
 
-### yggdryl::fix::codec  [rust/src/fix/codec.rs]
+### yggdryl_fix::codec  [rust/fix/src/codec.rs]
 pub const SOH: u8 = 0x01;
 pub const DEFAULT_NULL_VALUES: [&str; 6] = ["", "null", "<null>", "none", "n/a", "[n/a]"];
 pub struct FixCodec
@@ -898,7 +900,7 @@ pub struct FixCodec
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
 pub const DEFAULT_REFUSED_MSGTYPES: [&str; 3] = ["0", "1", "unknown"];  (the types a codec refuses until a caller says otherwise: Heartbeat, TestRequest, and a row stating no type)
 
-### yggdryl::fix::batch  [rust/src/fix/batch.rs]  (arrow feature)
+### yggdryl_fix::batch  [rust/fix/src/batch.rs]  (arrow feature)
 impl FixCodec
   pub fn parse_text_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (capture rows in, one FIX row per message out - a line carrying two frames is two rows and one carrying none is no row; the capture's columns lead and repeat over every message of a row, and the capture's own cells are read off the source row and carried by every message parsed out of it, stated again at their columns when the messages are written back; the row's `transunix` - the reader's `mtime` - becomes each message's precise `sendunix` and the sending clock of one stating no SendingTime(52), as `parse_text_line` reads the line; a carrier's seventeen event columns are the line each row is: its `uuid` is every message's one source, `srcuuids`, and the other sixteen fill nothing and are dropped as the row's own twins take their names; batches close as `arrow_reader` closes them, on the bytes each row lands as. With several threads, whole input batches are at most one job per thread in flight and answer in input-batch order)
   pub fn lifecycle_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, chained FIX rows out under the same schema: each row through `FixMsg::from_row`, the ordered walk `lifecycle` runs, each back into a row; no re-parse. Each row's capture cells are read into the message it makes and travel with it through the walk's own ordering, then are stated again at their own columns, so the pairing is by message and never by position); the root keeps the source's metadata but its SORT:by, which the walk no longer proves
@@ -914,19 +916,19 @@ impl FixCodec
   pub fn messages_serie<S>(&self, source: S) -> Result<impl Iterator<Item = Result<FixMsg>> + Send + use<S>> where S: Into<Serie>  (messages over any Serie)
   pub fn chunked_stream<I>(&self, schema: Field, messages: I) -> Result<StreamChunkedSerie> where I: IntoIterator, I::Item: Into<Result<FixMsg>>, I::IntoIter: Send + 'static  (arrow_reader answered under StreamChunkedSerie::root_of(schema); a SORT:by it declares verified as records land)
 
-### yggdryl::fix::digest  [rust/src/fix/digest.rs]
+### yggdryl_fix::digest  [rust/fix/src/digest.rs]
 pub struct FixDedup<I>  (re-exported at the crate root; drops a message whose `FixMsg::digest` equals the one just yielded - an adjacent republished line - and counts what it dropped; a stage the caller composes)
   pub const fn new(inner: I) -> Self
   pub const fn dropped(&self) -> u64
   pub fn into_inner(self) -> I
   impl<I: Iterator<Item = FixMsg>> Iterator for FixDedup<I>  (Item = FixMsg; also FusedIterator)
 
-### yggdryl::fix::messages  [rust/src/fix/messages.rs]
+### yggdryl_fix::messages  [rust/fix/src/messages.rs]
 pub struct FixMessages
   impl Iterator for FixMessages  (Item = Result<FixMsg>; none, one or many a row - one per frame of a line, re-entering the frame reader at each frame's offset, one `unknown` for a document - each followed by the messages the parse splits off it, once: an execution report's fill as its order's report (`ORDR`, `QUOT` naming a QuoteID(117)) then the execution (`EXEC`, `FILLED`, chained under its ExecID(17)), a trade's one execution per side it states, a batch's (`MarketDataKind::is_batch`) one message of its `item` category per entry of its entry group - a quote batch's entry one `QUOT` holding both its legs - chained by the order the entry names, else its quote or order entry, else its place - each split again as its category is, each naming its source's identity beside its source's sources; a quote is never split - one message holds its bid and its offer, whatever side it tags; nothing collected either way; fused after exhaustion or the first error)
   impl FusedIterator for FixMessages
 
-### yggdryl::fix::crated  [rust/src/fix/crated.rs]
+### yggdryl_fix::crated  [rust/fix/src/crated.rs]
 pub const CRATE_TAG_MIN: i32 = 65_000;
 pub const CRATE_TAG_MAX: i32 = 65_100;  (one past the block; the crate defines 52 contiguous entries from 65_001 to 65_052; `fixmsg` is the separate fixed-row document at 65_053, with no retired tag keeping a slot)
 pub const TRANSUNIX_TAG_NAME: (i32, &str) = (65_007, "transunix");  (non-null nanosecond UTC clock: the transaction instant, when the operation really happened - a stated `transunix`, else the official transaction clock standing within the codec's official_time_delay_ms of `SendingTime(52)`, else that `SendingTime`)
@@ -990,7 +992,7 @@ pub fn fix_crate_fields() -> Result<&'static [Field]>  (re-exported at the crate
 impl FixRegistry
   pub fn register_msgtype(&mut self, spelling: &str, name: Option<&str>, description: Option<&str>) -> Result<&MsgType>
 
-### yggdryl::fix::identity  [rust/src/fix/identity.rs]
+### yggdryl_fix::identity  [rust/fix/src/identity.rs]
 pub const FIX_TYPED_TAGS: [i32; 35]  (re-exported at the crate root; every tag a message holds typed outside the crate's own block, in the order the wire states them - the header 8, 35, 49, 56, 34, 43, 52 and 385, the seventeen lifted 6, 11, 14, 17, 31, 32, 37, 38, 41, 44, 53, 117, 131, 151, 198, 262 and 1003, the trailer 93, 89 and 10, then Text(58); a caller walking a message's typed facts reads this rather than a list of its own, which drifts silently the moment a tag is lifted or retired. The crate's own tags are the contiguous block CRATE_TAG_MIN..CRATE_TAG_MAX, minus the sourceurl no message holds)
 pub struct FixHeader  (the standard header and trailer facts a message holds typed, beside its row - tags 8, 35, 49, 56, 34, 52, 43, 385 and the trailer 93, 89, 10; the frame is the one band the wire emits out of tag order, the header first and the trailer last; re-exported at the crate root beside FixCapture; no public constructor)
   pub fn beginstring(&self) -> &str  (empty where the message stated none)
@@ -1037,7 +1039,7 @@ pub struct FixLifted  (the FIX fields a message lifted out of its row and holds 
   impl Clone, Debug, Default, PartialEq, Eq for FixLifted
 pub struct LiftedFx  (the six FX parts `FixLifted` holds boxed; re-exported beside it, no public constructor)
 
-### yggdryl::fix::msg  [rust/src/fix/msg.rs]
+### yggdryl_fix::msg  [rust/fix/src/msg.rs]
 pub struct FixMsg  (a market operation event with a FIX body around it: the crate-private event facts the graph traits answer, the typed `FixHeader` carrying the frame, the typed `FixLifted` carrying the FIX numbers and identifiers the message lifted, the typed `FixCapture` holding the line's own bridge row header, `Text(58)`, a bridge's namespaced metadata, and the content row - every child the message states beyond those typed facts, typed by the registry's field for it; each fact held once. Every market fact the traits answer is *derived* from the lifted facts and the row, so it reaches neither the wire, the residual entry record nor the code the message digests to - only what the message stated does)
   impl From<FixMsg> for Result<FixMsg>  (Ok wrapper; permits infallible and fallible stream intake through one standard conversion)
   pub fn stable_hash(&self) -> u64
@@ -1078,14 +1080,14 @@ pub struct FixMsg  (a market operation event with a FIX body around it: the crat
   impl Element, Event, Market, Operation for FixMsg  (through the held event facts: `is_after` is the instant, `finalize` settles the identity again, `with_previous` is `Operation::following_operation` - the market facts the chain is about, the time in force and whether it trades where unstated, each identifier whose `FIX:idmap` entry follows, each followed type's parents with it (`is_followed_identifier`), and every party id of the chain - each identifier it states taking the parents its chain gave it (`Identifiers::follow_parents`, read through `FixRegistry::parents_of`) - and every `metadata` key of the chain it does not state, its own values standing - recording the predecessor as `prevuuid` and `prevunix`, keeping its own `seqnum` unless the predecessor happened at its instant or later, where it takes the next, while the sources stay its own, `merge_with` is `Operation::merging_operation_event` and `restating` `graph::market::restating_operation`, which takes the same as following does; every market setter forces its fact over the derivation; the identifier facts are logical - read off the fields, the wire kept as sent: `get_securityids` is rebuilt at every settle from `SecurityID(48)` under `SecurityIDSource(22)` (the base key of its type), each `SecAltIDGrp(454)` occurrence, an unmapped entry whose key names a security type (`Identifier::from_key`: `OMS_InstrumentID` is `oms:instrumentid`, a bridge's keyed alias `ISINCODE` or `OMS_RICCODE` its type, a value its type refuses an anomaly, the first stated code under a key kept unless a later one outranks it) and the crated ISIN/Bloomberg/FIGI/forex views, resolved once when the message is whole (`ISINCODE_TAG_NAME`), and its `set_`/`insert_`/`remove_` verbs state the set itself, writing no field; `get_identifiers` is rebuilt from the fields the registry's `FIX:idmap` entries name (`FixRegistry::idmap_sources`), and from each regulatory trade id - `NoRegulatoryTradeIDs(1907)` and a side's `NoSideRegulatoryTradeIDs(1971)` - under `regtradeid`, `prevregtradeid`, `blockregtradeid`, `relatedregtradeid`, `clearedregtradeid`, `tvtic` or `reporttrackingnumber` by its type, else `regtradeid{n}`, each its type's base key, and from each unmapped entry whose key names an operation identifier (any non-security, non-party type of `Identifier::from_key`); an unmapped entry a set holds with its value is captured - it leaves the metadata, rides a row's `fixentries` under `0:<key>` and stays on the wire; `OrigClOrdID(41)` is the `clordid`'s `origclordid` parent and a finalize fills each parent's own type from its nearest parent (`Identifiers::fill_parents`); `get_partyids` is rebuilt at every settle from the parties of `NoPartyIDs(453)` and `NoRootPartyIDs(1116)` - each `PartyID` typed by its `PartyRole`'s code-set name folded (`executingtrader`, `customeraccount`), `partyrole{n}` for a wire code the set names nothing for, `party` where none is stated, and sourced by its `PartyIDSource`'s name folded, a word the set does not resolve its own spelling folded and a bare code it names nothing for - one character, or digits - `partyidsource{code}`, the base source where none is stated, a named source filling the role's base key - and from `Account(1)` typed `account` from its `AcctIDSource(660)`'s name by the same rule, `acctidsource{code}` for a code the set names nothing for, and from each unmapped entry whose key names a party type, a side's own party ids and account first, the first value of a key standing unless a later one outranks it (`IdType::rank`) and a second staying on the wire; a set a caller or a row stated keeps every value it holds and is filled at each settle with what the fields state that it lacks; `get_execunix` reads the crate's `execunix` (65_023); `get_side` is `UKNW` where no `Side(54)` is stated, `BOTH` on a quote holding both legs and tagging neither; `marketdatakind` is the category its type files under (the dictionary's `FIX:msgcat`, `UKNW` where it files none) - an execution report of no fill its order's `ORDR`, or its quote's `QUOT` naming a `QuoteID(117)` - and `is_sided` that kind's `MarketDataKind::is_sided`, the cross code read off its kind's cross tags - `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)`, `MDReqID(262)`, led for a `TRAD` message by `TradeID(1003)` and `TradeReportID(571)` - and stored as `{kind}:{side}:{base}` for every kind (`Market::stored_crosscode`), the side `0` unless sided; `follow_identity` writes a lent side as `Side(54)` before the chain's stored cross code, and `note_conflict` records a `FixAnomaly` under `crosscode`; `get_bidpx`, `get_bidqty`, `get_askpx` and `get_askqty` read `BidPx(132)`, `BidSize(134)`, `OfferPx(133)` and `OfferSize(135)`, and `get_bidccy`/`get_askccy` a stated `BidCurrency`, else `AskCurrency` or `OfferCurrency`, else the message's currency where that side states a price or a size - a quote one message holding both legs, whatever side it tags; no field fills `get_fxrates`, which answers what a caller set; `is_execution` is the category `EXEC` and a report of an execution - explicit execution-like ExecType(150), an initial AE when 487 is absent/New even if 150 is absent, never a non-New/cancel/correct/reverse/status AE or AD/AQ/AR - so the execution a parse splits off an order's, a quote's or a trade's report is one, and the report it was split from - restated `ORDR`/`QUOT`, or the `TRAD` trade - is not)
   impl Clone, Debug, PartialEq, Eq, Hash for FixMsg  (equal over the holders, the row and the registry - the same Arc or equal registries; hashed over the hashcode, the row's schema and its value)
 
-### yggdryl::fix::anomaly  [rust/src/fix/anomaly.rs]
+### yggdryl_fix::anomaly  [rust/fix/src/anomaly.rs]
 pub struct FixAnomaly  (re-exported at the crate root; the field a thing was stated under and why it could not be taken)
   pub fn new(field: impl Into<SmolStr>, reason: impl Into<SmolStr>) -> Self
   pub fn field(&self) -> &str
   pub fn reason(&self) -> &str
   impl Clone, Debug, Display, PartialEq, Eq, Hash, PartialOrd, Ord for FixAnomaly  (Display is `field: reason`)
 
-### yggdryl::fix::market  [rust/src/fix/market.rs]
+### yggdryl_fix::market  [rust/fix/src/market.rs]
 impl FixMsg
   pub fn market_data(&self) -> Result<Vec<MarketData>>  (borrowed conversion, one leaf per message, cloning the one base event: ORDR, QUOT and an actual EXEC become one finalized `OrderEvent`, `QuoteEvent` or `ExecutionEvent`, an execution reading `FILLED` whatever its report's state, an execution report of no fill its order's or its quote's leaf - a venue's acknowledgement, cancel, reject, expiry or replace a step of the entry a book holds - and an acknowledgement of an execution (`BN`, `Q`) no leaf; a trade is no leaf - its fills are the executions its parse splits off - nor is a batch, whose entries its parse splits off, both in silence, while every other category but W/X answers no leaf beside a warning; nothing a message states is an error - `Ok` for every message: an entry that cannot stand - no `MDEntryType(269)` of bid, offer or trade, no incremental `MDUpdateAction(279)`, an anonymous incremental update, a new or snapshot entry with no exact `MDEntryPx(270)` - is excluded and a fact that cannot be read takes its default, each with a warning; W/X expands the one NoMDEntries(268) group in source order into operations carrying a `BookRef` - action, scope, position, `entry_px`, `entry_size` - and `mdentryid`/`mdentryrefid`/`orderid` identifiers, an empty W - or one stating no group at all - becoming one scoped `SnapshotEvent`, an empty X no operations and a W or X stating several groups no leaf; typed 272/273 date X operations at their exact entry nanosecond while W stays atomic at message transunix and retains the entry instant as creation/execution; every leaf carries in its metadata what its message states that no typed column reads and no identifier map of the leaf holds - the bridge's namespaced keys, then every other field by name, a group, a component or a map as one key holding JSON (`miscfees`), an expanded entry's own members or, for an execution split off a trade, its side's, bare and leading - never the envelope the message code leaves out, a typed tag, an idmap source, the expanded group, a `Parties(453)` or `RootParties(1116)` occurrence its `partyids` hold under its source and role, the `Account(1)` they hold as `account`, or a regulatory trade identifier its `identifiers` hold (a second party of one role stays, in `parties`); a book entry has its own `partyids` from its own `Parties`, leading the message's, and an empty W snapshot's control holds no maps and keeps its parties and account; every scalar of the metadata whose key ends with an identifier its message's type declares under `FIX:identifiers` (`MsgType::identifier_values`; an entry's or a side's own member checked against its component's) is lifted into the set its type belongs to (`Operation::identifier_set`) under its own key where that set holds it free, with the same value or with one ranking below it (`Identifiers::insert`), else it stays; the map and what it lifts feed the leaf's digest, never the message code)
   pub fn into_market_data(self) -> Result<Vec<MarketData>>  (consuming conversion: moves a direct message's held root event without cloning and finalizes its leaf's identity, while W/X owns one event per NoMDEntries occurrence or the empty-W control; the leaves `market_data` answers, an error for nothing the message states; every leaf carries its message's unmapped fields as `market_data` does)
@@ -1093,7 +1095,7 @@ impl FixMsg
   impl MarketMessage for FixMsg  (a FIX message is the message MarketData::Fix holds: into_market_data and into_market_leaf are the two inherent conversions boxed; the boxed following, merging and restating arms downcast the other side and answer nothing across message types; stable_hash, clone_box, dyn_eq, as_any and into_any the object-safe twins)
   impl From<FixMsg> for MarketData  (holds the message whole, boxed, as MarketData::Fix)
   impl TryFrom<MarketData> for FixMsg  (the `Fix` variant; another variant is `InvalidRecord` at `$.kind`)
-pub struct FixMarketIterator<I> where I: Iterator, I::Item: Into<Result<FixMsg>>  (re-exported from `yggdryl::fix`; a lazy projection of sorted FIX messages into book inputs, retaining at most one message's expanded book entries; each leaf takes the `seqnum` place its message holds, the parse's or the lifecycle's, so a chain's steps at one instant keep the walk's order; a message its intake refused for what it states is passed over with a warning, an operation dated before one already yielded is yielded with a warning, a book excluding it, and only a source failure is yielded - after every operation before it, once - and fuses the iterator)
+pub struct FixMarketIterator<I> where I: Iterator, I::Item: Into<Result<FixMsg>>  (re-exported from `yggdryl_fix`; a lazy projection of sorted FIX messages into book inputs, retaining at most one message's expanded book entries; each leaf takes the `seqnum` place its message holds, the parse's or the lifecycle's, so a chain's steps at one instant keep the walk's order; a message its intake refused for what it states is passed over with a warning, an operation dated before one already yielded is yielded with a warning, a book excluding it, and only a source failure is yielded - after every operation before it, once - and fuses the iterator)
   pub fn new(source: I) -> Self  (over messages already sorted by event time; each leaf carries its message's unmapped fields)
   impl<I> Iterator<Item = Result<MarketData>> for FixMarketIterator<I> where I: Iterator, I::Item: Into<Result<FixMsg>>
   impl<I> FusedIterator for FixMarketIterator<I> where I: Iterator, I::Item: Into<Result<FixMsg>>
@@ -1104,12 +1106,12 @@ impl FixCodec
   pub fn book_serie<I>(&self, messages: I, snapshot_millis: u64, filter: Option<&Filter>) -> Result<StreamChunkedSerie> where I: IntoIterator, I::Item: Into<Result<FixMsg>>, I::IntoIter: Send + 'static  (book_arrow_reader answered as a StreamChunkedSerie of MarketData::field rows, one identity plan)
   pub fn market_serie<I>(&self, messages: I) -> Result<StreamChunkedSerie> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (market_arrow_reader likewise)
 
-### yggdryl::fix::state  [rust/src/fix/state.rs]  (the FIX readings of State, free functions of the FIX module and no methods of State: each status field a message answers a request by under its own code set, and the state a message asks for by being the message it is; called `crate::fix::state::from_status`, `yggdryl::fix::state::from_status` outside; `OrdStatus(39)` and `ExecType(150)` read the wire-code table State::from_spelling shares, through implementer::state_from_wire_code)
+### yggdryl_fix::state  [rust/fix/src/state.rs]  (the FIX readings of State, free functions of the FIX module and no methods of State: each status field a message answers a request by under its own code set, and the state a message asks for by being the message it is; called `crate::state::from_status` inside the crate, `yggdryl_fix::state::from_status` outside; `OrdStatus(39)` and `ExecType(150)` read the wire-code table State::from_spelling shares, through implementer::state_from_wire_code)
 pub fn from_status(tag: i32, code: &str) -> Option<State>  (one status field's code under its own code set: 39, 150, 1036, 939, 297, 87, 665, 940, 1375, 531; the code trimmed; `None` for a tag no status reads, a code its set does not define and a quote status that is a market warning - 12, 13, 19 and 20; 531 reads every response but a rejection as Canceled)
 pub const STATUS_TAGS: [i32; 10]  (the order a message's state is read off its status fields, the first stated winning)
 pub fn from_msgtype(msgtype: &str) -> Option<State>  (what a message asks for by being the message it is: new orders PendingNew, cancels PendingCancel, replaces PendingReplace, a quote request Pending, a quote Active, a reject Rejected)
 
-### yggdryl::fix::entry  [rust/src/fix/entry.rs]
+### yggdryl_fix::entry  [rust/fix/src/entry.rs]
 pub struct FixEntry  (one field a message states, beside what is nested under it; re-exported at the crate root)
   pub fn new(tag: i32, name: impl Into<SmolStr>, value: Option<SmolStr>) -> Self  (a negative tag is stored as 0)
   pub fn with_entries(mut self, entries: Vec<FixEntry>) -> Self
@@ -1120,15 +1122,15 @@ pub struct FixEntry  (one field a message states, beside what is nested under it
   pub const fn is_stated(&self) -> bool
   impl Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord for FixEntry
 
-### yggdryl::FixCategory  [rust/src/fix_category.rs]
+### yggdryl_fix::FixCategory  [rust/fix/src/fix_category.rs]
 pub enum FixCategory { Fields, Components, Groups }  (a message is a component carrying FIX:msgtype)
   pub const ALL: [Self; 3]
   pub const fn as_str(self) -> &'static str
   pub fn from_str(value: &str) -> Result<Self>
   impl Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize, FromStr, Display, AsRef<str> for FixCategory
 
-### yggdryl::fix::MsgDirection  [rust/src/fix/direction.rs]
-pub const SEND_PATTERNS: [&str; 3]  (the default patterns naming the set's Send code where tag 385's field carries no FIX:directions: the spelled verbs, the bracketed bare word, the Jolokia request: prose; re-exported at yggdryl::fix beside RECEIVE_PATTERNS)
+### yggdryl_fix::MsgDirection  [rust/fix/src/direction.rs]
+pub const SEND_PATTERNS: [&str; 3]  (the default patterns naming the set's Send code where tag 385's field carries no FIX:directions: the spelled verbs, the bracketed bare word, the Jolokia request: prose; re-exported at yggdryl_fix beside RECEIVE_PATTERNS)
 pub const RECEIVE_PATTERNS: [&str; 3]  (the mirror for the Receive code: the spelled verbs, the bracketed bare word, the Jolokia response: prose)
 pub struct MsgDirection  (the registry's reading of tag 385: its code set and the rules naming one code from the prose in front of a payload - the field's FIX:directions, the defaults built in where it carries none. Built by FixRegistry::msgdirection, every pattern compiled once into a regex::bytes::Regex by FixRegistry::msgdirection / FixCodec::new; no public constructor)
   pub const fn field(&self) -> &Field  (tag 385 as a built message carries it: the dictionary's field non-null, else a utf8 field carrying the tag)
@@ -1141,7 +1143,7 @@ pub struct MsgDirection  (the registry's reading of tag 385: its code set and th
   pub fn read_text(&self, line: &str) -> Option<&str>
   impl Clone, Debug for MsgDirection
 
-### yggdryl::fix::MsgType  [rust/src/fix/msgtype.rs]
+### yggdryl_fix::MsgType  [rust/fix/src/msgtype.rs]
 pub struct MsgType  (registry-owned non-null Struct Field with a compiled group path index; no public constructor; re-exported at the crate root)
   pub fn stable_hash(&self) -> u64
   pub const fn as_field(&self) -> &Field
@@ -1152,7 +1154,7 @@ pub struct MsgType  (registry-owned non-null Struct Field with a compiled group 
   pub fn identifier_values<'a>(&'a self, message: &'a FixMsg) -> impl Iterator<Item = (&'a Field, &'a Scalar)>  (the direct scalar members FIX:identifiers selects, read off the message's content row in declaration order, absent or null ones skipped; borrowed, no metadata parsing or allocation)
   impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Display, AsRef<Field> for MsgType
 
-### yggdryl::fix::catalog  [rust/src/fix/catalog.rs]
+### yggdryl_fix::catalog  [rust/fix/src/catalog.rs]
 impl FixRegistry
   pub fn get_msgtype(&self, spelling: &str) -> Option<&MsgType>  (one code namespace: the code's first holder answers a bare code; a name reaches the message of that name)
   pub fn msgtype(&self, spelling: &str) -> Result<&MsgType>
@@ -1172,7 +1174,7 @@ impl FixRegistry
   pub fn update_definition(&mut self, category: FixCategory, field: Field) -> Result<Field>  (replaces an existing definition and answers its previous value; refuses absence, and refuses a Fields replacement that changes the FIX identity)
   pub fn remove_definition(&mut self, category: FixCategory, name: &str) -> Result<Option<Field>>  (None when absent; refused while another definition still references it)
 
-### yggdryl::fix::registry  [rust/src/fix/registry.rs]
+### yggdryl_fix::registry  [rust/fix/src/registry.rs]
 pub struct FixRegistry  (one namespace of scalar fields, components and groups, every one reached through the field doors below; a message is a component carrying FIX:msgtype)
   pub fn stable_hash(&self) -> u64
   pub fn msgdirection(&self) -> MsgDirection  (the reading of tag 385 as the registry holds it now - its set and its FIX:directions rules, the defaults where the field carries none)
@@ -1241,7 +1243,7 @@ pub struct FixFailure  (re-exported at the crate root; one source a plural fold 
   impl Display for FixFailure  ("{source}: {reason}", the source omitted when none)
   impl Clone, Debug, Eq, PartialEq for FixFailure
 
-### yggdryl::fix::schema  [rust/src/fix/schema.rs]
+### yggdryl_fix::schema  [rust/fix/src/schema.rs]
 pub const HEADER_TAGS: [i32; 24]
 pub const TRAILER_TAGS: [i32; 3]
 pub const BODY_TAGS: [i32; 54]  (SecurityID(48) and SecurityIDSource(22) no columns: the prefix's `securityids` states them, `fixentries` keeps them as sent)
@@ -1253,7 +1255,7 @@ pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field>  (a c
 pub fn fix_column_of(schema: &Field, tag: i32) -> Option<usize>  (where the column carrying one tag sits, by the column's own FIX:tag else the tag its name spells)
 pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>>  (each column's tag, read once for a whole schema)
 
-### yggdryl::fix::source  [rust/src/fix/source.rs]
+### yggdryl_fix::source  [rust/fix/src/source.rs]
 pub struct FixSource  (re-exported at the crate root; one source a dictionary was built from - the entry a FIX:sources id names - its id folded to ASCII lowercase, the file it was read from where one is known and the role of its plugin (`UKNW` where none is known); the id grammar is this file's, read by every door an id crosses)
   pub fn new(id: &str) -> Result<Self>  (the id folded; refuses an empty id or one holding a quote, a backslash or a control character, naming FIX:sources)
   pub fn with_file(self, file: impl Into<SmolStr>) -> Self
@@ -1266,7 +1268,7 @@ pub struct FixSource  (re-exported at the crate root; one source a dictionary wa
   impl Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd for FixSource  (by id, then by file, then by plugin side)
 pub fn plugin_side(class: &str) -> Side  (re-exported at the crate root; the side a CBlock root's `type` attribute names: the last `.`-segment of the class, folded, holding `buyside` is `Side::Buy`, holding `sellside` is `Side::Sell`, anything else - a package naming a role, no attribute - is `Side::Unknown`; never refuses)
 
-### yggdryl::fix::store  [rust/src/fix/store.rs]
+### yggdryl_fix::store  [rust/fix/src/store.rs]
 impl FixRegistry
   pub fn from_json(input: &str) -> Result<Self>  (`{codesets, sources, fields, components, groups}` and no other key, `sources` the catalog's entries, stated only where there is one; the code sets are read first, because a field naming one the dictionary does not hold is refused)
   pub fn into_json(&self) -> Result<String>
@@ -1282,7 +1284,7 @@ pub struct FixCommit  (re-exported at the crate root; what one `commit` moved un
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool
 
-### yggdryl::fix::ulbridge  [rust/src/fix/ulbridge.rs]
+### yggdryl_fix::ulbridge  [rust/fix/src/ulbridge.rs]
 pub const ULBRIDGE_ROWHEADER: &str  (the row header ULBridge writes in front of every line of its log: `mtime`, `msgthreadid`, `msgsessionid`, `msgctxid`, `msgseqnum`, `msgpluginid`, `loglevel`; `mtime` is the clock, consumed into each line's `transunix` - a point or a comma before three digits or grouped microseconds, or no fraction - so the header dates its lines and a message stating no SendingTime(52) is read against its line's clock; `msgsessionid`, `msgctxid`, `msgseqnum` and `msgpluginid` are named for the fields they fill, and `msgthreadid` (int64) and `loglevel` (utf8) name none: columns of the line's row, carried in front of a FIX row as the row's own cells and filling no field; kept ULBridge's because the line shape is the product's)
 
 ### yggdryl::fs  [rust/src/fs/mod.rs]  (Arrow-compatible filesystems bound to the crate's one IOBase: `FileSystem` is the public, object-safe seam, `BoundLocation` the binding every handle carries, and an unsupported backend capability returns `Error::Unsupported`)
@@ -1441,12 +1443,17 @@ pub fn copy_bound(source: &BoundLocation, target: &BoundLocation) -> Result<u64>
 pub fn move_bound(source: &BoundLocation, target: &BoundLocation) -> Result<u64>  (the backend move_file within one filesystem, else copy_bound then delete_file on the source)
 
 ### yggdryl::graph  [rust/src/graph/mod.rs]
-pub mod arrow;
-pub mod book;
-pub mod candle;
 pub mod column;
 pub mod element;
 pub mod element_column;
+  pub use column::EventColumn;
+  pub use element::{Element, Event};
+  pub use element_column::ElementColumn;
+
+### yggdryl_market::graph  [rust/market/src/graph/mod.rs]
+pub mod arrow;
+pub mod book;
+pub mod candle;
 pub(crate) mod facts;
 pub mod iterator;
 pub mod kind;
@@ -1459,9 +1466,6 @@ pub mod trade;
 pub mod view;
   pub use book::{BookEvent, BookIterator, SnapshotEvent};
   pub use candle::{Candle, CandleIterator, CandleOptions, Ohlc};
-  pub use column::EventColumn;
-  pub use element::{Element, Event};
-  pub use element_column::ElementColumn;
   pub use iterator::EventIterator;
   pub use kind::MarketKind;
   pub use market::{FxRates, Market, Metadata, Operation, empty_fxrates, empty_metadata};
@@ -1471,7 +1475,7 @@ pub mod view;
   pub use operation_column::OperationColumn;
   pub use trade::TradeEvent;
   pub use view::MarketView;
-  macro_rules! delegate_event, delegate_market, delegate_operation  (pub(crate): `impl Event`, `impl Market` and `impl Operation` forwarding every accessor to a field that is one; `delegate_event!(Type, field, restating = .., is_execution = .., set_transunix = ..)` takes the readings a wrapper answers itself as closures, the last two optional)
+  macro_rules! delegate_event, delegate_market, delegate_operation  (exported #[doc(hidden)], delegate_market and delegate_operation reached by yggdryl-fix through yggdryl_market::implementer: `impl Event`, `impl Market` and `impl Operation` forwarding every accessor to a field that is one; `delegate_event!(Type, field, restating = .., is_execution = .., set_transunix = ..)` takes the readings a wrapper answers itself as closures, the last two optional)
 
 ### yggdryl::graph::element  [rust/src/graph/element.rs]
 pub trait Element  (one element of a graph: its own identity, the identity it has in another graph and the code that names it there, the codes it digests to, its sources' identities and the order it stands in, all read and written; object-safe but for the order and the by-value readings; it carries no identifier map - the names an operation goes by are `Operation::get_identifiers`, and what a book reads to place an entry is `OperationEvent::book`)
@@ -1525,7 +1529,7 @@ pub trait Event: Element  (an element that happened at one instant, stands in on
   fn txhash(&self) -> Result<TxHash>  (provided: `transunix` at nanosecond resolution coupled with `hashcode` as an XXH3-64 digest; ArithmeticOverflow past signed 64-bit nanoseconds)
   fn time_uuid(&self) -> Result<Uuid>  (provided: calls `txhash()?.into_sequenced_uuid(seqnum, crosshashcode)`; the TxHash instant is restated from nanoseconds to Unix milliseconds, `rand_a` holds the sequence up to 4095 and saturates above it, and `rand_b` holds the low 62 bits of XXH3 over `hashcode` and the whole `u64` sequence seeded by `crosshashcode`, so representable sequences order within a millisecond and overflowed values remain probabilistically distinct; what an implementor's `Element::get_uuid` answers where its identity is its instant and its content)
 
-### yggdryl::graph::market  [rust/src/graph/market.rs]  (the market vocabulary: the slim reading anything that stands in a market gives, what an operation on it adds, and what an event that is one or the other answers, provided on the traits `where Self: Event`)
+### yggdryl_market::graph::market  [rust/market/src/graph/market.rs]  (the market vocabulary: the slim reading anything that stands in a market gives, what an operation on it adds, and what an event that is one or the other answers, provided on the traits `where Self: Event`)
 pub type Metadata = BTreeMap<SmolStr, SmolStr>;  (free-form facts a market element carries beside its typed ones; never an identifier, which has a typed home)
 pub fn empty_metadata() -> &'static Metadata  (the one shared empty map an element holding none answers)
 pub type FxRates = BTreeMap<Ccy, Decimal>;  (the FX rates a market element states, sorted by target currency: an amount in the element's currency divided by the rate under a target is that amount in the target)
@@ -1653,7 +1657,7 @@ pub enum EventColumn { TransUnix, CreaUnix, SendUnix, ExprUnix, PrevUnix, SnapUn
   pub fn fact<E: Event + ?Sized>(self, event: &E) -> Option<Scalar>  (what the event states under the column, none where it states no fact: an empty code or serie, a place of zero, an absent instant)
   pub fn record<E: Event + ?Sized>(self, event: &mut E, value: &Scalar)  (states a cell back through the traits; a null clears the fact, a value the fact's type refuses is silence)
 
-### yggdryl::graph::market_column  [rust/src/graph/market_column.rs]
+### yggdryl_market::graph::market_column  [rust/market/src/graph/market_column.rs]
 pub enum MarketColumn { MarketDataKind, MarketDataType, Price, StopPx, Currency, Quantity, DisplayQty, HiddenQty, Unit, Side, SecurityIds, IsinCode, CfiCode, MicCode, ExecUnix, LastPx, LastQty, AvgPx, CumQty, LeavesQty, CxlQty, PrevPx, PrevQty, SpotRate, ForwardPoints, BidPx, BidQty, BidCcy, AskPx, AskQty, AskCcy, FxRates, Ticker, StrikePx, Metadata }  (the thirty-five canonical columns every `Market` answers, one per fact under the trait's own name: `marketdatakind` and `marketdatatype` first, then `price` .. `metadata`, `execunix` after `miccode`)
   impl Clone, Copy, Debug, Eq, Hash, PartialEq for MarketColumn
   pub const ALL: [Self; 35]
@@ -1667,7 +1671,7 @@ pub enum MarketColumn { MarketDataKind, MarketDataType, Price, StopPx, Currency,
   pub fn fact<E: Market + ?Sized>(self, element: &E) -> Option<Scalar>  (none for an empty identifier map, FX rate map or metadata; `isincode` the `ISIN` security identifier)
   pub fn record<E: Market + ?Sized>(self, element: &mut E, value: &Scalar)  (null clears an optional fact; an incompatible cell changes nothing; an `isincode` cell a projection of `securityids` through `insert_securityid`: it fills an absent `ISIN`, replaces one ranking below it and leaves another real one standing - the strict door is the Arrow reader)
 
-### yggdryl::graph::operation_column  [rust/src/graph/operation_column.rs]  (the five columns every market operation is stated in, beside the market's thirty-five)
+### yggdryl_market::graph::operation_column  [rust/market/src/graph/operation_column.rs]  (the five columns every market operation is stated in, beside the market's thirty-five)
 pub enum OperationColumn { OrdQty, TimeInForce, Tradable, Identifiers, PartyIds }  (one per fact `Operation` adds: `ordqty`, `timeinforce`, `tradable`, `identifiers` (display `Identifiers`), `partyids` (display `Party IDs`))
   impl Clone, Copy, Debug, Eq, Hash, PartialEq for OperationColumn
   pub const ALL: [Self; 5]
@@ -1681,7 +1685,7 @@ pub enum OperationColumn { OrdQty, TimeInForce, Tradable, Identifiers, PartyIds 
   pub fn fact<E: Operation + ?Sized>(self, operation: &E) -> Option<Scalar>  (none for an empty map or an absent fact)
   pub fn record<E: Operation + ?Sized>(self, operation: &mut E, value: &Scalar)  (null clears; an incompatible cell - a map that cannot be read, a flag the one boolean table does not read (`yes` and `0` are cells, `maybe` is not) - leaves the fact unchanged)
 
-### yggdryl::graph::operation  [rust/src/graph/operation.rs]  (the operation leaves: an order, a quote or an execution, undated or dated, generic over a sealed kind, with the book-control facts a market-data entry carries)
+### yggdryl_market::graph::operation  [rust/market/src/graph/operation.rs]  (the operation leaves: an order, a quote or an execution, undated or dated, generic over a sealed kind, with the book-control facts a market-data entry carries)
 pub trait OperationKind: Sealed + Copy + Clone + Debug + Eq + PartialEq + Send + Sync + 'static  (sealed: `OrderKind`, `QuoteKind` and `ExecutionKind` are the only kinds)
   const KIND: MarketKind  (the word the kind digests and stores under: `order`, `quote` or `execution`)
 pub struct OrderKind;  (`MarketKind::Order`; Clone, Copy, Debug, Eq, PartialEq)
@@ -1720,13 +1724,13 @@ pub type OrderEvent = OperationEvent<OrderKind>;
 pub type QuoteEvent = OperationEvent<QuoteKind>;
 pub type ExecutionEvent = OperationEvent<ExecutionKind>;
 
-### yggdryl::graph::trade  [rust/src/graph/trade.rs]
+### yggdryl_market::graph::trade  [rust/market/src/graph/trade.rs]
 pub struct TradeEvent  (a composite trade: one market operation event whose executions are the sided fills it is made of; the root's identity derives from its own facts and its executions' canonical identities, so two trades stating the same fills are one trade; Clone, Debug, PartialEq)
   pub fn from_parts<E: Event + Operation + ?Sized>(root: &E, executions: Vec<ExecutionEvent>) -> Result<Self>  (the root's facts copied; finalizes the children and sorts them by side, cross code and identity; requires at least one, each on any side - `UNKNOWN` included - at the root instant, with the root ticker where it states one, and cross codes unique within the trade; the root takes the maximum child sequence, earliest creation and recording and latest execution instants, and digests the execution count and each child `uuid` once)
   pub fn executions(&self) -> &[ExecutionEvent]  (canonical side/cross-code/identity order)
   impl Element, Event, Market, Operation for TradeEvent  (`Event::is_execution` is true; `set_transunix` atomically rebases root and children and re-finalizes them while retaining child `execunix`; following and merging require the same root cross code, combine children by execution cross code and rebase before deriving the composite again)
 
-### yggdryl::graph::book  [rust/src/graph/book.rs]
+### yggdryl_market::graph::book  [rust/market/src/graph/book.rs]
 pub const ENTRY_ID: IdType = IdType::MdEntryId;  (the identifier type an entry's own `MDEntryID(278)` is held under: `mdentryid`)
 pub const ENTRY_REF_ID: IdType = IdType::MdEntryRefId;  (the type its `MDEntryRefID(280)` is held under: `mdentryrefid`)
 pub struct SnapshotEvent  (the full-snapshot control an empty `W` is: an event stating the scope it replaces under `MdUpdateAction::Snapshot` and no entry of its own; Clone, Debug, PartialEq)
@@ -1764,7 +1768,7 @@ pub struct BookIterator<I> where I: Iterator, I::Item: Into<Result<MarketData>> 
   impl<I> Iterator<Item = Result<BookEvent>> for BookIterator<I> where I: Iterator, I::Item: Into<Result<MarketData>>
   impl<I> FusedIterator for BookIterator<I> where I: FusedIterator, I::Item: Into<Result<MarketData>>
 
-### yggdryl::graph::candle  [rust/src/graph/candle.rs]  (one OHLC per book cross code and bucket over a sorted stream of books: the best bid, the best ask, the midpoint and the spread, the quantities at the touch when the bucket closed and the books folded; the buckets aligned to a zone's wall clock)
+### yggdryl_market::graph::candle  [rust/market/src/graph/candle.rs]  (one OHLC per book cross code and bucket over a sorted stream of books: the best bid, the best ask, the midpoint and the spread, the quantities at the touch when the bucket closed and the books folded; the buckets aligned to a zone's wall clock)
 pub struct Ohlc { pub open: Decimal, pub high: Decimal, pub low: Decimal, pub close: Decimal }  (one reading's open, high, low and close over a bucket: the first value, the greatest, the least and the last, a bucket that saw one value stating it four times; Clone, Copy, Debug, Eq, Hash, PartialEq)
   pub const fn at(value: Decimal) -> Self  (a reading that saw one value)
   pub fn fold(&mut self, value: Decimal)  (a later value: the close moves, the high and the low widen)
@@ -1786,7 +1790,7 @@ pub struct CandleIterator<I>  (the fold: books already sorted by `get_transunix(
   impl<I: Iterator<Item = Result<BookEvent>>> Iterator for CandleIterator<I>  (Item = Result<Candle>)
   impl<I: Iterator<Item = Result<BookEvent>>> FusedIterator for CandleIterator<I>
 
-### yggdryl::graph::arrow  [rust/src/graph/arrow.rs]
+### yggdryl_market::graph::arrow  [rust/market/src/graph/arrow.rs]
 impl MarketData
   pub fn field() -> Result<Field>  (the required `marketdata` struct: `ElementColumn::ALL` and `EventColumn::ALL` - every one nullable because an undated leaf states no clock - then `MarketColumn::ALL`, opening with `marketdatakind` and `marketdatatype`, `OperationColumn::ALL`, the book controls a market-data entry states - `bookscope`, `bookaction` (utf8: its `MDUpdateAction(279)` code, or `snapshot`) and `bookposition` (uint32: its `MDEntryPositionNo(290)`), which a book's delta replays by - then the nullable nested `alive` and `delta` (a book's orders and quotes, alive on either side and applied by its instant, in the order applied), `events` (the executions and snapshot controls its instant recorded, in the order applied), `executions` (a trade's: a book holds none), and `bidlimits` and `asklimits` - a complete book's price levels, `serie<limit>` best first and the unpriced one last, an empty side an empty list; a delta book states `delta` and `events` and leaves `alive` and the limits null; null on every other leaf; 64 columns, 6 + 9 + 35 + 5 + 3 + 6; an operation row, the item of the four nested event lists, is the first 58 and nests nothing; every fact its own typed column, every decimal the registered `decimal`)
   pub fn arrow_reader<I>(elements: I, batch_row_size: Option<usize>, batch_byte_size: Option<u64>) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<MarketData>>, I::IntoIter: Send + 'static  (lazy: the source is not pulled until the reader is; laid out column by column from the typed leaves with no per-row `Scalar`; a `None` row size uses the crate default and zero normalizes to one; a byte bound closes a nonempty batch once the rows held reach it; a value is written only as its canonical self - a stale identity or fact is refused on its row; a source or refusal error follows the completed prefix and fuses)
@@ -1794,7 +1798,7 @@ impl MarketData
   pub fn events_serie(source: impl Into<Serie>, kind: Option<MarketDataKind>) -> Result<StreamChunkedSerie>  (the events of the books `source` holds, as `delta_serie` lays out the delta: every execution and snapshot control each book's instant recorded, in the order applied, of `kind` (`EXEC`, or `BOOK` for the controls) where one is stated, both otherwise; `delta_serie`'s refusals; what a stage reads a window's executions out of a table of books with)
   pub fn from_arrow_reader(batches: BatchReader) -> Result<impl FusedIterator<Item = Result<MarketData>> + Send + 'static>  (tolerant: the root columns are resolved by name once per stream, whatever their case, any subset in any order, a foreign column ignored and a column of another castable type cast through one plan compiled before the first batch; each column's storage proven once and read per row; a missing or unknown `marketdatakind`, an undated `TRAD` or `BOOK` row, a dated `BOOK` row in a batch with no `alive` column - a non-null `alive` cell a complete book, a null one beside a `delta` or an `events` list a delta book, all three null a snapshot control, an empty `alive` told apart by its `delta` and `events`, its `uuid` and its snapshot instant - an event-only row a delta book, never a control - an `EXEC` item in `delta`, an item other than `EXEC` or `BOOK` in `events`, a `BOOK` row stating `executions`, or a fact the kind requires, a trade's `executions`, is refused at the first row that needs it; every stated identity and fact must be the one the rebuilt leaf derives - a book's price levels included - and an identity column that stands must state one, a null `uuid`, `crossuuid`, `hashcode` or `crosshashcode` refused; a stated `isincode` fills an absent `ISIN` security identifier and must be the one `securityids` states; any other null cell states nothing; two columns naming one fact are refused before a row is read; fused after an error)
 
-### yggdryl::graph::kind  [rust/src/graph/kind.rs]
+### yggdryl_market::graph::kind  [rust/market/src/graph/kind.rs]
 pub enum MarketKind { Order, Quote, Execution, OrderEvent, QuoteEvent, ExecutionEvent, TradeEvent, BookEvent, SnapshotEvent, Fix }  (which leaf a `MarketData` value is; repr(u8); Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)
   pub const ALL: [Self; 10]  (declaration order)
   pub const fn as_str(self) -> &'static str  (`order`, `quote`, `execution`, `order_event`, `quote_event`, `execution_event`, `trade_event`, `book_event`, `snapshot_event`, `fix`)
@@ -1802,7 +1806,7 @@ pub enum MarketKind { Order, Quote, Execution, OrderEvent, QuoteEvent, Execution
   pub const fn marketdatakind(self) -> MarketDataKind  (the category a row of the kind states: an order `ORDR`, a quote `QUOT`, an execution `EXEC`, a trade `TRAD`, a book or a snapshot control `BOOK`)
   pub const fn is_event(self) -> bool  (one of the six dated leaves)
 
-### yggdryl::graph::market_data  [rust/src/graph/market_data.rs]
+### yggdryl_market::graph::market_data  [rust/market/src/graph/market_data.rs]
 pub enum MarketData { Order(Order), Quote(Quote), Execution(Execution), OrderEvent(OrderEvent), QuoteEvent(QuoteEvent), ExecutionEvent(ExecutionEvent), TradeEvent(TradeEvent), BookEvent(Box<BookEvent>), SnapshotEvent(SnapshotEvent), Fix(Box<dyn MarketMessage>) }  (one value over every leaf and a message held whole, resolved once at the boundary that built it; Clone, Debug, PartialEq through the trait's object-safe twins; 912 bytes)
   pub fn kind(&self) -> MarketKind
   pub fn marketdatakind(&self) -> MarketDataKind  (the leaf's kind's category: what the row's `marketdatakind` column states)
@@ -1813,7 +1817,7 @@ pub enum MarketData { Order(Order), Quote(Quote), Execution(Execution), OrderEve
   impl Element, Market for MarketData  (delegating to the leaf; `is_after` by instant where both are dated and false otherwise; `with_previous` and `merge_with` the leaf's own for the same variant; `with_previous` also chains an operation event after an operation event of another kind through their facts, its own kind kept; `merge_with` `None` across variants)
   impl From<leaf> for MarketData  (every leaf; a `BookEvent` boxed)
   impl TryFrom<MarketData> for leaf  (every leaf; another variant is `InvalidRecord` at `$.kind`, expected against actual kind)
-pub trait MarketMessage: Event + Operation + fmt::Debug + Send + Sync + 'static  (a message held whole that splits into market leaves, what `MarketData::Fix` holds - a FIX message the one implementation, in fix/market.rs: it answers every fact through the graph traits it extends, follows, merges and restates as itself through the boxed forms the walk dispatches to, and a book folds the leaves it splits into; the last five methods are what a trait object owes the enum holding it, the `MediumOptions` precedent; the walk's own seam over Event and Operation is a crate-private supertrait)
+pub trait MarketMessage: Event + Operation + fmt::Debug + Send + Sync + 'static  (a message held whole that splits into market leaves, what `MarketData::Fix` holds - a FIX message the one implementation, in yggdryl_fix's market.rs: it answers every fact through the graph traits it extends, follows, merges and restates as itself through the boxed forms the walk dispatches to, and a book folds the leaves it splits into; the last five methods are what a trait object owes the enum holding it, the `MediumOptions` precedent; the walk's own seam over Event and Operation is a crate-private supertrait)
   fn into_market_data(self: Box<Self>) -> Result<Vec<MarketData>>  (the market data leaves it splits into: one per operation it states, none for a message with no market reading)
   fn into_market_leaf(self: Box<Self>) -> Result<MarketData>  (the one leaf it is; an error where it is not exactly one)
   fn with_previous(self: Box<Self>, previous: &dyn MarketMessage) -> Option<Box<dyn MarketMessage>>  (Element::with_previous, boxed: this message as the one after `previous`, or nothing where it cannot follow it, following changes nothing, or `previous` is a message of another type)
@@ -1828,7 +1832,7 @@ pub trait MarketMessage: Event + Operation + fmt::Debug + Send + Sync + 'static 
   impl PartialEq for dyn MarketMessage  (through dyn_eq)
   impl From<MarketData> for Result<MarketData>  (the infallible stream item)
 
-### yggdryl::graph::iterator  [rust/src/graph/iterator.rs]
+### yggdryl_market::graph::iterator  [rust/market/src/graph/iterator.rs]
 pub struct EventIterator<E, I>  (the one walk: operation events read in their order, a missing `execunix` - a market fact - filled from `transunix` only where `Event::is_execution` says that incoming observation reports an execution, then each stated as following the live element - keeping its own place unless the live element happened at the same instant or later, where it takes the higher of its own and one past the live element's (saturating) - and yielded so; the live elements are kept under the identity every incarnation of one thing shares - the cross element, the element's own where it states no cross code - within the element's `Market::marketdatakind`, so an order and an execution under one cross code are two chains and an element joins only a chain of its own kind; every cross code is stored as `{kind}:{side}:{base}` (`Market::stored_crosscode`), so the two sides of one order or execution identifier are two chains - a quote's side is a tag, its chain one - and an element stating `UKNW` cites the one side its base code - indexed for sided elements alone - is alive on, two citing nothing, and every side a name it goes by is alive on, a name alive on a sided chain's side or an unsided element's own tag; an element citing one live chain - its live identity, that base side, or a name a live element goes by: a `(type, value)` pair of its `get_identifiers()` whose type `IdType::is_chain_identity`, or the chain's first value a lineage identifier names (`Operation::parent_of`, the last of its base's `parents_of`) under its base, each name held by the first live chain of its kind and side that stated it until that chain ends - is stated as the one after it by its own `with_previous`; one citing two live chains is a conflict, standing under its own identity - its own live chain where cited, else a chain of its own - told by `Operation::note_conflict` and one deduplicated warning per kind; a `NEW` stated over a live element that `State::is_new_like` reads leaving `UPDATED`; the yielded element stands as the live one where still alive (live state, not past its expiration) and retires the identity where not, so a filled order ends its chain and a later element under its identity starts afresh; one arriving under the identity the live element arrived under - the same instant and content, logged again - is yielded `Event::restating` it, keeping the earliest execution and recording instants, so the chain grows by nothing; one arriving under the identity a statement the chain moved past at the live element's own instant arrived under is yielded restating that statement, the chain staying where it moved, and a chain a step ends keeps that step and the statements it moved past at the step's instant the same way - one arriving under the identity one of them arrived under restating it, the chain staying ended - until the walk reads a later instant; every element the walk states as a chain's - a follower, a twin, one before the live element, an expiration - is re-keyed onto the chain's side and stored cross code (`Operation::follow_identity`), its cross hash and cross element derived and its identity settled once; one before the live element follows nothing and changes nothing, one its reading refuses stands; every walked element leaves stating its creation - a stated one never replaced, else its chain's earliest, else, starting a chain, its own instant - and a chain whose first element states no cross code stands under that element's identity, every later element carrying it as its `crossuuid`; Debug)
   impl<E, I: Iterator<Item = E>> EventIterator<E, I> where E: Walked  (`Walked` is crate-sealed: implemented for every `E: Event + Operation + Clone` and for `MarketData`, whose `OrderEvent`, `QuoteEvent`, `ExecutionEvent`, `TradeEvent` and `Fix` walk - each following and restating through its own reading - and whose every other variant is yielded unchanged, in place)
   pub fn new(elements: impl IntoIterator<IntoIter = I>, sorted: bool) -> Self  (`sorted` takes the caller's word that the elements arrive in their own order and streams them; otherwise they are collected and stably sorted by `is_after` / `is_before` first)
@@ -1838,7 +1842,7 @@ pub struct EventIterator<E, I>  (the one walk: operation events read in their or
   impl<E: Walked, I: Iterator<Item = E>> Iterator for EventIterator<E, I>  (Item = E; size_hint is the source's)
   impl<E: Walked, I: FusedIterator<Item = E>> FusedIterator for EventIterator<E, I>
 
-### yggdryl::graph::view  [rust/src/graph/view.rs]  (the named readings of a `marketdata` stream, one Plan each over the rows MarketData::arrow_reader writes)
+### yggdryl_market::graph::view  [rust/market/src/graph/view.rs]  (the named readings of a `marketdata` stream, one Plan each over the rows MarketData::arrow_reader writes)
 pub enum MarketView { Orders, Quotes, Executions, Trades, Books, Lifecycle { crosscode: SmolStr } }  (one named reading of a `marketdata` stream, one Plan each; Clone, Debug, Eq, Hash, PartialEq; Display as `as_str`)
   pub const ALL: [&'static str; 6]  (`orders`, `quotes`, `executions`, `trades`, `books`, `lifecycle`)
   pub const fn as_str(&self) -> &'static str
@@ -6150,7 +6154,7 @@ pub fn from_regex(pattern: &str, autotype: bool) -> Result<Self>
 pub fn from_str(value: &str) -> Result<Self>
 
 ### yggdryl::protocol  [rust/src/protocol.rs]  (the borrowed protocol views of the protocols the core owns - the well-known list drives them with crate-private constructors - and protocol_field_types!, the builder a crate mints its own protocol's views with)
-macro_rules! protocol_field_types  (`protocol_field_types!($vis, $scheme, $view, $view_mut, $label)`, #[macro_export] #[doc(hidden)]: the two named views of one protocol - a field borrowed as its protocol and mutably borrowed as it - with Deref to ProtocolField / ProtocolFieldMut, AsRef<Field>, Debug, Display, Eq, Ord, Hash, IntoIterator and `as_protocol`; `$vis` the constructors' visibility - the core's 23 views pass `pub(crate)`, `fix/field.rs` passes `pub` for FixField and FixFieldMut; `$scheme` a `Scheme`; the expansion names public doors only: Field::protocol, Field::protocol_mut and ProtocolFieldMut::as_field)
+macro_rules! protocol_field_types  (`protocol_field_types!($vis, $scheme, $view, $view_mut, $label)`, #[macro_export] #[doc(hidden)]: the two named views of one protocol - a field borrowed as its protocol and mutably borrowed as it - with Deref to ProtocolField / ProtocolFieldMut, AsRef<Field>, Debug, Display, Eq, Ord, Hash, IntoIterator and `as_protocol`; `$vis` the constructors' visibility - the core's 23 views pass `pub(crate)`, yggdryl_fix's `field.rs` passes `pub` for FixField and FixFieldMut; `$scheme` a `Scheme`; the expansion names public doors only: Field::protocol, Field::protocol_mut and ProtocolFieldMut::as_field)
 impl<'field> HttpField<'field>
   pub fn accept(&self) -> Option<&'field str>
   pub fn accept_encoding(&self) -> Option<&'field str>
@@ -7288,7 +7292,7 @@ impl Scalar
   pub const fn fisn() -> Self
   pub type FisnField = FieldOf<FisnType>;
 
-### yggdryl::idkey  [rust/src/idkey.rs]  (the key an identifier is held under: the source that gave it and the type of name it is, spelled `src:type`, a key from the base source spelled as its type alone)
+### yggdryl_market::idkey  [rust/market/src/idkey.rs]  (the key an identifier is held under: the source that gave it and the type of name it is, spelled `src:type`, a key from the base source spelled as its type alone)
 pub struct IdKey { src, kind }  (an `IdSource` and an `IdType`; Clone, Debug, Eq, Hash, PartialEq, Ord by the bytes of its spelling - `cusip` < `derived:cusip` < `isin` < `oms:instrumentid` < `ullink:isin` - Display `src:type` (`isin` for a base key), FromStr, `PartialEq<str>` and `PartialEq<&str>` comparing the spelling without building it, `From<&IdKey> for SmolStr` a static string for a key of two member words; re-exported at the crate root)
   pub const fn new(src: IdSource, kind: IdType) -> Self
   pub const fn base(kind: IdType) -> Self  (the type's base key: its answer in an `Identifiers` map)
@@ -7298,7 +7302,7 @@ pub struct IdKey { src, kind }  (an `IdSource` and an `IdType`; Clone, Debug, Eq
   pub fn with_kind(&self, kind: IdType) -> Self  (the same source under another type)
   impl FromStr for IdKey  (reads exactly: `src:type` that source and that type, each folded, a bare word that type from the base source - `ISIN`, `ISIN_Number`, `base:isin`, `BASE:ISIN` and `fix:isin` are all `isin`, `marketorderid` the type `marketorderid`; refuses an empty half, a second `:` and a word no fold reads, `expected an identifier key src:type or type`; nothing is inferred - `Identifier::from_key` infers; Err = Error)
 
-### yggdryl::identifier  [rust/src/identifier.rs]  (identifiers: a value under a key - an `IdKey`, the source that gave it and the type of name it is - and the sorted map from the key an element states them in: `securityids`, `identifiers`, `partyids`, each laid out as a sorted `map<utf8, utf8>`, the base key of a type its answer)
+### yggdryl_market::identifier  [rust/market/src/identifier.rs]  (identifiers: a value under a key - an `IdKey`, the source that gave it and the type of name it is - and the sorted map from the key an element states them in: `securityids`, `identifiers`, `partyids`, each laid out as a sorted `map<utf8, utf8>`, the base key of a type its answer)
 pub const IDENTIFIER_WORD_WIDTH: usize = 64  (the most bytes a type or a source folds to: room for the longest FIX code-set name a party role or source has)
 pub const IDENTIFIER_VALUE_WIDTH: usize = 64
 pub struct IdWord(SmolStr)  (a word no `IdType` or `IdSource` member names, folded: lower-case ASCII letters, digits and `.`, 1 to 64 bytes; only a fold builds one, so a word a member names is never one; Clone, Debug, Eq, Hash, PartialEq; re-exported at the crate root)
@@ -7334,7 +7338,7 @@ pub struct Identifiers(Vec<Identifier>)  (a sorted map from a key to its value, 
   pub fn into_scalar(&self) -> Scalar  (a `Scalar::SortedMap` of the key text and the value, in key order; a key of two member words a static string)
   pub fn from_scalar(scalar: &Scalar) -> Result<Self>  (a `Map` or a `SortedMap` in any order, or a sequence of such maps - their union - each key read exactly through `IdKey::from_str`, then closed by the base rule - a type with no base key taking its highest-ranked named source's value, the first in key order among equals, unless its derivation outranks every named one; refuses, located `$['k']` or `$[i]['k']`, a key that reads as none, a value that states nothing or its type refuses, two spellings of one key with two values, and a key or value that is not text)
 
-### yggdryl::idtype  [rust/src/idtype.rs]  (the type of name an identifier is: one vocabulary for security, own and party identifiers)
+### yggdryl_market::idtype  [rust/market/src/idtype.rs]  (the type of name an identifier is: one vocabulary for security, own and party identifiers)
 pub enum IdType  (ninety members the crate names, each a static folded word, and `Other(IdWord)` for any other: the thirty-three FIX `SecurityIDSource(22)` types - `Cusip` 1, `Sedol` 2, `Quik`, `Isin` 4, `Ric` 5, `IsoCcy`, `IsoCtry`, `ExchSymb`, `Cta`, `Bloomberg` A, `Wkn`, `Dutch`, `Valor`, `Sicovam`, `Belgian`, `Common`, `ClearingHouse` (also its full name `clearinghouseclearingorganization`; `clearingorganization` alone is the party role), `FpmlSpec`, `Opra`, `FpmlUrl`, `Loc`, `MktAssigned`, `RedEntity`, `RedPair`, `Cftc`, `IsdaCommodity`, `Figi` S, `Lei`, `Synthetic`, `Fim`, `Index`, `Umtf`, `Dti` Y - the crate's own `Forex` (a currency pair, no FIX code), `Cfi`, `Fisn` (an ISO 18774 short name, FIX's `FinancialInstrumentShortName(2737)`, no FIX code; also `fisncode`, `financialinstrumentshortname`) and `InstrumentId`, `Elf` (an ISO 20275 entity legal form, neither a security nor a party; also `elfcode`, `entitylegalform`, `entitylegalformcode`), the operation identifiers `OrderId`, `ClOrdId`, `OrigClOrdId` (`clordid`'s one parent), `SecondaryOrderId`, `SecondaryClOrdId`, `SecondaryExecId`, `SecondaryQuoteId`, `SecondaryTradeId`, `SecondaryFirmTradeId`, `SecondaryAllocId`, `SecondaryIndividualAllocId`, `ExecId`, `QuoteId`, `QuoteReqId`, `MdReqId`, `TrdMatchId`, `TradeId`, `TradeReportId`, `TradeReportRefId` (`tradereportid`'s one parent, `TradeReportRefID(572)`), `MdEntryId`, `MdEntryRefId`, the regulatory trade ids `RegTradeId`, `PrevRegTradeId`, `BlockRegTradeId`, `RelatedRegTradeId`, `ClearedRegTradeId`, `Tvtic`, `ReportTrackingNumber`, and `Account`, `Party`, `UserId` and the `PartyRole(452)` roles `ExecutingFirm`, `ClientId`, `ClearingFirm`, `InvestorId`, `EnteringFirm`, `OrderOriginationTrader`, `ExecutingTrader`, `OrderOriginationFirm`, `ExecutingSystem`, `ContraFirm`, `ClearingOrganization` (21), `Exchange`, `CustomerAccount`, `EnteringTrader`, `ContraTrader`, `PositionAccount`, `OrderEntryOperatorId`, `ExecutionVenue`, `DeskId`, `InvestmentDecisionMaker`, `Algorithm`; Clone, Debug, Eq, Hash, PartialEq, Ord by spelling, `PartialEq<str>` and `PartialEq<&str>` so `id.kind() == "isin"` holds, AsRef<str>, Display, FromStr, `From<IdType> for SmolStr`; re-exported at the crate root)
   pub const KNOWN: [Self; 90]  (every member the crate names, in declaration order)
   pub fn as_str(&self) -> &str  (the folded spelling: `isin`, `clordid`, `executingtrader`)
@@ -7357,20 +7361,20 @@ pub enum IdType  (ninety members the crate names, each a static folded word, and
   pub fn max_rank(&self) -> u8  (the rank of a real value: `CodeValue::MAX_RANK` for an ISIN or a CFI, two; one for every other type)
   pub fn is_real(&self, value: &str) -> bool  (`rank(value) == max_rank()`)
 
-### yggdryl::idsource  [rust/src/idsource.rs]  (who gave an identifier: the issuer or namespace of its value)
+### yggdryl_market::idsource  [rust/market/src/idsource.rs]  (who gave an identifier: the issuer or namespace of its value)
 pub enum IdSource  (eighteen members the crate names and `Other(IdWord)` for any other: `Base` where nothing names the source - what a FIX field or group states, the word `fix` reading as it and never written, a key from it spelled as its type alone - `Derived` where the crate derived the value, and the sources FIX's `PartyIDSource(447)` and `AcctIDSource(660)` code sets name - `Bic`, `GeneralIdentifier`, `Proprietary`, `IsoCountryCode`, `SettlementEntityLocation`, `Mic`, `CsdParticipant`, `TaxId`, `LegalEntityIdentifier`, `ShortCodeIdentifier`, `NationalIdNaturalPerson`, `SidCode`, `Tfm`, `Omgeo`, `DtccCode`, `Spsaid` - a value under `Bic` held to a BIC's shape and under `LegalEntityIdentifier` to an LEI's whatever its type (`Identifier::new`), and ranked by that code too; Clone, Debug, Eq, Hash, PartialEq, Ord by spelling, `PartialEq<str>` and `PartialEq<&str>`, AsRef<str>, Display, FromStr, `From<IdSource> for SmolStr`; re-exported at the crate root)
   pub const KNOWN: [Self; 18]  (every member the crate names, in declaration order)
   pub fn as_str(&self) -> &str  (the folded spelling: `base`, `derived`, `proprietary`)
   pub const fn is_known(&self) -> bool
   impl FromStr for IdSource  (folds as `IdType` does and reads the member the word or an alias names - `fix` is `Base`, `generallyacceptedmarketparticipantidentifier` is `GeneralIdentifier`, `proprietarycustomcode` is `Proprietary`; any other word is an `Other`; Err = Error)
 
-### yggdryl::securityid  [rust/src/securityid.rs]  (security identifiers: the national number an ISIN embeds and the shape a symbol reads as; the security types and their value rules are `IdType`'s, what a lifecycle learns `IsinRegistry`'s)
+### yggdryl_market::securityid  [rust/market/src/securityid.rs]  (security identifiers: the national number an ISIN embeds and the shape a symbol reads as; the security types and their value rules are `IdType`'s, what a lifecycle learns `IsinRegistry`'s)
   pub fn embedded(isin: &Isin) -> impl Iterator<Item = Identifier>  (from `derived`: the national number an ISIN its check digit closes (`Isin::is_closed`) carries: US and CA a `cusip` in positions 2 to 11, GB, IE, GG, JE and IM behind `00` a `sedol` in positions 4 to 11, DE behind `000` a `wkn` in positions 5 to 11, CH and LI a `valor` in positions 2 to 11 with its leading zeros dropped; at most one, and only where it closes on its own check)
   pub enum SymbolCode { Instrument { isin: Option<Isin>, mic: Option<Mic>, ccy: Option<Ccy> }, Isin(Isin), Figi(Figi), Cusip(Cusip), Sedol(Sedol), Cfi(Cfi), Ric(Ric), Bloomberg(Bbg) }  (what a symbol is, read off its shape: its length first - 21 `{ISIN}_{MIC}_{CCY}`, 12 a FIGI behind `BBG` else an ISIN, 9 a CUSIP, 7 a SEDOL, 6 upper-case letters a detailed CFI - then a RIC `AAPL.OQ` or a Bloomberg identifier ending in its yellow key; every candidate closing on its own type's check)
   pub fn SymbolCode::from_symbol(symbol: &str) -> Option<SymbolCode>  (the identifier a symbol's shape is, or none; what `Market::fill_market` derives off a ticker, never over a stated identifier)
   pub fn SymbolCode::instrument(text: &str) -> Option<SymbolCode>  (an instrument key shaped twelve, four and three ASCII letters and digits, each part read by its own type and none where it refuses it; what an `*INSTRUMENTID` security identifier's tail is read by)
 
-### yggdryl::isin_registry  [rust/src/isin_registry.rs]  (the instrument registry: one row per ISIN and market of every security fact it is known by - the instrument's facts on every listing row, a listing's on its own - learned from and filled into market elements by the ordered lifecycle, filled from by every parse door off the snapshot it fixes as it opens, bound to a store it is loaded from and committed back to as one snapshot; a folded row derives, once its statement has landed, what its own facts imply where the statement left it empty - the national number its ISIN embeds, the currency of its market's country - and the seed, `config/isin/instruments.json` embedded through the crate's copy `isin_registry/seed.json` by the crate-private `isin_registry/seed.rs`, is the common instruments every process default starts from)
+### yggdryl_market::isin_registry  [rust/market/src/isin_registry.rs]  (the instrument registry: one row per ISIN and market of every security fact it is known by - the instrument's facts on every listing row, a listing's on its own - learned from and filled into market elements by the ordered lifecycle, filled from by every parse door off the snapshot it fixes as it opens, bound to a store it is loaded from and committed back to as one snapshot; a folded row derives, once its statement has landed, what its own facts imply where the statement left it empty - the national number its ISIN embeds, the currency of its market's country - and the seed, `config/isin/instruments.json` embedded through the crate's copy `isin_registry/seed.json` by the crate-private `isin_registry/seed.rs`, is the common instruments every process default starts from)
 pub struct IsinEntry  (one listing of one instrument: `isin`, `updunix` (ns UTC of the statement that last moved a fact of the instrument, a stamp and never a gate), `firstunix` (ns UTC of the earliest event the registry learned the instrument from, moved back by an earlier learn; a stamp), `lastunix` (ns UTC of the latest event the registry learned the instrument from, moved by every learn; a stamp), the detailed `cficode`, the `countrycode` of issue stated beside the ISIN, the `forexcode` pair, the `underlyingisin` it is written on (a real ISIN other than its own), the `eusipacode` (its EUSIPA product category, an `Eusipa`), the `miccode` the row is the listing of (never `XXXX`; none for the unlisted row an ISIN holds alone while no market is known), the `ticker` (1 to 64 bytes, trimmed), the `fisn` (its ISO 18774 short name, a `Fisn`), the listing's `currency` (never `XXX`), the `origccy` the instrument was issued in (held only where stated, never derived), and one code per `SecurityIDSource(22)` type but the ISIN, at most `IsinRegistry::MAX_EQUIVALENTS`; the stamps, the CFI code, the country, the pair, the underlying, the product category, the short name, the origin currency and every code `IdType::is_listing` does not name are the instrument's - every listing row of an ISIN holds the same - and the market, the ticker, the currency and the listing codes the row's own; a row the registry folds fills, once the statement has landed, where the statement left it empty the code its ISIN embeds (`securityid::embedded`: `cusip`, `sedol`, `wkn`, `valor`; a type with no room passed over) and the currency of the country its market is in (`Mic::country`, `Country::currency`; a row of no market, or of a market of no single country, none) - a default never displaces a statement, a later statement replaces it, and an entry built and never folded derives nothing; Clone, Debug, Eq, PartialEq; re-exported at the crate root)
   pub fn new(isin: Isin) -> Self
   pub fn dtype() -> DataType
@@ -7418,7 +7422,7 @@ pub struct IsinRegistry  (one listing row per real ISIN - closing under a listed
   pub const LOOKUP_CODES: [IdType; 20]  (the codes a lookup reads, in cascade order: cusip, sedol, wkn, valor, figi, bloomberg, ric, quik, exchsymb, cta, dutch, sicovam, belgian, common, opra, mktassigned, redpair, fim, umtf, dti - each indexed with one slot per ISIN; a currency, a country, an index, a synthetic code, an issuer's or a shared reference's none)
   pub const DEFAULT_ECONOMIC_THRESHOLD: f64 = 0.85
   pub fn new() -> Self  (empty, bound to no store)
-  pub fn seeded() -> Self  (the seed: the common instruments `config/isin/instruments.json` states - stocks, funds and indexes by ISIN, ticker, market but an index's, currency, country, ISO 10962:2021 CFI and, where known, short name - embedded at build time, read once per process from the crate's copy `rust/src/isin_registry/seed.json` (`scripts/check_isin_seed.py --sync` writes it) through `extend_from_arrow_reader`'s column rule and folded by `merge`, so its derived facts are any row's; clean, bound to no store, sharing the one table until a write moves it; what `from_env` lays its store over)
+  pub fn seeded() -> Self  (the seed: the common instruments `config/isin/instruments.json` states - stocks, funds and indexes by ISIN, ticker, market but an index's, currency, country, ISO 10962:2021 CFI and, where known, short name - embedded at build time, read once per process from the crate's copy `rust/market/src/isin_registry/seed.json` (`scripts/check_isin_seed.py --sync` writes it) through `extend_from_arrow_reader`'s column rule and folded by `merge`, so its derived facts are any row's; clean, bound to no store, sharing the one table until a write moves it; what `from_env` lays its store over)
   pub fn with_max_instruments(self, max: usize) -> Self
   pub fn max_instruments(&self) -> usize
   pub fn len(&self) -> usize  (the instruments: its ISINs)
@@ -7450,7 +7454,7 @@ pub struct IsinRegistry  (one listing row per real ISIN - closing under a listed
   pub fn extend_from_handle(&mut self, handle: &dyn IOBase) -> Result<usize>  (the handle's own record stream - an Arrow IPC file, Parquet, a folder of either, an object store - through `extend_from_arrow_reader`, binding nothing)
   pub fn into_arrow_reader(&self) -> crate::arrow::Result<BatchReader>  (a snapshot stream of every listing row under `IsinEntry::field()` in ISIN then MIC order, one bounded batch at a time, which a learn while it streams does not move; written by `IOBase::write_arrow_reader`, a merge by `isin` upserting)
 
-### yggdryl::isin_registry::store  [rust/src/isin_registry/store.rs]  (the store a registry is bound to: the holder its table was loaded from and is committed back to as one snapshot, under the holder's own record options resolved once at the binding - its encoding, or its record leaves', an Iceberg table's its data files', a folder listing no record leaf or plain text alone laid out as Arrow IPC by the first commit; a leaf of an encoding this build has no record medium for, and a location inside an Iceberg table, refused at the binding)
+### yggdryl_market::isin_registry::store  [rust/market/src/isin_registry/store.rs]  (the store a registry is bound to: the holder its table was loaded from and is committed back to as one snapshot, under the holder's own record options resolved once at the binding - its encoding, or its record leaves', an Iceberg table's its data files', a folder listing no record leaf or plain text alone laid out as Arrow IPC by the first commit; a leaf of an encoding this build has no record medium for, and a location inside an Iceberg table, refused at the binding)
   pub fn IsinRegistry::from_holder(holder: impl Into<Holder>) -> Result<Self>  (bound and loaded through `extend_from_arrow_reader` under the holder's own options - the same spellings `extend_from_handle` reads - a store holding nothing yet an empty first run; clean after; unseeded, the store's rows alone)
   pub fn IsinRegistry::from_url<K: AsRef<str>, V: AsRef<str>>(url: &Url, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self>  (`from_holder` over `Holder::from_url`: any scheme this build holds, a `with (...)` clause's pairs beside it; unseeded)
   pub fn IsinRegistry::seeded_from_holder(holder: impl Into<Holder>) -> Result<Self>  (the seed (`seeded`) with the holder's rows laid over it by the update rule, bound to the holder - a value the store states wins, a fact only the seed states stands beside it, a seed row the store has none of stands, a store holding nothing the seed bound to it - the store read once as `from_holder` reads it, the seed costing it no call; clean after, so the first commit after something moved writes the seed's rows with the store's; what `from_env` binds)
@@ -7460,12 +7464,12 @@ pub struct IsinRegistry  (one listing row per real ISIN - closing under a listed
   pub fn IsinRegistry::holder(&self) -> Option<&Holder>
   pub fn IsinRegistry::commit(&mut self) -> Result<IOResult>  (only where dirty, so the store holds exactly the snapshot - every listing row - whatever its layout: a leaf one overwrite, an emptied registry truncating it; an Iceberg table one atomic snapshot replacing every row of every partition, an emptied registry one empty snapshot that keeps the table a table; a plain folder its record parts of the store's encoding removed - a leaf of another encoding or a file that is no record part never touched - then the snapshot laid out as one part under the layout the folder spells, none where empty; a clean registry no call and no rows; clean after; refused unbound, and a refused write leaves it dirty)
 
-### yggdryl::isin_registry::env  [rust/src/isin_registry/env.rs]  (the process default: the seeded registry with the store the environment names laid over it, resolved once on first use and shared behind one lock, what `FixCodec::from_env` attaches and the caller commits)
+### yggdryl_market::isin_registry::env  [rust/market/src/isin_registry/env.rs]  (the process default: the seeded registry with the store the environment names laid over it, resolved once on first use and shared behind one lock, what `FixCodec::from_env` attaches and the caller commits)
   pub fn IsinRegistry::from_env() -> Result<&'static Arc<Mutex<Self>>>  (first match wins: a registry installed by `install_env`, as given; the location `YGGDRYL_ISIN_REGISTRY_URI` names, trimmed - a URL of any scheme this build holds, or a bare path, a leading `~/` the home directory, which itself is refused - an empty value unset; `~/.config/yggdryl/isin/`, a folder of Arrow IPC parts the first commit lays out; with no home directory the seeded registry bound to no store. A store is bound over `IsinRegistry::seeded()`: its rows fold over the seed's by the update rule - a value the store states wins, a seed row it has none of stands - and the registry is clean after the load, a store holding nothing the seed bound to it; a store that cannot be read, a scheme this build has no backend for or a row the registry refuses an error, never the seed alone, and a failed load left unresolved so the next call retries it)
   pub fn IsinRegistry::install_env(registry: Self) -> Result<()>  (the registry every later `from_env` answers; a typed conflict once the default is resolved or installed)
   pub fn IsinRegistry::install_env_shared(registry: Arc<Mutex<Self>>) -> Result<()>  (`install_env` of a registry already shared behind its lock: the very `Arc` every later `from_env` answers)
 
-### yggdryl::eusipa  [rust/src/eusipa.rs]  (the product category of a structured product: EUSIPA's four-digit code, which the SSPA's Swiss map numbers the same way; a root value type, not a DataType variant)
+### yggdryl_market::eusipa  [rust/market/src/eusipa.rs]  (the product category of a structured product: EUSIPA's four-digit code, which the SSPA's Swiss map numbers the same way; a root value type, not a DataType variant)
 pub struct Eusipa(u16)  (four digits, 1000 to 2999 - the level, the group, the member - held by its shape whatever either map lists; Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Display the four digits, FromStr through `from_text`, serde the number, `TryFrom<u16>`, `From<Eusipa> for u16`; re-exported at the crate root)
   pub fn new(code: u16) -> Result<Self>  (refuses a number outside 1000..=2999: `invalid record value at $: expected a four-digit EUSIPA product category opening with 1, an investment product, or 2, a leverage product, got 3100`)
   pub fn from_text(text: &str) -> Result<Self>  (four ASCII digits once trimmed - no sign, no leading zero, no fraction - then `new`: `invalid record value at $: expected a four-digit EUSIPA product category, got "23x0"`)
@@ -7476,7 +7480,7 @@ pub struct Eusipa(u16)  (four digits, 1000 to 2999 - the level, the group, the m
   pub fn sspa_name(&self) -> Option<&'static str>  (the English name in the SSPA Swiss Derivative Map, 2023 v.23/2 and 2026 v.26/1 one list, 24 members; `1260` Conditional Coupon Barrier Reverse Convertible)
   pub fn is_listed(&self) -> bool  (either map lists the code)
 
-### yggdryl::limit  [rust/src/limit.rs]  (one price limit of a book side: its price, the quantity resting there, the entries resting there and whether the level trades; a root value type, not a DataType variant)
+### yggdryl_market::limit  [rust/market/src/limit.rs]  (one price limit of a book side: its price, the quantity resting there, the entries resting there and whether the level trades; a root value type, not a DataType variant)
 pub struct Limit { pub price: Option<Decimal>, pub quantity: Decimal, pub uuids: Vec<Uuid>, pub tradable: bool }  (price `None` on the one limit folding every unpriced entry; quantity the exact sum of the entries' quantities, an entry stating none adding nothing; uuids the entries' `uuid`s in live order; tradable the entries' `tradable` facts folded with `any`, an entry counting unless it states `tradable = false` - true when one live entry at the level does not say it cannot trade, false only when every one says so, an entry stating nothing trading; Clone, Debug, Eq, Hash, PartialEq - order-sensitive on `uuids`)
   pub fn dtype() -> DataType  (`struct<price: decimal?, quantity: decimal, uuids: serie<uuid>, tradable: boolean>`, the uuid item `uuid` required)
   pub fn field() -> Field  (the required item `limit` of a `limits` column)
@@ -7531,7 +7535,7 @@ pub struct Record<'a>  (Clone, Copy, Debug; Python's LogRecord; a record from th
   pub const fn level(&self) -> Level
   pub const fn level_name(&self) -> Option<&'a str>  (None unless stated; a formatter spells the Level's own name otherwise, `Level N` for an unnamed one)
   pub const fn message(&self) -> &'a dyn fmt::Display
-  pub const fn target(&self) -> &'a str  (the Rust target, yggdryl::fix::build, or the logger's name for a record logged on a Logger)
+  pub const fn target(&self) -> &'a str  (the Rust target, yggdryl_fix::build, or the logger's name for a record logged on a Logger)
   pub const fn module_path(&self) -> Option<&'a str>
   pub const fn file(&self) -> Option<&'a str>
   pub const fn line(&self) -> Option<u32>
@@ -7637,7 +7641,7 @@ pub fn set_host(host: Option<Arc<dyn Host>>)  (attaches host, replacing any othe
 pub fn has_host() -> bool
 pub fn invalidate()  (drops every cached threshold and reads the facade's ceiling again: what a host calls whenever its own levels change)
 
-### yggdryl::logging::facade  [rust/src/logging/facade.rs]  (the tree as the backend of the `log` facade every crate in the build logs through; a logger is named by its module path under `yggdryl` whatever crate holds the module, through one private table of the workspace's crates: `yggdryl` and `yggdryl_market` log under `yggdryl`, `yggdryl_<folder>` under `yggdryl.<folder>` - `yggdryl_fix::build` is `yggdryl.fix.build`, as `yggdryl::fix::build` was - and `yggdryl_cli`, a binding and every dependency are foreign, held to the foreign floor)
+### yggdryl::logging::facade  [rust/src/logging/facade.rs]  (the tree as the backend of the `log` facade every crate in the build logs through; a logger is named by its module path under `yggdryl` whatever crate holds the module, through one private table of the workspace's crates: `yggdryl` and `yggdryl_market` log under `yggdryl`, `yggdryl_<folder>` under `yggdryl.<folder>` - `yggdryl_fix::build` is `yggdryl.fix.build`, as `yggdryl_fix::build` was - and `yggdryl_cli`, a binding and every dependency are foreign, held to the foreign floor)
 pub fn install() -> Result<()>  (a record's target `yggdryl::iceberg::table` is the logger `yggdryl.iceberg.table`, made and remembered for at most 4096 distinct targets - past that a new target makes no logger, so the tree stays bounded, and its records go, under their own name, to the nearest logger the tree has: its own once made with get_logger, else its nearest existing ancestor, else the root; a static module path never reaches the bound; the facade's ceiling (log::max_level) follows the most verbose level any logger handles, so a record nothing handles is refused before its message is built; twice is one installation; Error::Conflict when another log backend is installed; basic_config installs)
 pub fn is_installed() -> bool
 pub fn set_foreign_level(level: Level)  (admits a facade record whose target is outside the workspace's crates only at level and above, whatever its logger's level; NOTSET, the default, admits what the tree enables; the Python binding and the Node addon state WARNING, so a dependency of the build reaches logging only at warning and above)
@@ -7662,7 +7666,40 @@ pub struct Counted<'a>  (Clone, Copy, Debug, Display: `message (seen N times)`)
 impl Record<'_>
   pub fn stable_hash(&self) -> u64  (XXH3-64 of the logger's name, the level and the rendered message, each framed; the message is rendered into the hash, never into text)
 
-### yggdryl::side  [rust/src/side.rs]
+### yggdryl_market  [rust/market/src/lib.rs]  (the crate root: the four kinds' markers, their Arrow extension types and the claim)
+pub fn install() -> yggdryl::Result<()>  (claims the four market kinds on the core's register - byte, name, Arrow extension name - and registers the `side` and `timeinforce` listings through StringEnum::register_prebuilt, once for the process; every binding's init and the CLI's `main` call it)
+pub struct MarketDataKindType  // and SideType, MarketDataTypeType, TimeInForceType  (each registered enum kind's marker, written by `define_field_types!(.., market = <KIND>, ..)` in the kind's own file: DataTypeValue::id the kind's `ID`, into_dtype DataType::Market of it; FieldOf<SideType> the typed field, Field::Market(MarketField) what it widens to)
+  pub type MarketDataKindField = FieldOf<MarketDataKindType>;  // and SideField, MarketDataTypeField, TimeInForceField  (one alias per enum kind, written beside the marker)
+impl ExtensionType for MarketDataKindType, MarketDataTypeType, SideType, TimeInForceType  (written beside each kind's marker by the core's exported `market_extension!`: NAME the kind's own `EXTENSION_NAME`, Metadata = (), no document)
+
+### yggdryl_market::implementer  [rust/market/src/implementer.rs]  (the one door `yggdryl-fix` reaches this crate's crate-private items through, `#[doc(hidden)] pub mod` at the crate root; no API. Each item takes one route: a `pub use` of an item raised to `pub` inside a module the crate root does not publish; an `#[inline]` forwarder for an item of a published module, a crate-private associated item a free function taking its receiver first named `<type>_<item>`; an exported `#[doc(hidden)]` macro)
+pub use delegate_market, delegate_operation  (the exported macros yggdryl-fix writes its forwarding of the market traits through)
+pub use OperationEventFacts, Learned, EconomicMemo, IsinTable, names_another_instrument, warn_full  (raised in the crate-private graph::facts, isin_registry and idtype)
+pub const WORD_PAIR_WIDTH: usize
+pub fn fold_into<'buffer>(word: &str, buffer: &'buffer mut [u8]) -> std::result::Result<&'buffer str, &'static str>
+pub fn is_word(word: &str) -> bool
+pub fn folded_len(word: &str) -> Option<usize>
+pub fn identifiers_held_at(identifiers: &Identifiers, key: &IdKey, value: &str) -> Option<usize>
+pub fn id_key_value_into<'value>(key: &IdKey, value: &'value str, buffer: &'value mut [u8; IDENTIFIER_VALUE_WIDTH]) -> Result<&'value str>
+pub fn id_key_infer<'name>(key: &str, names: impl IntoIterator<Item = &'name str>) -> Option<IdKey>
+pub fn id_source_from_namespace(folded: &str) -> Result<Option<IdSource>>
+pub fn id_type_value_into<'value>(kind: &IdType, value: &'value str, buffer: &'value mut [u8; IDENTIFIER_VALUE_WIDTH]) -> Result<&'value str>
+pub fn id_type_identifier_names<'name>() -> impl Iterator<Item = &'name str> + Clone
+pub fn id_type_underlying_security(folded: &str) -> Option<IdType>
+pub fn symbol_code_identifier(symbol: &SymbolCode) -> Option<(IdType, &str)>
+pub const fn market_data_kind_stored_side(kind: MarketDataKind, side: Side) -> Side
+pub fn isin_registry_as_table(registry: &IsinRegistry) -> &IsinTable
+pub fn isin_registry_learn_stating<E: Market + Event + ?Sized>(registry: &mut IsinRegistry, event: &E, origccy: Option<&Ccy>, country: Option<&Country>, underlying: Option<&Isin>, product: Option<Eusipa>) -> Learned
+pub fn order<E: Element>(left: &E, right: &E) -> Ordering
+pub fn event_iterator_with_placing<E: Walked, I: Iterator<Item = E>>(walk: EventIterator<E, I>, placing: bool) -> EventIterator<E, I>
+pub fn base_crosscode(code: &str) -> &str
+pub fn merge_operation_event<E: Event + Operation>(this: &mut E, other: &E, other_is_reference: bool) -> bool
+pub fn restating_operation<E: Event + Operation>(this: E, live: &E) -> E
+pub fn market_data_as_event(data: &MarketData) -> Option<&dyn Event>
+pub fn operation_event_from_facts<K: OperationKind>(data: OperationEventFacts) -> OperationEvent<K>
+pub fn snapshot_event_from_facts(facts: OperationEventFacts, scope: Option<SmolStr>) -> SnapshotEvent  (SnapshotEvent::from_facts over the event half: the operation facts drop)
+
+### yggdryl_market::side  [rust/market/src/side.rs]
   pub enum Side  (#[repr(u8)], one byte; an Enum-family leaf, `Side::ID = 0xc3`, a registered kind under `DataType::Market`, stored as the `uint8` code of its member under `yggdryl.side` over Arrow UInt8: `Unknown = 0`, then `Buy = 1`, `Sell`, `BuyMinus`, `SellPlus`, `SShort`, `SShortEx`, `Undisc`, `Cross`, `CrossSh`, `CrossShX`, `AsDef`, `Opposite`, `Subscr`, `Redeem`, `Lend`, `Borrow`, `SellUnd = 17` in FIX `Side(54)` code order, then `Both = 99` (`BOTH`), both sides at once - a book's and a two-sided quote's - with no wire character; Copy, Default (Unknown), total Ord by code; Display and serde as the stored four-letter code, deserialized from a code or a spelling; `SideType` marks its field over the `Market` variant, `FieldOf<SideType>` its typed field)
   pub const ALL: &'static [Self]  (every member in code order)
   pub const fn code(self) -> u8
@@ -7679,12 +7716,13 @@ impl Record<'_>
   pub fn read_code(code: i64) -> Result<Self>  (`from_code` as a refusal naming the code)
   pub fn from_spelling(spelling: &str) -> Option<Self>  (the stored code, a `Side(54)` wire code unfolded, or the specification's name folded - the name a member was stored under before its code (`BUY`, `SSHORT`), read and never written, and the two roles a FIX plugin plays, `BuySide` and `SellSide`, which are the sides they name; a stored integer code is never text)
   impl Value, EnumValue<Repr = u8>, MarketValue for Side; From<Side> for Scalar; From<Side> for u8; TryFrom<u8> for Side  (`Scalar::Market` of SIDE_KIND; `Value::from_scalar` lends the member out of `ALL`, `MarketValue::from_scalar` copies it)
+pub const SIDES: &[&str]  (the stored side codes, sorted: ASDF, BORR, BOTH, BUYM, BUYS, CROS, CRSH, CRSX, LEND, OPPO, REDM, SELL, SELP, SELU, SSEX, SSHT, SUBS, UKNW, UNDI - one per side FIX's Side(54) names across every version, UKNW and BOTH; never FIX's one-character codes, which `Side::from_spelling` maps onto them; the listing `side` prebuilds once `install` registers it)
   pub const fn dtype() -> DataType  (the kind's datatype, `DataType::Market` of `SIDE_KIND`: written by `enum_leaf!`'s market arm for each registered kind, usable in a const; the four constructors on DataType it replaces are gone)
   pub fn field(name: impl Into<SmolStr>) -> Field  (a nullable field of the kind, named `name`: `SIDE_KIND.field(name, true)`)
   pub const ID: DataTypeId = DataTypeId::market(0xc3);  (the identifier the kind claims, a usable pattern; `NAME` and `EXTENSION_NAME` beside it)
   pub const NAME: &'static str = "side";
   pub const EXTENSION_NAME: &'static str = "yggdryl.side";
-  pub static SIDE_KIND: MarketDescriptor  (the registered kind, re-exported at the crate root: `Code8`, 19 members, value rank 29, datatype rank 53, shape position 28; claimed by the core's own seed until the kinds move to yggdryl-market)
+  pub static SIDE_KIND: MarketDescriptor  (the registered kind, re-exported at the crate root: `Code8`, 19 members, value rank 29, datatype rank 53, shape position 28; claimed by yggdryl_market::install() at the numbers RESERVED_KINDS reserves for it)
 
 ### yggdryl::state  [rust/src/state.rs]
   pub enum State  (#[repr(u16)], #[non_exhaustive]; sixty-two members from Unknown = 0 to NotFound = 9506 - `Updated = 3004`, stated anew over a live predecessor, in the working band - each stored as its `uint16` code, the hundreds of the code its rank: 0 unknown, 10 pending, 20 acknowledged, 30 working, 40 working with events, or acknowledged and awaiting its next step (`PendingVerification` 4006, `PendingAllocation` 4007, `PendingApproval` 4008), 50 halted, 60 change outstanding, 70 changed and carrying on, 80-89 done (`Approved` 8013 among them, reached by spelling and by no FIX status code), 90-94 cancelled, 95-99 failed; Copy, Default (Unknown), total Ord by code; `StateType` marks its field, `StateField` is `FieldOf<StateType>`; Display and serde as the stored name, deserialized from a code or a spelling)
@@ -7711,7 +7749,7 @@ impl Record<'_>
   (extension `yggdryl.state` over Arrow UInt16; a foreign storage under the name imports as that storage)
   pub type StateField = FieldOf<StateType>;
 
-### yggdryl::marketdatakind  [rust/src/marketdatakind.rs]
+### yggdryl_market::marketdatakind  [rust/market/src/marketdatakind.rs]
   pub enum MarketDataKind  (#[repr(u8)], #[non_exhaustive]; the FIX MsgCat code set as an Enum-family leaf, `MarketDataKind::ID = 0xc2`, a registered kind under `DataType::Market`, stored as the `uint8` code of its member under `yggdryl.marketdatakind` over Arrow UInt8; twenty-six members, `Unknown = 0` (`UKNW`), `Account` (`ACCT`), `Allocation` (`ALLO`), `Book = 3` (`BOOK`), `Certificate`, `Collateral`, `Communication`, `Confirmation`, `Execution = 8` (`EXEC`), `MarketStructure`, `Order = 10` (`ORDR`), `Payment`, `Position`, `Parties`, `Quotation = 14` (`QUOT`), `Registration`, `Risk`, `Securities`, `Session`, `Settlement`, `Stream`, `Trade = 21` (`TRAD`), then the batches `OrderBatch = 22` (`ORDB`), `QuoteBatch = 23` (`QUOB`), `ExecutionBatch = 24` (`EXEB`), `TradeBatch = 25` (`TRDB`); the four-letter code is the stored name; Copy, Default (Unknown), total Ord by code; Display and serde as the stored name, deserialized from a code or a spelling; `MarketDataKindType` marks its field over the `Market` variant, `FieldOf<MarketDataKindType>` its typed field)
   pub const ALL: &'static [Self]  (every member in code order)
   pub const fn code(self) -> u8
@@ -7733,9 +7771,9 @@ impl Record<'_>
   pub const ID: DataTypeId = DataTypeId::market(0xc2);  (the identifier the kind claims, a usable pattern; `NAME` and `EXTENSION_NAME` beside it)
   pub const NAME: &'static str = "marketdatakind";
   pub const EXTENSION_NAME: &'static str = "yggdryl.marketdatakind";
-  pub static MARKETDATAKIND_KIND: MarketDescriptor  (the registered kind, re-exported at the crate root: `Code8`, 26 members, value rank 28, datatype rank 73, shape position 64; claimed by the core's own seed until the kinds move to yggdryl-market)
+  pub static MARKETDATAKIND_KIND: MarketDescriptor  (the registered kind, re-exported at the crate root: `Code8`, 26 members, value rank 28, datatype rank 73, shape position 64; claimed by yggdryl_market::install() at the numbers RESERVED_KINDS reserves for it)
 
-### yggdryl::marketdatatype  [rust/src/marketdatatype.rs]
+### yggdryl_market::marketdatatype  [rust/market/src/marketdatatype.rs]
   pub enum MarketDataType  (#[repr(u16)], #[non_exhaustive]; the type of a market element within its kind as an Enum-family leaf, `MarketDataType::ID = 0xc4`, a registered kind under `DataType::Market`, stored as the `uint16` code of its member under `yggdryl.marketdatatype` over Arrow UInt16; 118 members, `Unknown = 0` (`UKNW`), then the hundreds of the code name the FIX set typing it - `1xx` an `OrdType(40)` order type (`OrdMarket = 101` `ORDMKT`, `OrdLimit = 102` `ORDLIMIT`), `2xx` a `QuoteType(537)` quote type, `3xx` a `TrdType(828)` trade type, `4xx` a `MDEntryType(269)` book entry type (`BookMid = 417`), `5xx` a `TradeReportType(856)` (`TRPT*`), `6xx` a `QuoteRequestType(303)` (`QRQ*`), `7xx` a `MassCancelRequestType(530)` (`MCX*`), `8xx` a `SubscriptionRequestType(263)` (`MDR*`) - each set closing with an `OTHER` member (`OrdOther`, `QuoOther`, `TrdOther`, `BookOther = 499`, `TrptOther`, `QrqOther`, `McxOther = 799`, `MdrOther = 899`) a wire value no member names reads as; Copy, Default (Unknown), total Ord by code; `MarketDataTypeType` marks its field)
   pub const ALL: &'static [Self]  (every member in code order)
   pub const fn code(self) -> u16
@@ -7758,9 +7796,9 @@ impl Record<'_>
   pub const ID: DataTypeId = DataTypeId::market(0xc4);  (the identifier the kind claims, a usable pattern; `NAME` and `EXTENSION_NAME` beside it)
   pub const NAME: &'static str = "marketdatatype";
   pub const EXTENSION_NAME: &'static str = "yggdryl.marketdatatype";
-  pub static MARKETDATATYPE_KIND: MarketDescriptor  (the registered kind, re-exported at the crate root: `Code16`, 118 members, value rank 30, datatype rank 74, shape position 65; claimed by the core's own seed until the kinds move to yggdryl-market)
+  pub static MARKETDATATYPE_KIND: MarketDescriptor  (the registered kind, re-exported at the crate root: `Code16`, 118 members, value rank 30, datatype rank 74, shape position 65; claimed by yggdryl_market::install() at the numbers RESERVED_KINDS reserves for it)
 
-### yggdryl::timeinforce  [rust/src/timeinforce.rs]
+### yggdryl_market::timeinforce  [rust/market/src/timeinforce.rs]
   pub enum TimeInForce  (#[non_exhaustive]; how long an order stands, `TimeInForce(59)`, as an Enum-family leaf through `enum_leaf!`, `TimeInForce::ID = 0xc5`, a registered kind under `DataType::Market`, stored as the `uint8` code of its member under `yggdryl.timeinforce` over Arrow UInt8; fifteen members, `Unknown = 0` (`UKNW`), `Day = 1` (`DAY`), `GoodTillCancel` (`GTC`), `AtTheOpening` (`OPG`), `ImmediateOrCancel` (`IOC`), `FillOrKill` (`FOK`), `GoodTillCrossing` (`GTX`), `GoodTillDate` (`GTD`), `AtTheClose` (`ATC`), `GoodThroughCrossing` (`GTHX`), `AtCrossing` (`ATX`), `GoodForTime` (`GFT`), `GoodForAuction` (`GFA`), `GoodForMonth = 13` (`GFM`), `Other = 99` (`OTHER`); Copy, Default (Unknown), total Ord by code; `TimeInForceType` marks its field)
   pub const ALL: &'static [Self]  (every member in code order)
   pub const fn code(self) -> u8
@@ -7774,13 +7812,14 @@ impl Record<'_>
   pub fn from_fix(wire: &str) -> Self  (the member one `TimeInForce(59)` wire value stands for; `Other` for a venue's own value)
   pub const fn fix_code(self) -> Option<&'static str>  (the wire value a member stands for; `None` for `Unknown` and `Other`)
   impl Value, EnumValue<Repr = u8>, MarketValue for TimeInForce; From<TimeInForce> for Scalar; From<TimeInForce> for u8; TryFrom<u8> for TimeInForce  (`Scalar::Market` of TIMEINFORCE_KIND; `Value::from_scalar` lends the member out of `ALL`, `MarketValue::from_scalar` copies it)
+pub const TIMESINFORCE: &[&str]  (FIX's TimeInForceCodeSet wire values, sorted: 0..9, A, B, C; the listing `timeinforce` prebuilds once `install` registers it)
   (extension `yggdryl.timeinforce` over Arrow UInt8, crate-private; a foreign storage under the name imports as that storage)
   pub const fn dtype() -> DataType  (the kind's datatype, `DataType::Market` of `TIMEINFORCE_KIND`: written by `enum_leaf!`'s market arm for each registered kind, usable in a const; the four constructors on DataType it replaces are gone)
   pub fn field(name: impl Into<SmolStr>) -> Field  (a nullable field of the kind, named `name`: `TIMEINFORCE_KIND.field(name, true)`)
   pub const ID: DataTypeId = DataTypeId::market(0xc5);  (the identifier the kind claims, a usable pattern; `NAME` and `EXTENSION_NAME` beside it)
   pub const NAME: &'static str = "timeinforce";
   pub const EXTENSION_NAME: &'static str = "yggdryl.timeinforce";
-  pub static TIMEINFORCE_KIND: MarketDescriptor  (the registered kind, re-exported at the crate root: `Code8`, 15 members, value rank 31, datatype rank 56, shape position 30; claimed by the core's own seed until the kinds move to yggdryl-market)
+  pub static TIMEINFORCE_KIND: MarketDescriptor  (the registered kind, re-exported at the crate root: `Code8`, 15 members, value rank 31, datatype rank 56, shape position 30; claimed by yggdryl_market::install() at the numbers RESERVED_KINDS reserves for it)
 
 ### yggdryl::unit  [rust/src/unit.rs]
   pub struct Unit(SmolStr)  (one validated code; `UnitType` marks its field, `UnitField` is `FieldOf<UnitType>`)
@@ -7949,11 +7988,11 @@ impl StringEnum
   pub const CURRENCIES: &'static [&'static str]
   pub const COUNTRIES: &'static [&'static str]
   pub const MICS: &'static [&'static str]
-  pub const SIDES: &'static [&'static str]  (the explicit side codes, sorted: ASDF, BORR, BOTH, BUYM, BUYS, CROS, CRSH, CRSX, LEND, OPPO, REDM, SELL, SELP, SELU, SSEX, SSHT, SUBS, UNDI, UKNW - one per side FIX's Side(54) names across every version, UKNW and BOTH; never FIX's one-character codes, which `Side::from_spelling` maps onto them)
-  pub const TIMESINFORCE: &'static [&'static str]
-  pub const PREBUILT: &'static [(&'static str, &'static [&'static str])]  // ccy, country, mic, exchange, side, timeinforce
+  pub const PREBUILT: &'static [(&'static str, &'static [&'static str])]  // the core's own: ccy, country, mic, exchange
+  pub fn register_prebuilt(name: &'static str, values: &'static [&'static str], by: &'static str) -> Result<()>  (a folded logical name's listing claimed for a crate, once, on the plugin register; read after PREBUILT by prebuilt_values, from_logical_name and prebuilt; Error::Conflict naming the first claimant - the core for a PREBUILT name - Error::InvalidDataType for a name not in its folded spelling)
+  pub fn prebuilt() -> Vec<(&'static str, &'static [&'static str])>  (every listing: PREBUILT in order, then the registered ones by name; what both bindings' `prebuilt()` read)
   pub fn from_logical_name(name: &str) -> Result<Self>
-  pub fn prebuilt_values(name: &str) -> &'static [&'static str]
+  pub fn prebuilt_values(name: &str) -> &'static [&'static str]  (PREBUILT, then a registered listing, else empty)
   pub type StringField = FieldOf<StringType>;  (the Field leaf over the eighteen string variants; see yggdryl::field)
 pub struct CountryType  // and CcyType, MicType, CfiType, IsinType, CusipType, SedolType, BbgType, RicType, FigiType, UnitType: the code markers (country, ccy, mic, cfi, isin, cusip, sedol, bbg, ric, figi, unit)
   pub type CountryField = FieldOf<CountryType>;
@@ -7966,8 +8005,6 @@ pub struct CountryType  // and CcyType, MicType, CfiType, IsinType, CusipType, S
   pub type BbgField = FieldOf<BbgType>;
   pub type RicField = FieldOf<RicType>;
   pub type FigiField = FieldOf<FigiType>;
-pub struct MarketDataKindType  // and SideType, MarketDataTypeType, TimeInForceType  (each registered enum kind's marker, written by `define_field_types!(.., market = <KIND>, ..)` in the kind's own file: DataTypeValue::id the kind's `ID`, into_dtype DataType::Market of it; FieldOf<SideType> the typed field, Field::Market(MarketField) what it widens to)
-  pub type MarketDataKindField = FieldOf<MarketDataKindType>;  // and SideField, MarketDataTypeField, TimeInForceField  (one alias per enum kind, written beside the marker)
 impl Field
   pub fn string_enum(&self) -> Result<Option<StringEnum>>
   pub fn set_string_enum(&mut self, value: &StringEnum) -> Result<()>  (refused unless the datatype is a fixed US-ASCII string of at most sixteen bytes or a code)
@@ -8058,7 +8095,7 @@ pub struct FieldRecord<'a>
 ### yggdryl::typed::shared  [rust/src/typed.rs]  (the prebuilt fields a parameter-free datatype shares, one slot per DataTypeId)
 pub fn shared_field(&self) -> Option<&'static Field>  (on DataType and on Scalar; None for a datatype that carries parameters, because no two of those are the same field)
 
-### yggdryl::vocabulary  [rust/src/vocabulary.rs]  (the core's own logical names - its codes and `state` - and the register's seed, which claims beside them the thirty-two FIX Latest names of `fix/mod.rs`'s LOGICAL_NAMES table until the FIX crate claims them itself; the listing is the same constant either way, `logical_names()` sorts)
+### yggdryl::vocabulary  [rust/src/vocabulary.rs]  (the core's own logical names - its codes and `state` - claimed when the register is seeded; the thirty-two FIX Latest names are yggdryl_fix's LOGICAL_NAMES, claimed by its install(), and every market kind's own name its claim's; `logical_names()` sorts)
 pub fn logical_names() -> Vec<(&'static str, DataType)>  (on DataType: every logical name in name order with what it resolves to - the core's own - the seventeen codes' names among them - every market kind's under its own name, `exchange` for mic, and every name a crate claimed - read off the claim-once register)
   pub fn register_logical_name(name: &'static str, dtype: DataType, by: &'static str) -> Result<()>  (a folded name claimed for a crate, once, read by from_logical_name and the grammar; Error::Conflict naming the first claimant, Error::InvalidDataType for a name not in its folded spelling, a word the grammar or a market kind answers, or a dtype that does not validate)
   pub fn from_logical_name(name: &str) -> Result<Self>

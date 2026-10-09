@@ -6,12 +6,20 @@ use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{
-    DataType, Field, FixCategory, FixDirection, FixField, FixFieldMut, FixId, FixRegistry,
-    FixSource,
+use yggdryl::{DataType, Field};
+use yggdryl_fix::{
+    FixCategory, FixDirection, FixField, FixFieldMut, FixId, FixRegistry, FixSource,
 };
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
+
+/// Claims what the command links before a test reads a dictionary in
+/// process, as the command's `main` claims it: the market crate's kinds,
+/// then the FIX crate's names.
+fn installed() {
+    yggdryl_market::install().expect("yggdryl-market claims its kinds");
+    yggdryl_fix::install().expect("yggdryl-fix claims its names");
+}
 
 struct Workspace(PathBuf, PathBuf);
 
@@ -73,7 +81,7 @@ impl Workspace {
     fn document(&self, field: &Field) -> PathBuf {
         let path = self.0.join(format!("{}.json", field.name()));
         let document =
-            yggdryl::into_fix_document(field.clone()).expect("one FIX definition document");
+            yggdryl_fix::into_fix_document(field.clone()).expect("one FIX definition document");
         std::fs::write(
             &path,
             yggdryl::into_json_scalar(&document).expect("native JSON"),
@@ -94,7 +102,7 @@ impl Workspace {
     fn read(&self, category: &str, name: &str) -> Field {
         let output = self.success(&[category, "read", name, "--json"]);
         let document = yggdryl::from_json_scalar(&output.stdout).expect("native JSON stdout");
-        yggdryl::from_fix_document(document).expect("native Field stdout")
+        yggdryl_fix::from_fix_document(document).expect("native Field stdout")
     }
 }
 
@@ -121,6 +129,7 @@ fn output_text(output: &Output) -> String {
 
 #[test]
 fn categories_expose_all_crud_operations_and_examples() {
+    installed();
     let workspace = Workspace::new();
     let help = output_text(&workspace.success(&["--help"]));
     for category in ["fields", "components", "groups"] {
@@ -148,6 +157,7 @@ fn categories_expose_all_crud_operations_and_examples() {
 
 #[test]
 fn component_identifier_flags_reach_the_core_setter_and_replace_on_update() {
+    installed();
     let workspace = Workspace::new();
     workspace.success(&[
         "components",
@@ -215,6 +225,7 @@ fn component_identifier_flags_reach_the_core_setter_and_replace_on_update() {
 
 #[test]
 fn all_categories_roundtrip_update_and_delete_in_dependency_order() {
+    installed();
     let workspace = Workspace::new();
     workspace.success(&[
         "codesets",
@@ -323,6 +334,7 @@ fn create_member(workspace: &Workspace, name: &str, dtype: &str, tag: &str, dial
 
 #[test]
 fn field_membership_is_stamped_folded_and_replaced_by_update() {
+    installed();
     let workspace = Workspace::new();
     create_member(&workspace, "DeskValue", "int32", "5001", "Alpha");
     let created = workspace.read("fields", "5001");
@@ -415,6 +427,7 @@ fn field_membership_is_stamped_folded_and_replaced_by_update() {
 
 #[test]
 fn one_namespace_holds_two_fields_on_one_tag_and_lists_by_membership() {
+    installed();
     let workspace = Workspace::new();
     create_member(&workspace, "DeskValue", "int32", "5001", "alpha");
     // The same tag under another name is a second field beside the holder:
@@ -498,6 +511,7 @@ fn one_namespace_holds_two_fields_on_one_tag_and_lists_by_membership() {
 
 #[test]
 fn a_field_identity_is_its_tag_and_name_as_one_int() {
+    installed();
     let workspace = Workspace::new();
     workspace.success(&["fields", "create", "Desk_Value", "int32", "--tag", "5001"]);
     let expected = FixId::of(5001, "deskvalue").expect("identity");
@@ -531,6 +545,7 @@ fn a_field_identity_is_its_tag_and_name_as_one_int() {
 
 #[test]
 fn a_code_set_is_named_once_and_every_field_reading_by_it_says_so() {
+    installed();
     let workspace = Workspace::new();
     // The set first: a field may not name a vocabulary the dictionary does
     // not hold, which is what `fields create --codes` is refused on below.
@@ -629,6 +644,7 @@ fn a_code_set_is_named_once_and_every_field_reading_by_it_says_so() {
 
 #[test]
 fn direction_rules_are_canonical_inline_metadata_and_invalid_updates_are_atomic() {
+    installed();
     let workspace = Workspace::new();
     workspace.success(&[
         "codesets",
@@ -746,6 +762,7 @@ impl Workspace {
 
 #[test]
 fn ingest_folds_a_glob_of_cblocks_in_one_commit_and_names_what_it_passes_over() {
+    installed();
     let workspace = Workspace::new();
     // Three dialects over one wire tag: a flag, a number and text. The
     // first file in URL order is held, the text says less than it and folds
@@ -810,6 +827,7 @@ fn ingest_folds_a_glob_of_cblocks_in_one_commit_and_names_what_it_passes_over() 
 
 #[test]
 fn ingest_names_what_the_reader_could_not_keep_where_it_stands_and_what_it_kept() {
+    installed();
     let workspace = Workspace::new();
     let folder = workspace.cblocks(&[("a_venue.cfb", &rejection("widget"))]);
     let file = folder.join("a_venue.cfb");
@@ -878,6 +896,7 @@ fn ingest_names_what_the_reader_could_not_keep_where_it_stands_and_what_it_kept(
 
 #[test]
 fn ingest_refuses_a_location_holding_nothing_and_sync_names_the_verb_for_a_cblock() {
+    installed();
     let workspace = Workspace::new();
     let folder = workspace.cblocks(&[("venue.cfb", &rejection("string"))]);
     let output = workspace.failure(&["ingest", folder.join("*.xml").to_str().expect("test path")]);
@@ -935,6 +954,7 @@ fn ingest_refuses_a_location_holding_nothing_and_sync_names_the_verb_for_a_cbloc
 
 #[test]
 fn a_runner_variable_turns_annotations_on_by_what_it_says_rather_than_by_being_set() {
+    installed();
     let workspace = Workspace::new();
     let folder = workspace.cblocks(&[("a_venue.cfb", &rejection("widget"))]);
     let file = folder.join("a_venue.cfb");
@@ -989,6 +1009,7 @@ fn a_runner_variable_turns_annotations_on_by_what_it_says_rather_than_by_being_s
 
 #[test]
 fn a_dialect_creates_its_sources_entry_and_check_reports_what_dangles_or_is_unreferenced() {
+    installed();
     let workspace = Workspace::new();
     create_member(&workspace, "DeskValue", "int32", "5001", "Alpha");
     // The entry the id names is written beside the categories, folded, and
@@ -1075,7 +1096,9 @@ fn sided(role: &str) -> String {
 /// - whose entry states `SELL` - is clean under `check`.
 #[test]
 fn the_plugin_side_is_a_schema_column_an_intrinsic_set_and_clean_under_check() {
-    use yggdryl::Side;
+    use yggdryl_market::Side;
+
+    installed();
     let workspace = Workspace::new();
     let folder = workspace.cblocks(&[("ms_fix44.cfb", &sided("SellSide"))]);
     let file = folder.join("ms_fix44.cfb");

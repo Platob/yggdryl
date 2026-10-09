@@ -14,8 +14,8 @@ use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::expression::{IntoOrderings, Ordering as OrderBy, Selector};
 use yggdryl::{
-    ArrowCastOptions, DataType, Error, Field, FieldPath, KeySeries, Scalar, Serie, Side,
-    SortOptions, StreamChunkedSerie, StructType, TimeUnit, Timezone,
+    ArrowCastOptions, DataType, Error, Field, FieldPath, KeySeries, Scalar, Serie, SortOptions,
+    StreamChunkedSerie, StructType, TimeUnit, Timezone,
 };
 
 /// `field` without the order its root declares: what a sort leaves equal
@@ -2348,34 +2348,34 @@ fn the_record_rung_agrees_with_its_run_under_every_ordering() {
     // ordered by its value.
     let field = StructType::from_fields([
         DataType::Mic.required_field("venue"),
-        Side::dtype().required_field("side"),
+        DataType::State.required_field("state"),
         DataType::Int64.required_field("count"),
     ])
     .map(DataType::from)
     .expect("three children")
     .required_field("quote");
-    let row = |venue: &str, side: &str, count: i64| {
+    let row = |venue: &str, state: &str, count: i64| {
         field
             .scalar(Scalar::from_sequence([
                 Scalar::from(venue),
-                Scalar::from(side),
+                Scalar::from(state),
                 Scalar::from(count),
             ]))
             .expect("a quote row")
     };
-    let sided = Serie::from_scalars(
+    let stated = Serie::from_scalars(
         field.clone(),
         [
-            row("XNYS", "SELL", 2),
-            row("XNAS", "BUYS", 1),
-            row("XNYS", "BUYS", 2),
-            row("XNAS", "BUYS", 1),
-            row("XNAS", "SELL", 3),
+            row("XNYS", "FILLED", 2),
+            row("XNAS", "NEW", 1),
+            row("XNYS", "NEW", 2),
+            row("XNAS", "NEW", 1),
+            row("XNAS", "FILLED", 3),
         ],
     )
     .expect("quote rows");
-    agrees_with_its_run(&sided);
-    cuts_as_its_values_do(&sided, "venue, side", &record_keys(&sided, &[0, 1]));
+    agrees_with_its_run(&stated);
+    cuts_as_its_values_do(&stated, "venue, state", &record_keys(&stated, &[0, 1]));
 
     // Absent rows and absent cells of a code and of a float, every NaN
     // payload one value: placed where each ordering puts an absence.

@@ -188,7 +188,9 @@ A code's `new` and its value door admit the code's shape and refuse only that. W
 | [`bbg`](bbg.md), [`ric`](ric.md), [`forex`](forex.md), [`elf`](elf.md), [`fisn`](fisn.md) | each its own shape | 1: nothing partial about a value | 1 |
 
 ```rust
-use yggdryl::{CodeValue, Country, Cusip, IdType, Isin};
+use yggdryl::{CodeValue, Country, Cusip, Isin};
+use yggdryl_market::IdType;
+yggdryl_market::install()?;
 
 // The shape is admitted; validity is a rank.
 let typo = Cusip::new("037833101")?;
@@ -357,7 +359,7 @@ Every code rides Arrow's `Utf8` - which is what the text is - and the `yggdryl.<
     assert_eq!(currencies.get("USD"), Some("USD"));
     assert_eq!(StringEnum::from_logical_name("Exchange")?.len(), StringEnum::MICS.len());
     // A registered name with no listing answers an enum of no members.
-    assert!(StringEnum::from_logical_name("tenor")?.is_empty());
+    assert!(StringEnum::from_logical_name("isin")?.is_empty());
 
     // A field declares the enum its values name, as one metadata document, so
     // the enum crosses Arrow and comes back the enum that was written.
@@ -418,7 +420,7 @@ Every code rides Arrow's `Utf8` - which is what the text is - and the `yggdryl.<
     assert currencies.get("USD") == "USD"
     assert len(StringEnum.from_logical_name("Exchange")) == len(StringEnum.prebuilt()["mic"])
     # A registered name with no listing answers an enum of no members.
-    assert len(StringEnum.from_logical_name("tenor")) == 0
+    assert len(StringEnum.from_logical_name("isin")) == 0
 
     # A field declares the enum its values name, as one metadata document, so
     # the enum crosses Arrow and comes back the enum that was written.
@@ -475,7 +477,7 @@ Every code rides Arrow's `Utf8` - which is what the text is - and the `yggdryl.<
     const currencies = StringEnum.fromLogicalName('ccy')
     assert.equal(currencies.length, StringEnum.prebuilt().ccy.length)
     assert.equal(currencies.get('USD'), 'USD')
-    assert.equal(StringEnum.fromLogicalName('tenor').length, 0)
+    assert.equal(StringEnum.fromLogicalName('isin').length, 0)
 
     // A field declares the enum its values name, as one metadata document, so
     // every serialization carries it and it comes back the enum that wrote it.
@@ -573,7 +575,7 @@ under the base `fisn` key.
 - An Arrow cast out of a code -> every string leaf and every byte framing, each reading the text the column holds; a byte width the text does not fill -> refused naming both sides and the row.
 - `ascii_packed` on a variable string, on UTF-8, or on a width past 16 bytes -> refused, `at most 16 bytes`; otherwise an `i32`, an `i64`, or a whole `i128` by width, and the integer a stable hash hashes.
 - A `StringEnum` on a string that is not fixed US-ASCII of at most sixteen bytes -> refused by name at `set_string_enum` and `into_members`; error kind `string-enum`. The `FIELD:enum` document never carries the width, so one enum is one canonical text.
-- `from_logical_name` -> the shipped `COUNTRIES`, `CURRENCIES`, `MICS`, `SIDES`, `DIRECTIONS`, `TIMESINFORCE` listings, `prebuilt()` in either binding; `"Exchange"` -> `MICS`; a registered name with no listing, such as `tenor`, `forex`, any of the six securities identifiers or `lei`, `bic`, `elf`, `dti` and `fisn`, -> an empty enum.
+- `from_logical_name` -> the shipped `COUNTRIES`, `CURRENCIES` and `MICS` listings, and the market crate's `SIDES` and `TIMESINFORCE` once its `install()` registers them; `prebuilt()` lists every one, in Rust and in either binding; `"Exchange"` -> `MICS`; a registered name with no listing, such as `forex`, any of the six securities identifiers or `lei`, `bic`, `elf`, `dti` and `fisn`, or a FIX Latest name such as `tenor` once `yggdryl_fix::install()` has claimed it, -> an empty enum.
 - JavaScript `readRecords` -> Arrow JS rows carry no extension identity, so a code column arrives as the text it stores, under no identity.
 - A dictionary-encoded code keeps its identity: Arrow's dictionary holds a bare datatype for its values, so the field is where the extension name rides.
 - Digests: a code value feeds its own id as the tag, so a stored digest of a code cell differs from the same bytes under `fixed_ascii(n)`.

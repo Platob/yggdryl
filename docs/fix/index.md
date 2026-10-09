@@ -68,12 +68,14 @@ a [market data leaf](message.md#market-data) states again as its
 
 ## Use
 
-The FIX view is the FIX module's own: `FixField::new(&field)` reads and `FixFieldMut::new(&mut field)` writes, each borrowing the field it is given. The core's exported view builder mints both, so `Field` has no `as_fix` and the view works on any field, whichever crate built it.
+The FIX view is the `yggdryl-fix` crate's own: `FixField::new(&field)` reads and `FixFieldMut::new(&mut field)` writes, each borrowing the field it is given. The core's exported view builder mints both, so `Field` has no `as_fix` and the view works on any field, whichever crate built it.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixField, FixFieldMut};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixField, FixFieldMut};
+    yggdryl_fix::install()?;
 
     let mut field = DataType::decimal128(20, 8)?.nullable_field("OrderQty");
     FixFieldMut::new(&mut field).set_tag(38)?;
@@ -258,7 +260,9 @@ The committed dictionary files every standard message type under one [`MarketDat
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixRegistry, MarketDataKind};
+    use yggdryl_fix::FixRegistry;
+    use yggdryl_market::MarketDataKind;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
@@ -304,7 +308,9 @@ A tag is what identifies a field on the wire and a name is what identifies it to
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixField, FixFieldMut, FixId};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixField, FixFieldMut, FixId};
+    yggdryl_fix::install()?;
 
     let mut trade = DataType::utf8().nullable_field("TradeID");
     // No membership means the specification alone, and there is no
@@ -498,7 +504,9 @@ names are folded; `display` keeps the specification's spelling.
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FieldPath, FixField, FixRegistry};
+    use yggdryl::{DataType, FieldPath};
+    use yggdryl_fix::{FixField, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
@@ -584,11 +592,11 @@ names are folded; `display` keeps the specification's spelling.
 === "Rust"
 
     ```bash
-    cargo test --features internals -p yggdryl --test fix -- mod_::internal
-    cargo test --features internals -p yggdryl --test fix -- mod_::internal::name_indexes_fold_ascii mod_::internal::three_spellings_of_one_name mod_::internal::an_identifier_is_one_integer mod_::internal::membership_folds_once mod_::internal::membership_round_trips mod_::internal::properties_round_trip mod_::internal::a_property_write mod_::internal::the_fold_table_holds mod_::internal::iteration_and_the_cursor_are_tag_major mod_::internal::a_corrupt_stored mod_::internal::a_path_reaches
-    cargo bench -p yggdryl --bench fix -- fix/mutate/set_
-    cargo bench -p yggdryl --bench fix -- fix/mutate/add_source
-    cargo bench -p yggdryl --bench fix -- fix/resolve/id_
+    cargo test --features internals -p yggdryl-fix --test root -- lib::internal
+    cargo test --features internals -p yggdryl-fix --test root -- lib::internal::name_indexes_fold_ascii lib::internal::three_spellings_of_one_name lib::internal::an_identifier_is_one_integer lib::internal::membership_folds_once lib::internal::membership_round_trips lib::internal::properties_round_trip lib::internal::a_property_write lib::internal::the_fold_table_holds lib::internal::iteration_and_the_cursor_are_tag_major lib::internal::a_corrupt_stored lib::internal::a_path_reaches
+    cargo bench -p yggdryl-fix --bench fix -- fix/mutate/set_
+    cargo bench -p yggdryl-fix --bench fix -- fix/mutate/add_source
+    cargo bench -p yggdryl-fix --bench fix -- fix/resolve/id_
     ```
 
 === "Python"

@@ -1,6 +1,6 @@
 # Graph
 
-`yggdryl::graph` is market data as elements that name each other by identity: four traits say what an element answers, typed leaves answer them, and `MarketData` carries any leaf across a boundary.
+The graph is market data as elements that name each other by identity: four traits say what an element answers, typed leaves answer them, and `MarketData` carries any leaf across a boundary. The core's `yggdryl::graph` holds the event vocabulary - `Element`, `Event`, `ElementColumn` and `EventColumn`, which a [text line](../media/text.md) answers too - and the `yggdryl-market` crate's `yggdryl_market::graph` the rest: `Market`, `Operation`, the leaves, the walk and `MarketData`. A Rust caller runs `yggdryl_market::install()?` before it reads a market kind; the Python and JavaScript packages install it when they load.
 
 ## Traits
 
@@ -14,7 +14,7 @@ Signatures with no storage: a FIX message, a text line or a book entry can each 
 | `Operation: Market` | [Operation](operation.md) | five more: the ordered quantity (`ordqty`), time in force, tradability, its own identifiers (`identifiers`), the parties it names (`partyids`) |
 
 - **Names.** Accessors `get_`, mutators `set_`, never bare; the three identifier maps and FX rates use fallible or filling `insert_`/`remove_`/`derive_` verbs instead: a view holder may refuse, a plain holder always answers `Ok` ([detail](market.md#security-identifiers)).
-- **Identifiers.** `securityids`, `identifiers` and `partyids` are each one [`Identifiers`](identifier.md) map - a value per key `src:type`, the base source's key spelled as its type alone and holding the type's answer, which a named source fills - with the [parents](identifier.md#parentage) a chain gives a type, read, written, merged and digested alike; an [`IsinRegistry`](isin-registry.md) learns what elements state about their instruments - a structured product's [category](isin-registry.md#the-product-category), a `yggdryl::Eusipa`, among them - and fills what later ones leave unsaid.
+- **Identifiers.** `securityids`, `identifiers` and `partyids` are each one [`Identifiers`](identifier.md) map - a value per key `src:type`, the base source's key spelled as its type alone and holding the type's answer, which a named source fills - with the [parents](identifier.md#parentage) a chain gives a type, read, written, merged and digested alike; an [`IsinRegistry`](isin-registry.md) learns what elements state about their instruments - a structured product's [category](isin-registry.md#the-product-category), a `yggdryl_market::Eusipa`, among them - and fills what later ones leave unsaid.
 - **Links.** Elements name a predecessor, source or cross element by identity, never reference; a caller resolves it via whatever holds the graph.
 - **Objects.** Object-safe except `is_after`, `is_before`, `with_previous`, `merge_with`, `following`, `restating`, `merging`, `fold_lifecycle`, the fills, and the market/operation digests and merges: `dyn Event`/`dyn Operation` walks read every fact through one reference.
 
@@ -26,7 +26,7 @@ Signatures with no storage: a FIX message, a text line or a book entry can each 
 | Quote | [Quote](quote.md) | `Quote`, `QuoteEvent` | the same |
 | Execution | [Execution](execution.md) | `Execution`, `ExecutionEvent` | the same |
 | Trade | [Trade](trade.md) | `TradeEvent` | all four |
-| Book | [Book](book.md) | `BookEvent` - a complete book or a delta book - `SnapshotEvent`, `BookIterator`, `yggdryl::Limit` | book/snapshot: `Element`, `Event`, `Market` |
+| Book | [Book](book.md) | `BookEvent` - a complete book or a delta book - `SnapshotEvent`, `BookIterator`, `yggdryl_market::Limit` | book/snapshot: `Element`, `Event`, `Market` |
 | Market data | [Market data](market-data.md) | `MarketData`, `MarketKind`, `ElementColumn`, `EventColumn`, `MarketColumn`, `OperationColumn`, `MarketView` | `Element`, `Market`, through the leaf held |
 | Row schemas | [Row schemas](schemas.md) | the text line, the FIX row and the `marketdata` row, column by column, over the one element, event, market and operation prefix | the same listing through `enums` and `MarketData.field()` |
 
@@ -58,8 +58,11 @@ An Apple buy order - 100 shares at 189.50 USD - built, finalized, written as one
 
     ```rust
     use yggdryl::arrow::batch_reader;
-    use yggdryl::graph::{Element, Event, Market, MarketData, OrderEvent};
-    use yggdryl::{Ccy, Decimal, IdKey, IdType, Identifier, MarketDataKind, Side};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::{Market, MarketData, OrderEvent};
+    use yggdryl::{Ccy, Decimal};
+    use yggdryl_market::{IdKey, IdType, Identifier, MarketDataKind, Side};
+    yggdryl_market::install()?;
 
     let mut order = OrderEvent::at(1_700_000_000_000_000_000);
     order.set_crosscode("O-1001".to_owned());

@@ -23,7 +23,9 @@ The kind says what an element is - an order, a quote, a trade, a book; the type 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, DataTypeKind, MarketDataType};
+    use yggdryl::{DataType, DataTypeKind};
+    use yggdryl_market::MarketDataType;
+    yggdryl_market::install()?;
 
     assert!(matches!(MarketDataType::dtype(), DataType::Market(kind) if kind.id() == MarketDataType::ID));
     assert_eq!(DataType::from_str("marketdatatype")?, MarketDataType::dtype());
@@ -62,7 +64,9 @@ The kind says what an element is - an order, a quote, a trade, a book; the type 
 === "Rust"
 
     ```rust
-    use yggdryl::{Field, MarketDataType, MarketDataTypeField};
+    use yggdryl::Field;
+    use yggdryl_market::{MarketDataType, MarketDataTypeField};
+    yggdryl_market::install()?;
 
     let kind = MarketDataTypeField::unit("marketdatatype", false);
     assert_eq!(kind.dtype(), &MarketDataType::dtype());
@@ -102,7 +106,9 @@ The value is the member, whichever spelling named it: `ORDLIMIT` for `ORDLIMIT`,
 === "Rust"
 
     ```rust
-    use yggdryl::{MarketDataType, Scalar};
+    use yggdryl_market::MarketDataType;
+    use yggdryl::Scalar;
+    yggdryl_market::install()?;
 
     let limit = MarketDataType::dtype().scalar("ORDLIMIT")?;
     assert_eq!(limit, Scalar::from(MarketDataType::OrdLimit));
@@ -169,7 +175,9 @@ The value is the member, whichever spelling named it: `ORDLIMIT` for `ORDLIMIT`,
 
     use arrow_array::{Array, ArrayRef, StringArray, UInt16Array};
     use arrow_schema::DataType as ArrowDataType;
-    use yggdryl::{ArrowCastOptions, Field, MarketDataType, Serie};
+    use yggdryl::{ArrowCastOptions, Field, Serie};
+    use yggdryl_market::MarketDataType;
+    yggdryl_market::install()?;
 
     let kind = Field::new("marketdatatype", MarketDataType::dtype(), false);
     let arrow = kind.clone().into_arrow_field()?;
@@ -343,7 +351,8 @@ The code groups by the FIX set it types; the stored name is what a column render
 === "Rust"
 
     ```rust
-    use yggdryl::MarketDataType;
+    use yggdryl_market::MarketDataType;
+    yggdryl_market::install()?;
 
     assert_eq!(MarketDataType::ALL.len(), 118);
     assert!(MarketDataType::ALL.windows(2).all(|pair| pair[0].code() < pair[1].code()));
@@ -407,7 +416,8 @@ A [FIX message](../../fix/message.md) states its type as it is parsed, reading t
 === "Rust"
 
     ```rust
-    use yggdryl::{MarketDataKind, MarketDataType, MARKETDATATYPE_FIX_TAGS};
+    use yggdryl_market::{MarketDataKind, MarketDataType, MARKETDATATYPE_FIX_TAGS};
+    yggdryl_market::install()?;
 
     assert_eq!(MarketDataType::from_fix(40, "2"), Some(MarketDataType::OrdLimit));
     assert_eq!(MarketDataType::from_fix(537, "1"), Some(MarketDataType::QuoTradeable));
@@ -481,7 +491,7 @@ A [FIX message](../../fix/message.md) states its type as it is parsed, reading t
 === "Rust"
 
     ```bash
-    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test root -- marketdatatype::
+    cargo test -p yggdryl-market --test root -- marketdatatype::
     ```
 
 === "Python"

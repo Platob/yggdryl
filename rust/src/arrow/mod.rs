@@ -14,7 +14,7 @@ use crate::{DataType, Field, StructType};
 use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
 
-mod extension;
+pub(crate) mod extension;
 pub(crate) mod rows;
 pub mod size;
 

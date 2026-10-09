@@ -69,9 +69,10 @@ type MetadataMap = BTreeMap<String, String>;
 /// shares the canonical `HTTP:` prefix, and one spelling of one namespace is
 /// what keeps a header from being stored twice. A protocol the core does
 /// not own is not listed: its owner mints its views with the exported
-/// `protocol_field_types!` builder, as `fix/field.rs` mints `FixField` and
-/// `FixFieldMut`, and a caller reaches them through the view's own `new`
-/// rather than an accessor here - the snapshot through [`Metadata::protocol`].
+/// `protocol_field_types!` builder, as `rust/fix/src/field.rs` mints
+/// `FixField` and `FixFieldMut`, and a caller reaches them through the
+/// view's own `new` rather than an accessor here - the snapshot through
+/// [`Metadata::protocol`].
 ///
 /// Every emitter matches all six tokens even where it ignores some, which is
 /// what forces the accessors and the view types to grow together.

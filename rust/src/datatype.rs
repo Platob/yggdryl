@@ -753,9 +753,8 @@ impl Ord for DataType {
 impl Hash for DataType {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            // A registered kind hashes as the position it held as a variant,
-            // its `shape`, written here because the marker itself hashes
-            // nothing.
+            // A registered kind hashes as the position its `shape` states,
+            // written here because the marker itself hashes nothing.
             Self::Market(kind) => state.write_isize(kind.kind().shape),
             other => Shape::of(other).hash(state),
         }
@@ -1035,7 +1034,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Variant => 50,
         DataType::Geometry(_) => 51,
         DataType::Geography(_) => 52,
-        // A registered kind states the rank it held as a variant.
+        // A registered kind states its own rank.
         DataType::Market(kind) => kind.kind().dtype_rank,
         // Appended rather than grouped with the other codes so no existing
         // rank moves: this ordering is total, not a wire contract, and a

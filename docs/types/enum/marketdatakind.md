@@ -23,7 +23,9 @@ A reader tells the leaves of market data apart by one column every FIX engine al
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, DataTypeKind, MarketDataKind};
+    use yggdryl::{DataType, DataTypeKind};
+    use yggdryl_market::MarketDataKind;
+    yggdryl_market::install()?;
 
     assert!(matches!(MarketDataKind::dtype(), DataType::Market(kind) if kind.id() == MarketDataKind::ID));
     assert_eq!(DataType::from_str("marketdatakind")?, MarketDataKind::dtype());
@@ -62,7 +64,9 @@ A reader tells the leaves of market data apart by one column every FIX engine al
 === "Rust"
 
     ```rust
-    use yggdryl::{Field, MarketDataKind, MarketDataKindField};
+    use yggdryl::Field;
+    use yggdryl_market::{MarketDataKind, MarketDataKindField};
+    yggdryl_market::install()?;
 
     let kind = MarketDataKindField::unit("marketdatakind", false);
     assert_eq!(kind.dtype(), &MarketDataKind::dtype());
@@ -102,7 +106,9 @@ The value is the member, whichever spelling named it: `ORDR` for `ORDR`, `ordr`,
 === "Rust"
 
     ```rust
-    use yggdryl::{MarketDataKind, Scalar};
+    use yggdryl_market::MarketDataKind;
+    use yggdryl::Scalar;
+    yggdryl_market::install()?;
 
     let order = MarketDataKind::dtype().scalar("ORDR")?;
     assert_eq!(order, Scalar::from(MarketDataKind::Order));
@@ -169,7 +175,9 @@ The value is the member, whichever spelling named it: `ORDR` for `ORDR`, `ordr`,
 
     use arrow_array::{Array, ArrayRef, StringArray, UInt8Array};
     use arrow_schema::DataType as ArrowDataType;
-    use yggdryl::{ArrowCastOptions, Field, MarketDataKind, Serie};
+    use yggdryl::{ArrowCastOptions, Field, Serie};
+    use yggdryl_market::MarketDataKind;
+    yggdryl_market::install()?;
 
     let kind = Field::new("marketdatakind", MarketDataKind::dtype(), false);
     let arrow = kind.clone().into_arrow_field()?;
@@ -251,7 +259,8 @@ The code is the MsgCat value, the stored name its four-letter code, and the word
 === "Rust"
 
     ```rust
-    use yggdryl::MarketDataKind;
+    use yggdryl_market::MarketDataKind;
+    yggdryl_market::install()?;
 
     assert_eq!(MarketDataKind::ALL.len(), 26);
     assert!(MarketDataKind::ALL.windows(2).all(|pair| pair[0].code() < pair[1].code()));
@@ -306,7 +315,8 @@ The code is the MsgCat value, the stored name its four-letter code, and the word
 === "Rust"
 
     ```rust
-    use yggdryl::MarketDataKind;
+    use yggdryl_market::MarketDataKind;
+    yggdryl_market::install()?;
 
     let sided: Vec<&str> = MarketDataKind::ALL.iter().filter(|kind| kind.is_sided()).map(|kind| kind.as_str()).collect();
     assert_eq!(sided, ["EXEC", "ORDR"]);
@@ -344,8 +354,9 @@ No leaf is filed under a batch member: what a FIX message filed under one states
 === "Rust"
 
     ```rust
-    use yggdryl::graph::MarketKind;
-    use yggdryl::MarketDataKind;
+    use yggdryl_market::graph::MarketKind;
+    use yggdryl_market::MarketDataKind;
+    yggdryl_market::install()?;
 
     assert_eq!(MarketKind::OrderEvent.marketdatakind(), MarketDataKind::Order);
     assert_eq!(MarketKind::Quote.marketdatakind(), MarketDataKind::Quotation);
@@ -391,7 +402,7 @@ No leaf is filed under a batch member: what a FIX message filed under one states
 === "Rust"
 
     ```bash
-    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test root -- marketdatakind::
+    cargo test -p yggdryl-market --test root -- marketdatakind::
     ```
 
 === "Python"

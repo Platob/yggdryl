@@ -1,11 +1,12 @@
 //! An element of a graph, and one that happened at an instant.
 //!
-//! Two traits: what an element answers about itself, what it takes, and
-//! the two readings every element has - following another, and merging with
+//! Two traits: what an element answers about itself, what it takes, and the
+//! two readings every element has - following another, and merging with
 //! another statement of itself. What an element that stands in a market
-//! answers is [`Market`](super::Market) and [`Operation`](super::Operation). The identity is the crate's own [`Uuid`], so
-//! an element is addressed the way every identified value in the crate is,
-//! and a predecessor or a cross element is named by the same
+//! answers is `yggdryl_market::graph::Market` and
+//! `yggdryl_market::graph::Operation`. The identity is the crate's own
+//! [`Uuid`], so an element is addressed the way every identified value in
+//! the crate is, and a predecessor or a cross element is named by the same
 //! identity rather than by a reference, so an element can name one it does
 //! not hold.
 
@@ -44,7 +45,7 @@ use crate::{State, Uuid};
 /// own identity where none is, [`Self::cross_uuid`], so every element stands
 /// in exactly one chain. The names an operation goes by elsewhere - an
 /// order's `ClOrdID` and `OrderID`, a trade's `ExecID` - are the
-/// operation's own facts, [`Operation::get_identifiers`](super::Operation::get_identifiers),
+/// operation's own facts, `yggdryl_market::graph::Operation::get_identifiers`,
 /// not the node's.
 /// Every fact is read and written through the trait, so a store or a walk
 /// that only knows an element as `dyn Element` can still place it; every
@@ -311,8 +312,8 @@ pub trait Element {
     ///
     /// Provided, and what an implementor's [`Self::finalize`] starts from:
     /// an event continues with [`Event::digest_event`], a market element
-    /// with [`Market::digest_market`](super::Market::digest_market), a market
-    /// event with [`Market::digest_market_event`](super::Market::digest_market_event),
+    /// with `yggdryl_market::graph::Market::digest_market`, a market event
+    /// with `yggdryl_market::graph::Market::digest_market_event`,
     /// and each feeds its own content
     /// behind them and reads `as_u64` for the code. The facts are fed
     /// through their typed accessors, so two elements stating the same
@@ -747,7 +748,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// code and nothing else. A cross code therefore moves the identity exactly
 /// where it moves the code - [`Element::digest`] feeds it, so an event
 /// digesting through that reading moves; one that states its own code decides
-/// for itself, as [`crate::FixMsg`] does in leaving the chain out. The crate's
+/// for itself, as a FIX message does in leaving the chain out. The crate's
 /// concrete event holders reset eagerly or invalidate their lazy UUID; an
 /// event with an assigned identity keeps the assignment.
 ///
@@ -760,7 +761,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// expiration, including one that shortens the lifetime. The wire clock
 /// belongs to one observation and never follows, while two observations of
 /// the same event keep the earliest. When a market event last executed is a
-/// market fact, [`Market::get_execunix`](super::Market::get_execunix), and
+/// market fact, `yggdryl_market::graph::Market::get_execunix`, and
 /// its readings fold it.
 /// The order an event states through [`Element::is_after`] is its
 /// transaction instant: later is after.
@@ -1091,7 +1092,7 @@ pub trait Event: Element {
     /// The caller establishes that the event is `live`'s twin, by the
     /// identity `live` arrived under: once `live` has followed something
     /// its identity has moved, and the event alone cannot tell a twin from
-    /// a successor. Provided, and what [`EventIterator`](super::EventIterator)
+    /// a successor. Provided, and what `yggdryl_market::graph::EventIterator`
     /// yields for an arrival under the identity a live element arrived
     /// under.
     fn restating(mut self, live: &Self) -> Self

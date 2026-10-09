@@ -935,3 +935,19 @@ pub fn serie_is_byte_storage(serie: &Serie) -> bool {
 pub fn serie_value_bytes(serie: &Serie, index: usize) -> Option<&[u8]> {
     serie.value_bytes(index)
 }
+
+// ------------------------------------------------------------------------
+// Market: the Arrow extension type a registered kind's marker implements in
+// the crate that claims it, through `market_extension!`.
+// ------------------------------------------------------------------------
+
+/// `arrow::extension::{marker_metadata, marker_supports}`: what a
+/// parameter-free marker's document and storage checks answer, the core's
+/// markers and a registered kind's alike.
+pub use crate::arrow::extension::{marker_metadata, marker_supports};
+/// `market_extension!`, for the market crate's four kind files.
+pub use crate::market_extension;
+/// arrow-rs's extension trait, which `market_extension!` implements.
+pub use arrow_schema::extension::ExtensionType;
+/// The Arrow error and datatype the extension trait's methods take.
+pub use arrow_schema::{ArrowError, DataType as ArrowDataType};

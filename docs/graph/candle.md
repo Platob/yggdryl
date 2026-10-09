@@ -11,7 +11,7 @@ A candle is one OHLC of one book over one bucket: `Candle` what the books of one
 | `CandleOptions` | `new(interval)`, `from_spelling(text)`, `with_timezone(zone)`; `interval()`, `timezone()`, `spelling()` | `Clone`, `Debug`, `Eq`, `Hash`, `PartialEq` | Python `graph.CandleOptions(interval, timezone=None)`, JavaScript `new graph.CandleOptions(interval, timezone)` - a spelling, or a count of nanoseconds (`int`; `bigint` or a whole `number`) |
 | `CandleIterator<I>` | the [fold](#the-fold): `new(books, options)`, `options()` | `Iterator<Item = Result<Candle>>`, `FusedIterator` | Python `graph.CandleIterator(books, options)` and `graph.candles(books, interval, timezone=None)`; JavaScript `new graph.CandleIterator(books, options)` and `graph.candles(books, options, timezone)` |
 
-All in `graph::candle`, re-exported as `yggdryl::graph::{Candle, CandleIterator, CandleOptions, Ohlc}`. A candle is a value of its own rather than a datatype: its row is the struct [`Candle::field()`](#arrow-row) declares.
+All in `graph::candle`, re-exported as `yggdryl_market::graph::{Candle, CandleIterator, CandleOptions, Ohlc}`. A candle is a value of its own rather than a datatype: its row is the struct [`Candle::field()`](#arrow-row) declares.
 
 ## Buckets
 
@@ -71,11 +71,11 @@ Four books of one minute: one quote a side, restated at each book, and three fil
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{
-        BookIterator, CandleIterator, CandleOptions, Element, Event, ExecutionEvent, Market, MarketData, Ohlc,
-        QuoteEvent,
-    };
-    use yggdryl::{Decimal, Side, State};
+    use yggdryl_market::graph::{BookIterator, CandleIterator, CandleOptions, ExecutionEvent, Market, MarketData, Ohlc, QuoteEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl::{Decimal, State};
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     const SECOND: i64 = 1_000_000_000;
     let quote = |unix: i64, code: &str, side: Side, price: &str, quantity: i64| -> yggdryl::Result<MarketData> {
@@ -236,8 +236,9 @@ Empty books at `00:30Z`, `01:30Z` and `02:30Z` on 2026-03-29, the day Europe/Zur
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, CandleIterator, CandleOptions};
+    use yggdryl_market::graph::{BookEvent, CandleIterator, CandleOptions};
     use yggdryl::Timezone;
+    yggdryl_market::install()?;
 
     const SECOND: i64 = 1_000_000_000;
     const HOUR: i64 = 3_600 * SECOND;
@@ -346,8 +347,9 @@ A candle laid out as one row under `Candle::field()` and read back as the same v
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Candle, Ohlc};
+    use yggdryl_market::graph::{Candle, Ohlc};
     use yggdryl::{ArrowCastOptions, Decimal, Serie};
+    yggdryl_market::install()?;
 
     let field = Candle::field()?;
     assert_eq!((field.name(), field.field_len(), field.is_nullable()), ("candle", 23, false));
