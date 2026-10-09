@@ -133,12 +133,6 @@ impl From<crate::text::TextOptions> for RecordOptions {
     }
 }
 
-impl From<crate::xmla::XmlaOptions> for RecordOptions {
-    fn from(value: crate::xmla::XmlaOptions) -> Self {
-        Self::Xmla(value)
-    }
-}
-
 impl From<crate::csv::CsvOptions> for RecordOptions {
     fn from(value: crate::csv::CsvOptions) -> Self {
         Self::Csv(value)

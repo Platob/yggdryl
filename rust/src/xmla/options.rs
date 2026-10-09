@@ -2,7 +2,7 @@
 
 use smol_str::SmolStr;
 
-use crate::media::IORecordOptions;
+use crate::media::{IORecordOptions, MediaCodec, MediumSettings, RecordOptions};
 use crate::{Field, Filter, Level, Selector};
 
 use super::vocabulary::{Content, Method};
@@ -119,8 +119,14 @@ impl IORecordOptions for XmlaOptions {
     crate::record_options_fields!();
 }
 
-impl crate::media::MediumSettings for XmlaOptions {
-    fn medium() -> &'static dyn crate::media::MediaCodec {
+impl MediumSettings for XmlaOptions {
+    fn medium() -> &'static dyn MediaCodec {
         &super::XMLA_CODEC
+    }
+}
+
+impl From<XmlaOptions> for RecordOptions {
+    fn from(value: XmlaOptions) -> Self {
+        Self::registered(value)
     }
 }

@@ -15,7 +15,7 @@ use arrow_array::RecordBatchIterator;
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
 use crate::holder::Holder;
-use crate::media::{IORecordOptions, Media, MediaCodec, RecordOptions};
+use crate::media::{IORecordOptions, Media, MediaCodec, MediaWrapper, RecordOptions};
 use crate::soap::ENVELOPE_NAMESPACE;
 use crate::xml::Element;
 use crate::{
@@ -288,13 +288,12 @@ impl<H: IOBase> Xmla<H> {
     }
 
     fn require_options<'a>(&self, options: &'a RecordOptions) -> Result<&'a XmlaOptions> {
-        match options {
-            RecordOptions::Xmla(options) => Ok(options),
-            _ => Err(crate::Error::InvalidRecord {
+        options
+            .settings::<XmlaOptions>()
+            .ok_or_else(|| crate::Error::InvalidRecord {
                 path: smol_str::SmolStr::new_static("$.encoding"),
                 reason: crate::text::expected_got("XMLA record options", options.mime_type()),
-            }),
-        }
+            })
     }
 
     fn invalidate(&mut self) {
@@ -356,7 +355,7 @@ impl<H: IOBase> IOMedia for Xmla<H> {
     }
 
     fn record_options(&self) -> Result<RecordOptions> {
-        Ok(RecordOptions::Xmla(self.options.clone()))
+        Ok(self.options.clone().into())
     }
 
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
@@ -536,7 +535,7 @@ impl MediaCodec for XmlaCodec {
     }
 
     fn default_options(&self, _base: &MimeType) -> RecordOptions {
-        RecordOptions::Xmla(XmlaOptions::new())
+        RecordOptions::registered(XmlaOptions::new())
     }
 
     fn read_batch_reader(
@@ -575,14 +574,24 @@ impl MediaCodec for XmlaCodec {
     }
 
     fn open(&self, handle: Holder) -> Media {
-        Media::Xmla(Xmla::new(handle))
+        Media::Registered(Box::new(Xmla::new(handle)))
     }
 }
 
-crate::media_serie::media_serie!(
-    XmlaSerie,
-    Xmla,
-    as_xmla,
-    get_xmla_mut,
-    accepts = Some(&XMLA_TYPES)
-);
+impl MediaWrapper for Xmla<Holder> {
+    fn medium(&self) -> &'static dyn MediaCodec {
+        &XMLA_CODEC
+    }
+
+    fn handle(&self) -> &Holder {
+        &self.handle
+    }
+
+    fn into_handle(self: Box<Self>) -> Holder {
+        self.handle
+    }
+
+    fn with_field(self: Box<Self>, field: Field) -> Box<dyn MediaWrapper> {
+        Box::new(Xmla::with_field(*self, field))
+    }
+}

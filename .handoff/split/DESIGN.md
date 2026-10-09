@@ -715,11 +715,14 @@ handoff if S6's diff is too large; it is not taken without the user.
 | S0 | design, the pins, the prompt and this file: "Pin the market kinds' wire and cost contracts" | pins generated and green on P1's tree; pushed; CI read green |
 | S1 | the market extension point; the four enum kinds claimed in place, the seventeen codes the core's flat variants (D25) | S0's pins byte-identical; the cost and size gates; `rust/tests/market_register.rs` |
 | S2 | the media extension point (D21), the media claimed in place | `iobase_calls` unmoved; every medium's harness; both lanes; the exchange jobs |
+| P2 | the medium holds its origin and its cache under `cache_ttl`, the serie composes the pushdown (D34, D35): "Hold the origin field and its cache on the medium; compose the pushdown once" | the `s2_pins` byte-identical; every cost row unmoved or down; the new TTL, write-update, projection and composer pins; both bindings; CI read |
+| S2b | the XMLA medium registered in place (D33): "Register the XMLA medium in place" | the three `xmla` hashes and the order pin of `mod s2_pins` byte-identical; `rust/tests/xmla`; `media_register`; the `xmla` rows of `iobase_calls` and `allocations` unmoved |
 | S3 | the remaining seams in place: D5, D6, D9, D10 | `cargo check --workspace --all-targets`; the dictionary hash and crate dump unmoved; the whole run |
 | S4 | `yggdryl-market` and `yggdryl-fix` | market and fix whole runs in both lanes; cost rows unmoved; `cargo package --list`; maturin sdist |
 | S5 | the market binding packages; release and CI learn them | the packages' suites in CI; a rehearsal on the user's go |
 | S6 | `yggdryl-avro`, `yggdryl-parquet`, `yggdryl-iceberg` with `s3tables` | each crate's suite; the exchanges; the Parquet `iobase_calls` rows; the MSRV job |
 | S6b | `yggdryl-excel` | its suite in both lanes; the Excel exchange job (openpyxl); `rust/tests/interop/excel.rs` no longer skipping |
+| S6c | `yggdryl-xmla`, with `soap/` | its suite in both lanes; the `xmla` rows of `iobase_calls` and `allocations` unmoved; `yggdryl xmla serve` built against it; the XMLA page's examples |
 | S7 | `RecordOptions` -> `MediaOptions` | the sweep's grep empty; every cost pin unchanged |
 | S8a | D18's prerequisites | S8's pins |
 | S8b | the planned expression series | S8's pins |
@@ -1119,7 +1122,7 @@ below was counted at `719299cf6` by the seven maps under the scratchpad's
 ### D26, the registered options
 
 Decided: `RecordOptions::Registered(RegisteredOptions)` beside the core
-media's variants `Ipc`, `Text`, `Xmla`, `Csv`, which never leave;
+media's variants `Ipc`, `Text`, `Xmla`, `Csv`, which never leave (D33 amends this: `Xmla` leaves in S2b, and the core's own are `Ipc`, `Text`, `Csv`);
 `Parquet`, `Avro` and `Excel` are deleted, so the three leaving media are
 registered in place and S6 moves files. `RegisteredOptions` is a newtype
 over `Box<dyn MediumOptions>`. `MediumOptions` is the object-safe twin of
@@ -1369,6 +1372,261 @@ core reaches `yggdryl::iceberg` through `iceberg/types.rs` alone, nothing
 outside it reads `PrimitiveType` ungated, and `PrimitiveType::into_official`
 (`cfg(iceberg)`, four callers) becomes a free function when the rest leaves.
 
+### D33, `yggdryl-xmla` (S2b, S6c)
+
+Decided by the user mid-S2's handoff ("Isolate also the xmla in its crate
+project"). XML for Analysis is a medium like Avro, Parquet and the workbook
+and leaves the same way, through D21's media point: `xmla/` is 7,040 lines
+in eleven files and `soap/`, the SOAP 1.1 envelope only XMLA speaks, 995 in
+one; together they name nothing of the core a medium may not - `git grep -h
+'^use crate::' -- rust/src/xmla rust/src/soap | sort -u` is 26 lines:
+`arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema}`,
+`expression::{Location, Plan, Source, Target}`, `holder::Holder`,
+`http::{Body, Method, Request, Response, Server, Status}`,
+`media::{IORecordOptions, Media, MediaCodec, RecordOptions}`, `text::Limits`,
+`xml::{Element, ATTRIBUTE_PREFIX, XSD_NAMESPACE, XSI_NAMESPACE}`, the value
+types and `Serie`. D26 called `Xmla` a core variant that never leaves; this
+decision amends it, so the core's own media are three - Arrow IPC, plain
+text, CSV - and S2b registers XMLA in place as S2 registered Excel:
+`RecordOptions::Xmla`, `Media::Xmla`, `Media::xmla`, `From<Xmla<Holder>>
+for Media`, `Serie::Xmla` and `XmlaSerie` are deleted - 32 lines in
+`media/options.rs`, `media/options/dispatch.rs`, `media/mod.rs`, `serie.rs`
+and `media_serie.rs` at `2d800d51b` - `Xmla<Holder>` implements
+`MediaWrapper`, `XmlaCodec::open` answers `Media::Registered`,
+`From<XmlaOptions> for RecordOptions` is `RecordOptions::registered` in
+`xmla/options.rs`, and a media serie over an XMLA handle is
+`GenericMediaSerie` (D28 extended). `XMLA_CODEC` keeps rank 4, its name and its one MIME type, and
+the core seeds it until S6c; the three `xmla` hashes of `mod s2_pins` and
+the order pin hold byte for byte, because the hash is
+`stable_hash_of(&(codec.name(), settings))` for a core variant and a
+registered one alike (D26). What stays core: `MimeType::XMLA` and the
+`.xmla` suffix (routing vocabulary, as `PARQUET` and `XLSX` are), the
+catalog `type` word `xmla` that `Catalog::from_url` refuses by name (D10),
+the `xml/` codec `soap/` reads through, and `http/`, which the provider
+routes on. S6c is its own commit after S6b, a move only: `rust/xmla/` holds
+`xmla/` and `soap/`, its tests (`rust/tests/xmla/` with its fixtures,
+`rust/tests/soap/`), `rust/benchmarks/media/xmla.rs`, the `xmla` rows of
+`iobase_calls.rs` (`xmla_costs`, `mod service`) and of `allocations.rs`
+(`Rowset`); `cli/src/xmla.rs` - `yggdryl xmla serve` - depends on
+`yggdryl-xmla`; the Python binding keeps `Xmla` as its handle class, picked
+by the codec's name already (`python/src/media/handles.rs`), in the one
+native module (D11 option d); Node carries no XMLA door. The crate-private
+items the two folders reach by full path are orientation for D6's list,
+derived exactly by S6c's scratch `git mv` plus `cargo check`: `iomedia::{own_options,
+dimension_options, container_field, container_row_size, read_record_serie}`,
+`iobase::{overwrite_arrow_reader_default_with_field,
+append_arrow_reader_default, merge_arrow_reader_default, leaf_writer}`,
+`serie::from_canonical_rows`, `record_options_fields!`,
+`text::{expected_got, elide_to, ERROR_TEXT_LIMIT}`,
+`temporal::{parse_timestamp, format_timestamp}`,
+`integer::integer_from_text_as`, `xml::{write_element_text,
+write_attribute_text, write_fragment, write_leaf_text, write_x_escape,
+decode_x_escapes, is_name_start, is_name_char, from_utf, shaped}`,
+`warehouse::{holds, no_catalog, path_text}`, `http::server::normalize_path`,
+`xxhash::xxh`, `uuid_parse`, `media::DEFAULT_COMMIT_BYTE_SIZE` - about 30.
+The name: crates.io answers 404 for `yggdryl-xmla` (read 2026-10-09 through
+the crates.io API); release preflight and AGENTS §6's name list gain it in
+S6c. Left to S6, one decision for the four leaving media: the rank a
+leaving medium's `install()` claims at, since `media::codec::claim` refuses
+one below `EXTERNAL_RANK` from outside the core and the order pin states
+today's positions. Refused: keeping XMLA a core variant (the user asked
+otherwise; the provider, the rowset document and the SOAP envelope are one
+protocol with their own options, tests, benchmark and page, and nothing in
+the core but the routing vocabulary needs them); folding S2b into S3 (a
+media change is the media point's slice, not the seams'); moving `soap/`
+alone or leaving it in the core (nothing but XMLA reads it).
+
+### S2b results
+
+Committed as "Register the XMLA medium in place" (on `2d800d51b`): 15 files changed, 123 insertions(+), 129 deletions(-)
+across `rust/src` (eight files), `rust/tests` (four), `docs/media/index.md`,
+`.api-inventory.txt` and AGENTS.md's three media sentences - the handoff
+files apart. The pins held: the three `xmla` hashes of `mod s2_pins`
+(`8_486_799_845_904_195_949`, `11_124_752_632_585_582_100`,
+`2_087_720_147_871_917_823`) and the order pin, renamed
+`the_media_order_by_their_rank` for what it pins (the codec's rank), every
+value unchanged; the `xmla` rows of `iobase_calls` (`xmla_costs`, `mod
+service`) and of `allocations` (`a_rowset_write_allocates_nothing_per_row`)
+unmoved, nothing re-pinned. The review (opus) could not refute the slice
+and named three findings, all fixed before the commit: AGENTS.md's three
+lines still saying "the core's four media" and listing `XmlaSerie`; no test
+reading an XMLA handle through `GenericMediaSerie` or pinning the
+`require_settings::<XmlaOptions>` refusal (now
+`an_xmla_handle_is_read_through_the_generic_media_serie`); the order pin's
+name. It also corrected a sentence: no `read_serie` ever built a media
+serie, so "an XMLA handle reads as `GenericMediaSerie`" is "a media serie
+over an XMLA handle is `GenericMediaSerie`" here and in the commit.
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt --all -- --check` | clean |
+| `cargo test -p yggdryl --all-targets --all-features --no-fail-fast` | 63 targets, 9170 passed, 1 failed (`market_register`'s count race, S1's: 25 of 200 parallel runs, 0 of 100 single-threaded), 3 ignored |
+| `cargo test -p yggdryl --all-targets --no-fail-fast` | 63 targets, 6523 passed, 0 failed |
+| `cargo test -p yggdryl-cli --all-targets --no-fail-fast` | 35 passed, 6 ignored |
+| `cargo test -p yggdryl --doc` | 628 passed |
+| clippy, workspace all features and `-p yggdryl` default, `-D warnings` | exit 0 both |
+| `RUSTDOCFLAGS="-D warnings" cargo doc -p yggdryl --no-deps --all-features` | exit 0 |
+| Python: maturin develop, pytest (Spark deselected), mypy --strict | 2780 passed, 4 skipped; no issues in 70 files |
+| Node: build:debug, the CLI build, npm test, tsc, the generated files | 1120 of 1122 passed, the sandbox `TextDecoder` pair failing as at every slice; tsc 0; loader and declarations unchanged |
+| the two docs manifests | current |
+| `mkdocs build --strict` | clean |
+| the inventories, `generate_internals.py --check` | current |
+| the page examples, Rust / Python / JavaScript | 940 passed / 837 run, 3 skipped, 0 failed / 789 run, 2 skipped, 0 failed |
+
+### D34, the medium holds its origin and the serie composes the pushdown (P2)
+
+Decided by the user mid-S2b ("refine so media hold the origin full field
+definition and the media serie holding the media is the only wrapper to push
+down selectors and filters or other pushable operations optimally"), mapped
+by five readers and one synthesis under the scratchpad's `pushdown_map/`
+(`field_ownership.md`, `pushdown_sites.md`, `callers_and_pins.md`,
+`planned_pushdown.md`, `metadata_caches.md`, `design_inputs.md`). Today the
+declared field (`options.field()`, `media/options.rs:1613`) is the caller's
+intent and does four jobs - the read's cast target (`transfer.rs:1152`), the
+projection vehicle that outranks `apply_columns` (`arrow/mod.rs:718-724`),
+the write target (`transfer.rs:1360`) and the root name - and sits inside
+the options' identity, so it cannot hold the origin; no medium holds the
+origin's whole field (six wrappers cache six different objects, only while
+`opened`; text, bare handles, folders and `MediaTable` hold nothing); the one
+uniform holder is the serie's `source_field` (`media_serie.rs:52`, filled at
+`:111-112`), overwritten by `splice` and `sliced`; `read_arrow_field` under a
+`select` answers three different things across its 21 implementations (the
+projected field, the whole stored field, the whole field plus Iceberg's
+proven `SORT:by`), and Parquet's answer clears the root metadata; a full
+declared field defeats `select` in IPC, Parquet, Avro's batch path, Iceberg
+and every Hive leaf; the residual (`iomedia.rs:1415`) is copied in five
+places (`http/request.rs:1774, 1786`, `iceberg/table.rs:2225`,
+`coding/mod.rs:334`, `csv/media.rs:610`); `apply_columns` takes late aliases
+and answers `None` on a star; the write-records doors apply `max_row_size`
+twice (`iomedia.rs:938-1022` then `transfer.rs:422`).
+
+Decided, one slice (P2, after S2b, before S3 - the P1 precedent for a
+user's refinement of the media point, and the codec doors S6 copies are
+designed once, D21):
+
+1. The origin door. `IOMedia::read_origin_field(&self) -> Result<Option<Field>>`:
+   the whole root the origin holds, its metadata whole, no declaration and
+   no clause applied, `None` where the origin states no shape (an empty
+   resource, a document carrying no schema); a leaf answers it through its
+   codec's `stated_field` under the medium's default options, served from
+   the medium's cache (D35), a container through `container_field` as
+   today, uncached; every wrapper and `Holder` forward it. Parquet's root
+   metadata is kept here, and its `read_field` landing is derived from it.
+2. One schema answer. `read_arrow_field(options)` is one rule in the trait
+   default - `options.plan().field_from(declared, else the origin)` - the
+   declared root as it stands, narrowed by the select, or the origin narrowed
+   by it; a `SORT:by` the root declares is kept only where the selection
+   keeps every key it names (the hidden risk at `selector.rs:857-860` closed).
+   The 21 implementations become the default plus the container arm.
+3. One projection rule. What a medium decodes is the declared children (or
+   the origin's) intersected with the columns the select and the early
+   filter read, in the origin's layout: `apply_columns` answers that set
+   through `filter_phases` (a star every column; a late alias nothing), and
+   the declared root handed to a codec's `read_batch_reader` is already
+   narrowed to it, so the cast target is the narrowed root and a declared
+   column outside the selection is never asked for. The media keep reading
+   the sections (D21 holds); the sections say less.
+4. The composer. `media_serie.rs` holds the one crate-private composition
+   from (the medium's options, the serie's `Scan`) to the options the medium
+   is handed and the residual - the early/late split made once, a conjunct a
+   settled bound proves for every row of a unit dropped from that unit's
+   residual (a Hive leaf's path equalities; Iceberg's `file_residual` stays
+   its own; a row-group statistic settles nothing), the bounds pushed where
+   the medium takes them and kept otherwise, the residual applied once -
+   and `read_record_serie` and the serie's `read` both call it, so
+   `IOMedia::read_arrow_reader(options)`, the bindings' `where=`/`select=`
+   properties and `Plan::execute` are unchanged doors over one composition.
+   The five residual copies are redirects or deleted; `source_field` is
+   deleted, the serie binding its field through the composed options'
+   `read_arrow_field`; `WriteLimitState` is the one owner of the row bounds
+   on the write-records doors.
+5. S8 amended, not pre-built: `push_plan` is the composer fed from a `Plan`;
+   `set_plan` clears nothing (the declared field kept, the two `plan.rs`
+   restores deleted); `Serie::from_holder` splits its options through it;
+   the lazy root is the medium's cache cell; `delete_from` joins the deleted
+   list. The lazy verbs stay S8b's.
+
+Pins: the `s2_pins` byte-identical; every cost row unmoved; the media-serie
+construction row (`iobase_calls.rs:1012`) measured red first and allowed to
+move only down; new pins: a full declared field with a `select` decodes the
+selected columns alone (IPC, Parquet), `read_arrow_field` one answer on
+every wrapper under a select, the composer's early/late split and the
+residual applied once (a counting filter), the write-records bounds once.
+Refused: moving the native pushdown out of the media into the serie (a
+Parquet row-group prune reads the footer the medium holds; D21 keeps the
+sections the medium reads); a second options type for the serie; deferring
+the composer to S8 (the user asked for the one wrapper now; S8b's
+`push_plan` is then a thin door over it).
+
+### D35, the medium's cache under a time-to-live (P2)
+
+Decided by the user mid-S2b ("add in media metadata/field cache ttl and
+ensure operations and implementations update this cache, 0 is realtime and
+other are in millis"). Today six wrappers hand-roll the same cache (`bool
+opened`, `OnceLock`s, a private invalidate, their own drop lists:
+`ipc/mod.rs:827-833`, `parquet/mod.rs:2252-2262, 2332`,
+`avro/batch.rs:2555`, `csv/media.rs:431`, `xmla/media.rs:235-236`,
+`excel/media.rs:370`), two drop sites are missing (`set_media_type` on
+Parquet and Avro, `handle_mut` on CSV, XMLA and Excel), and a write throws
+away what it knows: Parquet's writer returns the footer it wrote and the
+wrapper drops it and reads it back (`parquet/mod.rs:717, 2437`), the
+overwrite returns the published field only IPC consumes
+(`transfer.rs:257-312`).
+
+Decided:
+
+1. `media/cache.rs` `MediaCache`, one cell per medium wrapper (IPC, Parquet,
+   Avro, CSV, text, XMLA, Excel): `Mutex<Option<Entry>>` with `at: Instant`,
+   `generation`, `origin: Option<Field>`, `rows: Option<u64>`, `columns:
+   Option<usize>` and `state: Option<Box<dyn Any + Send + Sync>>`, the
+   medium's own object (Parquet's `ParquetMetaData`, Avro's dimensions,
+   CSV's inferred options and field, the Excel `Workbook`), reached by
+   downcast as `IOMedia::as_any` answers the Parquet footer (S2). It replaces
+   the six caches and closes their drop-site gaps; `ParquetFooter` reads it.
+2. The rule, one sentence: an entry is served while the handle is open, or
+   while it is younger than the TTL; `cache_ttl` `0`, the default, is
+   realtime - a closed handle re-reads on every ask, as today - and `n`
+   serves an entry younger than `n` milliseconds. `open` holds the entry
+   until `close`, as the AGENTS rule says ("open caches expensive metadata
+   for its scope, close publishes and drops it"), the TTL being the time
+   rule outside an explicit session. The clock is `Instant::now()` read at
+   the door and passed in (`Buffered::read_at`'s model), injectable under
+   `internals`; the open-scope pins (about 35 tests, three docs tables) hold.
+3. The setting: `cache_ttl`, `u64` milliseconds, a shared section of every
+   medium's options through `record_options_fields!`, outside the options'
+   identity and the hash feed as `file_threads` is (`FileThreads` model:
+   equality always true, `Hash` writes nothing; `ParquetOptionsIdentity`
+   omits it) so the `s2_pins` hold byte for byte; read from text through the
+   one integer grammar (`integer_from_text_as`, as Iceberg's
+   `commit.retry.*-ms`), never `duration_from_text`; `IORecordOptions::
+   cache_ttl`/`set_cache_ttl`, the `MediumOptions` twin, the Python property
+   `cache_ttl` (an `int` of milliseconds; Python's `buffered(ttl=)` is
+   seconds, said once in the docs), the `**properties` per-call copy, the
+   pickle; Node gains no door (AGENTS §4).
+4. Writes update the cell with what they know: an overwrite sets the origin
+   to the published root (`transfer.rs:257`'s returned field), `rows` to
+   `written_rows` and `state` to what the encoder returned (Parquet's
+   `overwrite_buffered` metadata kept, its tail re-read gone); an append
+   keeps the origin, adds `written_rows` to a fresh `rows` and clears a stale
+   one, clears `state` the encoder did not answer; `clear` sets the empty
+   entry (no origin, zero rows); `remove`, `merge` (which counts every
+   pulled row), `pwrite`, `truncate`, `create_bytes`, `set_media_type` and
+   `handle_mut` invalidate it (the generation bumped); a closed write stores
+   an entry only under a TTL above zero. Containers stay uncached. Iceberg's
+   document and manifest list are the table format's own cache with its
+   commit `adopt`, an update on write already; whether the TTL governs them
+   is recorded open for S6.
+5. Pins: new rows under an injected clock - a warm closed read is free under
+   a TTL, a write answers its field with zero reads on every wrapper, an
+   out-of-band change is seen after the TTL and not before, each wrapper's
+   drop sites (the two missing ones included); the Parquet overwrite row
+   moves down by its footer re-read, red first; a Python round trip of the
+   property. Refused: the TTL on the handle as a `Buffered`-style decorator
+   (it sees the three answers and not the footer the decode reuses, and
+   adds a settings family beside the options against D23); the TTL as the
+   open scope (it reverses D19, D21 and D26 and moves 35 pins for nothing
+   the rule above lacks).
+
 ## S2: what was built
 
 The media extension point, in place: four claim-once registers on
@@ -1453,6 +1711,9 @@ under the scratchpad's `logs/chain_s2*.log` report them.
 | D30 | `Catalog`/`Namespace`/`Table::Registered`; `CatalogFactory` by type word and scheme; `Locator` by scheme; `Site::Store` under `s3` | `warehouse/catalog.rs:72-143`, `holder/mod.rs:348-451`, `handle.rs:19-47` | S2 |
 | D31 | `Error::External { origin, reason, source }`; `From<ParquetError>` deleted for `map_err`; `IOMedia::as_any` answering the Parquet footer cache; the statistics as free functions over `&dyn IOMedia` | `error.rs:166-172`, `parquet/mod.rs:2524`, `iomedia.rs:369-411` | S2 |
 | D32 | `filter_phases` published; logging and D17 unchanged | `expression/mod.rs:1036`; `logging/facade.rs:72-76` | S2 |
+| D34 | the medium holds its origin (`read_origin_field`), one schema answer, one projection rule (declared ∩ the columns the select and early filter read), one composer in `media_serie.rs` that `read_record_serie` also calls, `source_field` and the five residual copies gone; S8 amended | the user's instruction; `pushdown_map/design_inputs.md` | P2 |
+| D35 | `MediaCache` on every wrapper under `cache_ttl` (milliseconds, 0 realtime, outside the hash feed as `file_threads`), served while open or younger than the TTL, every write door updating or invalidating it | the user's instruction; `pushdown_map/metadata_caches.md` | P2 |
+| D33 | `yggdryl-xmla`, an eighth crate through the media point, `soap/` with it; registered in place in S2b (the core's own media three: `RecordOptions::Xmla`, `Media::Xmla`, `Serie::Xmla` deleted), moved in S6c; the Python `Xmla` class stays in the one native module; the CLI's `xmla serve` depends on it | the user's instruction; the 32 core sites and the 26 import lines above; crates.io 404 | S2b, built S6c |
 | D25 | the seventeen codes stay core and flat; the register holds enum kinds alone (`Code8`/`Code16`), `MarketPayload`, `is_canonical`, `respell` and `CODE_VALUE_RANK` deleted; `yggdryl-market` carries the enums, `graph/` and the ISIN registry | the user's instruction; the S0 pins; one free Code byte | S1 |
 
 ## Review (S0)

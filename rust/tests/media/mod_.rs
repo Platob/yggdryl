@@ -78,7 +78,7 @@ fn the_name_picks_the_implementation() {
     ));
     assert!(matches!(
         Media::open(handle("catalog.xmla")).unwrap(),
-        Media::Xmla(_)
+        Media::Registered(wrapper) if wrapper.medium().name() == "xmla"
     ));
     assert!(matches!(
         Media::open(handle("trades.csv")).unwrap(),
@@ -212,7 +212,6 @@ fn generic_media_preserves_commit_cadence_through_variant_redirection() {
         match &mut media {
             Media::Ipc(ipc) => ipc.options_mut().set_commit_batch_num(Some(1)),
             Media::Text(text) => text.options_mut().set_commit_batch_num(Some(1)),
-            Media::Xmla(xmla) => xmla.options_mut().set_commit_batch_num(Some(1)),
             Media::Csv(csv) => csv.options_mut().set_commit_batch_num(Some(1)),
             // A registered wrapper keeps its options behind the codec's
             // trait object: its cadence is stated on the options a write takes.

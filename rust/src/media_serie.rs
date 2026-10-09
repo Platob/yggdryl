@@ -596,7 +596,6 @@ impl Serie {
             Self::Ipc(value) => Some(value.media_state()),
             Self::Csv(value) => Some(value.media_state()),
             Self::Text(value) => Some(value.media_state()),
-            Self::Xmla(value) => Some(value.media_state()),
             Self::WarehouseTable(value) => Some(value.media_state()),
             #[cfg(feature = "http")]
             Self::Http(value) => Some(value.media_state()),
@@ -614,7 +613,6 @@ impl Serie {
             Self::Ipc(value) => Arc::make_mut(value).splice(range, rows),
             Self::Csv(value) => Arc::make_mut(value).splice(range, rows),
             Self::Text(value) => Arc::make_mut(value).splice(range, rows),
-            Self::Xmla(value) => Arc::make_mut(value).splice(range, rows),
             Self::WarehouseTable(value) => Arc::make_mut(value).splice(range, rows),
             #[cfg(feature = "http")]
             Self::Http(value) => Arc::make_mut(value).splice(range, rows),

@@ -1648,7 +1648,7 @@ mod s2_pins {
     }
 
     #[test]
-    fn the_variants_order_as_they_are_declared() {
+    fn the_media_order_by_their_rank() {
         // Fed in reverse, so a sort that moved nothing would show.
         let mut options: Vec<RecordOptions> = media()
             .iter()
@@ -1675,7 +1675,7 @@ mod s2_pins {
         ]);
         assert_eq!(order, pinned);
 
-        // The variant decides before any setting does: the most-set options of
+        // The medium decides before any setting does: the most-set options of
         // an earlier medium still sort before the defaults of a later one.
         let mut ipc = default_of(&MimeType::ARROW_STREAM);
         ipc.set_max_row_size(Some(u64::MAX));
@@ -1758,7 +1758,7 @@ mod s2_pins {
             options.set_timezone(Some(Timezone::UTC)).unwrap();
         });
         state("xmla/without_envelope", &MimeType::XMLA, &|options| {
-            *options = RecordOptions::Xmla(XmlaOptions::new().without_envelope());
+            *options = RecordOptions::from(XmlaOptions::new().without_envelope());
         });
         state("csv/separator=;", &MimeType::CSV, &|options| {
             options.set_csv_separator(b';').unwrap();

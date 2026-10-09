@@ -1,4 +1,4 @@
-# Handoff: split yggdryl into seven crates
+# Handoff: split yggdryl into eight crates
 
 Read `.handoff/next/MARKET_SPLIT_PROMPT.md` (the program) and
 `.handoff/split/DESIGN.md` (the decisions, the ledger, the pins, the bench
@@ -8,9 +8,10 @@ from `MARKET_SPLIT_PROMPT.md`, the committed file holds.
 
 ## Goal
 
-Split the core into seven crates - `yggdryl`, `yggdryl-market`,
+Split the core into eight crates - `yggdryl`, `yggdryl-market`,
 `yggdryl-fix`, `yggdryl-avro`, `yggdryl-parquet`, `yggdryl-iceberg` (with
-`s3tables`) and `yggdryl-excel` (the user's third instruction, D24) - the
+`s3tables`), `yggdryl-excel` (the user's third instruction, D24) and
+`yggdryl-xmla` with `soap/` (the user's fifth instruction, D33) - the
 split first and the adaptations after, one slice per session, one commit per
 slice, on one program branch under one draft PR, nothing published and no
 live AWS resource touched.
@@ -31,7 +32,7 @@ live AWS resource touched.
   factory or a locator is claimed (`plugin::Register`; `market.rs`,
   `media/codec.rs`, `media/format.rs`, `warehouse/catalog.rs`,
   `holder/locator.rs`), each seeded by the core with its own until the
-  leaving crate's `install()` claims them (S4, S6, S6b).
+  leaving crate's `install()` claims them (S4, S6, S6b, S6c).
 - The seventeen codes are the core's own flat variants (D25); the market
   register holds enum kinds alone. S4 moves the four enums, `graph/` and the
   ISIN registry into `yggdryl-market`, never a code.
@@ -49,17 +50,22 @@ live AWS resource touched.
 - The model fits the step (the user, mid-S1: "use sonnet when you scan so
   much"): every scan, classification, check-and-report and mechanical sweep
   runs on `sonnet`; a merge of a core file and a review on `opus`; the
-  design and the edits no script makes stay in the foreground.
+  design and the edits no script makes stay in the foreground - and, from
+  S2b on (the user: "reduce usages of fable's model and use it only when
+  need deep thinking or design, until the end"), the foreground model is
+  reached for a design, a synthesis or a decision alone: implementation,
+  the smoke and chain runs, the fixes a check names, the commit, the push
+  and the CI read are an `opus` or `sonnet` agent's, briefed exactly.
 
 ## State
 
 | Fact | Value |
 | --- | --- |
 | Program branch | `ccr-0fe6f9d0-ruymat` |
-| HEAD | `f9f665198` ("Open the media extension point for record media, table formats and catalogs", S2) |
+| HEAD | the commit holding this file, "Register the XMLA medium in place" (S2b), on `2d800d51b` |
 | Draft PR | #209, draft |
 | Base | `origin/main` at `2ae975674`; no merge of `origin/main` was needed this session (nothing landed on `main` since) |
-| Slices done | P0 `3d8bf84d9` (D22), P1 `08ae4c6b7` (D23), S0 `6d71a36ee` (the pins), S1 `eeb4ec14d` (the market extension point), S1's handoff `719299cf6`, S2 `f9f665198` (the media extension point) - each pushed alone, its CI read green before the next |
+| Slices done | P0 `3d8bf84d9` (D22), P1 `08ae4c6b7` (D23), S0 `6d71a36ee` (the pins), S1 `eeb4ec14d` (the market extension point), S1's handoff `719299cf6`, S2 `f9f665198` (the media extension point), S2's handoff `2d800d51b`, S2b, the commit holding this file (the XMLA medium registered in place, D33) - each pushed alone, its CI read green before the next |
 | Next | S3, the remaining seams in place (D5, D6, D9, D10) |
 
 What S1 built is the "S1: what was built" section of DESIGN.md. What S2
@@ -79,37 +85,59 @@ Registered` with `downcast_ref`, `CatalogFactory` (`HADOOP_FACTORY`,
 `ParquetFooter`, `parquet::read_media_statistics`/`read_media_geospatial_statistics`,
 `filter_phases` public; the bindings keep every name; the S2 pins and every
 cost pin unmoved; `rust/tests/media_register.rs` pins the four registers.
+What S2b built is DESIGN.md's D33 and "S2b results": XMLA a registered
+medium in place - `RecordOptions::Xmla`, `Media::Xmla`, `Media::xmla`,
+`Serie::Xmla` and `XmlaSerie` deleted, `Xmla<Holder>` a `MediaWrapper`,
+the core's own media three (`Ipc`, `Text`, `Csv`).
 
 ## Checks
 
-Every command below ran on the tree committed as S2 (`f9f665198`), from
-`/home/user/yggdryl`, with `CARGO_INCREMENTAL=0` and the debug info off; one
-background chain held the cargo lock for the long steps and cleaned the
-workspace's own artifacts between lanes, because one lane's test binaries
-are about 11 GB of the session's disk allowance and a first chain died on a
-full disk at its first step (nothing of that chain counts).
+Every command below ran on the tree committed as S2b (the commit holding this file), from
+`/home/user/yggdryl`, with `CARGO_INCREMENTAL=0` and the debug info off, in
+one background chain (`logs/chain_s2b.sh` under the scratchpad) that cleaned
+the workspace's own artifacts between lanes. Its first attempt died on a
+full disk at the whole run's link step (`No space left on device`; nothing
+of it counts but the passed `fmt-check`); after `target/debug/incremental`,
+`target/release` and the workspace crates' stale artifacts were removed the
+chain resumed from that step, unchanged. The settle and the review ran the
+smoke rows before it.
 
 | Check | Command | Result |
 | --- | --- | --- |
-| it builds | `cargo check -p yggdryl --all-targets --keep-going --message-format=short`, and with `--all-features` | clean in both lanes, 0 warnings |
-| the registers | `cargo test -p yggdryl --test media_register`, and with `--all-features` | 13 and 14 passed (the Parquet row under its feature) |
-| the S2 pins | `cargo test -p yggdryl --test media s2_pins`, both lanes | every default hash, the shared-section and own-setting feeds and the variant order unmoved |
-| the whole run | `cargo test -p yggdryl --all-targets --all-features --no-fail-fast` | 63 targets, 9170 passed, 0 failed; `iobase_calls`, `allocations`, the Iceberg `call_counts` and the S3 Tables request counts unmoved, no cost pin re-pinned |
-| the whole run, default features | `cargo test -p yggdryl --all-targets --no-fail-fast` | 63 targets, 6522 passed, 0 failed |
-| the CLI | `cargo test -p yggdryl-cli --all-targets --no-fail-fast` | 35 passed |
+| it builds | `cargo check -p yggdryl --all-targets --keep-going --message-format=short`, with `--all-features`, and `cargo check --workspace --all-targets --keep-going` | clean, 0 warnings; the bindings and the CLI compile against the new shape |
+| the registers | `cargo test -p yggdryl --test media_register` | 13 passed |
+| the S2 pins | `cargo test -p yggdryl --test media s2_pins` | 4 passed: the three `xmla` hashes `8_486_799_845_904_195_949`, `11_124_752_632_585_582_100`, `2_087_720_147_871_917_823` and the order pin (renamed `the_media_order_by_their_rank`, its values unchanged) byte-identical |
+| the XMLA serie | `cargo test -p yggdryl --test xmla generic_media_serie` | 1 passed - `an_xmla_handle_is_read_through_the_generic_media_serie`, the review's missing test |
+| the cost rows | `cargo test -p yggdryl --test iobase_calls xmla`; `--test allocations rowset` | 1 passed each; no cost pin re-pinned |
+| the whole run | `cargo test -p yggdryl --all-targets --all-features --no-fail-fast` | 63 targets, 9170 passed, 1 failed, 3 ignored: the one failure is `market_register`'s count race below, S1's, not this slice's |
+| the whole run, default features | `cargo test -p yggdryl --all-targets --no-fail-fast` | 63 targets, 6523 passed, 0 failed |
+| the CLI | `cargo test -p yggdryl-cli --all-targets --no-fail-fast` | 6 targets, 35 passed, 0 failed, 6 ignored |
 | rustdoc examples | `cargo test -p yggdryl --doc` | 628 passed |
-| clippy | `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings`; `cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings` | exit 0 both, after one `matches!` rewrite |
-| the API pages | `RUSTDOCFLAGS="-D warnings" cargo doc -p yggdryl --no-deps --all-features` | exit 0, after six intra-doc link lints |
+| clippy | `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings`; `cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings` | exit 0 both |
+| the API pages | `RUSTDOCFLAGS="-D warnings" cargo doc -p yggdryl --no-deps --all-features` | exit 0 |
 | formatting | `cargo fmt --all -- --check` | clean |
-| Python | `VIRTUAL_ENV=python/.venv python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, `-m pytest python/tests --deselect python/tests/test_spark_interop.py`, `-m mypy --strict ...` | the extension installed; 2780 passed, 4 skipped (pyspark, two PEP 649 tests, one free-threaded test); mypy no issues in 70 files |
+| Python | `VIRTUAL_ENV=python/.venv python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, `-m pytest python/tests --deselect python/tests/test_spark_interop.py`, `-m mypy --strict ...` | the extension installed; 2780 passed, 4 skipped; mypy "no issues found in 70 source files" |
 | Node | `npm run --prefix node build:debug`; `cargo build --locked -p yggdryl-cli`; `npm test --prefix node`; `npx tsc --noEmit`; `git diff --stat -- node/index.js node/index.d.ts` | 1122 tests, 1120 passed, the 2 failing ones the sandbox `TextDecoder` pair below; tsc exit 0; the generated loader and declarations unchanged |
 | the docs manifests | `node scripts/build_docs_fix.js --check`; `node scripts/build_docs_playground.js --check` | both current |
 | the page examples | `python scripts/check_docs_examples.py --lang rust`, `--lang python`, `--lang javascript` | Rust 940 passed; Python 837 run, 3 skipped, 0 failed; JavaScript 789 run, 2 skipped, 0 failed |
 | the site | `python -m mkdocs build --strict --config-file mkdocs.yml` | clean |
 | the inventories | `python scripts/check_api_inventory.py`; `python scripts/generate_internals.py --check` | current (180 source files and 586 `pub` names not described yet, as before); `yggdryl::internals` current |
-| no test code under `src/` | `grep -rn '#\[cfg(test)\]\|#\[test\]\|mod tests' rust/src rust/*/src python/src node/src cli/src` | empty |
-| the review | an independent read of `git diff -- rust/src` (opus) after the suites passed | seven findings, six fixed before the commit (DESIGN.md "The review's amendments (S2)"), the seventh - duplicate-name refusal order - fixed with its test |
-| CI | the run on `ccr-0fe6f9d0-ruymat` for PR #209 | run 37888869824 on `f9f665198` success: all 17 jobs green - Rust quality (default features, all features), Iceberg Rust 1.94, the S3, Azure, Google, ZIP, Avro, Excel and PyIceberg exchanges, Spark interop, Python binding wheel, Python binding (`pyarrow==18.*`, `pyarrow>=18`), Python free-threaded, Node.js binding, Documentation examples; docs run 37888869830 success |
+| no test code under `src/` | `grep -rn '#\[cfg(test)\]\|#\[test\]\|mod tests' rust/src python/src node/src cli/src` | empty |
+| the review | an independent read of the slice (opus) after the settle | "could not refute the slice"; three findings, all fixed before the commit: AGENTS.md's three stale lines (the core's four media, `XmlaSerie`), the missing `GenericMediaSerie` test with the `require_settings::<XmlaOptions>` refusal pinned, the order pin's name |
+| CI | the run on `ccr-0fe6f9d0-ruymat` for PR #209 | S2b's run is read after the push; S2's run 37888869824 on `f9f665198` was success, all 17 jobs |
+
+`rust/tests/market_register.rs`
+`a_claim_registers_the_kind_under_its_byte_its_name_and_its_extension_name`
+(S1) races two tests of its own binary: line 169 compares
+`DataTypeId::all().len()` with `DataTypeId::ALL.len() + kinds().len()`, read
+at two instants while `a_descriptor_that_is_not_the_claimed_one_validates_as_no_kind`
+and `a_name_parsed_before_its_claim_is_refused_naming_the_registration_and_resolves_after_it`
+claim `lying` and `lateclaim`, so a claim landing between the two reads
+answers `left: 98, right: 99`. Its all-features binary failed 25 of 200 runs
+in parallel and 0 of 100 under `--test-threads=1` on S2b's tree; S2b
+touches nothing of the market register. It is reported for the next slice
+to fix (read both counts without the two late kinds, or move the late
+claims into a target of their own), never re-run to green.
 
 Not run, as the slice made nothing of theirs stale: the charset table and
 interop checks, the ISIN seed check, the country and MIC table checks, every
@@ -119,7 +147,7 @@ the package to the runtime's `TextDecoder` (`node/tests/charset.test.js`:
 `decoding agrees with TextDecoder over the same names`, `iso-8859-1 is not a
 spelling of windows-1252 here`) fail in this sandbox alone, whose Node 22.22
 decodes the C1 range of `windows-1252` as ISO 8859-1 does; they failed at P0,
-P1, S0 and S1 the same way and CI's Node proves them.
+P1, S0, S1, S2 and S2b the same way and CI's Node proves them.
 
 ## Blockers
 
@@ -171,6 +199,9 @@ rows decided or changed this session:
 | D30 | `Catalog`/`Namespace`/`Table::Registered`; `CatalogFactory`; `Locator`; `Site::Store` under `s3`; the `From` impls stay, answering `Registered` | `warehouse/`, `holder/locator.rs` | S2 |
 | D31 | `Error::External`; `From<ParquetError>` deleted; `IOMedia::as_any` + `ParquetFooter`; the statistics as free functions | `error.rs`, `parquet/mod.rs` | S2 |
 | D32 | `filter_phases` published; logging and D17 unchanged | `expression/mod.rs` | S2 |
+| D34 | the medium holds its origin (`IOMedia::read_origin_field`), `read_arrow_field` one rule (declared else origin, narrowed by the select), one projection rule (declared ∩ the columns the select and the early filter read), one composer in `media_serie.rs` that `read_record_serie` also calls - the serie the one wrapper composing pushdown - `source_field` and the five residual copies gone, S8 amended | the user's sixth instruction; DESIGN.md D34 | P2 |
+| D35 | `MediaCache` on every medium wrapper under `cache_ttl` - milliseconds, 0 realtime, a shared options section outside the hash feed as `file_threads` is - served while the handle is open or the entry younger than the TTL, every write door updating it with what it knows or invalidating it | the user's seventh instruction; DESIGN.md D35 | P2 |
+| D33 | `yggdryl-xmla`, an eighth crate through the media point, `soap/` with it; registered in place in S2b - the core's own media are three, `RecordOptions::Xmla`, `Media::Xmla`, `Media::xmla`, `Serie::Xmla` and `XmlaSerie` deleted, `Xmla<Holder>` a `MediaWrapper` - and moved in S6c; the Python `Xmla` class stays in the one native module, the CLI's `xmla serve` depends on the crate | the user's instruction; DESIGN.md D33; crates.io 404 | S2b, built S6c |
 
 ## Questions for the user
 

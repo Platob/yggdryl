@@ -3845,13 +3845,12 @@ pub struct Workbook
 
 ### yggdryl::media  [rust/src/media/mod.rs]
   pub const DEFAULT_VALUE_NAME: &str = "value"  (the child name a value wraps into a struct under when none is declared)
-pub enum Media  (Ipc(Ipc<Holder>), Text(Text<Holder>), Xmla(Xmla<Holder>), Csv(Csv<Holder>), Registered(Box<dyn MediaWrapper>) - the core's four media as variants of their own and every other medium, Parquet, Avro and a workbook among them, the wrapper its codec's `open` built)
+pub enum Media  (Ipc(Ipc<Holder>), Text(Text<Holder>), Csv(Csv<Holder>), Registered(Box<dyn MediaWrapper>) - the core's three media as variants of their own and every other medium, Parquet, Avro, XML for Analysis and a workbook among them, the wrapper its codec's `open` built)
   pub fn open(handle: Holder) -> Result<Self>
   pub fn open_as(handle: Holder, base: &MimeType) -> Result<Self>  (`codec_for(base)?.open(handle)`: a type no claim answers refused naming the claimed types and the crate to install; a `text/csv` or `text/tab-separated-values` base states the dialect whatever the handle's name picks)
   pub fn ipc(handle: Holder) -> Self
   pub fn with_field(self, field: Field) -> Self
   pub fn text(handle: Holder) -> Self
-  pub fn xmla(handle: Holder) -> Self
   pub fn csv(handle: Holder) -> Self  (the `Csv(crate::csv::Csv<Holder>)` variant, which `open`/`open_as` bind `text/csv` and `text/tab-separated-values` to and `Holder::into_media` composes for a `.csv`, `.tsv` or `.csv.gz` name; `impl From<crate::csv::Csv<Holder>> for Media`)
   pub fn medium(&self) -> &'static dyn MediaCodec  (the medium this media encodes: a core variant's own codec, a registered wrapper's the one it names; `medium`, not `codec`, because `codec` is the content coding every IOBase answers)
   pub fn handle(&self) -> &Holder
@@ -3990,7 +3989,7 @@ pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024  (the cadence a push-
   pub trait MediumOptions: fmt::Debug + Send + Sync + 'static  (the object-safe twin of IORecordOptions, written once by the blanket impl over every IORecordOptions + MediumSettings + Clone + Eq + Ord + Hash + Debug + Send + Sync + 'static struct: the fourteen shared sections with their setters, codec, mime_type, stable_hash, header, file_threads, and what a trait object owes a derive-heavy enum - clone_box, dyn_eq, dyn_cmp, dyn_hash, as_any, as_any_mut)
   pub struct RegisteredOptions(Box<dyn MediumOptions>)  (a registered medium's whole options struct, shared sections included, so its hash and its order are the struct's; Clone, Debug, Eq, Ord, Hash; Deref and DerefMut to the object-safe contract)
     pub fn new<T: MediumOptions>(settings: T) -> Self
-  pub enum RecordOptions  (Ipc(IpcOptions), Text(Box<TextOptions>), Xmla(XmlaOptions), Csv(CsvOptions), Registered(RegisteredOptions) - the core's four media as variants of their own and every other medium's options held whole; Clone, Debug, Eq, Ord by the medium's rank then the options, Hash)
+  pub enum RecordOptions  (Ipc(IpcOptions), Text(Box<TextOptions>), Csv(CsvOptions), Registered(RegisteredOptions) - the core's three media as variants of their own and every other medium's options held whole; Clone, Debug, Eq, Ord by the medium's rank then the options, Hash)
   pub fn registered<T: MediumOptions>(settings: T) -> Self  (impl From<T> for RecordOptions on each medium's own options struct wraps it)
   pub fn codec(&self) -> &'static dyn MediaCodec  (the medium the options drive: the one dispatcher past intake)
   pub fn settings<T: 'static>(&self) -> Option<&T>  (one medium's own options struct, a core variant's as well as a registered one's; None for another medium)
@@ -5060,7 +5059,7 @@ pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &XmlaOptions) -> Resu
 pub fn read_batch_reader<H: IOBase + ?Sized>( handle: &H, field: Option<&Field>, options: &XmlaOptions, ) -> crate::arrow::Result<BatchReader>
 pub fn overwrite_arrow_reader<H: IOBase + ?Sized>( handle: &mut H, batches: BatchReader, options: &XmlaOptions, ) -> Result<()>
 pub struct XmlaCodec  (an XML for Analysis rowset document as the record register holds it - behind MediaCodec; Debug)
-pub static XMLA_CODEC: XmlaCodec  (claimed by the core under `application/xmla+xml`, rank 4, named `xmla`, titled `XMLA`)
+pub static XMLA_CODEC: XmlaCodec  (claimed by the core under `application/xmla+xml`, rank 4, named `xmla`, titled `XMLA`; options held as RecordOptions::Registered)
 pub struct Xmla<H: IOBase>
   pub fn new(handle: H) -> Self
   pub fn with_options(mut self, options: XmlaOptions) -> Self

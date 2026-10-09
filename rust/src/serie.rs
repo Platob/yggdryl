@@ -652,8 +652,6 @@ pub enum Serie {
     Csv(Arc<crate::csv::CSVSerie>),
     /// A retained native text scan, decoded only on demand.
     Text(Arc<crate::text::TextSerie>),
-    /// A retained native xmla scan, decoded only on demand.
-    Xmla(Arc<crate::xmla::XmlaSerie>),
     /// A retained native warehouse scan, decoded only on demand.
     WarehouseTable(Arc<crate::warehouse::WarehouseTableSerie>),
     #[cfg(feature = "http")]
@@ -773,7 +771,6 @@ macro_rules! column {
             | Serie::Ipc(_)
             | Serie::Csv(_)
             | Serie::Text(_)
-            | Serie::Xmla(_)
             | Serie::WarehouseTable(_)
             | Serie::GenericMedia(_) => {
                 unreachable!("a held leaf is never a composite")
@@ -1150,7 +1147,6 @@ macro_rules! column_mut {
             | Serie::Ipc(_)
             | Serie::Csv(_)
             | Serie::Text(_)
-            | Serie::Xmla(_)
             | Serie::WarehouseTable(_)
             | Serie::GenericMedia(_) => {
                 unreachable!("a held leaf is never a composite")

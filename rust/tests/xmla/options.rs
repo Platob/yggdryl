@@ -1,6 +1,6 @@
 //! `rust/src/xmla/options.rs`: the settings an XMLA rowset document is read
 //! and written with - the shared record settings, the envelope, the method
-//! and the content - and the one `RecordOptions` variant they are.
+//! and the content - and the registered `RecordOptions` they are.
 
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -229,7 +229,7 @@ fn a_bounded_merge_is_refused_naming_both_settings() {
 }
 
 #[test]
-fn the_xmla_variant_refuses_the_settings_of_another_encoding() {
+fn the_xmla_options_refuse_the_settings_of_another_encoding() {
     let mut options = RecordOptions::from(XmlaOptions::new());
     let before = options.clone();
 
@@ -781,14 +781,14 @@ fn the_plan_reads_which_columns_and_partitions_it_narrows_to() {
     );
 }
 
-// The one `RecordOptions` variant.
+// The registered `RecordOptions`.
 
 #[test]
-fn the_xmla_media_type_names_the_xmla_variant() {
+fn the_xmla_media_type_names_the_xmla_options() {
     let media_type = MediaType::from_str("application/xmla+xml").unwrap();
     assert_eq!(media_type.base(), &MimeType::XMLA);
     let options = RecordOptions::for_media_type(&media_type).unwrap();
-    assert_eq!(options, RecordOptions::Xmla(XmlaOptions::new()));
+    assert_eq!(options, RecordOptions::from(XmlaOptions::new()));
     assert_eq!(options.mime_type(), MimeType::XMLA);
     assert_eq!(
         RecordOptions::for_mime_type(&MimeType::XMLA).unwrap(),
@@ -798,7 +798,7 @@ fn the_xmla_media_type_names_the_xmla_variant() {
     let shouted = MediaType::from_str("APPLICATION/XMLA+XML").unwrap();
     assert_eq!(
         RecordOptions::for_media_type(&shouted).unwrap(),
-        RecordOptions::Xmla(XmlaOptions::new())
+        RecordOptions::from(XmlaOptions::new())
     );
 }
 
@@ -810,12 +810,12 @@ fn a_content_coding_does_not_change_the_record_encoding() {
     assert_eq!(media_type.encoding(), Some(&MimeType::GZIP));
     assert_eq!(
         RecordOptions::for_media_type(&media_type).unwrap(),
-        RecordOptions::Xmla(XmlaOptions::new())
+        RecordOptions::from(XmlaOptions::new())
     );
 }
 
 #[test]
-fn the_options_convert_into_the_xmla_variant_unchanged() {
+fn the_options_convert_into_registered_options_unchanged() {
     let options = XmlaOptions::new()
         .without_envelope()
         .with_method(Method::Discover)
@@ -827,14 +827,15 @@ fn the_options_convert_into_the_xmla_variant_unchanged() {
     assert_eq!(record.field(), Some(schema()));
     assert_eq!(record.name(), "row");
     assert_eq!(record.max_row_size(), Some(9));
-    let RecordOptions::Xmla(inner) = record else {
-        panic!("XMLA options convert into the XMLA variant");
-    };
-    assert_eq!(inner, options);
+    assert!(matches!(record, RecordOptions::Registered(_)));
+    let inner = record
+        .settings::<XmlaOptions>()
+        .expect("XMLA options are reached by type");
+    assert_eq!(*inner, options);
 }
 
 #[test]
-fn the_variant_forwards_every_shared_setting_to_the_xmla_options() {
+fn the_registered_options_forward_every_shared_setting_to_the_xmla_options() {
     let mut record = RecordOptions::from(XmlaOptions::new());
     record.set_name("trade".into());
     record.set_declared(Some(schema()));
@@ -848,11 +849,11 @@ fn the_variant_forwards_every_shared_setting_to_the_xmla_options() {
     record.set_max_byte_size(Some(2));
     record.set_commit_batch_num(Some(1));
     record.set_level(Level::FAST);
-    let RecordOptions::Xmla(inner) = record else {
-        unreachable!("the setters keep the variant");
-    };
+    let inner = record
+        .settings::<XmlaOptions>()
+        .expect("XMLA options are reached by type");
     assert_eq!(
-        inner,
+        *inner,
         XmlaOptions::new()
             .with_name("trade")
             .with_field(schema())
@@ -876,13 +877,13 @@ fn the_variant_forwards_every_shared_setting_to_the_xmla_options() {
 fn an_xmla_handle_answers_the_default_xmla_options() {
     assert_eq!(
         handle().record_options().unwrap(),
-        RecordOptions::Xmla(XmlaOptions::new())
+        RecordOptions::from(XmlaOptions::new())
     );
     let named =
         Buffer::new().with_media_type(Url::from_str("file:///cube.XMLA").unwrap().media_type());
     assert_eq!(
         named.record_options().unwrap(),
-        RecordOptions::Xmla(XmlaOptions::new())
+        RecordOptions::from(XmlaOptions::new())
     );
 }
 

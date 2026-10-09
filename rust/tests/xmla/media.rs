@@ -24,7 +24,7 @@ use yggdryl::xmla::{
 };
 use yggdryl::{
     Charset, Codec, DataType, Error, Field, Filter, IOBase, IOKind, IOMedia, Level, MediaType,
-    MimeType, StructType,
+    MimeType, Serie, SerieValue, StructType,
 };
 
 const SOAP: &str = "http://schemas.xmlsoap.org/soap/envelope/";
@@ -1034,9 +1034,9 @@ fn record_options_are_the_xmla_options_carrying_the_declared_field() {
         .with_options(XmlaOptions::new().without_envelope())
         .with_field(trades_field());
     let options = media.record_options().expect("the options");
-    let RecordOptions::Xmla(xmla) = &options else {
-        panic!("expected XMLA options, got {options:?}");
-    };
+    let xmla = options
+        .settings::<XmlaOptions>()
+        .expect("XMLA options are reached by type");
     assert_eq!(xmla, media.options());
     assert!(!xmla.envelope);
     assert_eq!(options.field(), Some(trades_field()));
@@ -1518,9 +1518,10 @@ fn a_local_xmla_file_is_written_read_and_reopened() {
 #[test]
 fn media_binds_xmla_by_name_and_reads_and_writes_the_same() {
     let mut media = Media::open(Holder::buffer(buffer("trades.xmla"))).expect("a media");
-    assert!(matches!(media, Media::Xmla(_)));
+    assert!(matches!(media, Media::Registered(ref wrapper) if wrapper.medium().name() == "xmla"));
     let options = media.record_options().expect("the options");
-    assert!(matches!(options, RecordOptions::Xmla(_)));
+    assert!(matches!(options, RecordOptions::Registered(_)));
+    assert!(options.settings::<XmlaOptions>().is_some());
     media
         .overwrite_arrow_reader(two_batches(), &options)
         .expect("written");
@@ -1538,12 +1539,37 @@ fn media_binds_xmla_by_name_and_reads_and_writes_the_same() {
     assert!(String::from_utf8_lossy(&bytes).contains("ExecuteResponse"));
 
     // Named explicitly over a buffer whose name says nothing.
-    let media = Media::xmla(Holder::buffer(Buffer::from_bytes(bytes))).with_field(trades_field());
+    let media = Media::open_as(Holder::buffer(Buffer::from_bytes(bytes)), &MimeType::XMLA)
+        .expect("the XMLA medium")
+        .with_field(trades_field());
     let options = media.record_options().expect("the options");
     assert_eq!(options.field(), Some(trades_field()));
     assert_eq!(
         rows_of(media.read_arrow_reader(&options).expect("a reader")),
         four_rows()
+    );
+}
+
+#[test]
+fn an_xmla_handle_is_read_through_the_generic_media_serie() {
+    let mut media = Xmla::new(buffer("trades.xmla")).with_field(trades_field());
+    let options = media.record_options().expect("the options");
+    media
+        .overwrite_arrow_reader(two_batches(), &options)
+        .expect("written");
+    let serie = yggdryl::media::GenericMediaSerie::new(media).expect("a media serie");
+    assert_eq!(serie.field(), &trades_field());
+    assert_eq!(serie.len(), 4);
+    assert!(Serie::from(serie).as_generic_media().is_some());
+
+    // The XMLA options are reached by type, and another medium's are refused naming both.
+    assert_eq!(
+        RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)
+            .unwrap()
+            .require_settings::<XmlaOptions>()
+            .unwrap_err()
+            .to_string(),
+        "invalid record value at $.encoding: expected XMLA options, got application/vnd.apache.arrow.stream options"
     );
 }
 

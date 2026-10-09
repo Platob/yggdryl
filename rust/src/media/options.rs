@@ -1735,7 +1735,7 @@ macro_rules! record_options_fields {
 /// One value naming every record encoding's options.
 ///
 /// The variant *is* the encoding: a record call takes `RecordOptions` and
-/// needs no separate format argument. The core's four media are variants of
+/// needs no separate format argument. The core's three media are variants of
 /// their own; every other medium is [`Self::Registered`], its options struct
 /// held whole behind [`RegisteredOptions`] and reached by type through
 /// [`Self::settings`].
@@ -1745,12 +1745,10 @@ pub enum RecordOptions {
     Ipc(IpcOptions),
     /// Plain-text row options.
     Text(Box<crate::text::TextOptions>),
-    /// XML for Analysis rowset document options.
-    Xmla(crate::xmla::XmlaOptions),
     /// CSV and TSV document options.
     Csv(crate::csv::CsvOptions),
-    /// A registered medium's options: Parquet, Avro, a workbook, or any
-    /// medium a crate claims.
+    /// A registered medium's options: Parquet, Avro, XML for Analysis, a
+    /// workbook, or any medium a crate claims.
     Registered(RegisteredOptions),
 }
 
@@ -1767,7 +1765,6 @@ impl Ord for RecordOptions {
         match (self, other) {
             (Self::Ipc(mine), Self::Ipc(theirs)) => mine.cmp(theirs),
             (Self::Text(mine), Self::Text(theirs)) => mine.cmp(theirs),
-            (Self::Xmla(mine), Self::Xmla(theirs)) => mine.cmp(theirs),
             (Self::Csv(mine), Self::Csv(theirs)) => mine.cmp(theirs),
             (Self::Registered(mine), Self::Registered(theirs)) => mine.cmp(theirs),
             _ => self.rank().cmp(&other.rank()),
@@ -1781,7 +1778,6 @@ impl std::hash::Hash for RecordOptions {
         match self {
             Self::Ipc(options) => options.hash(state),
             Self::Text(options) => options.hash(state),
-            Self::Xmla(options) => options.hash(state),
             Self::Csv(options) => options.hash(state),
             Self::Registered(options) => options.hash(state),
         }
@@ -1790,7 +1786,7 @@ impl std::hash::Hash for RecordOptions {
 
 impl RecordOptions {
     /// Hold a medium's options struct: a registered medium's behind
-    /// [`RegisteredOptions`], one of the core's four as its own variant, so
+    /// [`RegisteredOptions`], one of the core's three as its own variant, so
     /// one struct is one value whichever door built it and the enum's order
     /// and equality agree.
     pub fn registered<T: MediumOptions>(settings: T) -> Self {
@@ -1800,9 +1796,6 @@ impl RecordOptions {
         }
         if let Some(text) = any.downcast_ref::<crate::text::TextOptions>() {
             return Self::Text(Box::new(text.clone()));
-        }
-        if let Some(xmla) = any.downcast_ref::<crate::xmla::XmlaOptions>() {
-            return Self::Xmla(xmla.clone());
         }
         if let Some(csv) = any.downcast_ref::<crate::csv::CsvOptions>() {
             return Self::Csv(csv.clone());
@@ -1816,7 +1809,6 @@ impl RecordOptions {
         match self {
             Self::Ipc(options) => options,
             Self::Text(options) => &**options,
-            Self::Xmla(options) => options,
             Self::Csv(options) => options,
             Self::Registered(options) => &**options,
         }
@@ -1827,7 +1819,6 @@ impl RecordOptions {
         match self {
             Self::Ipc(options) => options,
             Self::Text(options) => &mut **options,
-            Self::Xmla(options) => options,
             Self::Csv(options) => options,
             Self::Registered(options) => &mut **options,
         }
@@ -1856,7 +1847,6 @@ impl RecordOptions {
         match self {
             Self::Ipc(options) => (options as &dyn std::any::Any).downcast_ref::<T>(),
             Self::Text(options) => (&**options as &dyn std::any::Any).downcast_ref::<T>(),
-            Self::Xmla(options) => (options as &dyn std::any::Any).downcast_ref::<T>(),
             Self::Csv(options) => (options as &dyn std::any::Any).downcast_ref::<T>(),
             Self::Registered(options) => options.as_any().downcast_ref::<T>(),
         }
@@ -1869,7 +1859,6 @@ impl RecordOptions {
         match self {
             Self::Ipc(options) => (options as &mut dyn std::any::Any).downcast_mut::<T>(),
             Self::Text(options) => (&mut **options as &mut dyn std::any::Any).downcast_mut::<T>(),
-            Self::Xmla(options) => (options as &mut dyn std::any::Any).downcast_mut::<T>(),
             Self::Csv(options) => (options as &mut dyn std::any::Any).downcast_mut::<T>(),
             Self::Registered(options) => options.as_any_mut().downcast_mut::<T>(),
         }

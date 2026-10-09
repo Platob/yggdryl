@@ -30,16 +30,16 @@ A record medium is claimed on the register of media under the MIME types it decl
 
 A read's primitive is `read_serie` / `readSerie`, returning the generic
 `Serie`: a held value, a native row or chunk stream, or a key kind. The
-media series of the Rust core - `IpcSerie`, `CSVSerie`, `TextSerie` and
-`XmlaSerie` for its four media, `GenericMediaSerie` for every other medium -
-are built over a medium by `new(media)` and hold no options of their own:
-the medium holds them, stating or inferring them with their defaults, and a
-serie reads under the medium's answer plus the clauses its own verbs state
-(`with_filter`, `with_key`, `with_select`, `with_row_range`), which prune
-source keys before payloads are decoded. A serie refuses the options of a
-medium it does not read, naming both. `MediaSerieValue<T: IOMedia>`
-implements their shared accessors and snapshot mutations. Explicit writes
-publish changes under the medium's options.
+media series of the Rust core - `IpcSerie`, `CSVSerie` and `TextSerie` for
+its three media, `GenericMediaSerie` for every other medium - XML for Analysis,
+Parquet, Avro, a workbook - are built over a medium by `new(media)` and hold no
+options of their own: the medium holds them, stating or inferring them with
+their defaults, and a serie reads under the medium's answer plus the clauses
+its own verbs state (`with_filter`, `with_key`, `with_select`,
+`with_row_range`), which prune source keys before payloads are decoded. A
+serie refuses the options of a medium it does not read, naming both.
+`MediaSerieValue<T: IOMedia>` implements their shared accessors and snapshot
+mutations. Explicit writes publish changes under the medium's options.
 `read_arrow_reader` is an adapter over that same primitive. Native record mapping
 adapters are Python `read_records` and JavaScript `readRecords`.
 
@@ -362,7 +362,7 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
 
 ### A medium's own settings
 
-`RecordOptions` holds the core's four media - Arrow IPC, plain text, XML for Analysis and CSV - as variants of their own and every other medium as `Registered`: the medium's whole options struct, shared sections included, behind one box, so its hash and its order are the struct's. Rust reaches a medium's settings by type. `settings::<T>()` and `settings_mut::<T>()` answer the struct, `None` for another medium's options; `require_settings::<T>()` and `require_settings_mut::<T>(path, setting)` refuse them at `path`, naming both media. `codec()` is the medium the options drive. The CSV dialect stays on `RecordOptions` as `csv_separator` and the other `csv_*` readers and setters, beside `header`, which CSV and Excel share; each reads `None` on another medium's options and each setter refuses it. Python and JavaScript read a setting as a property of the options - `None`/`null` on an encoding that has none - and setting it there is refused by name.
+`RecordOptions` holds the core's three media - Arrow IPC, plain text and CSV - as variants of their own and every other medium - Parquet, Avro, XML for Analysis, a workbook, any medium a crate claims - as `Registered`: the medium's whole options struct, shared sections included, behind one box, so its hash and its order are the struct's. Rust reaches a medium's settings by type. `settings::<T>()` and `settings_mut::<T>()` answer the struct, `None` for another medium's options; `require_settings::<T>()` and `require_settings_mut::<T>(path, setting)` refuse them at `path`, naming both media. `codec()` is the medium the options drive. The CSV dialect stays on `RecordOptions` as `csv_separator` and the other `csv_*` readers and setters, beside `header`, which CSV and Excel share; each reads `None` on another medium's options and each setter refuses it. Python and JavaScript read a setting as a property of the options - `None`/`null` on an encoding that has none - and setting it there is refused by name.
 
 === "Rust"
 

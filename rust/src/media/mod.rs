@@ -1,12 +1,12 @@
 //! One value naming every media implementation a handle can be read as.
 //!
 //! [`Media`] is to a media encoding what [`Holder`] is to [`IOBase`]: one enum
-//! holding the core's four media - Arrow IPC, plain text, XMLA and CSV - as
+//! holding the core's three media - Arrow IPC, plain text and CSV - as
 //! variants of their own and every other medium a crate claims - Parquet,
-//! Avro, a workbook - as [`Media::Registered`], so a caller can hold "some
-//! media over some handle" without knowing which encoding is involved until
-//! the media type says. [`Media::open`] picks the medium the register
-//! ([`codec_for`]) claims under the handle's media type.
+//! Avro, XML for Analysis, a workbook - as [`Media::Registered`], so a caller
+//! can hold "some media over some handle" without knowing which encoding is
+//! involved until the media type says. [`Media::open`] picks the medium the
+//! register ([`codec_for`]) claims under the handle's media type.
 //!
 //! Every variant answers the same four questions - what is the schema, what
 //! are the rows, what are the batches, and what are the bytes - so choosing an
@@ -89,12 +89,10 @@ pub enum Media {
     Ipc(Ipc<Holder>),
     /// Plain-text rows under one retained flat configuration.
     Text(crate::text::Text<Holder>),
-    /// An XML for Analysis rowset document.
-    Xmla(crate::xmla::Xmla<Holder>),
     /// A CSV or TSV document.
     Csv(crate::csv::Csv<Holder>),
-    /// A registered medium's wrapper: Parquet, Avro, a workbook, or any
-    /// medium a crate claims.
+    /// A registered medium's wrapper: Parquet, Avro, XML for Analysis, a
+    /// workbook, or any medium a crate claims.
     Registered(Box<dyn MediaWrapper>),
 }
 
@@ -145,11 +143,6 @@ impl Media {
         Self::Text(crate::text::Text::new(handle))
     }
 
-    /// Hold an XML for Analysis rowset document over a handle.
-    pub fn xmla(handle: Holder) -> Self {
-        Self::Xmla(crate::xmla::Xmla::new(handle))
-    }
-
     /// Hold a CSV or TSV document over a handle.
     pub fn csv(handle: Holder) -> Self {
         Self::Csv(crate::csv::Csv::new(handle))
@@ -163,7 +156,6 @@ impl Media {
         match self {
             Self::Ipc(_) => &crate::ipc::IPC_CODEC,
             Self::Text(_) => &crate::text::TEXT_CODEC,
-            Self::Xmla(_) => &crate::xmla::XMLA_CODEC,
             Self::Csv(_) => &crate::csv::CSV_CODEC,
             Self::Registered(wrapper) => wrapper.medium(),
         }
@@ -175,7 +167,6 @@ impl Media {
         match self {
             Self::Ipc(ipc) => Self::Ipc(ipc.with_field(field)),
             Self::Text(text) => Self::Text(text.with_field(field)),
-            Self::Xmla(xmla) => Self::Xmla(xmla.with_field(field)),
             Self::Csv(csv) => Self::Csv(csv.with_field(field)),
             Self::Registered(wrapper) => Self::Registered(wrapper.with_field(field)),
         }
@@ -190,7 +181,6 @@ impl Media {
         match self {
             Self::Ipc(inner) => inner.handle(),
             Self::Text(inner) => inner.handle(),
-            Self::Xmla(inner) => inner.handle(),
             Self::Csv(inner) => inner.handle(),
             Self::Registered(inner) => inner.handle(),
         }
@@ -206,7 +196,6 @@ impl Media {
         match self {
             Self::Ipc(inner) => inner.into_handle(),
             Self::Text(inner) => inner.into_handle(),
-            Self::Xmla(inner) => inner.into_handle(),
             Self::Csv(inner) => inner.into_handle(),
             Self::Registered(inner) => inner.into_handle(),
         }
@@ -217,7 +206,6 @@ impl Media {
         match self {
             Self::Ipc(ipc) => ipc,
             Self::Text(text) => text,
-            Self::Xmla(xmla) => xmla,
             Self::Csv(csv) => csv,
             Self::Registered(wrapper) => &**wrapper,
         }
@@ -228,7 +216,6 @@ impl Media {
         match self {
             Self::Ipc(ipc) => ipc,
             Self::Text(text) => text,
-            Self::Xmla(xmla) => xmla,
             Self::Csv(csv) => csv,
             Self::Registered(wrapper) => &mut **wrapper,
         }
@@ -244,7 +231,6 @@ impl Media {
         match self {
             Self::Ipc(ipc) => ipc,
             Self::Text(text) => text,
-            Self::Xmla(xmla) => xmla,
             Self::Csv(csv) => csv,
             Self::Registered(wrapper) => &**wrapper,
         }
@@ -255,7 +241,6 @@ impl Media {
         match self {
             Self::Ipc(ipc) => ipc,
             Self::Text(text) => text,
-            Self::Xmla(xmla) => xmla,
             Self::Csv(csv) => csv,
             Self::Registered(wrapper) => &mut **wrapper,
         }
@@ -475,12 +460,6 @@ impl From<Ipc<Holder>> for Media {
 impl From<crate::text::Text<Holder>> for Media {
     fn from(value: crate::text::Text<Holder>) -> Self {
         Self::Text(value)
-    }
-}
-
-impl From<crate::xmla::Xmla<Holder>> for Media {
-    fn from(value: crate::xmla::Xmla<Holder>) -> Self {
-        Self::Xmla(value)
     }
 }
 

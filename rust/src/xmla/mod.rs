@@ -80,5 +80,3 @@ pub const EXCEPTION_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-analysis:ex
 pub const SQL_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-sql";
 
 pub(crate) use request::invalid;
-
-pub use media::XmlaSerie;
