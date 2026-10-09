@@ -2783,7 +2783,7 @@ impl<'source> Parts<'source> {
         while filled < length {
             match self.source.read(&mut buffer[filled..]) {
                 Ok(0) => {
-                    return Err(short_upload(
+                    return Err(crate::iobase::short_upload(
                         self.total,
                         self.total - self.remaining + filled as u64,
                     ));
@@ -2796,14 +2796,6 @@ impl<'source> Parts<'source> {
         self.remaining -= length as u64;
         Ok(true)
     }
-}
-
-/// Report a source that ended before the length it declared.
-pub(super) fn short_upload(expected: u64, got: u64) -> Error {
-    Error::Io(std::io::Error::new(
-        std::io::ErrorKind::UnexpectedEof,
-        format!("expected {expected} bytes to upload, got {got}"),
-    ))
 }
 
 /// Refuse a value too large for the store's part count.

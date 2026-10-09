@@ -1387,16 +1387,12 @@ mod object_store {
 
     /// The warehouse prefix held in its folder role.
     fn prefix(store: &FakeS3) -> Holder {
-        Holder::S3Folder(
-            s3::folder_with(&format!("s3://{BUCKET}/warehouse"), options(store)).unwrap(),
-        )
+        Holder::from(s3::folder_with(&format!("s3://{BUCKET}/warehouse"), options(store)).unwrap())
     }
 
     /// The warehouse prefix held undecided, as a location.
     fn location(store: &FakeS3) -> Holder {
-        Holder::S3Path(
-            s3::path_at_with(Provider::Aws, BUCKET, "warehouse", options(store)).unwrap(),
-        )
+        Holder::from(s3::path_at_with(Provider::Aws, BUCKET, "warehouse", options(store)).unwrap())
     }
 
     /// A running store with the bucket, and the catalog `lake` over the

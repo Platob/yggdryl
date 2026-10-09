@@ -86,6 +86,33 @@ fn require_stored<H: IOBase + ?Sized>(handle: &H, role: &str) -> Result<()> {
     )))
 }
 
+/// The `length` bytes an upload was promised, read whole from `source`: what
+/// [`IOBase::upload_from`] writes where a handle takes the value whole.
+///
+/// The allocation is asked for before a byte is read, so a length this
+/// platform cannot hold is refused at once, and a source that ends before
+/// `length` is refused rather than written short.
+pub(crate) fn read_upload(source: &mut dyn std::io::Read, length: u64) -> Result<Vec<u8>> {
+    let capacity = usize::try_from(length).map_err(|_| oversized(length))?;
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(capacity)
+        .map_err(|_| oversized(length))?;
+    source.take(length).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 != length {
+        return Err(short_upload(length, bytes.len() as u64));
+    }
+    Ok(bytes)
+}
+
+/// Refuse a source that ended before the length an upload was promised.
+pub(crate) fn short_upload(expected: u64, got: u64) -> Error {
+    Error::Io(std::io::Error::new(
+        std::io::ErrorKind::UnexpectedEof,
+        format!("expected {expected} bytes to upload, got {got}"),
+    ))
+}
+
 /// Copy `source`'s bytes into `target`, replacing its contents - the body of
 /// [`IOBase::copy_into`] once the source is known to be one value.
 ///
@@ -339,6 +366,29 @@ pub trait IOBase: Send + IOMedia {
     /// Return the current byte length.
     fn size(&self) -> u64;
 
+    /// Take `size` as the value's length, as a listing or a manifest stated
+    /// it, so [`size`](Self::size) need not ask.
+    ///
+    /// A handle whose size is a request - an object on an object store, one
+    /// `HEAD` - keeps it: asking for the size, or reading to the end, then
+    /// costs no request, which is what lets a scan read each file a manifest
+    /// names with one `GET`. The length is what the listing saw, so a write
+    /// through the handle drops it. The default ignores it, the answer of a
+    /// handle that knows its length for free. A wrapper forwards it wherever
+    /// it forwards [`size`](Self::size).
+    ///
+    /// ```
+    /// use yggdryl::{IOBase, holder::Buffer};
+    ///
+    /// let mut buffer = Buffer::from_bytes(b"AAPL".to_vec());
+    /// // A buffer holds its bytes, and its length with them.
+    /// buffer.set_known_size(4096);
+    /// assert_eq!(buffer.size(), 4);
+    /// ```
+    fn set_known_size(&mut self, size: u64) {
+        let _ = size;
+    }
+
     /// Return the allocated capacity, which is never less than [`Self::size`].
     fn capacity(&self) -> u64;
 
@@ -506,6 +556,65 @@ pub trait IOBase: Send + IOMedia {
     /// not form a valid location.
     fn child_by_path(&self, path: &str) -> Result<Holder> {
         Err(no_children(self.url(), path))
+    }
+
+    /// This location as the leaf it names, re-described with no request.
+    ///
+    /// An object-store location is an object or a prefix by what a listing
+    /// finds there, and its first verb pays that listing; a caller who
+    /// already knows the location names a file - a table's metadata names
+    /// files and nothing else - takes the object here instead, on the same
+    /// client, and the listing is never asked. `None`, the default, says the
+    /// handle is what it is: a leaf or a container already, or a role that
+    /// settles itself. A wrapper that reads the same bytes the same way - a
+    /// page cache, a counter, a cursor - forwards it; one whose own state
+    /// shapes the reading - a coding, a charset, a running digest, a record
+    /// medium - keeps the default, since the handle it would answer drops
+    /// that state.
+    ///
+    /// ```
+    /// use yggdryl::{IOBase, holder::Buffer};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// // A buffer is its one value, with no role left to decide.
+    /// assert!(Buffer::new().as_leaf()?.is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the backend's refusal to build the leaf.
+    fn as_leaf(&self) -> Result<Option<Holder>> {
+        Ok(None)
+    }
+
+    /// This location as the container it names, re-described with no
+    /// request.
+    ///
+    /// A store whose containers are the prefixes of its keys names one at
+    /// any location: an object-store location is the prefix it spells, and
+    /// an object the prefix its own key spells. A caller who knows a location
+    /// is a directory by its own layout - a table's `metadata/`, a catalog's
+    /// namespace - takes the container here, on the same client, rather than
+    /// by the listing that would ask the store. `None`, the default, says the
+    /// handle is what it is. A wrapper forwards it as it forwards
+    /// [`as_leaf`](Self::as_leaf).
+    ///
+    /// ```
+    /// use yggdryl::{IOBase, holder::Buffer};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// assert!(Buffer::new().as_container()?.is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the backend's refusal to build the container.
+    fn as_container(&self) -> Result<Option<Holder>> {
+        Ok(None)
     }
 
     /// List the resources contained by this one, one entry at a time.
@@ -1142,6 +1251,47 @@ pub trait IOBase: Send + IOMedia {
     /// store's write failure otherwise.
     fn create_bytes(&mut self, bytes: &[u8]) -> Result<()>;
 
+    /// Replace the whole value with the `length` bytes `source` yields.
+    ///
+    /// The whole write for bytes held elsewhere - a staged file, a pipe -
+    /// without holding them whole where the store can take them in parts: an
+    /// object on an object store sends one `PUT` below its multipart
+    /// threshold and, above it, a multipart upload holding one part at a
+    /// time, so a value of any length costs one part of memory, and an upload
+    /// the store refuses stores nothing. The default reads the `length` bytes
+    /// into memory and replaces the value with
+    /// [`write_all_bytes`](Self::write_all_bytes), the whole write every
+    /// other handle makes. A wrapper that passes bytes through unchanged
+    /// forwards it; a coding, a charset, a running digest and a record medium
+    /// keep the default, so the bytes pass through their own write.
+    ///
+    /// ```
+    /// use yggdryl::{IOBase, holder::Buffer};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut handle = Buffer::from_bytes(b"stale".to_vec());
+    /// let mut source: &[u8] = b"AAPL,187.23";
+    /// handle.upload_from(&mut source, 11)?;
+    /// assert_eq!(handle.read_all_bytes()?, b"AAPL,187.23");
+    ///
+    /// // A source that ends before `length` is refused, and the value stands.
+    /// let mut short: &[u8] = b"MSFT";
+    /// assert!(handle.upload_from(&mut short, 11).is_err());
+    /// assert_eq!(handle.read_all_bytes()?, b"AAPL,187.23");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the source's read failure, a source that ends before
+    /// `length`, a length this platform cannot hold in memory where the
+    /// handle takes the bytes whole, or the write's failure.
+    fn upload_from(&mut self, source: &mut dyn std::io::Read, length: u64) -> Result<()> {
+        let bytes = read_upload(source, length)?;
+        self.write_all_bytes(&bytes)
+    }
+
     /// Empty the resource's contents, keeping the resource itself.
     ///
     /// The meaning follows [`Self::kind`], and it is *stated* here rather than
@@ -1269,6 +1419,39 @@ pub trait IOBase: Send + IOMedia {
         // the trait cannot delete what it has no primitive for.
         let _ = recursive;
         self.clear()
+    }
+
+    /// Drop what this handle staged without publishing it, answering
+    /// whether that is all a failed write through it leaves behind.
+    ///
+    /// What a writer asks after a write through this handle failed, when the
+    /// write must leave nothing. `true` says the handle publishes whole
+    /// values alone - a refused upload stores nothing, an abandoned multipart
+    /// upload is aborted - so once its stage is dropped nothing is left and
+    /// no `DELETE` goes out for a key that was never written: an object on an
+    /// object store answers it. The default answers `false`: the handle
+    /// stages nothing of its own, a failed write may have landed part of the
+    /// value, and the caller removes the resource ([`remove`](Self::remove)).
+    /// A wrapper that stages nothing of its own forwards it; one holding
+    /// state the dropped stage was folded into keeps the default, so the
+    /// caller's removal resets that state too.
+    ///
+    /// ```
+    /// use yggdryl::{IOBase, holder::Buffer};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// // A buffer stages nothing: what a failed write leaves is the caller's
+    /// // to remove.
+    /// assert!(!Buffer::new().discard()?);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the handle's failure to reach what it staged.
+    fn discard(&self) -> Result<bool> {
+        Ok(false)
     }
 
     /// Copy this value's bytes into `target`, replacing its contents.

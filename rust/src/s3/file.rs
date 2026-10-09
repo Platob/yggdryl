@@ -1,12 +1,14 @@
 //! One S3 object as a byte leaf.
 
+use std::any::Any;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use super::answer::S3Meta;
 use super::client::Client;
 use super::folder::S3Folder;
+use super::path::S3Path;
 use super::request::Precondition;
-use crate::holder::Holder;
+use crate::holder::{Holder, RegisteredHandle};
 use crate::warned;
 use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Uri, Url};
 
@@ -28,9 +30,12 @@ use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Uri, Ur
 /// | [`IOBase::read_range_digest`] | one ranged `GET`, of that range |
 /// | [`IOBase::size`] | one `HEAD`; none while open, nor once a listing or a tail read stated it |
 /// | [`IOBase::write_all_bytes`] | one `PUT`, or a multipart upload above the threshold |
+/// | [`IOBase::upload_from`] | one `PUT`, or a multipart upload above the threshold holding one part at a time |
+/// | [`IOBase::set_known_size`] | none, and [`IOBase::size`] asks none after it |
 /// | [`IOBase::append_bytes`] | one `GET` and one `PUT` |
 /// | [`IOBase::pwrite`] then [`IOBase::flush`] | one `GET` and one `PUT` |
 /// | [`IOBase::remove`] | one `DELETE` |
+/// | [`IOBase::discard`] | none: the stage is dropped and `true` answered, a refused write having stored nothing |
 ///
 /// A ranged read transfers the range, never the object: this is what makes a
 /// Parquet footer read cost a few kilobytes rather than the file. A read also
@@ -108,6 +113,7 @@ impl S3File {
     /// and a scan that hands it over here reads each file with one `GET` and
     /// no `HEAD` before it. The value is what the listing saw, so it is
     /// dropped as soon as anything writes through this handle.
+    /// [`IOBase::set_known_size`] is the same in place.
     ///
     /// ```
     /// use yggdryl::IOBase;
@@ -122,13 +128,8 @@ impl S3File {
     /// # }
     /// ```
     #[must_use]
-    pub fn with_known_size(self, size: u64) -> Self {
-        if let Ok(mut state) = self.state.lock() {
-            state.meta = Some(Some(S3Meta {
-                size,
-                ..S3Meta::default()
-            }));
-        }
+    pub fn with_known_size(mut self, size: u64) -> Self {
+        self.set_known_size(size);
         self
     }
 
@@ -160,7 +161,7 @@ impl S3File {
     }
 
     /// The prefix this object's own location names, on the same client, no
-    /// request.
+    /// request: what [`IOBase::as_container`] answers, as the prefix itself.
     ///
     /// # Errors
     ///
@@ -322,87 +323,6 @@ impl S3File {
         }
         self.client
             .put_chunked(&self.bucket, &self.key, bytes, content_type, precondition)
-    }
-
-    /// Replace the whole object with the `length` bytes `source` yields.
-    ///
-    /// One `PUT` below the multipart threshold, the source read into one
-    /// buffer first. Above it, a multipart upload of `parts + 2` requests
-    /// holding one part-sized buffer at a time: each part is read from the
-    /// source and sent before the next is read, so an object of any length
-    /// costs the part size in memory. A source that ends before `length` is
-    /// refused, and an upload the store refuses stores nothing - an
-    /// abandoned multipart upload is aborted - so nothing is left to remove.
-    /// Whatever this handle had staged is superseded and dropped first.
-    ///
-    /// # Errors
-    ///
-    /// Returns the source's read failure, a short source, or the store's
-    /// refusal.
-    // The Iceberg staging is its one caller, beside the pin of it.
-    #[cfg(any(feature = "iceberg", feature = "internals"))]
-    pub(crate) fn upload_from(
-        &mut self,
-        source: &mut dyn std::io::Read,
-        length: u64,
-    ) -> Result<()> {
-        use std::io::Read as _;
-
-        let mut state = self.state()?;
-        state.stage = None;
-        let content_type = self.media_type().to_string();
-        let etag = if length == 0 || length < self.client.multipart_threshold() {
-            let capacity = usize::try_from(length).map_err(|_| crate::iobase::oversized(length))?;
-            let mut bytes = Vec::new();
-            bytes
-                .try_reserve_exact(capacity)
-                .map_err(|_| crate::iobase::oversized(length))?;
-            source.take(length).read_to_end(&mut bytes)?;
-            if bytes.len() as u64 != length {
-                return Err(super::client::short_upload(length, bytes.len() as u64));
-            }
-            self.client.put_object(
-                &self.bucket,
-                &self.key,
-                &bytes,
-                Some(&content_type),
-                Precondition::None,
-            )?
-        } else {
-            self.client.put_streamed(
-                &self.bucket,
-                &self.key,
-                source,
-                length,
-                &content_type,
-                Precondition::None,
-            )?
-        };
-        // What went out is the store's, exactly as after a staged publish.
-        if state.opened {
-            state.meta = Some(Some(S3Meta {
-                size: length,
-                etag,
-                content_type: Some(content_type),
-            }));
-        } else {
-            state.meta = None;
-        }
-        Ok(())
-    }
-
-    /// Drop the stage without publishing it.
-    ///
-    /// The lifecycle pair uses this: a pending write on its way to being
-    /// deleted must not be flushed, or the removal would race its own
-    /// resurrection. A commit uses it too, for a handle whose upload the
-    /// store refused: nothing landed, so nothing is deleted and nothing is
-    /// retried when the handle drops.
-    pub(crate) fn discard(&self) -> Result<()> {
-        let mut state = self.state()?;
-        state.stage = None;
-        state.meta = None;
-        Ok(())
     }
 
     /// Stream from `position`, owning what is read: a staged value copied
@@ -822,6 +742,52 @@ impl IOBase for S3File {
         Ok(())
     }
 
+    /// Replace the whole object with the `length` bytes `source` yields.
+    ///
+    /// One `PUT` below the multipart threshold, the source read into one
+    /// buffer first. Above it, a multipart upload of `parts + 2` requests
+    /// holding one part-sized buffer at a time: each part is read from the
+    /// source and sent before the next is read, so an object of any length
+    /// costs the part size in memory. A source that ends before `length` is
+    /// refused, and an upload the store refuses stores nothing - an
+    /// abandoned multipart upload is aborted - so nothing is left to remove.
+    /// Whatever this handle had staged is superseded and dropped first.
+    fn upload_from(&mut self, source: &mut dyn std::io::Read, length: u64) -> Result<()> {
+        let mut state = self.state()?;
+        state.stage = None;
+        let content_type = self.media_type().to_string();
+        let etag = if length == 0 || length < self.client.multipart_threshold() {
+            let bytes = crate::iobase::read_upload(source, length)?;
+            self.client.put_object(
+                &self.bucket,
+                &self.key,
+                &bytes,
+                Some(&content_type),
+                Precondition::None,
+            )?
+        } else {
+            self.client.put_streamed(
+                &self.bucket,
+                &self.key,
+                source,
+                length,
+                &content_type,
+                Precondition::None,
+            )?
+        };
+        // What went out is the store's, exactly as after a staged publish.
+        if state.opened {
+            state.meta = Some(Some(S3Meta {
+                size: length,
+                etag,
+                content_type: Some(content_type),
+            }));
+        } else {
+            state.meta = None;
+        }
+        Ok(())
+    }
+
     /// Append after the current end, answering the offset the bytes start at.
     ///
     /// One `GET` and one `PUT`: S3 has no append, so the value is read,
@@ -855,6 +821,15 @@ impl IOBase for S3File {
         let meta = self.meta(&mut state);
         drop(state);
         self.heard(meta).map_or(0, |meta| meta.size)
+    }
+
+    /// Retain `size` as the object's length, open or closed - a listing's or
+    /// a manifest's - so [`IOBase::size`] asks no `HEAD` until a write
+    /// through the handle drops it.
+    fn set_known_size(&mut self, size: u64) {
+        if let Ok(state) = self.state.get_mut() {
+            Self::know_size(state, size);
+        }
     }
 
     /// The staged allocation, or the stored length when nothing is staged.
@@ -1011,7 +986,7 @@ impl IOBase for S3File {
         let parent = self.url.parent()?;
         S3Folder::new(self.client.clone(), parent)
             .ok()
-            .map(Holder::S3Folder)
+            .map(Holder::from)
     }
 
     fn clear(&mut self) -> Result<()> {
@@ -1022,8 +997,31 @@ impl IOBase for S3File {
         self.file_remove(recursive)
     }
 
+    /// Drop the stage without publishing it, answering `true`: an object is
+    /// published whole or not at all, so a write the store refused left
+    /// nothing at the key and nothing is left to remove.
+    ///
+    /// The lifecycle pair uses this: a pending write on its way to being
+    /// deleted must not be flushed, or the removal would race its own
+    /// resurrection. A commit uses it too, for a handle whose upload the
+    /// store refused: nothing landed, so nothing is deleted and nothing is
+    /// retried when the handle drops.
+    fn discard(&self) -> Result<bool> {
+        let mut state = self.state()?;
+        state.stage = None;
+        state.meta = None;
+        Ok(true)
+    }
+
     fn child_by_path(&self, name: &str) -> Result<Holder> {
         self.file_child_by_path(name)
+    }
+
+    /// The prefix this object's own key spells, on the same client, with no
+    /// request ([`S3File::as_directory`]): what a catalog takes a name it
+    /// addresses as a namespace by.
+    fn as_container(&self) -> Result<Option<Holder>> {
+        Ok(Some(Holder::from(self.as_directory()?)))
     }
 
     fn ls(&self, _recursive: bool, _include_private: bool) -> Listing {
@@ -1038,6 +1036,52 @@ impl Drop for S3File {
         if let Ok(mut state) = self.state.lock() {
             let _ = self.publish(&mut state);
         }
+    }
+}
+
+/// An object is a handle the object-store backend ([`super::S3_BACKEND`])
+/// answers, held as [`Holder::Registered`].
+impl RegisteredHandle for S3File {
+    fn implementation_name(&self) -> &'static str {
+        "S3File"
+    }
+
+    /// Whether the object is there, as [`S3File::exists`] answers it.
+    fn exists(&self) -> bool {
+        self.file_exists()
+    }
+
+    /// The object again on the same client, built as the child its key's
+    /// last segment names under its prefix and taken as the object, sending
+    /// nothing: the endpoint, the credentials, the session and every option
+    /// travel with it, and nothing it staged or learned does.
+    fn reopen(&self) -> Result<Holder> {
+        match crate::holder::sibling(self)? {
+            Some(held) => match held.downcast_ref::<S3Path>() {
+                Some(path) => Ok(Holder::from(path.as_file()?)),
+                None => Ok(held),
+            },
+            None => Err(Error::unsupported(
+                "holding again an object with no container",
+                IOBase::url(self)
+                    .map_or_else(|| "an unlocated handle".to_owned(), ToString::to_string),
+            )),
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+/// An object, held as the registered handle it is.
+impl From<S3File> for Holder {
+    fn from(file: S3File) -> Self {
+        Self::Registered(Box::new(file))
     }
 }
 
@@ -1068,33 +1112,6 @@ fn poisoned() -> Error {
     Error::Io(std::io::Error::other(
         "the S3 object lock was poisoned by a panicking writer",
     ))
-}
-
-#[cfg(feature = "internals")]
-#[doc(hidden)]
-pub mod internals {
-    //! What `rust/tests/s3/file.rs` pins and a caller cannot reach.
-    //!
-    //! A streaming upload is how a record writer reaches a store, so what it
-    //! costs in round trips and how much of the source it holds at once are
-    //! pinned counts; no caller spells it, because a caller writes through
-    //! [`IOBase`](crate::IOBase) instead. This forwards, so [`S3File`] keeps
-    //! the surface it publishes.
-    use crate::Result;
-    use crate::s3::S3File;
-
-    /// Upload `length` bytes read from `source` as the object's whole value.
-    ///
-    /// # Errors
-    ///
-    /// Whatever the upload refuses, a source that ends early included.
-    pub fn upload_from(
-        file: &mut S3File,
-        source: &mut dyn std::io::Read,
-        length: u64,
-    ) -> Result<()> {
-        file.upload_from(source, length)
-    }
 }
 
 /// The object's bytes from `position` as a stream opened on its first read:

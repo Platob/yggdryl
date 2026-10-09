@@ -407,7 +407,8 @@ struct Bucket {
     /// What every table's warehouse store opens under beside the session:
     /// the properties the store's own reader takes that the session does
     /// not - where the store is, how it is addressed, a key pair stated for
-    /// it - handed to each table's [`Site::Store`] and printed by nothing.
+    /// it - held by each table's opener ([`Site::Opened`]) and printed by
+    /// nothing.
     store: Properties,
     /// The session every table's warehouse store signs with: the catalog's,
     /// stating the bucket's region, built once - so every store client of
@@ -486,6 +487,34 @@ impl Bucket {
                 session.with_region(region)
             }
         })
+    }
+
+    /// The site of a table's `warehouse` location: the object store opened
+    /// through the [`s3`](crate::s3) backend under the bucket's
+    /// [`store_session`](Self::store_session) in `region` and under the
+    /// store's own knobs, the table's effective properties read over them so
+    /// one stated on the table wins. The opener holds the session and the
+    /// knobs, so the site names no AWS type and prints neither; the
+    /// location the service answers names a prefix and carries no query.
+    /// Building the site, and every resolution of it, sends nothing.
+    fn store_site(&self, warehouse: &Url, region: String) -> Site {
+        let session = self.store_session(&region).clone();
+        let store = self.store.clone();
+        let location = warehouse.to_string();
+        let open = move |properties: &Properties| -> Result<crate::holder::Holder> {
+            // A session that consults nothing outside itself seals the
+            // store's own options too.
+            let options = crate::s3::S3Options::default()
+                .with_environment(session.reads_environment())
+                .with_session(session.clone())
+                .with_region(region.clone())
+                .with_properties(store.iter().chain(properties.iter()))?;
+            crate::s3::located_with(&location, options)
+        };
+        Site::Opened {
+            url: warehouse.clone(),
+            open: Arc::new(open),
+        }
     }
 }
 
@@ -1148,12 +1177,7 @@ impl S3TablesNamespace {
     fn root(&self, warehouse: &Url, path: &[SmolStr], stated: &Properties) -> Result<Handle> {
         let region = self.bucket.client.region_of(Some(self.bucket.arn()?))?;
         Ok(Handle::at(
-            Site::Store {
-                url: warehouse.clone(),
-                session: self.bucket.store_session(&region).clone(),
-                region,
-                store: self.bucket.store.clone(),
-            },
+            self.bucket.store_site(warehouse, region),
             false,
             path,
             stated.inherit(&self.effective()),

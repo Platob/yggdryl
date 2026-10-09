@@ -316,6 +316,9 @@ impl fmt::Display for MediaTable {
     }
 }
 
+/// Every byte verb is the opened handle's, the upload, the discard and the
+/// stated length included; the two roles keep their defaults, since the
+/// handle they would answer drops the table's declared field and layout.
 impl IOBase for MediaTable {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.handle()?.pread(offset, buffer)
@@ -366,8 +369,20 @@ impl IOBase for MediaTable {
         self.handle_mut()?.append_bytes(bytes)
     }
 
+    fn upload_from(&mut self, source: &mut dyn std::io::Read, length: u64) -> Result<()> {
+        self.handle_mut()?.upload_from(source, length)
+    }
+
     fn size(&self) -> u64 {
         self.handle().map_or(0, IOBase::size)
+    }
+
+    /// Tell the opened handle its length. A table whose handle cannot be
+    /// opened has no length to be told, as it has no size to answer.
+    fn set_known_size(&mut self, size: u64) {
+        if let Ok(handle) = self.handle_mut() {
+            handle.set_known_size(size);
+        }
     }
 
     fn capacity(&self) -> u64 {
@@ -442,6 +457,10 @@ impl IOBase for MediaTable {
 
     fn remove(&mut self, recursive: bool) -> Result<()> {
         self.handle_mut()?.remove(recursive)
+    }
+
+    fn discard(&self) -> Result<bool> {
+        self.handle()?.discard()
     }
 
     fn parent(&self) -> Option<Holder> {

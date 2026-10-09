@@ -303,8 +303,12 @@ impl Scheme {
     /// Return whether the scheme addresses an object store.
     ///
     /// The three stores one backend serves, under every spelling each is
-    /// written as. This is what selects that backend, so a location written by
-    /// another tool reaches it rather than falling through to a filesystem.
+    /// written as - the ten schemes that backend claims, so a location
+    /// written by another tool reaches it rather than falling through to a
+    /// filesystem. [`Holder::from_url`](crate::holder::Holder::from_url)
+    /// opens a location through the backend the register names
+    /// ([`backend_for`](crate::holder::backend_for)) rather than through this
+    /// predicate.
     pub const fn is_object_store(&self) -> bool {
         self.is_s3() || self.is_gs() || self.is_az()
     }
@@ -313,9 +317,9 @@ impl Scheme {
     ///
     /// `http` and `https` name one protocol spoken over two transports, and
     /// every request, response and stream the HTTP backend answers is the same
-    /// under either. This is what selects that backend, the way
-    /// [`Self::is_object_store`] selects the store's, so a location reaches it
-    /// under both spellings and nothing else compares the two schemes apart.
+    /// under either. This is what selects that backend - an arm of the core,
+    /// never a claim on the backend register - so a location reaches it under
+    /// both spellings and nothing else compares the two schemes apart.
     pub const fn is_http(&self) -> bool {
         matches!(self.0, SchemeWire::Http | SchemeWire::Https)
     }
@@ -326,8 +330,9 @@ impl Scheme {
     /// Storage, a container on Azure Blob Storage - and so does Amazon S3
     /// Tables, whose table bucket holds tables. It is one position in the
     /// location whichever store it is, so this is what [`Uri::bucket`] and
-    /// [`Uri::key`] read, while [`Self::is_object_store`] stays the question
-    /// of which backend opens it.
+    /// [`Uri::key`] read, while the backend register
+    /// ([`backend_for`](crate::holder::backend_for)) answers which backend
+    /// opens it.
     ///
     /// [`Uri::bucket`]: crate::Uri::bucket
     /// [`Uri::key`]: crate::Uri::key

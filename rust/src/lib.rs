@@ -544,8 +544,6 @@ pub mod internals {
     #[cfg(feature = "s3")]
     pub use crate::s3::client::internals as s3_client;
     #[cfg(feature = "s3")]
-    pub use crate::s3::file::internals as s3_file;
-    #[cfg(feature = "s3")]
     pub use crate::s3::google::token::internals as s3_google_token;
     #[cfg(feature = "s3")]
     pub use crate::s3::options::internals as s3_options;

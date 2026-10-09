@@ -128,7 +128,7 @@ fn local_holder(location: impl AsRef<yggdryl::Uri>) -> Result<Holder> {
 fn folder_holder_for(url: &yggdryl::Url) -> Result<Holder> {
     if url.scheme().is_object_store() {
         return yggdryl::s3::folder(&url.to_string())
-            .map(Holder::S3Folder)
+            .map(Holder::from)
             .map_err(napi_error);
     }
     // An HTTP container is a session over the URL: it lists nothing, and a

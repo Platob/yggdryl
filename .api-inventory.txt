@@ -2176,6 +2176,8 @@ pub struct ZipPath
   and Azure Blob Storage through one location/container/leaf trio.
   pub fn located(url: &str) -> Result<Holder>
   pub fn located_with(url: &str, options: S3Options) -> Result<Holder>
+  pub struct S3Backend  (the object stores' StorageBackend: name `yggdryl-s3`, the ten schemes `s3 s3a s3n gs gcs az abfs abfss wasb wasbs`, is_property S3Options::is_property, holder located_with under the properties)
+  pub static S3_BACKEND: S3Backend  (claimed by the core itself under the ten object-store schemes before the register answers anything, until `yggdryl-s3` does)
   pub fn file(url: &str) -> Result<S3File>
   pub fn file_with(url: &str, options: S3Options) -> Result<S3File>
   pub fn folder(url: &str) -> Result<S3Folder>
@@ -2209,6 +2211,8 @@ pub struct ZipPath
   S3Path: pub fn bucket, key, stats, exists, as_directory, as_file
   S3Folder: pub fn bucket, prefix, stats, exists, create
   S3File: pub fn bucket, key, stats, exists, as_directory, with_known_size
+  impl RegisteredHandle for S3Path, S3Folder, S3File  (each held as Holder::Registered, `From` each for Holder: implementation_name its type's name, exists the role's own answer, reopen the role on its own client sending nothing - a folder cloned, a location or an object as its parent's child, a trailing-slash location as its prefix)
+  IOBase capability overrides: S3Path as_leaf and as_container; S3File upload_from, discard, as_container, set_known_size; each sending what the verb's cost row states
   pub struct StatsSnapshot { requests, heads, gets, puts, posts, deletes, lists, retries, retry_tokens }
 
   pub struct S3Options
@@ -2865,7 +2869,7 @@ pub enum Holder
   Buffer(Buffer)
   LocalFolder(crate::local::LocalFolder), LocalPath(crate::local::LocalPath), LocalFile(crate::local::LocalFile)
   FsFolder(crate::fs::FsFolder), FsPath(crate::fs::FsPath), FsFile(crate::fs::FsFile)
-  S3Folder(crate::s3::S3Folder), S3Path(crate::s3::S3Path), S3File(crate::s3::S3File)  (behind the `s3` feature)
+  Registered(Box<dyn RegisteredHandle>)  (a handle of a backend a crate claims through claim_backend - an object, a prefix or a location on an object store - every verb its own; downcast_ref/downcast_mut answer it as the type it is)
   HttpSession(crate::http::Session), HttpRequest(crate::http::Request), HttpResponse(crate::http::Response), HttpStream(crate::http::Stream)  (behind the `http` feature)
   ZipNode(crate::zip::ZipNode), ZipPath(crate::zip::ZipPath), ZipLeaf(crate::zip::ZipLeaf)
   Buffered(Box<Buffered<Self>>), Coded(Box<Coded>), Text(Box<crate::text::Text<Self>>), Media(Box<crate::media::Media>)  (each wraps another Holder, so each is boxed)
@@ -2876,8 +2880,8 @@ pub enum Holder
   pub fn folder(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn file(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn local(path: impl AsRef<std::path::Path>) -> Result<Self>
-  pub fn from_url<K, V>(location: impl AsRef<Uri>, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self> where  (a Url, or any identifier read through `Uri::locator` once - a relative path, a URN, an ARN; the scheme picks the backend: `file:` a LocalPath or a ZIP member, an object store under `s3`, `http:`/`https:` under `http`, and what a claimed `Locator` names, asked first, before the identifier is lowered - under `s3tables` what `s3tables://<bucket>[/<namespace>[/<table>]]` names - the bucket's catalog or a namespace at no request, the table at 1 `GetTableMetadataLocation` after the 1 `ListTableBuckets` per page a location stating neither the bucket's ARN nor its account pays, more than two segments refused at `$.url` - an ARN of that service read as the ARN: a bucket's the catalog, a table's the table at 1 `GetTable`; `media_type` and `codec` read for a byte backend; a scheme no backend holds and no locator claims refused naming the crate to install)
-  pub fn from_handle(holder: &Self) -> Result<Self>  (a second handle on the resource `holder` addresses, over the same store, sending nothing. The plain handle beneath every wrapper is held again: a local role over its path; an object-store role on its own client (an `S3Folder` cloned, an `S3Path`/`S3File` as its parent's child, its role kept); an HTTP session or request cloned; a bound location on its filesystem; an archive member through its archive; an identifier or a warehouse object cloned. An in-memory buffer and one HTTP answer are refused as `Error::Unsupported`)
+  pub fn from_url<K, V>(location: impl AsRef<Uri>, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self> where  (a Url, or any identifier read through `Uri::locator` once - a relative path, a URN, an ARN; the scheme picks the backend: `file:` a LocalPath or a ZIP member, a scheme a claimed StorageBackend names the Registered handle it answers - asked after the identifier is lowered and after the local and ZIP arms, before HTTP; the object stores' ten schemes by the backend the core claims under `s3`; the location's query the backend's properties beneath the caller's, a parameter `is_property` does not read refused by name as `Error::Parse`, the query taken off the location - `http:`/`https:` under `http`, and what a claimed `Locator` names, asked first, before the identifier is lowered - under `s3tables` what `s3tables://<bucket>[/<namespace>[/<table>]]` names - the bucket's catalog or a namespace at no request, the table at 1 `GetTableMetadataLocation` after the 1 `ListTableBuckets` per page a location stating neither the bucket's ARN nor its account pays, more than two segments refused at `$.url` - an ARN of that service read as the ARN: a bucket's the catalog, a table's the table at 1 `GetTable`; `media_type` and `codec` read for every byte backend, a registered one's included; a scheme no core arm, no claimed backend and no locator holds refused naming the crate to install)
+  pub fn from_handle(holder: &Self) -> Result<Self>  (a second handle on the resource `holder` addresses, over the same store, sending nothing. The plain handle beneath every wrapper is held again: a local role over its path; a registered handle as its RegisteredHandle::reopen answers - an object-store role on its own client, its role kept; an HTTP session or request cloned; a bound location on its filesystem; an archive member through its archive; an identifier or a warehouse object cloned. An in-memory buffer and one HTTP answer are refused as `Error::Unsupported`)
   pub fn zip(handle: Self) -> Self
   pub fn buffered(self, options: BufferedOptions) -> Self
   pub fn into_media(self) -> Self
@@ -2889,15 +2893,33 @@ pub enum Holder
   pub fn into_coded_with(self, codec: crate::Codec, level: crate::Level) -> Self
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
+  pub fn downcast_ref<T: 'static>(&self) -> Option<&T>  (the Registered handle as the type it is, when it is a `T`; None for every core variant and for a wrapper over a registered handle)
+  pub fn downcast_mut<T: 'static>(&mut self) -> Option<&mut T>
 
 
 ### yggdryl::holder::locator  [rust/src/holder/locator.rs]  (the locations a catalog service keeps, and the register Holder::from_url reads them from: a Locator is one static in its crate, claimed once under its scheme and asked before the identifier is lowered and before any byte backend - the local, ZIP, object-store and HTTP backends stay the core's; with none claimed the question costs nothing and reads no property; re-exported from yggdryl::holder)
 pub trait Locator: fmt::Debug + Send + Sync + 'static
   fn scheme(&self) -> Scheme  (the scheme the service's locations spell, the key the locator is claimed under: `s3tables`)
   fn names(&self, location: &Uri) -> bool  (whether location names something the service keeps: a location of its scheme, or an identifier of the service in another - an ARN - read as given, before it is lowered)
-  fn holder(&self, location: &Uri, properties: &Properties) -> Result<Holder>  (the handle of what location names - a catalog, a namespace or a table - which declares no media type and takes no coding)
+  fn holder(&self, location: &Uri, properties: &Properties) -> Result<Holder>  (the handle of what location names - a catalog, a namespace or a table - which declares no media type and takes no coding; a locator names objects, the bytes are a StorageBackend's)
 pub fn claim(locator: &'static dyn Locator, by: &'static str) -> Result<()>  (re-exported as yggdryl::holder::claim_locator; the scheme once for the life of the process, Error::Conflict naming the first claimant, Error::InvalidRecord at `$.url` for a claim in the core's own name; the core claims S3TABLES_LOCATOR under `s3tables` before the register answers anything)
 pub fn locators() -> Vec<&'static dyn Locator>  (every claim, in scheme order)
+
+### yggdryl::holder::backend  [rust/src/holder/backend.rs]  (the byte backends a crate claims, and the register Holder::from_url reads them from: a StorageBackend is one static in its crate, claimed under every scheme it names, all or none, and asked after the identifier is lowered and after the local and ZIP arms, before HTTP; its handles are RegisteredHandle values held as Holder::Registered, described by `media_type` and `codec` as every backend's are; the core claims the object stores' backend under `s3` until `yggdryl-s3` does; re-exported from yggdryl::holder)
+pub trait StorageBackend: fmt::Debug + Send + Sync + 'static
+  fn name(&self) -> &'static str  (the crate that holds the backend, as a refusal names it: `yggdryl-s3`)
+  fn schemes(&self) -> &'static [Scheme]  (every scheme its locations spell, the keys it is claimed under, all or none: `s3 s3a s3n gs gcs az abfs abfss wasb wasbs`)
+  fn is_property(&self, name: &str) -> bool  (whether name is a property the backend reads for itself; a query parameter it answers false for is refused before the backend is asked, and an Iceberg table opened by its location states its properties less these)
+  fn holder(&self, url: &Url, properties: &[(String, String)]) -> Result<Holder>  (the handle of the location url names, query taken off, under the query's properties then the caller's - the caller's winning; sends nothing)
+pub trait RegisteredHandle: IOBase + Sync + fmt::Debug
+  fn implementation_name(&self) -> &'static str  (as a refusal names it: `S3File`)
+  fn exists(&self) -> bool  (its role's own answer, what Holder::exists answers)
+  fn reopen(&self) -> Result<Holder>  (a second handle on the resource over the same client, its role kept, sending nothing: what Holder::from_handle answers)
+  fn as_any(&self) -> &dyn Any  (for Holder::downcast_ref; call it as `RegisteredHandle::as_any`, since IOMedia::as_any shares the name)
+  fn as_any_mut(&mut self) -> &mut dyn Any  (for Holder::downcast_mut)
+pub fn claim(backend: &'static dyn StorageBackend, by: &'static str) -> Result<()>  (re-exported as yggdryl::holder::claim_backend; every scheme once for the life of the process, all or none: Error::Conflict naming the first claimant, Error::InvalidRecord at `$.url` for a claim in the core's own name, no scheme, one scheme twice, or a scheme a core arm holds - `file`, `http`, `https`, `mem`, `urn`, `arn` - naming the arm; the core claims S3_BACKEND under the ten object-store schemes before the register answers anything)
+pub fn backend_for(scheme: &Scheme) -> Option<&'static dyn StorageBackend>  (the claim under scheme; none for a scheme a core arm holds)
+pub fn backends() -> Vec<&'static dyn StorageBackend>  (every claimed backend once, in the order of its first scheme)
 
 ### yggdryl::warehouse  [rust/src/warehouse/mod.rs]  (one abstraction for every place that answers "which tables are there, and how do I read one": the four traits, the four enums, the registry and its process-wide instance; every name re-exported at the crate root)
 pub struct Warehouse  (the catalogs, in registration order; Clone, Default, Eq, Hash)
@@ -3131,6 +3153,11 @@ pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
   fn read_range_digest(&self, offset: u64, length: usize, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest>
   fn create_bytes(&mut self, bytes: &[u8]) -> Result<()>  (required, beside write_all_bytes: the whole value written only where the location holds none, published on return; a value already there is Error::Conflict naming the location and left byte-identical, a container its own write refusal; one call to the handle beneath, won or lost, so of N concurrent creators exactly one returns Ok on local storage, the local and memory filesystems, ZIP, S3, Azure, GCS, an HTTP request and a Buffer; a bridged filesystem and an HTTP origin ignoring preconditions are not exclusive)
   fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64>
+  fn upload_from(&mut self, source: &mut dyn std::io::Read, length: u64) -> Result<()>  (the whole value from the `length` bytes `source` yields: the default reads them whole - a length the platform cannot hold, or a source ending short, refused before a byte is written - then write_all_bytes; an object on an object store sends one `PUT` below its multipart threshold and `parts + 2` above it, one part of the source held at a time; forwarded by delegate_iobase!, Box<dyn IOBase> and Holder)
+  fn discard(&self) -> Result<bool>  (drop what the handle staged without publishing it, answering whether that is all a failed write left: the default `false` - nothing staged of its own, the caller removes; an object on an object store `true`, sending nothing, so no `DELETE` goes out for a key never written)
+  fn as_leaf(&self) -> Result<Option<Holder>>  (this location as the leaf it names, re-described with no request: the default `None`, the handle as it is; an object-store location its object on the same client)
+  fn as_container(&self) -> Result<Option<Holder>>  (this location as the container it names, re-described with no request: the default `None`; an object-store location or object the prefix it spells on the same client)
+  fn set_known_size(&mut self, size: u64)  (a length a listing or a manifest stated, kept so size asks nothing: the default ignores it, the answer of a handle that knows its length for free; an object on an object store keeps it until a write through the handle)
   fn applied_codec(&self) -> Codec  (the coding a decoded view applies; identity for stored bytes, what `compress_into`/`decompress_into` refuse otherwise)
   fn uri(&self) -> Option<&Uri>
   fn url(&self) -> Option<&Url>

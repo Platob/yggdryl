@@ -495,7 +495,7 @@ mod object_store {
             .with_region("us-east-1")
             .with_path_style(true)
             .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI"));
-        Holder::S3File(yggdryl::s3::file_with(&format!("s3://trades/{key}"), options).unwrap())
+        Holder::from(yggdryl::s3::file_with(&format!("s3://trades/{key}"), options).unwrap())
     }
 
     fn methods(store: &FakeS3) -> Vec<String> {

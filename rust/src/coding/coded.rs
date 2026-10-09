@@ -219,7 +219,10 @@ impl crate::IOMedia for Coded {
     }
 }
 
-/// A `Coded` value is the decoded view of the handle it wraps.
+/// A `Coded` value is the decoded view of the handle it wraps: every verb is
+/// the held view's - the plain handle under the identity coding, the coding
+/// wrapper otherwise, which answers the capabilities a backend specializes
+/// as its own state requires.
 impl IOBase for Coded {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.as_io().pread(offset, buffer)
@@ -245,8 +248,16 @@ impl IOBase for Coded {
         self.as_io_mut().create_bytes(bytes)
     }
 
+    fn upload_from(&mut self, source: &mut dyn std::io::Read, length: u64) -> Result<()> {
+        self.as_io_mut().upload_from(source, length)
+    }
+
     fn size(&self) -> u64 {
         self.as_io().size()
+    }
+
+    fn set_known_size(&mut self, size: u64) {
+        self.as_io_mut().set_known_size(size);
     }
 
     fn capacity(&self) -> u64 {
@@ -321,12 +332,24 @@ impl IOBase for Coded {
         self.as_io_mut().remove(recursive)
     }
 
+    fn discard(&self) -> Result<bool> {
+        self.as_io().discard()
+    }
+
     fn parent(&self) -> Option<Holder> {
         self.as_io().parent()
     }
 
     fn child_by_path(&self, name: &str) -> Result<Holder> {
         self.as_io().child_by_path(name)
+    }
+
+    fn as_leaf(&self) -> Result<Option<Holder>> {
+        self.as_io().as_leaf()
+    }
+
+    fn as_container(&self) -> Result<Option<Holder>> {
+        self.as_io().as_container()
     }
 
     fn ls(&self, recursive: bool, include_private: bool) -> crate::Listing {

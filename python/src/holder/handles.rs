@@ -455,7 +455,7 @@ impl PyS3Path {
             properties,
             yggdryl::s3::located_with,
             |provider, container, key, options| {
-                yggdryl::s3::path_at_with(provider, container, key, options).map(Holder::S3Path)
+                yggdryl::s3::path_at_with(provider, container, key, options).map(Holder::from)
             },
         )?
         .add_subclass(Self))
@@ -482,9 +482,9 @@ impl PyS3File {
             provider,
             options,
             properties,
-            |url, options| yggdryl::s3::file_with(url, options).map(Holder::S3File),
+            |url, options| yggdryl::s3::file_with(url, options).map(Holder::from),
             |provider, container, key, options| {
-                yggdryl::s3::file_at_with(provider, container, key, options).map(Holder::S3File)
+                yggdryl::s3::file_at_with(provider, container, key, options).map(Holder::from)
             },
         )?
         .add_subclass(Self))
@@ -511,9 +511,9 @@ impl PyS3Folder {
             provider,
             options,
             properties,
-            |url, options| yggdryl::s3::folder_with(url, options).map(Holder::S3Folder),
+            |url, options| yggdryl::s3::folder_with(url, options).map(Holder::from),
             |provider, container, key, options| {
-                yggdryl::s3::folder_at_with(provider, container, key, options).map(Holder::S3Folder)
+                yggdryl::s3::folder_at_with(provider, container, key, options).map(Holder::from)
             },
         )?
         .add_subclass(Self))

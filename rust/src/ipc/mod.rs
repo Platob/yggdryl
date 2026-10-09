@@ -1171,7 +1171,7 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
 impl<H: IOBase> IOBase for Ipc<H> {
     crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, read_tail_bytes,
         pstream_bytes,
-        size, capacity, reserve, uri, url,
+        size, set_known_size, capacity, reserve, uri, url,
         bound_location, mtime, media_type, applied_codec, flush, parent, child_by_path, ls, kind, is_container);
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {

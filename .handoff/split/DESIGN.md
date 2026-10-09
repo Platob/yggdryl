@@ -2409,6 +2409,116 @@ medium reaches `Media`, and leaves for `rust/s3/` as `yggdryl-s3`. `aws/` and
 Names: `StorageBackend`, `RegisteredHandle`, `Holder::Registered`,
 `claim_backend`, `backend_for`, `backends`, `Site::Opened`.
 
+### P3 results
+
+Committed as "Register the object-store backend on the holder in place" (on
+`a46a2177b`, S3). Five workers wrote the slice in the `wip/p3` worktree with
+no compiler (W1 the register and the holder, W2 `IOBase` and the trio, W3
+Iceberg, the warehouse and S3 Tables, W4 the bindings, W5 the tests, the
+docs and AGENTS.md) and a reconciler applied their requests to one another;
+the lane manager merged S3's settled tree and P2 into it, settled it with
+`cargo check` in a target directory of its own while S3 chained, merged
+S3's landed commit and squashed the result onto the program branch.
+
+| figure | value |
+| --- | --- |
+| the slice, the handoff files apart | 56 files, +2623 / -688: `rust/src` 33 files +1411/-511, `rust/tests` 13 files +1013/-43, the bindings 4 files +74/-107, docs, skills, AGENTS.md and the inventory 6 files +125/-27; Node's one change re-spells `folder_holder_for`'s variant, the CLI untouched |
+| new files | `rust/src/holder/backend.rs` 261 lines (`StorageBackend`, `RegisteredHandle`, the register, `claim`, `backend_for`, `backends`, the refusal), `rust/tests/holder/backend.rs` 519 (a test backend whose every location is a local file and every capability verb its own, claimed under its own scheme) |
+| variants | `Holder::{S3Folder, S3Path, S3File}` deleted for `Holder::Registered(Box<dyn RegisteredHandle>)`: one arm in each exhaustive match (`exists`, `as_io(_mut)`, `as_media(_mut)`, `from_handle`, `into_byte_stream`), `Holder::downcast_ref`/`downcast_mut`; `Site::Store` deleted for `Site::Opened { url, open }`, `warehouse/handle.rs` naming no AWS or S3 type |
+| the capability verbs | `IOBase::{upload_from, discard, as_leaf, as_container, set_known_size}` with defaults; `delegate_iobase!`'s whole list and `except_lifecycle` forward them (`upload_from` and `discard` outside `except_lifecycle`, as `clear` and `remove` are), `Holder` forwards all of them and `owned_stream_bytes`; `Counted`'s `Call` gains five (`COUNT` 34 to 39); the four wildcards (`iceberg/staging.rs` `upload`, `unpublished`, `leaf`, `container`, `sized`; `iceberg/catalog/mod.rs` `folder_role`; Python's `Role::of` and `container_holder`) call the verbs |
+| tests | all-features lane 63 targets, 9379 passed, 0 failed, 3 ignored (S3 9357), default lane 6648 passed (6636), Python 2784 passed, 4 skipped (unchanged); rustdoc examples 635 (628) |
+| cost pins | none edited or moved: `iobase_calls` 66 of 66 under `s3 s3tables iceberg http` and in the whole run, `--test s3` 149, `--test iceberg` staging and catalog 36, `--test s3tables` 117, `--test s3tables_handle` 1, `--test warehouse` 139 - the test diff re-spells `Holder::S3*` as `Holder::from` and `downcast_ref` and adds assertions |
+
+The merges. `wip/s3` (b8ddef717) merged clean (only `lib.rs`, regenerated);
+P2 (`49bcab3e3`) conflicted exactly where the define's simulated merge said
+- AGENTS.md (the `iobase.rs` row: P3's capability clause beside P2's
+`read_origin_field`), `avro/batch.rs` and `parquet/mod.rs` (P2's narrower
+delegate list plus `set_known_size`) and `text/handle.rs` (P2's list plus
+`set_known_size`, and `upload_from` and `discard` overrides that drop the
+wrapper's `MediaCache` before forwarding, since an upload replaces and a
+discard drops what the line count describes); S3's landed commit
+(`a46a2177b`) conflicted where its review moved what the settled tree held
+- `warned` imported from the crate root in `s3/file.rs` and `s3/path.rs`,
+`implementer` `#[doc(hidden)]` in `lib.rs`, AGENTS.md's `implementer.rs`
+row and `docs/architecture.md`'s private-doors row taken as S3 landed them
+beside P3's `plugin.rs` row and register row; `logging/facade.rs`,
+`typed.rs` and `rust/tests/root/implementer.rs`, which P3 never touched,
+taken as landed.
+
+The assumptions the define could not verify, at the compiler: the boxed
+handle upcasts to `&dyn IOBase` and `&dyn IOMedia` (as `Media::Registered`
+does) and `Holder` stays `Send + Sync`; the `static` scheme tables compile;
+`.map(Holder::from)` infers the three `From` impls; the inherent ZIP
+`as_leaf` and the private `http::Request::discard` win over the trait verbs
+(they do; their names are kept - renaming the public ZIP pair is an API
+change D36 does not decide); the opener's `Arc<dyn Fn>` coerces and is
+`Send + Sync`; every request count unmoved (the suites above). The settle
+found one error, the test backend's `IOMedia` missing the required
+`overwrite_serie` (now `impl_default_iomedia!()`), and one redundant
+intra-doc link (`s3/mod.rs`); the phase suites one wrong assumption, W5's
+`a_store_role_answers_whether_anything_is_there` expecting a second
+`exists()` on one `S3Path` to ask again where the role keeps the probe it
+heard (the test now asks a fresh handle).
+
+The review (the `code-review` skill at high effort over the squashed diff),
+eight findings:
+
+1. Fixed: `S3Path` - the handle `Holder::from_url` answers for every
+   object-store location - kept the default `upload_from`, which reads the
+   source whole; it is now the resolved handle's (the one resolving listing,
+   then the object's multipart upload holding one part at a time), pinned by
+   `tests/s3/path.rs` `an_upload_through_a_location_is_the_objects_own_multipart_upload`
+   (five requests, the largest ask one part).
+2. Fixed: Python's `rebuilt` refused an archive's root and one HTTP answer,
+   which the deleted `cloned` re-located by URL; an `Unsupported` from
+   `Holder::from_handle` now falls back to the location the plain handle
+   names (a buffer still refused), its media type carried.
+3. Fixed: AGENTS.md and the holder page said `delegate_iobase!` forwards
+   `owned_stream_bytes`; it does not, and must not - a wrapper's stream is
+   read through the wrapper, so `Counted` sees the calls its pins count.
+4. Fixed: `S3File::set_known_size` replaced the whole meta; it is now
+   `know_size`, the tail read's own, keeping the session's etag and content
+   type.
+5. Kept: staging trusts the writer's length - `upload_from`'s contract is
+   `length` bytes, the S3 path read exactly that before P3, and the length
+   is the encoder's own.
+6. Kept: the refusal of a scheme no backend claims names no crate - the
+   media and format registers' sentence (D36.6, "as a medium is"); S6d makes
+   `yggdryl-s3` real.
+7. Kept: both bindings' `folder_holder_for` name `yggdryl::s3` directly
+   (D36.8, "links the crate"); `Scheme::is_object_store`'s rustdoc now says
+   what `Holder::from_url` does rather than forbidding the predicate.
+8. Kept: `Buffered::set_known_size` forwards alone - its `size` is the
+   inner handle's, which now knows the length, so the first read asks
+   nothing.
+
+The checks, on the committed tree (the settle in the worktree):
+
+| check | result |
+| --- | --- |
+| `cargo check --workspace --all-targets --all-features --keep-going --message-format=short` (the worktree, then the merged tree) | 1 error (the test backend's `IOMedia` missing the required `overwrite_serie`), then clean; `cargo check -p yggdryl --all-targets` with none, `iceberg`, `s3`, `s3tables`, `http`: clean |
+| phase suites, `--features "s3 s3tables iceberg http"`: `--test holder` (and default), `--test root iobase`, `--test s3`, `--test iceberg -- staging catalog`, `--test s3tables`, `--test s3tables_handle`, `--test iobase_calls`, `--test warehouse` | 61 default; 100 (99 before the one wrong test assumption was corrected), 42, 149 (with the review's new pin), 36, 117 (2 ignored), 1, 66, 139; no request-count pin edited or moved |
+| `cargo test -p yggdryl --all-targets --all-features --no-fail-fast` | 63 targets, 9379 passed, 0 failed, 3 ignored; the `holder` bench target panicked on "No space left on device" (11G free at the run's start, 232M at its end), re-run alone after the clean: `cargo test -p yggdryl --bench holder --all-features` exit 0 |
+| `cargo test -p yggdryl --all-targets --no-fail-fast` (default features) | 63 targets, 6648 passed, 0 failed |
+| `cargo test -p yggdryl-cli --all-targets --no-fail-fast` | 6 targets, 35 passed, 0 failed, 6 ignored |
+| `cargo test -p yggdryl --doc`; `cargo test -p yggdryl --doc --all-features -- S3Backend backend` | 635 passed; 3 passed (the two register examples and `S3Backend`'s, which the default lane does not compile) |
+| `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings`; `cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings` | exit 0 both |
+| `RUSTDOCFLAGS="-D warnings" cargo doc -p yggdryl --no-deps --all-features` | exit 0 (one redundant link of the slice's, `s3/mod.rs`, fixed in the settle) |
+| `cargo fmt --all -- --check` | clean |
+| `maturin develop`, `pytest python/tests --deselect python/tests/test_spark_interop.py`, `mypy --strict` | installed; 2784 passed, 4 skipped; no issues in 70 files |
+| `npm run --prefix node test:package:debug`, `cargo build --locked -p yggdryl-cli`, `npm test --prefix node`, `tsc --noEmit`, `git diff -- node/index.js node/index.d.ts` | the package audit passed; 1122 tests, 1120 passed, the two sandbox `TextDecoder` tests failing as at every slice; tsc clean; the generated files unchanged |
+| `node scripts/build_docs_fix.js --check`, `build_docs_playground.js --check` | current |
+| `mkdocs build --strict` | clean |
+| `check_api_inventory.py`; `generate_internals.py --check` | current (180 source files and 569 `pub` names not described yet); `internals` current |
+| `check_docs_examples.py --lang python` / `javascript` / `rust` | 837 run, 3 skipped, 0 failed; 789 run, 2 skipped, 0 failed; 941 passed |
+| `grep -rn '#\[cfg(test)\]\|#\[test\]\|mod tests' rust/src python/src node/src cli/src` | empty |
+| the review: the `code-review` skill at high effort over the squashed diff | eight findings: four fixed, four kept with their reason (above) |
+| local-only checks (charset tables and interop, ISIN seed, country and MIC tables), benches | not run: nothing the slice touches makes them stale |
+
+The whole run filled the disk on its last bench target (`holder`'s
+local-parity copy); that target passed alone once the workspace's artifacts
+were cleaned, and the chain resumed from clippy.
+
 ## S6: design
 
 ### D39 - a leaving medium keeps its rank, and what every S6 move does the same way
@@ -2516,7 +2626,7 @@ the CI leaf table.
 | D39 | a leaving medium keeps its rank: `media::codec::RESERVED_RANKS` (`parquet` 1, `avro` 2, `xmla` 4, `excel` 6) admitted by `claim` under the codec's own name, every other medium at or above `EXTERNAL_RANK`, so the `s2_pins` hashes and the order pins are byte-identical through S6; `implementer` grows once per move by S3's routes, Avro and Parquet carry their own hidden `implementer` for what Iceberg reaches; the Iceberg field view built by `protocol_field_types!` in `yggdryl-iceberg` (`IcebergField::new`), `as_iceberg` gone; core tests building a leaving crate's objects move to that crate's tests; `install()` at every init; order avro, parquet, excel, xmla, then iceberg after `yggdryl-s3` | the five media maps | S6 |
 | D38 | `currunix` -> `transunix` (the transaction instant, required, the identity and order axis), `recdunix` -> `sendunix` (the technical wire clock, optional, the merge reference), and the element's own `curruuid` -> `uuid`, `currhashcode` -> `hashcode` (`prevuuid`, `crossuuid`, `crosshashcode`, `srcuuids` keep their prefix); precedences, values, derivations, positions and tags unchanged - the carrier's clock first, else `SendingTime(52)`; crate fields 65_001, 65_004, 65_007 and 65_009 re-spelled, so the dump, the dictionary hash (once, with its sentence), the snapshot's keys and `fix.json` move and the census does not | the instants map | P4 |
 | D37 | `MarketMessage` a concrete public struct in `graph/message.rs` - boxed facts, `StatedFacts`, the entries as an `Arc<Field>` root and a `Scalar` row, `children`, `Metadata`, `Vec<Anomaly>`, `InstrumentStatement` - the four traits implemented once on it; `MarketData::Message`, `MarketKind::Message` (`message`); `FixMsg` the codec's handle over a message (`into_message`, `from_message`), an idmap-mapped tag never an entry, a native message rendered by the inverse idmap else its crate tags; S3's trait, `as_message::<T>()` and `Box<dyn MarketMessage>` deleted | the message map, `message_map/design_inputs.md` | P5 |
-| D36 | `yggdryl-s3` through a storage-backend extension point: `StorageBackend` claimed per scheme on the register (`claim_backend`, `backend_for`, `backends`), asked by `Holder::from_url` after lowering, its answer described; `Holder::Registered(Box<dyn RegisteredHandle>)`; the verbs the wildcards specialized on S3 (`upload_from`, `discard`, `as_leaf`, `as_container`, `set_known_size`) as `IOBase` defaults and `into_byte_stream` over `owned_stream_bytes`; `Site::Opened` with an opener; `aws/` and `auth/` stay core under `aws`; `yggdryl-iceberg[s3tables]` depends on `yggdryl-s3`; CI leaf `s3` with the three exchanges | the backend map, `s3_backend_map/design_inputs.md` | P3 in place, S6d the move |
+| D36 | `yggdryl-s3` through a storage-backend extension point: `StorageBackend` claimed per scheme on the register (`claim_backend`, `backend_for`, `backends`), asked by `Holder::from_url` after lowering, its answer described; `Holder::Registered(Box<dyn RegisteredHandle>)`; the verbs the wildcards specialized on S3 (`upload_from`, `discard`, `as_leaf`, `as_container`, `set_known_size`) as `IOBase` defaults and `into_byte_stream` over `owned_stream_bytes`; `Site::Opened` with an opener; `aws/` and `auth/` stay core under `aws`; `yggdryl-iceberg[s3tables]` depends on `yggdryl-s3`; CI leaf `s3` with the three exchanges | the backend map, `s3_backend_map/design_inputs.md` | built in place P3; S6d moves |
 | D25 | the seventeen codes stay core and flat; the register holds enum kinds alone (`Code8`/`Code16`), `MarketPayload`, `is_canonical`, `respell` and `CODE_VALUE_RANK` deleted; `yggdryl-market` carries the enums, `graph/` and the ISIN registry | the user's instruction; the S0 pins; one free Code byte | S1 |
 
 ## Review (S0)

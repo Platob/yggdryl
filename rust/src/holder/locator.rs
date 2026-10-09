@@ -7,8 +7,11 @@
 //! no media type and takes no coding. [`Holder::from_url`] asks every
 //! claimed locator before it lowers the identifier to a location, since an
 //! ARN says what the location it lowers to cannot, and before any byte
-//! backend: the local, ZIP, object-store and HTTP backends stay the core's.
-//! With no locator claimed the question costs nothing and reads no property.
+//! backend. A locator names objects; bytes are a
+//! [`StorageBackend`](crate::holder::StorageBackend)'s, which `from_url` asks
+//! once the identifier is lowered, after the local and ZIP arms and before
+//! HTTP. With no locator claimed the question costs nothing and reads no
+//! property.
 
 use std::fmt;
 use std::sync::OnceLock;

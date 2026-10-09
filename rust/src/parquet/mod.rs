@@ -2753,7 +2753,7 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
 
 impl<H: IOBase> IOBase for Parquet<H> {
     crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, read_tail_bytes,
-        pstream_bytes, capacity, reserve, uri, url,
+        pstream_bytes, set_known_size, capacity, reserve, uri, url,
         bound_location, mtime, media_type, applied_codec, flush, parent, child_by_path, ls, kind, is_container);
 
     /// The length the open session holds with the footer, asked of nothing;

@@ -4,7 +4,7 @@ Every storage implementation is one positional `IOBase` handle: a caller writes 
 
 | Section | Owns | Build |
 | --- | --- | --- |
-| [Handles](#handles) | the `Holder` enum, what a name composes to, roles, delegation | default |
+| [Handles](#handles) | the `Holder` enum, what a name composes to, roles, delegation, the storage backends a crate claims | default |
 | [Bytes](#bytes) | `pread`/`pwrite`, addresses, laziness, kinds, streams, cursors, media type, codings, open/close, clear/remove | default |
 | [Values](#values) | whole bytes, digests, structured JSON/YAML/TOML/XML scalars, `std::io` adapters | default |
 | [StreamSerie](#records) | Arrow batch reads, the three write intents, pushdown, limits, native rows | default; `parquet` for Parquet |
@@ -13,7 +13,7 @@ Every storage implementation is one positional `IOBase` handle: a caller writes 
 | [Buffer](#buffer) | in-memory bytes | default |
 | [Local](#local) | `LocalPath`, `LocalFolder`, mapped `LocalFile` | default |
 | [Filesystems](#filesystems) | a `pyarrow.fs` filesystem read as the native role it stands for; the Arrow-style `FileSystem` bridge - `FsPath`, `FsFolder`, `FsFile` - for a foreign one | default |
-| [Object stores](#object-stores) | `S3Path`, `S3Folder`, `S3File` over Amazon S3, Google Cloud Storage and Azure Blob Storage | `s3` feature |
+| [Object stores](#object-stores) | `S3Path`, `S3Folder`, `S3File` over Amazon S3, Google Cloud Storage and Azure Blob Storage, the storage backend the core claims | `s3` feature |
 | [HTTP](#http) | `Session`, `Request`, `Response`, `Stream` over any `http`/`https` URL, and `Server` hosting any handle | `http` feature; `http2`, `http3` |
 | [Buffered](#buffered) | the page cache over any handle | default |
 | [ZIP](#zip) | `ZipPath`, `ZipNode`, `ZipLeaf` inside one archive, nested archives included | default, Rust only |
@@ -27,6 +27,8 @@ Holder::local(path) -> Result<Holder>          // LocalPath: the role is decided
 Holder::folder(path) / Holder::file(path)      // commit to a role up front
 Holder::buffer(Buffer) -> Holder               // in memory
 Holder::from_url(location, properties)         // a Url, or any identifier that locates one: the scheme picks the backend
+Holder::from_handle(&holder) -> Result<Holder> // the same resource again, on the same client, nothing sent
+holder.downcast_ref::<T>() -> Option<&T>       // a claimed backend's handle as the type it is
 holder.into_declared_media() -> Holder         // compose what the name declares, reading nothing
 holder.open() -> Result<()>                    // into_media, then open; the medium's cache is served until close
 holder.as_io() -> &dyn IOBase                  // the variant as the trait object
@@ -37,11 +39,11 @@ holder.as_io() -> &dyn IOBase                  // the variant as the trait objec
 | Location | Held as |
 | --- | --- |
 | `file:` | a `LocalPath`, its role decided when an operation needs it; with a fragment, a member of a [ZIP archive](#zip) |
-| `s3:`, `gs:`, `az:` and their aliases, an Amazon S3 bucket's ARN | the [object store](#object-stores)'s location, under the `s3` feature and the store's own properties |
+| `s3:`, `gs:`, `az:` and their aliases, an Amazon S3 bucket's ARN | the [object store](#object-stores)'s location - an `S3Path` held as `Holder::Registered`, the handle of the [storage backend](#storage-backends) the core claims under the `s3` feature - under the store's own properties |
 | `http:`, `https:` | the [HTTP](#http) request that reads and writes the resource, under the `http` feature and the `HttpOptions` properties |
 | `s3tables://<bucket>[/<namespace>[/<table>]]`, a table bucket's ARN, a table's ARN | what it names in an [Amazon S3 Tables](../media/iceberg.md#a-table-by-its-location) table bucket, through the `Locator` the `s3tables` feature claims: the catalog or a namespace - a description, no request - or the Iceberg table, at one `GetTableMetadataLocation` after the one `ListTableBuckets` per page a location stating neither the bucket's ARN nor its account pays (one `GetTable` for a table's ARN, read as the ARN rather than as the location it locates); more than a namespace and a table below the bucket is refused at `$.url` |
 
-`media_type` and `codec` are read here whatever the byte backend; a catalog, a namespace and a table declare neither. A location a claimed `Locator` names is asked before the identifier is lowered and answered as the object it names ([Registering](../warehouse/index.md#registering)); the local, ZIP, object-store and HTTP backends are `from_url`'s own arms. An identifier that names no location is refused by name, and so is a scheme no backend of the build holds and no locator claims, naming the crate to install.
+`media_type` and `codec` are read here whatever the byte backend, a claimed one's included; a catalog, a namespace and a table declare neither. A location a claimed `Locator` names is asked before the identifier is lowered and answered as the object it names ([Registering](../warehouse/index.md#registering)); the local, ZIP and HTTP backends are `from_url`'s own arms, and every other byte backend is a claimed `StorageBackend`, asked once the identifier is lowered, after the local and ZIP arms and before HTTP ([Storage backends](#storage-backends)). An identifier that names no location is refused by name, and so is a scheme no core arm, no claimed backend and no locator holds, naming the crate to install.
 
 === "Rust"
 
@@ -94,7 +96,7 @@ holder.as_io() -> &dyn IOBase                  // the variant as the trait objec
 | `Buffer` | an in-memory byte array | `holder.Buffer` |
 | `LocalFolder`, `LocalPath`, `LocalFile` | a local directory, an undecided local location, a mapped local leaf | `holder.LocalFolder`, `holder.LocalPath`, `holder.LocalFile` |
 | `FsFolder`, `FsPath`, `FsFile` | the same three bridged over a foreign Arrow `FileSystem`; a filesystem this build holds itself - PyArrow's local, S3, GCS and Azure ones, a subtree over one - is the local or object-store role above instead | `holder.FsFolder`, `holder.FsPath`, `holder.FsFile`, each answering `LocalFolder`/`S3Folder` and the like for a filesystem held natively |
-| `S3Folder`, `S3Path`, `S3File` | a prefix or container, an undecided location, one object on an [object store](#object-stores) | `holder.S3Folder`, `holder.S3Path`, `holder.S3File` |
+| `Registered` | the handle of a [storage backend](#storage-backends) a crate claims, boxed, every verb its own: an [object store](#object-stores)'s prefix or container, undecided location or object (`S3Folder`, `S3Path`, `S3File`), which `downcast_ref` and `downcast_mut` answer as the type it is | `holder.S3Folder`, `holder.S3Path`, `holder.S3File`, picked by that type |
 | `HttpSession`, `HttpRequest`, `HttpResponse`, `HttpStream` | a session over a base URL, the resource a URL names, one answer's body, a body left on the wire, over [HTTP](#http) | `http.Session`, `http.Request`, `http.Response`, `http.Stream` |
 | `ZipNode`, `ZipPath`, `ZipLeaf` | the archive root or a member prefix, an undecided member location, one member of a [ZIP archive](#zip) | Rust only |
 | `Catalog`, `Namespace`, `Table` | a [warehouse](../warehouse/index.md) object held as the handle it is - a catalog or a namespace a container whose `ls` yields its children as handles and whose byte verbs are refused, a table the rows its own handle holds; what a claimed `Locator` answers in `Holder::from_url`, for a location in an [Amazon S3 Tables](../media/iceberg.md#a-table-by-its-location) table bucket | `warehouse.Catalog`, `warehouse.Namespace`, `warehouse.Table`; JavaScript `IOBase.from(object)` |
@@ -325,9 +327,9 @@ Everything else is pre-implemented: a folder holds no bytes of its own - `pread`
 A wrapper forwards the contract to the handle it holds with one macro per trait. Rust only: neither binding can add a backend.
 
 ```text
-delegate_iobase!(handle)                      // storage contract, open, opened, close; no records
+delegate_iobase!(handle)                      // storage contract, the capability verbs, open, opened, close; no records
 delegate_iomedia!(handle)                     // dimensions, options, Field and reader reads, typed writes
-delegate_iobase!(handle, except_lifecycle)    // omits clear, remove, is_atomic, is_tabular, is_io
+delegate_iobase!(handle, except_lifecycle)    // omits clear, remove, upload_from, discard, is_atomic, is_tabular, is_io
 delegate_iobase!(handle: pread, size, ...)    // only the named methods; the rest keep the trait default
 ```
 
@@ -360,6 +362,55 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(wrapper.handle.as_slice(), b"AAPL");
     Ok(())
 }
+```
+
+### Storage backends
+
+A byte backend beside the core's own arms reaches `Holder` through a register, as a [medium](../media/index.md#registering-a-medium) reaches `Media`. Rust only: a binding holds a claimed backend's handles as the classes it picks by their type.
+
+| A crate states | Where |
+| --- | --- |
+| a `StorageBackend` unit struct and its static: the crate's `name`, the `schemes` its locations spell, `is_property` - the properties it reads for itself - and `holder`, the handle a location opens, sending nothing | the backend's own file |
+| `RegisteredHandle` on every handle it answers - `implementation_name`, `exists` (its role's answer), `reopen` (the same resource on the same client, nothing sent), `as_any`, `as_any_mut` - beside the handle's whole `IOBase` | each handle's file |
+| the capability verbs its store specializes, each an `IOBase` method with a default: `upload_from` (a value of `length` bytes from a reader; read whole, then `write_all_bytes`), `discard` (drop the stage, answering whether nothing is left; `false`, the caller removes), `as_leaf` and `as_container` (the location re-described as the leaf or the container it names; `None`, the handle as it is), `set_known_size` (a stated length; ignored), `owned_stream_bytes` (the stream a container's leaves are read through; `None`, read positionally) | the handle's `IOBase` |
+| `holder::claim_backend(&X_BACKEND, "my-crate")` | the crate's `install()` |
+
+A claim takes every scheme the backend names, all or none, once for the life of the process. A scheme claimed already is refused as `Error::Conflict` naming the first claimant; a claim in the core's own name, a backend naming no scheme or one scheme twice, and a scheme a core arm holds - `file`, `http`, `https`, `mem`, `urn`, `arn` - are refused at `$.url`. `backend_for` is the lookup `Holder::from_url` asks once a location is lowered, after the local and ZIP arms and before HTTP; `backends()` lists the claims, each once, in the order of its first scheme. A location's query states the backend's properties: handed to `holder` before the caller's, so a name stated twice is the caller's, and taken off the location the handle reports; a parameter the backend does not read is refused by name, as ``invalid storage location expression at byte 0: the query parameter "versionId" names no property the `s3` backend reads``. What the backend answers is held as `Holder::Registered` and described as every backend's handle is (`media_type`, `codec`); `Holder::from_handle` answers its `reopen`, `Holder::exists` its `exists`, `downcast_ref` and `downcast_mut` the handle as its type, and every capability verb is the handle's own through the `Holder`. `delegate_iobase!` forwards the capability verbs but `owned_stream_bytes` with the rest of the contract, so a wrapper over a backend's handle keeps them and its stream is read through the wrapper. A `Locator` is the other register `from_url` reads: asked before the location is lowered, it names a catalog service's objects rather than holding bytes. A scheme no core arm, no claimed backend and no locator holds is refused as ``filesystem "ftp" does not support holding a location of this scheme; install the crate that claims it and call its `install()` ``. The core claims the object stores' ten schemes itself under the `s3` feature ([Object stores](#object-stores)), until `yggdryl-s3` does. A complete backend - each location a local file, every capability verb its own - is the test backend of `rust/tests/holder/backend.rs`.
+
+```rust
+use yggdryl::holder::{Holder, StorageBackend, backend_for, backends, claim_backend};
+use yggdryl::s3::{S3Path, S3_BACKEND};
+use yggdryl::{IOBase, MimeType, Scheme, Url};
+
+// The core claims the object stores' ten schemes itself, until `yggdryl-s3` does.
+let s3 = backend_for(&Scheme::S3).expect("claimed under the s3 feature");
+assert_eq!(s3.name(), "yggdryl-s3");
+assert_eq!(s3.schemes().len(), 10);
+assert!(backends().iter().any(|backend| backend.name() == "yggdryl-s3"));
+// A scheme a core arm holds is no backend's.
+assert!(backend_for(&Scheme::FILE).is_none());
+
+// A location of a claimed scheme is that backend's handle, described as any
+// other; holding it sends nothing.
+let url = Url::from_str("s3://trades/lake/part.bin")?;
+let held = Holder::from_url(&url, [("region", "eu-west-1"), ("media_type", "application/vnd.apache.parquet")])?;
+assert!(matches!(held, Holder::Registered(_)));
+assert_eq!(held.downcast_ref::<S3Path>().expect("a location").key(), "lake/part.bin");
+assert_eq!(held.media_type().base(), &MimeType::PARQUET);
+
+// A scheme is claimed once: a second claim names the first claimant.
+let refused = claim_backend(&S3_BACKEND, "my-crate").unwrap_err().to_string();
+assert_eq!(refused, "expected to create a storage backend at \"s3\", got an existing yggdryl");
+
+// A query parameter the backend does not read is refused by name.
+let url = Url::from_str("s3://trades/lake/part.bin?versionId=3")?;
+let refused = Holder::from_url(&url, [("region", "eu-west-1")]).unwrap_err().to_string();
+assert!(refused.contains("names no property the `s3` backend reads"), "{refused}");
+
+// A scheme nothing holds names the crate to install.
+let url = Url::from_str("ftp://example.com/trades.csv")?;
+let refused = Holder::from_url(&url, [("region", "eu-west-1")]).unwrap_err().to_string();
+assert!(refused.contains("install the crate that claims it and call its `install()`"), "{refused}");
 ```
 
 ## Bytes
@@ -4280,7 +4331,7 @@ npm run --prefix node bench:holder
 
 ## Object stores
 
-`S3Path`, `S3Folder` and `S3File` reach Amazon S3 (and every store answering its API), Google Cloud Storage and Azure Blob Storage through each store's REST API over synchronous HTTP/1.1 - no SDK, no async runtime. Behind the non-default `s3` feature. The scheme picks the store: `s3`/`s3a`/`s3n`, `gs`/`gcs`, `az`/`abfs`/`abfss`/`wasb`/`wasbs`, and a handle reports the spelling it was handed.
+`S3Path`, `S3Folder` and `S3File` reach Amazon S3 (and every store answering its API), Google Cloud Storage and Azure Blob Storage through each store's REST API over synchronous HTTP/1.1 - no SDK, no async runtime. Behind the non-default `s3` feature. The scheme picks the store: `s3`/`s3a`/`s3n`, `gs`/`gcs`, `az`/`abfs`/`abfss`/`wasb`/`wasbs`, and a handle reports the spelling it was handed. The ten schemes are `S3_BACKEND`'s, the [storage backend](#storage-backends) the core claims itself under the feature until `yggdryl-s3` does: `Holder::from_url` holds a location of any of them as the `S3Path` it names, `Holder::Registered` as every claimed backend's handle is, which `downcast_ref` answers as the role it is, and each role states the capability verbs its store specializes - an upload in parts, a dropped stage, a location re-described as its object or its prefix, a stated length.
 
 ```text
 s3::file(url) -> Result<S3File>                 // s3::folder, s3::located (a Holder) alike
@@ -4288,6 +4339,7 @@ s3::file_with(url, S3Options) -> Result<S3File>
 s3::file_at(Provider, container, key)           // a raw key, not a URL; folder_at, path_at alike
 S3Options::from_properties(pairs)               // PyIceberg s3.*/gcs.*/adls.*, PyArrow, env names
 S3File::stats() -> StatsSnapshot                // the requests that actually went out
+Holder::from_url("s3://..", properties)         // an S3Path held as Holder::Registered
 ```
 
 === "Rust"
@@ -4351,6 +4403,7 @@ The request count is the contract, asserted by tests.
 | operation | Amazon S3 | Google Cloud Storage | Azure Blob Storage |
 | --- | --- | --- | --- |
 | building a handle, resolving a child, a media type or a partition | none | none | none |
+| holding a role again (`Holder::from_handle`), a location or an object re-described as the object or the prefix it names (`as_leaf`, `as_container`), a stated length (`set_known_size`), a dropped stage (`discard`) | none | none | none |
 | resolving a `lake/` location | none | none | none |
 | resolving any other location | one single-key listing, or two; the listing that finds an object states its size, so no `HEAD` follows | the same | the same |
 | `exists` on a `lake/` location | one single-key listing; a bucket root one `HEAD` | the same | the same |
@@ -4363,6 +4416,7 @@ The request count is the contract, asserted by tests.
 | `size` on a closed handle | one `HEAD`; none while open, or once a listing or a tail read stated it | one `objects.get`; none while open, or once a listing or a tail read stated it | one `HEAD`; none while open, or once a listing stated it |
 | a whole write | one `PUT` | one `multipart/related` `POST` | one `PUT` |
 | a large write | `parts + 2` | `chunks + 1` | `blocks + 1` |
+| an upload from a reader (`upload_from`) | one `PUT` below the multipart threshold; above it `parts + 2`, one part of the source held at a time | as a write | as a write |
 | an exclusive create (`create_bytes`), won or lost | one `PUT` with `If-None-Match: *`; a large one `parts + 2`, the condition on `CompleteMultipartUpload` and a lost upload aborted; one more `PUT` per `409 ConditionalRequestConflict` under the retry budget (a large one abandoned and sent again, `parts + 2` more); `412 PreconditionFailed` the conflict | one `POST` with `ifGenerationMatch=0`; a large one `chunks + 1`, the condition on the initiating `POST`; `412 conditionNotMet` the conflict | one `PUT` with `If-None-Match: *`; a large one `blocks + 1`, the condition on `Put Block List`; `409 BlobAlreadyExists` or `412 ConditionNotMet` the conflict |
 | an append | one `GET` and one write; no `GET` while open | the same | the same |
 | a removal | one `DELETE`, no probe | one `objects.delete` | one `DELETE` |
@@ -4371,7 +4425,7 @@ The request count is the contract, asserted by tests.
 | the stream of a prefix, a `lake/` location or a glob | its listing, then one `GET` per object as the stream reaches it | the same | the same |
 | emptying or removing a prefix | one listing and one bulk delete per 1000 keys | per 100 | per 256 |
 
-A recursive listing is one flat listing, because keys in byte order already are depth-first pre-order. A ranged read learns the length from `Content-Range`, and `S3File::with_known_size` takes one a manifest already stated, which is how an [Iceberg](../media/iceberg.md) scan reads each data file with one `GET`. A move between two objects is the copy and the removal, the value crossing through the client: a server-side copy (`CopyObject`) is not what a move does yet.
+A recursive listing is one flat listing, because keys in byte order already are depth-first pre-order. A ranged read learns the length from `Content-Range`, and `IOBase::set_known_size` - `S3File::with_known_size` by value - takes one a manifest already stated, which is how an [Iceberg](../media/iceberg.md) scan reads each data file with one `GET`. A move between two objects is the copy and the removal, the value crossing through the client: a server-side copy (`CopyObject`) is not what a move does yet.
 
 A bucket's region that a redirect corrected is kept on the session every client built from the same options shares - 64 buckets at most, the least recently learned let go first - so the next client on that bucket starts signed for its region and sent to its host: the redirect, and the `HEAD` that found the region, are paid once per session rather than once per client, which on a table is once per data file. A Google bearer token is held by the options value its clients were built on, one per credential source and scope, so two `gs://` clients under one credential ask for one token between them and clients under different credentials never share one.
 

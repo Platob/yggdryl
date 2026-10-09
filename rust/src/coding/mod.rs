@@ -347,6 +347,11 @@ impl<H: IOBase> crate::IOMedia for Coding<H> {
     }
 }
 
+// The capabilities a backend specializes keep their defaults here: an upload
+// is encoded through this handle's own whole-value write, a failed write is
+// the caller's to remove so the coding state goes with it, a role's handle
+// would drop the coding, and a stored length a listing states is not the
+// decoded length this handle answers.
 impl<H: IOBase> IOBase for Coding<H> {
     /// Read the range out of the decoded value.
     ///

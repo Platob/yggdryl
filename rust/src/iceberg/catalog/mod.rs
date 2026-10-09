@@ -500,13 +500,13 @@ fn is_not_a_directory(error: &Error) -> bool {
 /// for a location nothing occupies yet that is a leaf-to-be. A catalog knows
 /// better - its names address containers - so the leaf spellings are re-cast
 /// as the same backend's folder: a local or bound location keeping every
-/// bound-location fact, an object store's undecided location or object the
-/// prefix it names on the same client, with no request.
+/// bound-location fact, and a claimed backend's handle the container its
+/// location names on the same client ([`IOBase::as_container`]) - an object
+/// store's undecided location or object the prefix it spells, with no
+/// request - or itself where it is a container already.
 fn folder_role(child: Holder) -> Result<Holder> {
     match child {
         Holder::LocalFolder(_) | Holder::FsFolder(_) => Ok(child),
-        #[cfg(feature = "s3")]
-        Holder::S3Folder(_) => Ok(child),
         Holder::LocalPath(path) => Ok(Holder::LocalFolder(crate::local::LocalFolder::from_url(
             path.url().clone(),
         )?)),
@@ -524,19 +524,24 @@ fn folder_role(child: Holder) -> Result<Holder> {
         Holder::FsFile(file) => Ok(Holder::FsFolder(crate::fs::FsFolder::new(
             file.bound().clone(),
         ))),
-        #[cfg(feature = "s3")]
-        Holder::S3Path(path) => Ok(Holder::S3Folder(path.as_directory()?)),
-        #[cfg(feature = "s3")]
-        Holder::S3File(file) => Ok(Holder::S3Folder(file.as_directory()?)),
-        other => {
-            let described = other
-                .url()
-                .map_or_else(|| "<memory>".to_owned(), ToString::to_string);
-            Err(invalid(format_smolstr!(
-                "expected a backend that can hold a folder for a catalog name, got {described}"
-            )))
-        }
+        Holder::Registered(_) => match child.as_container()? {
+            Some(folder) => Ok(folder),
+            None if child.is_container() => Ok(child),
+            None => Err(no_folder(&child)),
+        },
+        other => Err(no_folder(&other)),
     }
+}
+
+/// The refusal of a child whose backend holds no folder a catalog name can
+/// address.
+fn no_folder(child: &Holder) -> Error {
+    let described = child
+        .url()
+        .map_or_else(|| "<memory>".to_owned(), ToString::to_string);
+    invalid(format_smolstr!(
+        "expected a backend that can hold a folder for a catalog name, got {described}"
+    ))
 }
 
 /// Check one part of a path as a folder name under a catalog.

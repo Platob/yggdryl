@@ -330,7 +330,9 @@ impl crate::IOMedia for Media {
 }
 
 /// A `Media` is the bytes it encodes, so every byte operation reaches straight
-/// through to the handle underneath.
+/// through to the handle underneath - through the medium, which keeps for
+/// itself what its own state shapes: an upload through its invalidating
+/// write, a discard and the two roles as the defaults answer them.
 impl IOBase for Media {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
         self.as_io().pread(offset, buffer)
@@ -364,8 +366,16 @@ impl IOBase for Media {
         self.as_io_mut().create_bytes(bytes)
     }
 
+    fn upload_from(&mut self, source: &mut dyn std::io::Read, length: u64) -> crate::Result<()> {
+        self.as_io_mut().upload_from(source, length)
+    }
+
     fn size(&self) -> u64 {
         self.as_io().size()
+    }
+
+    fn set_known_size(&mut self, size: u64) {
+        self.as_io_mut().set_known_size(size);
     }
 
     fn capacity(&self) -> u64 {
@@ -432,12 +442,24 @@ impl IOBase for Media {
         self.as_io_mut().remove(recursive)
     }
 
+    fn discard(&self) -> crate::Result<bool> {
+        self.as_io().discard()
+    }
+
     fn parent(&self) -> Option<Holder> {
         self.as_io().parent()
     }
 
     fn child_by_path(&self, name: &str) -> crate::Result<Holder> {
         self.as_io().child_by_path(name)
+    }
+
+    fn as_leaf(&self) -> crate::Result<Option<Holder>> {
+        self.as_io().as_leaf()
+    }
+
+    fn as_container(&self) -> crate::Result<Option<Holder>> {
+        self.as_io().as_container()
     }
 
     fn ls(&self, recursive: bool, include_private: bool) -> crate::Listing {

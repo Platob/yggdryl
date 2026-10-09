@@ -21,7 +21,7 @@ use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::BufferedOptions;
 use yggdryl::http::HttpOptions;
 use yggdryl::media::{IORecordOptions as _, RecordOptions};
-use yggdryl::s3::S3Options;
+use yggdryl::s3::{S3File, S3Folder, S3Options, S3Path};
 use yggdryl::s3tables::S3TablesCatalog;
 use yggdryl::{Codec, IOMode, Level};
 use yggdryl::{IOBase as _, IOMedia as _};
@@ -68,13 +68,6 @@ fn consumed() -> PyErr {
     )
 }
 
-/// Rebuild a foreign-filesystem handle, keeping the filesystem it stands on.
-///
-/// `None` for anything else, which [`cloned`] holds again on its own store.
-fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
-    inner.bound_location().cloned().map(yggdryl::fs::located)
-}
-
 /// The plain handle beneath every wrapper: the role that holds the store.
 fn plain(holder: &Holder) -> &Holder {
     match holder {
@@ -84,76 +77,6 @@ fn plain(holder: &Holder) -> &Holder {
         Holder::Media(media) => plain(media.handle()),
         held => held,
     }
-}
-
-/// A second holder on the same location, over the same store.
-///
-/// The plain handle beneath every wrapper is what is held again, and
-/// [`declared`] composes over it what the name says, as construction did. A
-/// native role is cloned - a local role over its path, an object-store role
-/// on its own client, so the endpoint, the credentials and every other
-/// option it was built with travel with it - and a bridged location is
-/// rebuilt on its filesystem. Nothing is rebuilt from its URL: a URL says
-/// where a resource is, not how it is reached, and only a handle with no
-/// store of its own - an HTTP resource, an archive member, a warehouse
-/// object - is held again by its location alone. A media type the handle
-/// declares beyond what its name says is carried across.
-fn cloned(holder: &Holder) -> PyResult<Holder> {
-    let holder = plain(holder);
-    if let Some(bound) = rebuilt_arrow_holder(holder) {
-        return Ok(bound);
-    }
-    let mut clone = match holder {
-        Holder::Table(table) => Holder::Table(table.clone()),
-        Holder::LocalFolder(folder) => Holder::LocalFolder(folder.clone()),
-        Holder::LocalPath(path) => Holder::LocalPath(
-            yggdryl::local::LocalPath::from_url(path.url().clone()).map_err(value_error)?,
-        ),
-        Holder::LocalFile(file) => {
-            Holder::LocalFile(yggdryl::local::LocalFile::new(file.path()).map_err(value_error)?)
-        }
-        Holder::S3Folder(folder) => Holder::S3Folder(folder.clone()),
-        Holder::S3Path(path) => match store_sibling(path.parent(), path.url()) {
-            Some(sibling) => sibling.map_err(value_error)?,
-            // The bucket itself, or a location spelled with a trailing slash:
-            // a container by its spelling, held as one on the same client.
-            None => Holder::S3Folder(path.as_directory().map_err(value_error)?),
-        },
-        Holder::S3File(file) => {
-            let sibling = store_sibling(file.parent(), file.url()).ok_or_else(|| {
-                PyValueError::new_err(format!(
-                    "expected an object below a container, got {}",
-                    file.url()
-                ))
-            })?;
-            match sibling.map_err(value_error)? {
-                Holder::S3Path(path) => Holder::S3File(path.as_file().map_err(value_error)?),
-                held => held,
-            }
-        }
-        other => {
-            let url = other.url().ok_or_else(|| {
-                PyValueError::new_err("an in-memory resource has no location to rebuild from")
-            })?;
-            located_holder(url)?
-        }
-    };
-    if clone.media_type() != holder.media_type() {
-        clone.set_media_type(holder.media_type().clone());
-    }
-    Ok(clone)
-}
-
-/// The object-store location `url` names, built as the child of `parent` -
-/// its prefix on the same client - which is the one way a second `S3Path`
-/// or `S3File` on that client is built. `None` at a bucket root or under a
-/// trailing slash, where the location is its own container.
-fn store_sibling(parent: Option<Holder>, url: &yggdryl::Url) -> Option<yggdryl::Result<Holder>> {
-    if url.has_trailing_slash() {
-        return None;
-    }
-    let name = url.file_name()?;
-    Some(parent?.child_by_path(name))
 }
 
 /// Hold the resource `location` names, on the store its scheme selects.
@@ -187,7 +110,7 @@ pub(crate) fn folder_holder_for(url: &yggdryl::Url) -> PyResult<Holder> {
     }
     if url.scheme().is_object_store() {
         return yggdryl::s3::folder(&url.to_string())
-            .map(Holder::S3Folder)
+            .map(Holder::from)
             .map_err(crate::holder::fs::storage_error);
     }
     if !url.is_local() {
@@ -209,11 +132,16 @@ fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
 }
 
 /// Address `holder`'s location as a container on the store it stands on,
-/// keeping that store: a bridged filesystem's folder role, an object-store
-/// role's prefix on its own client under its own options, a local role's
-/// directory. `None` for a holder whose location alone says where it lives -
-/// a buffer, an HTTP resource. A wrapper is asked through the plain handle
-/// beneath it ([`plain`]), which is what [`PyIOBase::folder_holder`] does.
+/// keeping that store: a bridged filesystem's folder role, a local role's
+/// directory, a backend's handle as the container its own
+/// [`as_container`](yggdryl::IOBase::as_container) names - an object-store
+/// location or object the prefix it spells, on its own client under its own
+/// options, with no request - or, where it names none and is a container,
+/// itself held again ([`Holder::from_handle`]). `None` for a holder whose
+/// location alone says where it lives - a buffer, an HTTP resource, a
+/// backend's leaf naming no container. A wrapper is asked through the plain
+/// handle beneath it ([`plain`]), which is what [`PyIOBase::folder_holder`]
+/// does.
 pub(crate) fn container_holder(holder: &Holder) -> PyResult<Option<Holder>> {
     if let Some(bound) = fs_folder_holder(holder) {
         return Ok(Some(bound));
@@ -224,9 +152,13 @@ pub(crate) fn container_holder(holder: &Holder) -> PyResult<Option<Holder>> {
         Holder::LocalFile(file) => {
             Holder::LocalFolder(yggdryl::local::LocalFolder::new(file.path()).map_err(value_error)?)
         }
-        Holder::S3Folder(folder) => Holder::S3Folder(folder.clone()),
-        Holder::S3Path(path) => Holder::S3Folder(path.as_directory().map_err(value_error)?),
-        Holder::S3File(file) => Holder::S3Folder(file.as_directory().map_err(value_error)?),
+        // The handle's own answer, asked of it directly: its role's verb, and
+        // its kind - a prefix's is free - only where it names no container.
+        Holder::Registered(handle) => match handle.as_container().map_err(value_error)? {
+            Some(container) => container,
+            None if handle.is_container() => Holder::from_handle(holder).map_err(value_error)?,
+            None => return Ok(None),
+        },
         _ => return Ok(None),
     }))
 }
@@ -243,11 +175,14 @@ fn native_path(holder: &Holder) -> Option<String> {
         key => format!("{bucket}/{key}"),
     };
     let holder = plain(holder);
-    match holder {
-        Holder::S3Folder(folder) => return Some(store_path(folder.bucket(), folder.prefix())),
-        Holder::S3Path(path) => return Some(store_path(path.bucket(), path.key())),
-        Holder::S3File(file) => return Some(store_path(file.bucket(), file.key())),
-        _ => {}
+    if let Some(folder) = holder.downcast_ref::<S3Folder>() {
+        return Some(store_path(folder.bucket(), folder.prefix()));
+    }
+    if let Some(path) = holder.downcast_ref::<S3Path>() {
+        return Some(store_path(path.bucket(), path.key()));
+    }
+    if let Some(file) = holder.downcast_ref::<S3File>() {
+        return Some(store_path(file.bucket(), file.key()));
     }
     let url = holder.url()?;
     if url.is_local() {
@@ -312,9 +247,7 @@ impl Role {
             Holder::FsFolder(_) => Self::FsFolder,
             Holder::FsPath(_) => Self::FsPath,
             Holder::FsFile(_) => Self::FsFile,
-            Holder::S3Folder(_) => Self::S3Folder,
-            Holder::S3Path(_) => Self::S3Path,
-            Holder::S3File(_) => Self::S3File,
+            Holder::Registered(_) => Self::registered(holder),
             Holder::HttpSession(_) => Self::HttpSession,
             Holder::HttpRequest(_) => Self::HttpRequest,
             Holder::HttpResponse(_) => Self::HttpResponse,
@@ -337,6 +270,21 @@ impl Role {
             // reading - it holds the whole contract - but it also means a new
             // variant will not remind anyone to name it here.
             _ => Self::Held,
+        }
+    }
+
+    /// The role of a backend's handle: the class its type has
+    /// ([`Holder::downcast_ref`]), or the base class for a type this build
+    /// names none for.
+    fn registered(holder: &Holder) -> Self {
+        if holder.downcast_ref::<S3Folder>().is_some() {
+            Self::S3Folder
+        } else if holder.downcast_ref::<S3Path>().is_some() {
+            Self::S3Path
+        } else if holder.downcast_ref::<S3File>().is_some() {
+            Self::S3File
+        } else {
+            Self::Held
         }
     }
 
@@ -505,10 +453,29 @@ impl PyIOBase {
     ///
     /// A handle owns backend state - a mapping, an open descriptor, a staged
     /// write - so it is not copied: the plain handle beneath every wrapper is
-    /// held again ([`cloned`]), the client and the options it was built with
-    /// kept, and what comes back is the role with nothing composed over it.
+    /// held again by the core's one door ([`Holder::from_handle`]), the
+    /// client and the options it was built with kept and the media type it
+    /// declares carried across, and what comes back is the role with nothing
+    /// composed over it. A handle that door has no client to reopen on - one
+    /// HTTP answer, an archive's root - is held by the location it names, as
+    /// opening that location would hold it; an in-memory buffer, which names
+    /// none, is refused.
     pub(crate) fn rebuilt(&self) -> PyResult<Holder> {
-        cloned(self.inner()?)
+        let inner = self.inner()?;
+        match Holder::from_handle(inner) {
+            Err(error) if error.is_unsupported() => {
+                let plain = plain(inner);
+                let Some(url) = plain.url().filter(|_| !matches!(plain, Holder::Buffer(_))) else {
+                    return Err(crate::holder::fs::storage_error(error));
+                };
+                let mut held = located_holder(url)?;
+                if held.media_type() != plain.media_type() {
+                    held.set_media_type(plain.media_type().clone());
+                }
+                Ok(held)
+            }
+            held => held.map_err(crate::holder::fs::storage_error),
+        }
     }
 
     /// Build a container handle on the same location.

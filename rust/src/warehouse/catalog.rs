@@ -349,11 +349,7 @@ impl Catalog {
         // refused here, where the location is read, rather than by the folder
         // catalog's handle on first use.
         if kind.is_none() && factory.is_none() && url.scheme().is_s3_tables() {
-            return Err(Error::unsupported(
-                "holding a location of this scheme; install the crate that claims it and call its \
-                 `install()`",
-                url.scheme().as_str(),
-            ));
+            return Err(crate::holder::unregistered(url.scheme()));
         }
         let name = match properties.get("name") {
             Some(name) if !name.is_empty() => SmolStr::new(name),

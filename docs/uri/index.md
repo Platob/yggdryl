@@ -31,7 +31,7 @@
 | Stable hash | `stable_hash()` / `stableHash()` compute only; never lock |
 | Credentials | Userinfo splits at its first colon; later colons stay in the password |
 | Store authority | First component ending `.com` / `.io`, carrying a port, an IP literal, or `localhost` is a hostname, else the container; recognized AWS and Google hosts expose `region` |
-| Store container | `bucket()` is the container on all of them - a bucket on `s3:`/`gs:`, a container on `az:`, a table bucket on `s3tables:` - read from the hostname where the host names one, and from Azure's user position where the Hadoop spellings write it. `has_container()` is the scheme predicate behind it; `is_object_store()` stays the narrower question of which byte backend opens a location |
+| Store container | `bucket()` is the container on all of them - a bucket on `s3:`/`gs:`, a container on `az:`, a table bucket on `s3tables:` - read from the hostname where the host names one, and from Azure's user position where the Hadoop spellings write it. `has_container()` is the scheme predicate behind it; `is_object_store()` is the narrower one, the ten schemes the object-store backend claims; which byte backend opens a location is the [backend register's](../holder/index.md#storage-backends) answer |
 | Store account | `account()` is Azure's storage account, read from `container@account.host` or from the account's own host; `None` everywhere else |
 | Store endpoint | `store_endpoint()` is the host and explicit port to address, with a virtual-hosted container removed; `is_virtual_hosted()` says whether the container was written into the hostname |
 | Store key | `key()` is the path below the container as spelled - escapes and trailing slash kept, `""` at the root |

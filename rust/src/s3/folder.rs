@@ -1,10 +1,11 @@
 //! One S3 prefix, or a whole bucket, as a container.
 
+use std::any::Any;
 use std::sync::Arc;
 
 use super::client::Client;
 use super::file::S3File;
-use crate::holder::Holder;
+use crate::holder::{Holder, RegisteredHandle};
 use crate::{Error, IOBase, IOFolder, IOKind, Listing, MediaType, Result, Uri, Url};
 
 /// A key prefix on S3, addressed as a container.
@@ -315,9 +316,10 @@ impl Entry {
 fn hold(client: &Arc<Client>, root: &Url, relative: &str, entry: &Entry) -> Result<Holder> {
     let child = root.joinpath(&super::encode_key_path(relative))?;
     match entry {
-        Entry::Prefix { .. } => S3Folder::new(client.clone(), child).map(Holder::S3Folder),
-        Entry::Object { size, .. } => S3File::new(client.clone(), child)
-            .map(|file| Holder::S3File(file.with_known_size(*size))),
+        Entry::Prefix { .. } => S3Folder::new(client.clone(), child).map(Holder::from),
+        Entry::Object { size, .. } => {
+            S3File::new(client.clone(), child).map(|file| Holder::from(file.with_known_size(*size)))
+        }
     }
 }
 
@@ -461,7 +463,7 @@ impl IOBase for S3Folder {
         let parent = self.url.parent()?;
         Self::new(self.client.clone(), parent)
             .ok()
-            .map(Holder::S3Folder)
+            .map(Holder::from)
     }
 
     /// Resolve a descendant without asking the store anything.
@@ -472,9 +474,9 @@ impl IOBase for S3Folder {
     fn child_by_path(&self, name: &str) -> Result<Holder> {
         let url = self.url.joinpath(name)?;
         if url.has_trailing_slash() {
-            return Self::new(self.client.clone(), url).map(Holder::S3Folder);
+            return Self::new(self.client.clone(), url).map(Holder::from);
         }
-        super::S3Path::new(self.client.clone(), url).map(Holder::S3Path)
+        super::S3Path::new(self.client.clone(), url).map(Holder::from)
     }
 
     fn ls(&self, recursive: bool, include_private: bool) -> Listing {
@@ -499,6 +501,41 @@ impl IOBase for S3Folder {
 
     fn is_tabular(&self) -> bool {
         self.folder_is_tabular()
+    }
+}
+
+/// A prefix is a handle the object-store backend ([`super::S3_BACKEND`])
+/// answers, held as [`Holder::Registered`].
+impl RegisteredHandle for S3Folder {
+    fn implementation_name(&self) -> &'static str {
+        "S3Folder"
+    }
+
+    /// Whether anything lives under the prefix, as [`S3Folder::exists`]
+    /// answers it.
+    fn exists(&self) -> bool {
+        self.folder_exists()
+    }
+
+    /// The prefix again on the same client, sending nothing: a prefix holds
+    /// no state of its own, so it is cloned.
+    fn reopen(&self) -> Result<Holder> {
+        Ok(Holder::from(self.clone()))
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+/// A prefix, held as the registered handle it is.
+impl From<S3Folder> for Holder {
+    fn from(folder: S3Folder) -> Self {
+        Self::Registered(Box::new(folder))
     }
 }
 

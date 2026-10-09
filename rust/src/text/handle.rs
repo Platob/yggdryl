@@ -389,9 +389,12 @@ impl<H: IOBase> IOMedia for Text<H> {
 }
 
 impl<H: IOBase> IOBase for Text<H> {
+    // The bytes pass through unchanged, so every byte verb is the handle's;
+    // `as_leaf` and `as_container` keep the default, since the handle they
+    // would answer drops the text configuration.
     crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, read_tail_bytes,
         pstream_bytes,
-        read_digest, read_range_digest, size, capacity, reserve,
+        read_digest, read_range_digest, size, set_known_size, capacity, reserve,
         uri, url, bound_location, mtime, media_type, applied_codec, flush, parent,
         child_by_path, ls, kind, is_container, is_atomic, is_io);
 
@@ -422,6 +425,11 @@ impl<H: IOBase> IOBase for Text<H> {
     fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {
         self.cache.invalidate();
         self.handle.append_bytes(bytes)
+    }
+
+    fn upload_from(&mut self, source: &mut dyn std::io::Read, length: u64) -> Result<()> {
+        self.cache.invalidate();
+        self.handle.upload_from(source, length)
     }
 
     fn set_media_type(&mut self, media_type: crate::MediaType) {
@@ -465,6 +473,13 @@ impl<H: IOBase> IOBase for Text<H> {
     fn remove(&mut self, recursive: bool) -> Result<()> {
         self.cache.close();
         self.handle.remove(recursive)
+    }
+
+    /// Drop what the handle staged; the cache goes with it, since the value
+    /// it described is no longer the one a read finds.
+    fn discard(&self) -> Result<bool> {
+        self.cache.invalidate();
+        self.handle.discard()
     }
 }
 

@@ -18,6 +18,13 @@
 //! selects this backend and addresses the same object. A handle reports the
 //! spelling it was handed, in its location and in its refusals.
 //!
+//! The ten schemes are [`S3_BACKEND`]'s, the
+//! [`StorageBackend`] the core claims under
+//! them until `yggdryl-s3` does: [`Holder::from_url`] holds a location of any
+//! of them as the [`S3Path`] it names, [`Holder::Registered`] as every
+//! claimed backend's handle is, and [`Holder::downcast_ref`] answers it as
+//! the role it is.
+//!
 //! Everything else follows from [`IOBase`](crate::IOBase) rather than being
 //! written again here - globs, Hive partitions, page caching through
 //! [`Buffered`](crate::holder::buffered::Buffered), content codings, IPC,
@@ -103,8 +110,8 @@
 
 use std::sync::Arc;
 
-use crate::holder::Holder;
-use crate::{Error, Result, Url};
+use crate::holder::{Holder, StorageBackend};
+use crate::{Error, Result, Scheme, Url};
 
 pub(crate) mod answer;
 pub mod aws;
@@ -135,6 +142,82 @@ pub use provider::Provider;
 
 use client::Client;
 
+/// The object stores' byte backend: Amazon S3, Google Cloud Storage and
+/// Azure Blob Storage behind one [`StorageBackend`], holding a location of
+/// any of their ten schemes as the [`S3Path`] it names.
+///
+/// The core claims it itself, before the register answers anything, until
+/// `yggdryl-s3`'s `install()` does. A location's query states the store's
+/// properties in the names [`S3Options::with_properties`] reads, and
+/// [`Holder::from_url`] refuses a parameter it does not read before the
+/// backend is asked. Holding a location sends nothing.
+///
+/// ```
+/// use yggdryl::holder::{Holder, StorageBackend, backend_for};
+/// use yggdryl::s3::{S3_BACKEND, S3Path};
+/// use yggdryl::{Scheme, Url};
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let claimed = backend_for(&Scheme::GS).expect("the core claims `gs`");
+/// assert_eq!(claimed.name(), "yggdryl-s3");
+/// assert!(S3_BACKEND.is_property("region"));
+/// assert!(!S3_BACKEND.is_property("versionId"));
+///
+/// let url = Url::from_str("s3://trades/lake/part.parquet")?;
+/// let held = Holder::from_url(&url, [("region", "eu-west-1")])?;
+/// let path = held.downcast_ref::<S3Path>().expect("an undecided location");
+/// assert_eq!(path.key(), "lake/part.parquet");
+/// assert_eq!(path.stats().requests, 0);
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Debug)]
+pub struct S3Backend;
+
+/// The one [`S3Backend`], claimed under the ten object-store schemes.
+pub static S3_BACKEND: S3Backend = S3Backend;
+
+/// The schemes the object stores' locations spell, the keys [`S3_BACKEND`]
+/// is claimed under: each [`Provider`]'s own scheme and the spellings older
+/// connectors wrote for it.
+static SCHEMES: [Scheme; 10] = [
+    Scheme::S3,
+    Scheme::S3A,
+    Scheme::S3N,
+    Scheme::GS,
+    Scheme::GCS,
+    Scheme::AZ,
+    Scheme::ABFS,
+    Scheme::ABFSS,
+    Scheme::WASB,
+    Scheme::WASBS,
+];
+
+impl StorageBackend for S3Backend {
+    fn name(&self) -> &'static str {
+        "yggdryl-s3"
+    }
+
+    fn schemes(&self) -> &'static [Scheme] {
+        &SCHEMES
+    }
+
+    /// Whether [`S3Options::with_properties`] reads `name`, in any
+    /// vocabulary and spelling it accepts ([`S3Options::is_property`]).
+    fn is_property(&self, name: &str) -> bool {
+        S3Options::is_property(name)
+    }
+
+    /// The [`S3Path`] `url` names, on a client configured by `properties`
+    /// ([`located_with`]); the query is already taken off `url` and stated
+    /// first among `properties`.
+    fn holder(&self, url: &Url, properties: &[(String, String)]) -> Result<Holder> {
+        let options =
+            S3Options::from_properties(properties.iter().map(|(name, value)| (name, value)))?;
+        located_with(&url.to_string(), options)
+    }
+}
+
 /// Hold the resource `url` names, resolving its role only when asked.
 ///
 /// Construction performs no request. A caller who already knows the role
@@ -157,7 +240,7 @@ pub fn located(url: &str) -> Result<Holder> {
 pub fn located_with(url: &str, options: S3Options) -> Result<Holder> {
     let url = parse(url)?;
     let client = Arc::new(Client::new(&url, options)?);
-    S3Path::new(client, url).map(Holder::S3Path)
+    S3Path::new(client, url).map(Holder::from)
 }
 
 /// Hold the object `url` names, whether or not it exists yet.

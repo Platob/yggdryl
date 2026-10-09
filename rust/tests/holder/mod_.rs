@@ -659,14 +659,20 @@ mod second_handles {
     }
 }
 
-/// The object-store roles: what `Holder::from_url` reads off a location's
-/// query, beneath the caller's properties, and takes off the location.
+/// The object-store roles: what `Holder::from_url` holds a location of the
+/// object stores' claimed backend as, what it reads off the location's query,
+/// beneath the caller's properties, and takes off the location, and what an
+/// object-store role answers for itself through the `Holder` - each a stated
+/// number of requests.
 #[cfg(feature = "s3")]
 mod object_store_holders {
     use yggdryl::holder::Holder;
-    use yggdryl::{IOBase, Url};
+    use yggdryl::s3::{self, Credentials, S3File, S3Folder, S3Options, S3Path};
+    use yggdryl::{Codec, IOBase, MimeType, Url};
 
     use crate::server::FakeS3;
+
+    const NONE: [(&str, &str); 0] = [];
 
     /// `text` as one query value: the escapes a URL needs.
     fn escaped(text: &str) -> String {
@@ -682,24 +688,103 @@ mod object_store_holders {
         store
     }
 
+    /// `key` in the `trades` bucket, its query stating `store` as the
+    /// endpoint the reader reaches anonymously.
+    fn located(store: &FakeS3, key: &str) -> Url {
+        Url::from_str(&format!(
+            "s3://trades/{key}?endpoint_override={}&region=us-east-1&path_style=true&anonymous=true",
+            escaped(&store.endpoint())
+        ))
+        .unwrap()
+    }
+
+    /// The methods and keys of the requests recorded since the last clear,
+    /// a listing as a `GET` of no key.
+    fn asked(store: &FakeS3) -> Vec<(String, Option<String>)> {
+        store
+            .requests()
+            .into_iter()
+            .map(|request| (request.method, request.key))
+            .collect()
+    }
+
+    /// A source that answers in pieces smaller than it is asked for, and
+    /// remembers the most it was ever asked for at once - the buffer an
+    /// upload holds.
+    struct Metered<'bytes> {
+        bytes: &'bytes [u8],
+        position: usize,
+        largest_ask: usize,
+    }
+
+    impl std::io::Read for Metered<'_> {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            self.largest_ask = self.largest_ask.max(buffer.len());
+            let length = buffer
+                .len()
+                .min(self.bytes.len() - self.position)
+                .min(100 * 1024);
+            buffer[..length].copy_from_slice(&self.bytes[self.position..self.position + length]);
+            self.position += length;
+            Ok(length)
+        }
+    }
+
+    /// An object-store location is the claimed backend's undecided location,
+    /// held as every claimed backend's handle is and described as every
+    /// backend's is: what its name says the bytes are, or what `media_type`
+    /// declares, and the coding `codec` names presented decoded - holding
+    /// any of them sending nothing.
+    #[test]
+    fn an_object_store_location_is_a_registered_handle_described_as_any_other() {
+        let store = store();
+
+        let held = Holder::from_url(located(&store, "lake/part.parquet"), NONE).unwrap();
+        assert!(matches!(held, Holder::Registered(_)), "{held:?}");
+        let path = held
+            .downcast_ref::<S3Path>()
+            .expect("an undecided location");
+        assert_eq!(path.key(), "lake/part.parquet");
+        assert_eq!(held.media_type().base(), &MimeType::PARQUET);
+
+        let declared = Holder::from_url(
+            located(&store, "lake/part.bin"),
+            [("media_type", "application/vnd.apache.parquet")],
+        )
+        .unwrap();
+        assert!(declared.downcast_ref::<S3Path>().is_some(), "{declared:?}");
+        assert_eq!(declared.media_type().base(), &MimeType::PARQUET);
+
+        let mut coded =
+            Holder::from_url(located(&store, "lake/part.csv"), [("codec", "gzip")]).unwrap();
+        assert!(matches!(coded, Holder::Coded(_)), "{coded:?}");
+        assert_eq!(store.request_count(), 0, "holding sends nothing");
+
+        // The coding is the handle's: a write stores the value coded, and a
+        // read presents it decoded.
+        coded
+            .write_all_bytes(b"symbol,price\nAAPL,187.23\n")
+            .unwrap();
+        let stored = store.get("trades", "lake/part.csv").expect("the object");
+        assert_eq!(
+            Codec::Gzip.load(&stored).unwrap(),
+            b"symbol,price\nAAPL,187.23\n"
+        );
+        assert_eq!(
+            coded.read_all_bytes().unwrap(),
+            b"symbol,price\nAAPL,187.23\n"
+        );
+    }
+
     #[test]
     fn a_query_states_the_store_beneath_the_properties_and_leaves_the_location() {
         let store = store();
         store.put("trades", "lake/part.bin", b"AAPL");
-        let none: [(&str, &str); 0] = [];
 
         // The query names the store in the reader's own names and in
         // PyArrow's; the handle reports the location without it.
-        let url = Url::from_str(&format!(
-            "s3://trades/lake/part.bin?endpoint_override={}&region=us-east-1&path_style=true&anonymous=true",
-            escaped(&store.endpoint())
-        ))
-        .unwrap();
-        let held = Holder::from_url(&url, none).unwrap();
-        assert!(
-            matches!(held, Holder::S3Path(_) | Holder::S3File(_)),
-            "{held:?}"
-        );
+        let held = Holder::from_url(located(&store, "lake/part.bin"), NONE).unwrap();
+        assert!(held.downcast_ref::<S3Path>().is_some(), "{held:?}");
         assert_eq!(
             held.url().map(ToString::to_string).as_deref(),
             Some("s3://trades/lake/part.bin")
@@ -725,8 +810,24 @@ mod object_store_holders {
         // A parameter naming no property the store reads is refused by name
         // before anything is held, since an object takes no query.
         let url = Url::from_str("s3://trades/lake/part.bin?versionId=3").unwrap();
-        let error = Holder::from_url(&url, none).unwrap_err();
-        assert!(error.to_string().contains("versionId"), "{error}");
+        let error = Holder::from_url(&url, NONE).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "invalid storage location expression at byte 0: the query parameter \"versionId\" \
+             names no property the `s3` backend reads"
+        );
+    }
+
+    /// Whether anything is at a location is the role's own answer; a role
+    /// keeps what the store said, so a second handle asks again.
+    #[test]
+    fn a_store_role_answers_whether_anything_is_there() {
+        let store = store();
+        let held = Holder::from_url(located(&store, "lake/part.bin"), NONE).unwrap();
+        assert!(!held.exists());
+        store.put("trades", "lake/part.bin", b"AAPL");
+        let again = Holder::from_url(located(&store, "lake/part.bin"), NONE).unwrap();
+        assert!(again.exists());
     }
 
     /// A second handle on an object-store role is built on the role's own
@@ -735,8 +836,6 @@ mod object_store_holders {
     /// object built as the child of their parent folder, each role kept.
     #[test]
     fn a_store_role_is_held_again_on_its_own_client_sending_nothing() {
-        use yggdryl::s3::{self, Credentials, S3Options};
-
         let store = FakeS3::start();
         store.create_bucket("trades");
         store.put("trades", "lake/part.bin", b"AAPL");
@@ -746,12 +845,12 @@ mod object_store_holders {
             .with_region("us-east-1")
             .with_path_style(true)
             .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI"));
-        let folder = Holder::S3Folder(s3::folder_with("s3://trades/lake", options).unwrap());
+        let folder = Holder::from(s3::folder_with("s3://trades/lake", options).unwrap());
         let path = folder.child_by_path("part.bin").unwrap();
-        let Holder::S3Path(located) = &path else {
-            panic!("expected a location, got {path:?}");
-        };
-        let file = Holder::S3File(located.as_file().unwrap());
+        let location = path
+            .downcast_ref::<S3Path>()
+            .unwrap_or_else(|| panic!("expected a location, got {path:?}"));
+        let file = Holder::from(location.as_file().unwrap());
         store.clear_requests();
 
         let folder_again = Holder::from_handle(&folder).unwrap();
@@ -759,11 +858,17 @@ mod object_store_holders {
         let file_again = Holder::from_handle(&file).unwrap();
         assert_eq!(store.request_count(), 0, "holding again sends nothing");
         assert!(
-            matches!(folder_again, Holder::S3Folder(_)),
+            folder_again.downcast_ref::<S3Folder>().is_some(),
             "{folder_again:?}"
         );
-        assert!(matches!(path_again, Holder::S3Path(_)), "{path_again:?}");
-        assert!(matches!(file_again, Holder::S3File(_)), "{file_again:?}");
+        assert!(
+            path_again.downcast_ref::<S3Path>().is_some(),
+            "{path_again:?}"
+        );
+        assert!(
+            file_again.downcast_ref::<S3File>().is_some(),
+            "{file_again:?}"
+        );
         assert_eq!(file_again.url(), file.url());
 
         // The read goes to the fake's endpoint, signed with the key pair the
@@ -779,6 +884,108 @@ mod object_store_holders {
             store.request_count() > 0 && signed,
             "{:?}",
             store.requests()
+        );
+    }
+
+    /// What an object-store role specializes it answers through the
+    /// `Holder`, as the role itself would: a location re-described as the
+    /// object or the prefix it names, a stated length kept, a stage dropped
+    /// - none of them a request.
+    #[test]
+    fn a_store_role_answers_its_capabilities_through_the_holder_sending_nothing() {
+        let store = store();
+        store.put("trades", "lake/part.bin", b"AAPL");
+        let held = Holder::from_url(located(&store, "lake/part.bin"), NONE).unwrap();
+
+        let mut leaf = held.as_leaf().unwrap().expect("the object");
+        assert!(leaf.downcast_ref::<S3File>().is_some(), "{leaf:?}");
+        let prefix = held.as_container().unwrap().expect("the prefix");
+        assert!(prefix.downcast_ref::<S3Folder>().is_some(), "{prefix:?}");
+
+        // The object is a leaf already, and the prefix a container.
+        assert!(leaf.as_leaf().unwrap().is_none());
+        assert!(prefix.as_container().unwrap().is_none());
+
+        leaf.set_known_size(4);
+        assert_eq!(leaf.size(), 4);
+        // An object publishes whole values alone: a dropped stage leaves
+        // nothing a caller must remove.
+        assert!(leaf.discard().unwrap());
+        assert_eq!(store.request_count(), 0, "none of them a request");
+
+        assert_eq!(leaf.read_all_bytes().unwrap(), b"AAPL");
+        assert_eq!(
+            asked(&store),
+            [("GET".to_owned(), Some("lake/part.bin".to_owned()))]
+        );
+    }
+
+    /// An upload through the `Holder` is the object's own: above the
+    /// multipart threshold each part is read from the source and sent before
+    /// the next, so the source is never asked for more than a part - where
+    /// the whole-value default would read it whole first.
+    #[test]
+    fn an_upload_through_the_holder_is_the_objects_own_multipart_upload() {
+        let store = store();
+        let part = 5 * 1024 * 1024;
+        let options = S3Options::default()
+            .with_environment(false)
+            .with_endpoint(store.endpoint())
+            .with_region("us-east-1")
+            .with_path_style(true)
+            .with_anonymous(true)
+            .with_multipart_threshold(512 * 1024)
+            .with_part_size(part as u64);
+        let mut held =
+            Holder::from(s3::file_with("s3://trades/lake/streamed.bin", options).unwrap());
+
+        // Six mebibytes over five-mebibyte parts.
+        let bytes = b"AAPL,187.23;MSFT".repeat(393_216);
+        let mut source = Metered {
+            bytes: &bytes,
+            position: 0,
+            largest_ask: 0,
+        };
+        store.clear_requests();
+        held.upload_from(&mut source, bytes.len() as u64).unwrap();
+        assert_eq!(
+            store.request_count(),
+            4,
+            "two parts, the create and the complete"
+        );
+        assert_eq!(
+            source.largest_ask, part,
+            "one part at a time, never the whole"
+        );
+        assert_eq!(store.get("trades", "lake/streamed.bin"), Some(bytes));
+        assert_eq!(store.open_uploads(), 0);
+    }
+
+    /// A location spelling a prefix streams the objects beneath it, each
+    /// through the stream the object owns: one listing, then one `GET` per
+    /// object whatever the batch, and nothing asked about an object before
+    /// it is read.
+    #[test]
+    fn a_prefix_location_streams_one_get_per_object() {
+        let store = store();
+        store.put("trades", "logs/a.log", b"a1\na2\n");
+        store.put("trades", "logs/b.log", b"b1\nb2");
+        let held = Holder::from_url(located(&store, "logs/"), NONE).unwrap();
+
+        store.clear_requests();
+        let chunks = held
+            .pstream_bytes(0, 4)
+            .unwrap()
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(chunks.concat(), b"a1\na2\nb1\nb2");
+        assert_eq!(
+            asked(&store),
+            [
+                ("GET".to_owned(), None),
+                ("GET".to_owned(), Some("logs/a.log".to_owned())),
+                ("GET".to_owned(), Some("logs/b.log".to_owned())),
+            ]
         );
     }
 }

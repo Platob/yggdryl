@@ -358,6 +358,51 @@ mod accounting {
         assert!(!none.exists());
         assert_eq!(store.request_count(), 1, "one page, read to its end");
     }
+
+    /// A location is re-described as the object or the prefix it names, and
+    /// held again, on the same client with no request; one spelled as a
+    /// container is held again as its prefix.
+    #[test]
+    fn a_location_is_re_described_and_held_again_without_a_request() {
+        use yggdryl::holder::RegisteredHandle;
+        use yggdryl::s3::{S3File, S3Folder, S3Path};
+
+        let store = store();
+        let location = path(&store, "lake/part.parquet");
+        store.clear_requests();
+
+        assert_eq!(location.implementation_name(), "S3Path");
+        let leaf = location.as_leaf().expect("no request").expect("the object");
+        assert_eq!(
+            leaf.downcast_ref::<S3File>().expect("an object").key(),
+            "lake/part.parquet"
+        );
+        let prefix = location
+            .as_container()
+            .expect("no request")
+            .expect("the prefix");
+        assert_eq!(
+            prefix
+                .downcast_ref::<S3Folder>()
+                .expect("a prefix")
+                .prefix(),
+            "lake/part.parquet/"
+        );
+        let again = location.reopen().expect("the location again");
+        assert_eq!(
+            again.downcast_ref::<S3Path>().expect("a location").key(),
+            "lake/part.parquet"
+        );
+        let spelled = path(&store, "lake/").reopen().expect("the prefix again");
+        assert_eq!(
+            spelled
+                .downcast_ref::<S3Folder>()
+                .expect("a prefix")
+                .prefix(),
+            "lake/"
+        );
+        assert_eq!(store.request_count(), 0, "none of them a request");
+    }
 }
 
 mod protocol {
@@ -491,5 +536,66 @@ mod protocol {
         // the exact object wins because it sorts first.
         store.put(BUCKET, "lake/part/under.parquet", b"PAR1");
         assert_eq!(path(&store, "lake/part").kind(), IOKind::File);
+    }
+}
+
+mod upload {
+    use yggdryl::IOBase;
+
+    use crate::mod_::{BUCKET, options, path_with, payload, store};
+
+    /// A source that records the largest read it was asked for.
+    struct Metered<'bytes> {
+        bytes: &'bytes [u8],
+        position: usize,
+        largest_ask: usize,
+    }
+
+    impl std::io::Read for Metered<'_> {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            self.largest_ask = self.largest_ask.max(buffer.len());
+            let length = buffer.len().min(self.bytes.len() - self.position);
+            buffer[..length].copy_from_slice(&self.bytes[self.position..self.position + length]);
+            self.position += length;
+            Ok(length)
+        }
+    }
+
+    /// An upload through a location is the object's own: the one listing
+    /// that resolves the location, then the multipart upload, the source asked
+    /// for one part at a time - where the whole-value default would read it
+    /// whole first.
+    #[test]
+    fn an_upload_through_a_location_is_the_objects_own_multipart_upload() {
+        let store = store();
+        let part = 5 * 1024 * 1024;
+        let options = options(&store)
+            .with_multipart_threshold(512 * 1024)
+            .with_part_size(part as u64);
+        let bytes = payload(6 * 1024 * 1024);
+        let mut location = path_with("lake/streamed.bin", options);
+        let mut source = Metered {
+            bytes: &bytes,
+            position: 0,
+            largest_ask: 0,
+        };
+        store.clear_requests();
+        location
+            .upload_from(&mut source, bytes.len() as u64)
+            .expect("an upload");
+        assert_eq!(
+            store.request_count(),
+            5,
+            "the resolving listing, then two parts, the create and the complete"
+        );
+        assert_eq!(
+            source.largest_ask, part,
+            "one part at a time, never the whole"
+        );
+        assert_eq!(
+            store.get(BUCKET, "lake/streamed.bin").expect("the object"),
+            bytes
+        );
+        assert_eq!(store.open_uploads(), 0);
     }
 }
