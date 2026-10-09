@@ -2,7 +2,7 @@
 
 Read `.handoff/next/MARKET_SPLIT_PROMPT.md` (the program) and
 `.handoff/split/DESIGN.md` (the decisions, the ledger, the pins, the bench
-baselines, what S1 built) before any edit. Where this file and those differ,
+baselines, what S1 and S2 built) before any edit. Where this file and those differ,
 the committed files hold; where the prompt text a session was given differs
 from `MARKET_SPLIT_PROMPT.md`, the committed file holds.
 
@@ -27,7 +27,11 @@ live AWS resource touched.
   merged tree and the merge is recorded here.
 - No back-compat: a replaced name, spelling, test or doc is deleted in the
   same commit; no alias, shim or dual reader. One owner per fact; the core's
-  register is the one place a kind or a medium is claimed.
+  registers are the one place a kind, a medium, a table format, a catalog
+  factory or a locator is claimed (`plugin::Register`; `market.rs`,
+  `media/codec.rs`, `media/format.rs`, `warehouse/catalog.rs`,
+  `holder/locator.rs`), each seeded by the core with its own until the
+  leaving crate's `install()` claims them (S4, S6, S6b).
 - The seventeen codes are the core's own flat variants (D25); the market
   register holds enum kinds alone. S4 moves the four enums, `graph/` and the
   ISIN registry into `yggdryl-market`, never a code.
@@ -52,58 +56,60 @@ live AWS resource touched.
 | Fact | Value |
 | --- | --- |
 | Program branch | `ccr-0fe6f9d0-ruymat` |
-| HEAD | `eeb4ec14d` ("Open the market extension point", S1) |
+| HEAD | `f9f665198` ("Open the media extension point for record media, table formats and catalogs", S2) |
 | Draft PR | #209, draft |
 | Base | `origin/main` at `2ae975674`; no merge of `origin/main` was needed this session (nothing landed on `main` since) |
-| Slices done | P0 `3d8bf84d9` (D22), P1 `08ae4c6b7` (D23), S0 `6d71a36ee` (the pins), S1 `eeb4ec14d` (the market extension point) - each pushed alone, its CI read green before the next |
-| Next | S2, the media extension point |
+| Slices done | P0 `3d8bf84d9` (D22), P1 `08ae4c6b7` (D23), S0 `6d71a36ee` (the pins), S1 `eeb4ec14d` (the market extension point), S1's handoff `719299cf6`, S2 `f9f665198` (the media extension point) - each pushed alone, its CI read green before the next |
+| Next | S3, the remaining seams in place (D5, D6, D9, D10) |
 
-What S1 built is the "S1: what was built" section of DESIGN.md: the four
-`Market` variants, `MarketDescriptor`/`MarketType`/`MarketScalar`/
-`MarketSerie`/`MarketValue`, the `DataTypeId` newtype, `plugin.rs`'s
-`Register<K, V>`, `market.rs`'s register and `unregistered`, the logical-name
-register, the four enum kinds claimed in place - the seventeen codes stay the
-core's own flat variants (D25, the user's instruction mid-slice) -
-`rust/tests/market_register.rs` and `rust/tests/root/{market,plugin}.rs`, the
-two allocation rows, the bindings re-spelled with no Python or JavaScript
-name change, the docs, skills, inventories and AGENTS.md following.
+What S1 built is the "S1: what was built" section of DESIGN.md. What S2
+built is its "S2: design" (D26-D32), "The review's amendments (S2)" and "S2:
+what was built" sections: `MediaCodec` statics claimed under their MIME types
+(`media/codec.rs`; `codec_of`/`codec_for` the intake lookups,
+`RecordOptions::codec()` the one dispatcher past them), `RecordOptions::
+Registered(RegisteredOptions)` over `MediumOptions`/`MediumSettings` with the
+typed `settings`/`require_settings(_mut)` doors replacing the Parquet, Avro
+and Excel variants and accessors, `Media::Registered(Box<dyn MediaWrapper>)`
+and `Media::medium()`, the four media series deleted for `GenericMediaSerie`,
+`TableFormat`/`LocatedTable` (`media/format.rs`, `ICEBERG_FORMAT`,
+`TableFormat::table` for the folder catalog), `Catalog`/`Namespace`/`Table::
+Registered` with `downcast_ref`, `CatalogFactory` (`HADOOP_FACTORY`,
+`S3TABLES_FACTORY`), `Locator` (`holder/locator.rs`, `S3TABLES_LOCATOR`),
+`Site::Store` under `s3`, `Error::External`, `IOMedia::as_any` with
+`ParquetFooter`, `parquet::read_media_statistics`/`read_media_geospatial_statistics`,
+`filter_phases` public; the bindings keep every name; the S2 pins and every
+cost pin unmoved; `rust/tests/media_register.rs` pins the four registers.
 
 ## Checks
 
-Every command below ran on the tree committed as S1, from `/home/user/yggdryl`,
-with `CARGO_INCREMENTAL=0` and the debug info off; a background chain holds the
-cargo lock for the long steps and the foreground ran the rest.
+Every command below ran on the tree committed as S2 (`f9f665198`), from
+`/home/user/yggdryl`, with `CARGO_INCREMENTAL=0` and the debug info off; one
+background chain held the cargo lock for the long steps and cleaned the
+workspace's own artifacts between lanes, because one lane's test binaries
+are about 11 GB of the session's disk allowance and a first chain died on a
+full disk at its first step (nothing of that chain counts).
 
 | Check | Command | Result |
 | --- | --- | --- |
-| it builds | `cargo check --workspace --all-targets --all-features --keep-going --message-format=short` | clean: 0 errors, 0 warnings, the four crates |
-| the register | `cargo test -p yggdryl --test market_register` | 7 passed |
-| the root files | `cargo test -p yggdryl --test root` | 1681 passed |
-| the series | `cargo test -p yggdryl --test serie` | 338 passed |
-| the value contracts | `cargo test -p yggdryl --test value` | 25 passed |
-| the digests | `cargo test -p yggdryl --test xxhash` | 81 passed |
-| the dictionary hash | `cargo test -p yggdryl --test fix store` | 83 passed; `14_542_711_836_201_211_247` unmoved |
-| the cell and ingest rows | `cargo test -p yggdryl --test allocations -- leaf_cell registered prebuilt` | 4 passed |
-| the call counts | `cargo test -p yggdryl --test iobase_calls` | 37 passed |
-| the private pins | `cargo test -p yggdryl --features internals --test root` | 1852 passed |
-| the whole run | `cargo test -p yggdryl --all-targets --all-features --no-fail-fast` | 70 targets; 8968 passed in the 69 green ones; `allocations` 179 passed, 5 failed - `DECLARED_READ`, `ORDER_PARSE` and the three `sort_by` rows, each seven allocations under its pin, the grammar's deliberate move - re-pinned with that sentence |
-| the re-pins | `cargo test -p yggdryl --test allocations -- declared sort_by`; `--test root -- vocabulary market`; `--test market_register`; `--doc vocabulary` | 8, 87, 7 and 3 passed |
-| the code files | `git diff 6d71a36ee --stat -- rust/src/code.rs rust/src/{country,ccy,mic,cfi,isin,cusip,sedol,bbg,ric,figi,unit,forex,lei,bic,elf,dti,fisn}.rs docs/types/codes` | empty: byte-identical to HEAD (D25) |
-| clippy, all features | `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings` | exit 0 |
-| clippy, default features | `cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings` | exit 0 |
-| the CLI | `cargo test -p yggdryl-cli --all-targets --no-fail-fast` | 35 passed, 6 ignored over its five harnesses (`fix`, `market`, `quality`, `style`, `xmla`) |
-| the whole run, default features | `cargo test -p yggdryl --all-targets --no-fail-fast` | 70 targets, 6505 passed, 0 failed - after the first attempt died at the linker on a full disk (the sandbox allowance, not the tree): 20 GiB of stale `target/debug` artifacts of the workspace crates removed by `cargo clean -p`, then the run whole |
-| rustdoc examples | `cargo test -p yggdryl --doc` | 626 passed |
-| the API pages | `RUSTDOCFLAGS="-D warnings" cargo doc -p yggdryl --no-deps --all-features` | exit 0 |
-| Python | `VIRTUAL_ENV=python/.venv python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then `-m pytest python/tests -q` and `-m mypy --strict --config-file python/pyproject.toml python/yggdryl python/tests/typing_bindings.py python/tests/typing_fields.py` | the extension installed; 2780 passed, 4 skipped - the same four as at P0, P1 and S0; mypy exit 0 |
-| Node | `npm run --prefix node build:debug`; `cargo build --locked -p yggdryl-cli`; `npm test --prefix node`; `npx tsc --noEmit` in `node/`; `git diff --stat -- node/index.js node/index.d.ts` | the addon built; the CLI built; 1122 tests, 1120 passed, the 2 failing ones the sandbox `TextDecoder` pair below; tsc exit 0; the generated loader and declarations unchanged |
+| it builds | `cargo check -p yggdryl --all-targets --keep-going --message-format=short`, and with `--all-features` | clean in both lanes, 0 warnings |
+| the registers | `cargo test -p yggdryl --test media_register`, and with `--all-features` | 13 and 14 passed (the Parquet row under its feature) |
+| the S2 pins | `cargo test -p yggdryl --test media s2_pins`, both lanes | every default hash, the shared-section and own-setting feeds and the variant order unmoved |
+| the whole run | `cargo test -p yggdryl --all-targets --all-features --no-fail-fast` | 63 targets, 9170 passed, 0 failed; `iobase_calls`, `allocations`, the Iceberg `call_counts` and the S3 Tables request counts unmoved, no cost pin re-pinned |
+| the whole run, default features | `cargo test -p yggdryl --all-targets --no-fail-fast` | 63 targets, 6522 passed, 0 failed |
+| the CLI | `cargo test -p yggdryl-cli --all-targets --no-fail-fast` | 35 passed |
+| rustdoc examples | `cargo test -p yggdryl --doc` | 628 passed |
+| clippy | `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings`; `cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings` | exit 0 both, after one `matches!` rewrite |
+| the API pages | `RUSTDOCFLAGS="-D warnings" cargo doc -p yggdryl --no-deps --all-features` | exit 0, after six intra-doc link lints |
+| formatting | `cargo fmt --all -- --check` | clean |
+| Python | `VIRTUAL_ENV=python/.venv python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, `-m pytest python/tests --deselect python/tests/test_spark_interop.py`, `-m mypy --strict ...` | the extension installed; 2780 passed, 4 skipped (pyspark, two PEP 649 tests, one free-threaded test); mypy no issues in 70 files |
+| Node | `npm run --prefix node build:debug`; `cargo build --locked -p yggdryl-cli`; `npm test --prefix node`; `npx tsc --noEmit`; `git diff --stat -- node/index.js node/index.d.ts` | 1122 tests, 1120 passed, the 2 failing ones the sandbox `TextDecoder` pair below; tsc exit 0; the generated loader and declarations unchanged |
 | the docs manifests | `node scripts/build_docs_fix.js --check`; `node scripts/build_docs_playground.js --check` | both current |
-| the page examples | `python scripts/check_docs_examples.py --lang rust`, `--lang python`, `--lang javascript` | Rust 936 passed; Python 836 run, 3 skipped, 0 failed; JavaScript 788 run, 2 skipped, 0 failed |
-| the site | `python -m mkdocs build --strict --config-file mkdocs.yml` | built in 18 s, no warning |
-| formatting | `cargo fmt --all -- --check`; `git diff --check` | both clean |
-| the inventories | `python scripts/check_api_inventory.py`; `python scripts/generate_internals.py --check` | current (181 source files and 595 `pub` names not described yet, as before); `yggdryl::internals` current |
-| no test code under `src/` | `grep -rn '#\[cfg(test)\]\|#\[test\]' rust/src python/src node/src cli/src` | empty |
-| CI | the run on `ccr-0fe6f9d0-ruymat` for PR #209 | run 37839852909 on `eeb4ec14d`, read to the end: success - Rust quality (default features) and (all features), Iceberg Rust 1.94, the seven exchange jobs (S3, Azure, Google, ZIP, Avro, PyIceberg, Excel), Spark interop, Python binding wheel, Python binding (`pyarrow==18.*`) and (`pyarrow>=18`), Python binding (free-threaded 3.14t, abi3t 3.15), Node.js binding, Documentation examples, and `docs.yml`'s MkDocs build, every one green; the Pages deploy skipped as on every PR |
+| the page examples | `python scripts/check_docs_examples.py --lang rust`, `--lang python`, `--lang javascript` | Rust 940 passed; Python 837 run, 3 skipped, 0 failed; JavaScript 789 run, 2 skipped, 0 failed |
+| the site | `python -m mkdocs build --strict --config-file mkdocs.yml` | clean |
+| the inventories | `python scripts/check_api_inventory.py`; `python scripts/generate_internals.py --check` | current (180 source files and 586 `pub` names not described yet, as before); `yggdryl::internals` current |
+| no test code under `src/` | `grep -rn '#\[cfg(test)\]\|#\[test\]\|mod tests' rust/src rust/*/src python/src node/src cli/src` | empty |
+| the review | an independent read of `git diff -- rust/src` (opus) after the suites passed | seven findings, six fixed before the commit (DESIGN.md "The review's amendments (S2)"), the seventh - duplicate-name refusal order - fixed with its test |
+| CI | the run on `ccr-0fe6f9d0-ruymat` for PR #209 | run 37888869824 on `f9f665198` success: all 17 jobs green - Rust quality (default features, all features), Iceberg Rust 1.94, the S3, Azure, Google, ZIP, Avro, Excel and PyIceberg exchanges, Spark interop, Python binding wheel, Python binding (`pyarrow==18.*`, `pyarrow>=18`), Python free-threaded, Node.js binding, Documentation examples; docs run 37888869830 success |
 
 Not run, as the slice made nothing of theirs stale: the charset table and
 interop checks, the ISIN seed check, the country and MIC table checks, every
@@ -113,7 +119,7 @@ the package to the runtime's `TextDecoder` (`node/tests/charset.test.js`:
 `decoding agrees with TextDecoder over the same names`, `iso-8859-1 is not a
 spelling of windows-1252 here`) fail in this sandbox alone, whose Node 22.22
 decodes the C1 range of `windows-1252` as ISO 8859-1 does; they failed at P0,
-P1 and S0 the same way and CI's Node proves them.
+P1, S0 and S1 the same way and CI's Node proves them.
 
 ## Blockers
 
@@ -121,19 +127,24 @@ None.
 
 ## Next
 
-S2, the media extension point (D21; the prompt's eleven items under "S2"),
-the media claimed in place with the core's `parquet`, `iceberg` and
-`s3tables` features kept, and `yggdryl-excel` claimed beside them (D24).
-The first command, from a fresh checkout of the program branch:
+S3, the remaining seams in place (the prompt's "S3" items; D5 the market
+type's own `dtype()`/`field(name)` items, D6 the one public `implementer`
+module of forwarders for what the leaving crates reach, D9 the market trait
+for a message that splits and the protocol-view builder, D10 the vocabulary
+that stays in the core and the `log` targets' rule), each settled by its
+smoke row and the whole run, one commit. The first command, from a fresh
+checkout of the program branch:
 
 ```bash
 git fetch origin && git switch ccr-0fe6f9d0-ruymat && git merge origin/main
-git grep -nE 'for_mime_type|open_as|into_media_base|require_kind|iceberg::located' -- rust/src ':(exclude).handoff'
+git grep -nE 'pub\(crate\)' -- rust/src/market.rs rust/src/graph rust/src/fix rust/src/iceberg rust/src/parquet rust/src/avro rust/src/excel | wc -l
 ```
 
-Then design S2's register shapes against D8 and D21 in DESIGN.md before the
-first edit, with the S1 shapes (`plugin::Register`, `market::claim`,
-`unregistered`) as the mechanism to reuse.
+Then list, per leaving crate, every `pub(crate)` item it reaches (a scratch
+`git mv` of its folder and the compiler's list) before deciding D6's module;
+S2's `Handle::bound`, `Site::Store`, `MediaTable::listed`, `FolderLayout`
+and the `plugin::CORE` claimant are already on that list (`iceberg/mod.rs`
+and `s3tables/` read them).
 
 ## The decision ledger
 
@@ -152,6 +163,14 @@ rows decided or changed this session:
 | D22 | `pluginside` deleted; the plugin's role is a `Side` | the user's instruction | P0 |
 | D23 | the medium holds its `RecordOptions`; the media serie keeps no copy | the user's instruction | P1 |
 | D24 | `yggdryl-excel`, a seventh crate through the media point, claimed in S2, its own commit after S6 | the user's instruction | S0, built S6b |
+| D21 | one trait per role on the register, refined: the whole options struct behind the box, `open(handle) -> Media`, `as_any` answering a state object | `media/codec.rs`, `media/format.rs` | S0, built S2 |
+| D26 | `RecordOptions::Registered(RegisteredOptions)`; the Parquet/Avro/Excel variants and accessors deleted; `Ord`/`Hash` by rank; the typed `settings` door; `registered` answers a core struct as its variant | the S2 pins | S2 |
+| D27 | `MediaCodec` statics claimed under their MIME types; `codec_of`/`codec_for`; `RecordOptions::codec()` the one dispatcher; `Media::Registered`, `Media::medium()`; one name per medium | `transfer.rs`, `media/mod.rs`, `holder/mod.rs` | S2 |
+| D28 | `Serie::{Parquet, Avro, Excel, IcebergTable}` deleted; `require_kind` by MIME set | `media_serie.rs` | S2 |
+| D29 | `TableFormat`/`LocatedTable`; `TableFormat::table` for the folder catalog; the layout detection stays core | `iceberg/mod.rs`, `warehouse/folder.rs` | S2 |
+| D30 | `Catalog`/`Namespace`/`Table::Registered`; `CatalogFactory`; `Locator`; `Site::Store` under `s3`; the `From` impls stay, answering `Registered` | `warehouse/`, `holder/locator.rs` | S2 |
+| D31 | `Error::External`; `From<ParquetError>` deleted; `IOMedia::as_any` + `ParquetFooter`; the statistics as free functions | `error.rs`, `parquet/mod.rs` | S2 |
+| D32 | `filter_phases` published; logging and D17 unchanged | `expression/mod.rs` | S2 |
 
 ## Questions for the user
 
