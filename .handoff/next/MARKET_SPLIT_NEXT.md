@@ -62,10 +62,11 @@ live AWS resource touched.
 | Fact | Value |
 | --- | --- |
 | Program branch | `ccr-0fe6f9d0-ruymat` |
-| HEAD | the commit holding this file, "Build the core first and run only the CI jobs a change reaches" (the CI structure), on `2048b4681` |
+| HEAD | the commit holding this file, "Hand off the CI structure: its first run" (the handoff alone), on `1f909739b` |
 | Draft PR | #209, draft |
 | Base | `origin/main` at `2ae975674`; no merge of `origin/main` was needed this session (nothing landed on `main` since) |
-| Slices done | P0 `3d8bf84d9` (D22), P1 `08ae4c6b7` (D23), S0 `6d71a36ee` (the pins), S1 `eeb4ec14d` (the market extension point), S1's handoff `719299cf6`, S2 `f9f665198` (the media extension point), S2's handoff `2d800d51b`, S2b `c015226b6` (the XMLA medium registered in place, D33) and `2048b4681` (its CI's red census race fixed in the test), the CI structure, the commit holding this file - each pushed alone, its CI read green before the next |
+| Slices done | P0 `3d8bf84d9` (D22), P1 `08ae4c6b7` (D23), S0 `6d71a36ee` (the pins), S1 `eeb4ec14d` (the market extension point), S1's handoff `719299cf6`, S2 `f9f665198` (the media extension point), S2's handoff `2d800d51b`, S2b `c015226b6` (the XMLA medium registered in place, D33) and `2048b4681` (its CI's red census race fixed in the test), the CI structure `1f909739b` - each pushed alone, its CI read green before the next |
+| CI structure | `1f909739b`, "Build the core first and run only the CI jobs a change reaches": run 37904365402 success, 33 jobs green and the empty `Leaf` matrix skipped as planned; 10m41s wall against 18m09s before (the old workflow's last run, 37902279246, 18m57s); the critical path `Changes` 12s, `Python binding wheel` 5m12s, `Documentation examples (Python)` 4m57s, `CI result` 9s; the core path `Core build (all features)` 1m40s then its slowest shard, `rest`, 5m37s; the exchanges 30s to 1m18s, compiling nothing; the gate proved 20 rows into the ledger; docs run 37904365351 success |
 | Next | S3, the remaining seams in place (D5, D6, D9, D10) |
 
 What S1 built is the "S1: what was built" section of DESIGN.md. What S2

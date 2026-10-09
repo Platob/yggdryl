@@ -1823,5 +1823,16 @@ leaf and every leaf `after` it:
 
 A change to the core, the lock or any manifest, a path no row names, the
 workflow, the table or the planner, and every push to `main`, run
-everything. The measured figures of the first run under this structure are
-the handoff's State row "CI structure".
+everything.
+
+Measured on its first run, 37904365402 on `1f909739b` - a workflow change,
+so every row ran: 10m41s wall against 18m09s, 34 jobs of which 33 ran green
+and the empty `Leaf` matrix was skipped as planned. The critical path is now
+the wheel and the Python page examples (`Changes` 12s, `Python binding
+wheel` 5m12s, `Documentation examples (Python)` 4m57s, `CI result` 9s);
+the core's is `Core build (all features)` 1m40s then the slowest shard,
+all features `rest`, 5m37s (`fix` 4m56s, `allocations` 3m23s; default
+features `fix` 3m47s, `rest` 3m44s). The exchanges took 30s to 1m18s,
+their cargo finishing in under a second over the lane, where each spent
+about 80s compiling before; the free-threaded build, 7m56s, runs beside
+the critical path. The gate proved 20 rows into the ledger.
