@@ -55,7 +55,7 @@ The fill of an Apple order a quarter second after it was placed.
         .with_previous(&MarketData::from(order.clone()))
         .expect("a fill follows its order");
     let fill = followed.as_execution_event().expect("still an execution");
-    assert_eq!((fill.get_prevuuid(), fill.get_seqnum()), (Some(order.get_curruuid()), 0));
+    assert_eq!((fill.get_prevuuid(), fill.get_seqnum()), (Some(order.get_uuid()), 0));
     assert_eq!(fill.get_crosscode(), "8:1:O-1001");
     assert_eq!(fill.get_execunix(), Some(T + 250_000_000));
     assert_eq!(fill.get_prevpx(), Some("189.50".parse()?));
@@ -102,7 +102,7 @@ The fill of an Apple order a quarter second after it was placed.
     assert followed is not None and followed.kind == "execution_event"
     fill = followed.as_execution_event()
     assert fill is not None
-    assert (fill.prevuuid, fill.seqnum) == (order.curruuid, 0)
+    assert (fill.prevuuid, fill.seqnum) == (order.uuid, 0)
     assert fill.crosscode == "8:1:O-1001"
     assert fill.execunix == T + 250_000_000
     assert fill.prevpx is not None and fill.prevpx.as_py() == Decimal("189.50")
@@ -146,7 +146,7 @@ The fill of an Apple order a quarter second after it was placed.
     const followed = new graph.MarketData(fill).withPrevious(new graph.MarketData(order))
     assert.equal(followed.kind, 'execution_event')
     fill = followed.asExecutionEvent()
-    assert.equal(fill.prevuuid, order.curruuid)
+    assert.equal(fill.prevuuid, order.uuid)
     assert.equal(fill.seqnum, 0)
     assert.equal(fill.crosscode, '8:1:O-1001')
     assert.equal(fill.execunix, T + 250_000_000n)

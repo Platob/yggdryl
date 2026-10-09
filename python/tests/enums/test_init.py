@@ -76,15 +76,15 @@ def test_the_graph_enum_listings_mirror_the_native_vocabulary() -> None:
     assert not hasattr(enums, "OPERATION_KINDS")
     assert enums.MD_UPDATE_ACTIONS == ("0", "1", "2", "3", "4", "5", "snapshot")
     assert enums.ELEMENT_COLUMNS == (
-        "curruuid",
+        "uuid",
         "crossuuid",
         "crosscode",
-        "currhashcode",
+        "hashcode",
         "crosshashcode",
         "srcuuids",
     )
     assert len(enums.EVENT_COLUMNS) == 9
-    assert enums.EVENT_COLUMNS[0] == "currunix"
+    assert enums.EVENT_COLUMNS[0] == "transunix"
     assert enums.EVENT_COLUMNS[-1] == "state"
     assert enums.MARKET_COLUMNS == (
         "marketdatakind",

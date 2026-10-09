@@ -334,7 +334,7 @@ type CandleSource = Box<dyn Iterator<Item = yggdryl::Result<CoreBookEvent>>>;
 
 /// Candles from a sorted stream of books, one per cross code and bucket,
 /// pulling the books lazily from the caller's iterable. Yields `Candle`;
-/// a regression in the books' instants is refused at `$.book.currunix` and
+/// a regression in the books' instants is refused at `$.book.transunix` and
 /// ends the walk.
 #[napi(js_name = "CandleIterator")]
 pub struct JsCandleIterator {

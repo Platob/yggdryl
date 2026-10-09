@@ -233,7 +233,7 @@ fn text(message: &FixMsg, tag: i32) -> Option<SmolStr> {
 
 fn delivery_key(message: &FixMsg) -> DeliveryKey {
     let header = message.header();
-    let content = message.get_currhashcode();
+    let content = message.get_hashcode();
     let capture_session = message.capture().msgsessionid().map(SmolStr::new);
     let (Some(sender), Some(target), Some(sequence)) = (
         header.sendercompid(),
@@ -241,7 +241,7 @@ fn delivery_key(message: &FixMsg) -> DeliveryKey {
         header.msgseqnum(),
     ) else {
         return DeliveryKey::Exact {
-            millisecond: message.get_currunix().div_euclid(1_000_000),
+            millisecond: message.get_transunix().div_euclid(1_000_000),
             cross: message.get_crosshashcode(),
             content,
             sequence: header.msgseqnum(),
@@ -257,7 +257,7 @@ fn delivery_key(message: &FixMsg) -> DeliveryKey {
     let sending_time = if header.stated_sendingtime() {
         header.sendingtime()
     } else {
-        message.get_currunix()
+        message.get_transunix()
     };
     let original_time = if replay {
         message
@@ -321,23 +321,23 @@ struct SessionEventObservations {
     key: Option<SmolStr>,
 }
 
-/// Latest recording first; the event instant breaks absent/equal recording
-/// ties exactly as the graph's reference selection does.
+/// Latest `sendunix` first; the `transunix` breaks absent or equal wire
+/// clock ties exactly as the graph's reference selection does.
 fn reference_order(left: &FixMsg, right: &FixMsg) -> Ordering {
     let right_leads = crate::implementer::right_is_reference(
-        left.get_recdunix(),
-        left.get_currunix(),
-        right.get_recdunix(),
-        right.get_currunix(),
+        left.get_sendunix(),
+        left.get_transunix(),
+        right.get_sendunix(),
+        right.get_transunix(),
     );
     if right_leads {
         return Ordering::Greater;
     }
     let left_leads = crate::implementer::right_is_reference(
-        right.get_recdunix(),
-        right.get_currunix(),
-        left.get_recdunix(),
-        left.get_currunix(),
+        right.get_sendunix(),
+        right.get_transunix(),
+        left.get_sendunix(),
+        left.get_transunix(),
     );
     if left_leads {
         Ordering::Less
@@ -347,8 +347,8 @@ fn reference_order(left: &FixMsg, right: &FixMsg) -> Ordering {
 }
 
 /// Fully merges observations carrying one complete session-event identity before
-/// the lifecycle walk can mistake them for successive events. The most
-/// recently recorded message is the retained FIX row; the graph fold unions
+/// the lifecycle walk can mistake them for successive events. The
+/// message sent last is the retained FIX row; the graph fold unions
 /// the other observations into it and keeps the earliest per-event clocks.
 fn merge_session_events(messages: Vec<FixMsg>) -> Vec<FixMsg> {
     let mut positions = HashMap::with_capacity(messages.len().min(4_096));
@@ -380,7 +380,7 @@ fn merge_session_events(messages: Vec<FixMsg>) -> Vec<FixMsg> {
 }
 
 /// One session event out of every observation of it: the reference - the
-/// latest recorded - with the others folded in. An observation whose
+/// one sent last - with the others folded in. An observation whose
 /// content the rebuild refuses to merge folds its clocks, its anomalies and
 /// its provenance alone, beside a warning.
 ///
@@ -405,7 +405,7 @@ fn fold_observations(mut held: SessionEventObservations) -> FixMsg {
         .collect();
     let mut observations = held.others.into_iter();
     // The first is the reference, chosen once over every observation:
-    // each fold keeps the earliest recording, so deciding again at
+    // each fold keeps the earliest `sendunix`, so deciding again at
     // every pair would rank the rest against that instead.
     let mut reference = observations.next().expect("one session-event observation");
     reference.set_srcuuids(sources);
@@ -490,7 +490,7 @@ fn inherit_order_links(current: &mut FixMsg, previous: &FixMsg) -> bool {
             "FIX order links not inherited: writing its predecessor's was refused",
             current.header().msgtype(),
             "{error}, following {}",
-            previous.get_curruuid()
+            previous.get_uuid()
         );
         // A refusal after one link landed leaves the message unsettled.
         current.settle();
@@ -514,12 +514,12 @@ impl From<FixMsg> for LifecycleMessage {
 }
 
 impl Element for LifecycleMessage {
-    fn get_curruuid(&self) -> Uuid {
-        self.message.get_curruuid()
+    fn get_uuid(&self) -> Uuid {
+        self.message.get_uuid()
     }
 
-    fn set_curruuid(&mut self, curruuid: Uuid) {
-        self.message.set_curruuid(curruuid);
+    fn set_uuid(&mut self, uuid: Uuid) {
+        self.message.set_uuid(uuid);
     }
 
     fn get_crossuuid(&self) -> Uuid {
@@ -538,12 +538,12 @@ impl Element for LifecycleMessage {
         self.message.set_crosscode(crosscode);
     }
 
-    fn get_currhashcode(&self) -> u64 {
-        self.message.get_currhashcode()
+    fn get_hashcode(&self) -> u64 {
+        self.message.get_hashcode()
     }
 
-    fn set_currhashcode(&mut self, hashcode: u64) {
-        self.message.set_currhashcode(hashcode);
+    fn set_hashcode(&mut self, hashcode: u64) {
+        self.message.set_hashcode(hashcode);
     }
 
     fn get_crosshashcode(&self) -> u64 {
@@ -584,7 +584,7 @@ impl Element for LifecycleMessage {
                             "FIX observation walked unmerged: merging it into the one it repeats was refused",
                             message.header().msgtype(),
                             "{error}, repeating {}",
-                            previous.message.get_curruuid()
+                            previous.message.get_uuid()
                         );
                         message
                     }),
@@ -621,12 +621,12 @@ impl Event for LifecycleMessage {
         }
     }
 
-    fn get_currunix(&self) -> i64 {
-        self.message.get_currunix()
+    fn get_transunix(&self) -> i64 {
+        self.message.get_transunix()
     }
 
-    fn set_currunix(&mut self, unix: i64) {
-        self.message.set_currunix(unix);
+    fn set_transunix(&mut self, unix: i64) {
+        self.message.set_transunix(unix);
     }
 
     fn get_state(&self) -> &State {
@@ -657,12 +657,12 @@ impl Event for LifecycleMessage {
         self.message.set_creaunix(unix);
     }
 
-    fn get_recdunix(&self) -> Option<i64> {
-        self.message.get_recdunix()
+    fn get_sendunix(&self) -> Option<i64> {
+        self.message.get_sendunix()
     }
 
-    fn set_recdunix(&mut self, unix: Option<i64>) {
-        self.message.set_recdunix(unix);
+    fn set_sendunix(&mut self, unix: Option<i64>) {
+        self.message.set_sendunix(unix);
     }
 
     fn get_exprunix(&self) -> Option<i64> {
@@ -901,7 +901,7 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Hourly<I> {
             }
             match self.source.as_mut().and_then(Iterator::next) {
                 Some(Ok(message)) => {
-                    let hour = message.get_currunix().div_euclid(HOUR_NS);
+                    let hour = message.get_transunix().div_euclid(HOUR_NS);
                     self.position = Some(hour);
                     let key = session_event_key(&message);
                     if let Some(&(held, slot)) = key.as_ref().and_then(|key| self.held.get(key))
@@ -955,7 +955,7 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Hourly<I> {
 /// The identities a walk yielded within its deduplication window, so it
 /// yields each once.
 ///
-/// An identity is remembered at the `currunix` it was yielded under and
+/// An identity is remembered at the `transunix` it was yielded under and
 /// forgotten once the walk has yielded a message more than the window after
 /// it: the bound is the event time a window spans, never the capture's
 /// length. Every identity is keyed once, beside the instant it was yielded
@@ -995,11 +995,11 @@ impl Window {
         if self.span <= 0 || message.get_snapunix().is_some() {
             return false;
         }
-        let uuid = message.get_curruuid();
+        let uuid = message.get_uuid();
         if uuid.is_nil() {
             return false;
         }
-        let unix = message.get_currunix();
+        let unix = message.get_transunix();
         self.watermark = self.watermark.max(unix);
         let horizon = self.watermark.saturating_sub(self.span);
         match self.held.entry(uuid) {

@@ -111,7 +111,7 @@ This section renders `assets/fix.json` and needs JavaScript.
   members of each occurrence; the count is the list's length. An empty list is
   the group stated empty and emits `802=0`; a null list is the group absent and
   emits nothing.
-- A settled value the codec supplied is the message's own fact rather than a pair it received: a `SendingTime` nothing stated is not emitted, and the identity - `currhashcode`, `curruuid`, `crossuuid` - is emitted nowhere.
+- A settled value the codec supplied is the message's own fact rather than a pair it received: a `SendingTime` nothing stated is not emitted, and the identity - `hashcode`, `uuid`, `crossuuid` - is emitted nowhere.
 - An arrival entry no dictionary resolved carries tag 0 and is emitted under its raw key, exactly where it arrived.
 - Direction verbs and surrounding capture prose are outside the emitted frame.
 - For streamed Arrow output, [`write_arrow_reader`](arrow.md#back-to-the-wire)

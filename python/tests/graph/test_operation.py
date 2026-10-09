@@ -21,7 +21,7 @@ def order_event(**facts: Any) -> graph.OrderEvent:
         "crosscode": "O-100",
         "seqnum": 3,
         "creaunix": CLOCK - 100_000_000_000,
-        "recdunix": CLOCK - 50_000_000_000,
+        "sendunix": CLOCK - 50_000_000_000,
         "side": "BUYS",
         "price": D("101"),
         "currency": "USD",
@@ -41,18 +41,18 @@ def order_event(**facts: Any) -> graph.OrderEvent:
 
 def test_an_order_event_reads_every_fact_back_typed() -> None:
     event = order_event()
-    assert isinstance(event.curruuid, Scalar) and event.curruuid.kind == "uuid"
+    assert isinstance(event.uuid, Scalar) and event.uuid.kind == "uuid"
     assert isinstance(event.crossuuid, Scalar) and event.crossuuid.kind == "uuid"
     # A market element's cross code is stored as `{kind}:{side}:{base}`.
     assert event.crosscode == "10:1:O-100"
-    assert isinstance(event.currhashcode, int) and isinstance(event.crosshashcode, int)
+    assert isinstance(event.hashcode, int) and isinstance(event.crosshashcode, int)
     assert event.srcuuids == []
-    assert event.currunix == CLOCK
+    assert event.transunix == CLOCK
     assert event.state is State.UNKNOWN
     assert event.seqnum == 3
     assert event.creaunix == CLOCK - 100_000_000_000
     assert event.execunix is None
-    assert event.recdunix == CLOCK - 50_000_000_000
+    assert event.sendunix == CLOCK - 50_000_000_000
     assert event.exprunix is None
     assert event.prevunix is None and event.prevuuid is None
     assert event.snapunix is None
@@ -166,20 +166,20 @@ def test_ellipsis_is_skipped_and_none_clears() -> None:
 
 
 def test_an_undated_element_states_no_clock_state_or_chain() -> None:
-    element = graph.Order(crosscode="O-1", price=D("10"), side="SELL", curruuid=...)
+    element = graph.Order(crosscode="O-1", price=D("10"), side="SELL", uuid=...)
     assert element.crosscode == "10:2:O-1" and element.kind == "order"
     assert element.side is Side.SELL
-    for name in ("currunix", "state", "seqnum", "prevuuid"):
+    for name in ("transunix", "state", "seqnum", "prevuuid"):
         with pytest.raises(ValueError, match="an undated element has no clock, state or chain"):
             graph.Order(**{name: 1})
-    assert not hasattr(element, "currunix")
+    assert not hasattr(element, "transunix")
 
 
 def test_a_derived_identity_is_refused_by_name() -> None:
     # `finalize` derives the four identities, so a stated one would be
     # overwritten: it is refused on the dated and the undated leaf alike.
     uuid = "00000000-0000-8000-8000-000000000001"
-    for name, value in (("curruuid", uuid), ("crossuuid", uuid), ("currhashcode", 7), ("crosshashcode", 7)):
+    for name, value in (("uuid", uuid), ("crossuuid", uuid), ("hashcode", 7), ("crosshashcode", 7)):
         with pytest.raises(ValueError, match=f'Order states no fact "{name}": an identity is derived'):
             graph.Order(**{name: value})
         with pytest.raises(ValueError, match=f'OrderEvent states no fact "{name}": an identity is derived'):
@@ -188,12 +188,12 @@ def test_a_derived_identity_is_refused_by_name() -> None:
     assert graph.Order(crosscode="O-1", srcuuids=[]).crosscode == "10:0:O-1"
 
 
-def test_currunix_is_stated_once() -> None:
-    with pytest.raises(TypeError, match="multiple values for argument 'currunix'"):
-        graph.OrderEvent(1, currunix=5)
+def test_transunix_is_stated_once() -> None:
+    with pytest.raises(TypeError, match="multiple values for argument 'transunix'"):
+        graph.OrderEvent(1, transunix=5)
     # A folded spelling reaches the facts, and is refused there by name.
-    with pytest.raises(ValueError, match="OrderEvent states currunix once, as its first argument"):
-        graph.OrderEvent(1, CURRUNIX=5)
+    with pytest.raises(ValueError, match="OrderEvent states transunix once, as its first argument"):
+        graph.OrderEvent(1, TRANSUNIX=5)
 
 
 def test_at_dates_an_element_and_into_element_undates_it() -> None:
@@ -202,7 +202,7 @@ def test_at_dates_an_element_and_into_element_undates_it() -> None:
     assert isinstance(event, graph.QuoteEvent)
     # A quote is no sided kind: its stored cross code states side 0, its
     # side a tag.
-    assert (event.currunix, event.crosscode, event.price) == (CLOCK, "14:0:Q-1", element.price)
+    assert (event.transunix, event.crosscode, event.price) == (CLOCK, "14:0:Q-1", element.price)
     back = event.into_element()
     assert isinstance(back, graph.Quote)
     assert back == element
@@ -212,7 +212,7 @@ def test_at_dates_an_element_and_into_element_undates_it() -> None:
 
 def test_the_kind_is_the_type() -> None:
     same = {"crosscode": "X", "price": 1}
-    assert graph.OrderEvent(CLOCK, **same).curruuid != graph.QuoteEvent(CLOCK, **same).curruuid
+    assert graph.OrderEvent(CLOCK, **same).uuid != graph.QuoteEvent(CLOCK, **same).uuid
     assert graph.ExecutionEvent(CLOCK).is_execution
     assert not graph.QuoteEvent(CLOCK).is_execution
     assert graph.Order(**same) != graph.Quote(**same)  # type: ignore[comparison-overlap]
@@ -237,8 +237,8 @@ def test_an_order_follows_the_order_it_replaces() -> None:
     later = graph.OrderEvent(CLOCK + 1, crosscode="O-100", side="BUYS", price=D("100"), quantity=4)
     followed = later.with_previous(first)
     assert followed is not None
-    assert followed.prevuuid == first.curruuid
-    assert followed.prevunix == first.currunix
+    assert followed.prevuuid == first.uuid
+    assert followed.prevunix == first.transunix
     # A later instant keeps its own place.
     assert followed.seqnum == 0
     assert later.prevuuid is None  # immutable: the verb answered a new event
@@ -302,9 +302,9 @@ def test_equality_hash_repr_copy_pickle(leaf: Any) -> None:
     twin = pickle.loads(pickle.dumps(leaf))
     assert type(twin) is type(leaf)
     assert twin == leaf and hash(twin) == hash(leaf)
-    assert twin.curruuid == leaf.curruuid and twin.currhashcode == leaf.currhashcode
+    assert twin.uuid == leaf.uuid and twin.hashcode == leaf.hashcode
     assert copy.copy(leaf) == leaf and copy.deepcopy(leaf) == leaf
-    assert repr(leaf).startswith(f"{type(leaf).__name__}({leaf.curruuid.as_py()}")
+    assert repr(leaf).startswith(f"{type(leaf).__name__}({leaf.uuid.as_py()}")
     assert leaf != object()
     assert len({leaf, twin}) == 1
 

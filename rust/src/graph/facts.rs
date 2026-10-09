@@ -49,10 +49,10 @@ pub(crate) struct MarketFacts {
     /// quantities, stamped by that event: what the ordered, filled and left
     /// quantities imply of one another.
     standing: Standing,
-    curruuid: Uuid,
+    uuid: Uuid,
     crossuuid: Uuid,
     crosscode: String,
-    currhashcode: u64,
+    hashcode: u64,
     crosshashcode: u64,
     srcuuids: Vec<Uuid>,
     price: Option<Decimal>,
@@ -276,10 +276,10 @@ impl Default for MarketFacts {
             kind: MarketDataKind::Unknown,
             mdtype: MarketDataType::Unknown,
             standing: Standing::default(),
-            curruuid: Uuid::default(),
+            uuid: Uuid::default(),
             crossuuid: Uuid::default(),
             crosscode: String::new(),
-            currhashcode: 0,
+            hashcode: 0,
             crosshashcode: 0,
             srcuuids: Vec::new(),
             price: None,
@@ -384,12 +384,12 @@ impl MarketFacts {
 }
 
 impl Element for MarketFacts {
-    fn get_curruuid(&self) -> Uuid {
-        self.curruuid
+    fn get_uuid(&self) -> Uuid {
+        self.uuid
     }
 
-    fn set_curruuid(&mut self, curruuid: Uuid) {
-        self.curruuid = curruuid;
+    fn set_uuid(&mut self, uuid: Uuid) {
+        self.uuid = uuid;
     }
 
     fn get_crossuuid(&self) -> Uuid {
@@ -408,12 +408,12 @@ impl Element for MarketFacts {
         self.state_crosscode(crosscode);
     }
 
-    fn get_currhashcode(&self) -> u64 {
-        self.currhashcode
+    fn get_hashcode(&self) -> u64 {
+        self.hashcode
     }
 
-    fn set_currhashcode(&mut self, hashcode: u64) {
-        self.currhashcode = hashcode;
+    fn set_hashcode(&mut self, hashcode: u64) {
+        self.hashcode = hashcode;
     }
 
     fn get_crosshashcode(&self) -> u64 {
@@ -441,13 +441,13 @@ impl Element for MarketFacts {
     fn finalize(&mut self) {
         self.fill_market();
         self.sync_cross();
-        self.currhashcode = self.digest_market().as_u64();
-        self.curruuid = Uuid::from_v8(u128::from(self.currhashcode));
+        self.hashcode = self.digest_market().as_u64();
+        self.uuid = Uuid::from_v8(u128::from(self.hashcode));
         self.crossuuid = self.cross_uuid();
     }
 
     fn with_previous(mut self, previous: &Self) -> Option<Self> {
-        if previous.curruuid == self.curruuid {
+        if previous.uuid == self.uuid {
             return None;
         }
         let mut changed = crate::implementer::follow_element(&mut self, previous);
@@ -1452,11 +1452,11 @@ impl Market for MarketFacts {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct MarketEventFacts {
     market: MarketFacts,
-    currunix: i64,
+    transunix: i64,
     state: State,
     seqnum: u64,
     creaunix: Option<i64>,
-    recdunix: Option<i64>,
+    sendunix: Option<i64>,
     exprunix: Option<i64>,
     prevunix: Option<i64>,
     prevuuid: Option<Uuid>,
@@ -1471,11 +1471,11 @@ impl MarketEventFacts {
     pub(crate) fn at(unix: i64) -> Self {
         Self {
             market: MarketFacts::default(),
-            currunix: unix,
+            transunix: unix,
             state: State::unknown(),
             seqnum: 0,
             creaunix: None,
-            recdunix: None,
+            sendunix: None,
             exprunix: None,
             prevunix: None,
             prevuuid: None,
@@ -1484,12 +1484,12 @@ impl MarketEventFacts {
     }
 
     /// Reprojects the generic event identities after one of their inputs
-    /// changes. A UUIDv7 refusal retains the current identity, as
+    /// changes. A UUIDv7 refusal retains the element's `uuid`, as
     /// [`Event::finalized`] does; the cross identity always follows the
-    /// resulting current identity and cross hash.
+    /// resulting `uuid` and cross hash.
     fn refresh_uuids(&mut self) {
         if let Ok(uuid) = self.time_uuid() {
-            self.market.curruuid = uuid;
+            self.market.uuid = uuid;
         }
         self.market.crossuuid = self.cross_uuid();
     }
@@ -1520,12 +1520,12 @@ impl From<MarketFacts> for MarketEventFacts {
 }
 
 impl Element for MarketEventFacts {
-    fn get_curruuid(&self) -> Uuid {
-        self.market.curruuid
+    fn get_uuid(&self) -> Uuid {
+        self.market.uuid
     }
 
-    fn set_curruuid(&mut self, curruuid: Uuid) {
-        self.market.curruuid = curruuid;
+    fn set_uuid(&mut self, uuid: Uuid) {
+        self.market.uuid = uuid;
     }
 
     fn get_crossuuid(&self) -> Uuid {
@@ -1550,12 +1550,12 @@ impl Element for MarketEventFacts {
         self.refresh_uuids();
     }
 
-    fn get_currhashcode(&self) -> u64 {
-        self.market.currhashcode
+    fn get_hashcode(&self) -> u64 {
+        self.market.hashcode
     }
 
-    fn set_currhashcode(&mut self, hashcode: u64) {
-        self.market.currhashcode = hashcode;
+    fn set_hashcode(&mut self, hashcode: u64) {
+        self.market.hashcode = hashcode;
         self.refresh_uuids();
     }
 
@@ -1578,7 +1578,7 @@ impl Element for MarketEventFacts {
     }
 
     fn is_after(&self, other: &Self) -> bool {
-        self.currunix > other.currunix
+        self.transunix > other.transunix
     }
 
     fn finalize(&mut self) {
@@ -1598,12 +1598,12 @@ impl Element for MarketEventFacts {
 }
 
 impl Event for MarketEventFacts {
-    fn get_currunix(&self) -> i64 {
-        self.currunix
+    fn get_transunix(&self) -> i64 {
+        self.transunix
     }
 
-    fn set_currunix(&mut self, unix: i64) {
-        self.currunix = unix;
+    fn set_transunix(&mut self, unix: i64) {
+        self.transunix = unix;
         self.refresh_uuids();
     }
 
@@ -1634,12 +1634,12 @@ impl Event for MarketEventFacts {
         self.creaunix = unix;
     }
 
-    fn get_recdunix(&self) -> Option<i64> {
-        self.recdunix
+    fn get_sendunix(&self) -> Option<i64> {
+        self.sendunix
     }
 
-    fn set_recdunix(&mut self, unix: Option<i64>) {
-        self.recdunix = unix;
+    fn set_sendunix(&mut self, unix: Option<i64>) {
+        self.sendunix = unix;
     }
 
     fn get_exprunix(&self) -> Option<i64> {
@@ -1679,7 +1679,7 @@ impl Event for MarketEventFacts {
     }
 
     fn finalized(&mut self, hashcode: u64) {
-        self.market.currhashcode = hashcode;
+        self.market.hashcode = hashcode;
         self.refresh_uuids();
     }
 }
@@ -1797,7 +1797,7 @@ impl OperationFacts {
     #[must_use]
     pub(crate) fn at(self, unix: i64) -> OperationEventFacts {
         let mut event = MarketEventFacts::from(self.market);
-        event.currunix = unix;
+        event.transunix = unix;
         OperationEventFacts {
             event,
             operation: self.operation,
@@ -1816,12 +1816,12 @@ impl From<MarketFacts> for OperationFacts {
 }
 
 impl Element for OperationFacts {
-    fn get_curruuid(&self) -> Uuid {
-        self.market.curruuid
+    fn get_uuid(&self) -> Uuid {
+        self.market.uuid
     }
 
-    fn set_curruuid(&mut self, curruuid: Uuid) {
-        self.market.curruuid = curruuid;
+    fn set_uuid(&mut self, uuid: Uuid) {
+        self.market.uuid = uuid;
     }
 
     fn get_crossuuid(&self) -> Uuid {
@@ -1840,12 +1840,12 @@ impl Element for OperationFacts {
         self.market.state_crosscode(crosscode);
     }
 
-    fn get_currhashcode(&self) -> u64 {
-        self.market.currhashcode
+    fn get_hashcode(&self) -> u64 {
+        self.market.hashcode
     }
 
-    fn set_currhashcode(&mut self, hashcode: u64) {
-        self.market.currhashcode = hashcode;
+    fn set_hashcode(&mut self, hashcode: u64) {
+        self.market.hashcode = hashcode;
     }
 
     fn get_crosshashcode(&self) -> u64 {
@@ -1874,13 +1874,13 @@ impl Element for OperationFacts {
         self.fill_market();
         self.fill_parents();
         self.sync_cross();
-        self.market.currhashcode = self.digest_operation().as_u64();
-        self.market.curruuid = Uuid::from_v8(u128::from(self.market.currhashcode));
+        self.market.hashcode = self.digest_operation().as_u64();
+        self.market.uuid = Uuid::from_v8(u128::from(self.market.hashcode));
         self.market.crossuuid = self.cross_uuid();
     }
 
     fn with_previous(mut self, previous: &Self) -> Option<Self> {
-        if previous.market.curruuid == self.market.curruuid {
+        if previous.market.uuid == self.market.uuid {
             return None;
         }
         let mut changed = crate::implementer::follow_element(&mut self, previous);
@@ -1959,12 +1959,12 @@ impl From<MarketEventFacts> for OperationEventFacts {
 }
 
 impl Element for OperationEventFacts {
-    fn get_curruuid(&self) -> Uuid {
-        self.event.get_curruuid()
+    fn get_uuid(&self) -> Uuid {
+        self.event.get_uuid()
     }
 
-    fn set_curruuid(&mut self, curruuid: Uuid) {
-        self.event.set_curruuid(curruuid);
+    fn set_uuid(&mut self, uuid: Uuid) {
+        self.event.set_uuid(uuid);
     }
 
     fn get_crossuuid(&self) -> Uuid {
@@ -1983,12 +1983,12 @@ impl Element for OperationEventFacts {
         self.event.set_crosscode(crosscode);
     }
 
-    fn get_currhashcode(&self) -> u64 {
-        self.event.get_currhashcode()
+    fn get_hashcode(&self) -> u64 {
+        self.event.get_hashcode()
     }
 
-    fn set_currhashcode(&mut self, hashcode: u64) {
-        self.event.set_currhashcode(hashcode);
+    fn set_hashcode(&mut self, hashcode: u64) {
+        self.event.set_hashcode(hashcode);
     }
 
     fn get_crosshashcode(&self) -> u64 {
@@ -2053,7 +2053,7 @@ impl OperationEventFacts {
     /// created and when it expires - and nothing about where it stands in
     /// a chain or a stream: its identities and digests, its sources, the
     /// standing its state stamps, when it last executed, the previous price
-    /// and quantity its chain gave it, its instant, place, recording,
+    /// and quantity its chain gave it, its instant, place, wire clock,
     /// predecessor and snapshot. What a book reads to tell a repeat from a
     /// change, one comparison per field and nothing built.
     ///
@@ -2068,10 +2068,10 @@ impl OperationEventFacts {
                             kind,
                             mdtype,
                             standing: _,
-                            curruuid: _,
+                            uuid: _,
                             crossuuid: _,
                             crosscode,
-                            currhashcode: _,
+                            hashcode: _,
                             crosshashcode: _,
                             srcuuids: _,
                             price,
@@ -2098,11 +2098,11 @@ impl OperationEventFacts {
                             ticker,
                             metadata,
                         },
-                    currunix: _,
+                    transunix: _,
                     state,
                     seqnum: _,
                     creaunix,
-                    recdunix: _,
+                    sendunix: _,
                     exprunix,
                     prevunix: _,
                     prevuuid: _,
@@ -2172,20 +2172,20 @@ fn resync_copied<T: Element + ?Sized, E: Element + Market + ?Sized>(
 }
 
 fn copy_element<T: Element + ?Sized, E: Element + Market + ?Sized>(this: &mut T, other: &E) {
-    this.set_curruuid(other.get_curruuid());
+    this.set_uuid(other.get_uuid());
     this.set_crossuuid(other.get_crossuuid());
     this.set_crosscode(copied_crosscode(other).to_owned());
-    this.set_currhashcode(other.get_currhashcode());
+    this.set_hashcode(other.get_hashcode());
     this.set_crosshashcode(other.get_crosshashcode());
     this.set_srcuuids(other.get_srcuuids().to_vec());
 }
 
 fn copy_event<T: Event + ?Sized, E: Event + ?Sized>(this: &mut T, other: &E) {
-    this.set_currunix(other.get_currunix());
+    this.set_transunix(other.get_transunix());
     this.set_state(*other.get_state());
     this.set_seqnum(other.get_seqnum());
     this.set_creaunix(other.get_creaunix());
-    this.set_recdunix(other.get_recdunix());
+    this.set_sendunix(other.get_sendunix());
     this.set_exprunix(other.get_exprunix());
     this.set_prevunix(other.get_prevunix());
     this.set_prevuuid(other.get_prevuuid());
@@ -2265,7 +2265,7 @@ impl<E: Event + Market + ?Sized> From<&E> for MarketEventFacts {
         // mutated. Conversion copies the exact identities the source states,
         // including an assigned identity, after every dependency is in place.
         let resynced = resync_copied(&mut this, other);
-        this.market.curruuid = other.get_curruuid();
+        this.market.uuid = other.get_uuid();
         this.market.crossuuid = if resynced {
             this.cross_uuid()
         } else {
@@ -2296,7 +2296,7 @@ impl<E: Event + Operation + ?Sized> From<&E> for OperationEventFacts {
         copy_market(&mut this, other);
         copy_operation(&mut this, other);
         let resynced = resync_copied(&mut this, other);
-        this.event.market.curruuid = other.get_curruuid();
+        this.event.market.uuid = other.get_uuid();
         this.event.market.crossuuid = if resynced {
             this.cross_uuid()
         } else {
@@ -2360,7 +2360,7 @@ pub mod internals {
     pub fn finalized(crosscode: &str, unix: i64) -> [(Uuid, u64); 4] {
         fn settle<E: Element>(mut element: E) -> (Uuid, u64) {
             element.finalize();
-            (element.get_curruuid(), element.get_currhashcode())
+            (element.get_uuid(), element.get_hashcode())
         }
         let (market, event, operation, operation_event) = stated(crosscode, unix);
         [

@@ -35,7 +35,7 @@ A fact has one name and one datatype in every row, so a reader who knows one row
         .chain(OperationColumn::ALL.iter().map(|column| column.name()))
         .collect();
     assert_eq!(prefix.len(), 56);
-    assert_eq!(&prefix[..3], ["curruuid", "crossuuid", "crosscode"]);
+    assert_eq!(&prefix[..3], ["uuid", "crossuuid", "crosscode"]);
     assert_eq!(&prefix[15..17], ["marketdatakind", "marketdatatype"]);
 
     let row = MarketData::field()?;
@@ -89,15 +89,15 @@ A line states no market fact, so this row has no market or operation columns.
 
 | # | Column | Datatype | Display |
 | ---: | --- | --- | --- |
-| 0 | `curruuid` | `uuid` | Current UUID |
+| 0 | `uuid` | `uuid` | UUID |
 | 1 | `crossuuid` | `uuid` | Cross UUID |
 | 2 | `crosscode` | `utf8` | Cross Code |
-| 3 | `currhashcode` | `uint64` | Current Hash Code |
+| 3 | `hashcode` | `uint64` | Hash Code |
 | 4 | `crosshashcode` | `uint64` | Cross Hash Code |
 | 5 | `srcuuids` | `serie<uuid>` | Source UUIDs |
-| 6 | `currunix` | `datetime64(ns,"UTC")` | Current Time |
+| 6 | `transunix` | `datetime64(ns,"UTC")` | Transaction Time |
 | 7 | `creaunix` | `datetime64(ns,"UTC")` | Creation Time |
-| 8 | `recdunix` | `datetime64(ns,"UTC")` | Recording Time |
+| 8 | `sendunix` | `datetime64(ns,"UTC")` | Sending Time |
 | 9 | `exprunix` | `datetime64(ns,"UTC")` | Expiry Time |
 | 10 | `prevunix` | `datetime64(ns,"UTC")` | Previous Time |
 | 11 | `snapunix` | `datetime64(ns,"UTC")` | Snapshot Time |
@@ -120,15 +120,15 @@ Some wire values also keep a column of their own:
 
 | # | Column | Datatype | Required | Display | Tag |
 | ---: | --- | --- | --- | --- | ---: |
-| 0 | `curruuid` | `uuid` | yes | Current UUID | 65001 |
+| 0 | `uuid` | `uuid` | yes | UUID | 65001 |
 | 1 | `crossuuid` | `uuid` | yes | Cross UUID | 65002 |
 | 2 | `crosscode` | `utf8` |  | Cross Code | 65003 |
-| 3 | `currhashcode` | `uint64` | yes | Current Hash Code | 65004 |
+| 3 | `hashcode` | `uint64` | yes | Hash Code | 65004 |
 | 4 | `crosshashcode` | `uint64` | yes | Cross Hash Code | 65005 |
 | 5 | `srcuuids` | `serie<uuid>` |  | Source UUIDs | 65006 |
-| 6 | `currunix` | `datetime64(ns,"UTC")` | yes | Current Time | 65007 |
+| 6 | `transunix` | `datetime64(ns,"UTC")` | yes | Transaction Time | 65007 |
 | 7 | `creaunix` | `datetime64(ns,"UTC")` | yes | Creation Time | 65008 |
-| 8 | `recdunix` | `datetime64(ns,"UTC")` |  | Recording Time | 65009 |
+| 8 | `sendunix` | `datetime64(ns,"UTC")` |  | Sending Time | 65009 |
 | 9 | `exprunix` | `datetime64(ns,"UTC")` |  | Expiry Time | 65010 |
 | 10 | `prevunix` | `datetime64(ns,"UTC")` |  | Previous Time | 65011 |
 | 11 | `snapunix` | `datetime64(ns,"UTC")` |  | Snapshot Time | 65012 |
@@ -290,15 +290,15 @@ This is `MarketData::field()`: the prefix, then the book.
 
 | # | Column | Datatype | Required | Display | Band |
 | ---: | --- | --- | --- | --- | --- |
-| 0 | `curruuid` | `uuid` |  | Current UUID | element |
+| 0 | `uuid` | `uuid` |  | UUID | element |
 | 1 | `crossuuid` | `uuid` |  | Cross UUID | element |
 | 2 | `crosscode` | `utf8` |  | Cross Code | element |
-| 3 | `currhashcode` | `uint64` |  | Current Hash Code | element |
+| 3 | `hashcode` | `uint64` |  | Hash Code | element |
 | 4 | `crosshashcode` | `uint64` |  | Cross Hash Code | element |
 | 5 | `srcuuids` | `serie<uuid>` |  | Source UUIDs | element |
-| 6 | `currunix` | `datetime64(ns,"UTC")` |  | Current Time | event |
+| 6 | `transunix` | `datetime64(ns,"UTC")` |  | Transaction Time | event |
 | 7 | `creaunix` | `datetime64(ns,"UTC")` |  | Creation Time | event |
-| 8 | `recdunix` | `datetime64(ns,"UTC")` |  | Recording Time | event |
+| 8 | `sendunix` | `datetime64(ns,"UTC")` |  | Sending Time | event |
 | 9 | `exprunix` | `datetime64(ns,"UTC")` |  | Expiry Time | event |
 | 10 | `prevunix` | `datetime64(ns,"UTC")` |  | Previous Time | event |
 | 11 | `snapunix` | `datetime64(ns,"UTC")` |  | Snapshot Time | event |

@@ -685,7 +685,7 @@ fn apply(
         TextSource::Element(held) => {
             let nothing = matches!(
                 held,
-                crate::graph::ElementColumn::CurrUuid | crate::graph::ElementColumn::CrossUuid
+                crate::graph::ElementColumn::Uuid | crate::graph::ElementColumn::CrossUuid
             ) && matches!(value, Scalar::Uuid(uuid) if uuid.is_nil());
             if !nothing {
                 held.record(line, value);
@@ -704,7 +704,7 @@ fn apply(
         }
         TextSource::Event(held) => {
             let nothing =
-                *held == crate::graph::EventColumn::CurrUnix && value.temporal_count() == Some(0);
+                *held == crate::graph::EventColumn::TransUnix && value.temporal_count() == Some(0);
             if !nothing {
                 held.record(line, value);
             }

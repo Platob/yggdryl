@@ -345,7 +345,7 @@ fn every_plan_is_built_as_its_text_reads_back() {
         )
         .unwrap()
         .to_string(),
-        format!("select * exclude ({nested}) where crosscode = 'C-1' order by currunix")
+        format!("select * exclude ({nested}) where crosscode = 'C-1' order by transunix")
     );
 }
 
@@ -386,7 +386,7 @@ fn an_operation_view_keeps_its_two_kinds_and_every_flat_column() {
     // the undated quote, which states no instant.
     let out = view(&MarketView::Quotes, &[]);
     let dated: Vec<bool> = (0..out.num_rows())
-        .map(|row| !column(&out, "currunix").is_null(row))
+        .map(|row| !column(&out, "transunix").is_null(row))
         .collect();
     assert_eq!(dated, [true, false]);
 }
@@ -450,8 +450,8 @@ fn a_book_is_one_row_its_alive_entries_delta_and_events_kept_nested() {
     );
     let books = [book(11), book(13)];
     assert_eq!(
-        instants(column(&out, "currunix")),
-        books.map(|book| Some(book.get_currunix()))
+        instants(column(&out, "transunix")),
+        books.map(|book| Some(book.get_transunix()))
     );
     // Each book's one bid and one ask, alive and applied at its instant,
     // and no other event recorded there.
@@ -529,7 +529,7 @@ fn the_books_view_keeps_a_delta_book_and_an_event_only_row_and_drops_a_snapshot_
 
     let out = books(written.clone());
     assert_eq!(
-        instants(column(&out, "currunix")),
+        instants(column(&out, "transunix")),
         [Some(20), Some(21), Some(22)]
     );
     let alive = column(&out, "alive");
@@ -564,7 +564,7 @@ fn the_books_view_keeps_a_delta_book_and_an_event_only_row_and_drops_a_snapshot_
     let stated = RecordBatch::try_new(written.schema(), columns).unwrap();
     let out = books(stated);
     assert_eq!(
-        instants(column(&out, "currunix")),
+        instants(column(&out, "transunix")),
         [Some(20), Some(21), Some(22)]
     );
     assert!(column(&out, "delta").is_null(2));
@@ -589,10 +589,10 @@ fn a_lifecycle_is_one_chain_in_the_order_it_happened() {
     );
     assert_eq!(names(&out), flat());
     assert_eq!(
-        instants(column(&out, "currunix")),
+        instants(column(&out, "transunix")),
         [Some(10), Some(20), Some(30)]
     );
-    let current = uuids(column(&out, "curruuid"));
+    let current = uuids(column(&out, "uuid"));
     let previous = uuids(column(&out, "prevuuid"));
     assert_eq!(previous[0], None, "the first element follows nothing");
     assert_eq!(previous[1], current[0]);
@@ -600,7 +600,7 @@ fn a_lifecycle_is_one_chain_in_the_order_it_happened() {
     let [first, second, third] = chain("C-1");
     assert_eq!(
         current,
-        [first, second, third].map(|order| Some(order.get_curruuid().into_bytes().to_vec()))
+        [first, second, third].map(|order| Some(order.get_uuid().into_bytes().to_vec()))
     );
     // A crosscode no row states is the empty chain.
     let out = view(
@@ -634,12 +634,12 @@ fn a_lifecycle_keeps_the_leaves_that_share_an_instant_in_the_order_they_happened
         crosscode: SmolStr::new("10:1:C-9"),
     };
     let out = drained(MarketData::apply_view(&target, &[], stream).unwrap()).unwrap();
-    let current = uuids(column(&out, "curruuid"));
+    let current = uuids(column(&out, "uuid"));
     assert_eq!(
         current,
         chain
             .iter()
-            .map(|order| Some(order.get_curruuid().into_bytes().to_vec()))
+            .map(|order| Some(order.get_uuid().into_bytes().to_vec()))
             .collect::<Vec<_>>()
     );
     let previous = uuids(column(&out, "prevuuid"));
@@ -752,9 +752,7 @@ fn a_quote_leaf_is_a_quote_whatever_it_is_dated() {
     // The fixture's undated quote and dated quote are the quotes view.
     let quote: QuoteEvent = operation(6, "Q-6", "Sell", "New");
     let out = view(&MarketView::Quotes, &[]);
-    assert!(
-        uuids(column(&out, "curruuid")).contains(&Some(quote.get_curruuid().into_bytes().to_vec()))
-    );
+    assert!(uuids(column(&out, "uuid")).contains(&Some(quote.get_uuid().into_bytes().to_vec())));
 }
 
 /// A lift reaches one identifier of an identifier map by its key - `src:type`,
@@ -893,7 +891,7 @@ fn a_lifecycle_is_read_by_the_stored_cross_code_alone() {
         let stream = MarketData::arrow_reader(leaves(10), None, None).unwrap();
         let out = drained(MarketData::apply_view(&target, &[], stream).unwrap()).unwrap();
         assert_eq!(
-            instants(column(&out, "currunix")),
+            instants(column(&out, "transunix")),
             [Some(instant)],
             "{stored}"
         );

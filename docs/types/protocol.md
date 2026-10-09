@@ -690,7 +690,7 @@ the column as the signed integer of its width, and by an
     ```rust
     use yggdryl::{DataType, Representation, Scalar};
 
-    let mut digest = DataType::UInt64.required_field("currhashcode");
+    let mut digest = DataType::UInt64.required_field("hashcode");
     assert_eq!(digest.as_field_properties().representation(), Representation::Value);
     assert!(digest.scalar(-1_i64).is_err());
 
@@ -714,7 +714,7 @@ the column as the signed integer of its width, and by an
     import pytest
     from yggdryl import DataType, Field
 
-    digest = Field("currhashcode", "uint64", nullable=False)
+    digest = Field("hashcode", "uint64", nullable=False)
     assert digest.field_properties.representation == "value"
 
     digest.field_properties.representation = "bits"
@@ -737,7 +737,7 @@ the column as the signed integer of its width, and by an
     const assert = require('node:assert/strict')
     const { Field } = require('yggdryl')
 
-    const digest = new Field('currhashcode', 'uint64', false)
+    const digest = new Field('hashcode', 'uint64', false)
     assert.equal(digest.fieldProperties.representation, 'value')
 
     digest.fieldProperties.representation = 'bits'

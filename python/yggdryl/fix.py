@@ -43,9 +43,9 @@ that will not parse writes nothing.
 
 :class:`FixMsg` is a typed market event with a content row. The typed facts
 live in three holders and two extras - the facts the core's graph
-vocabulary answers, each the message's own property (``curruuid``, ``crossuuid``, ``crosscode``,
-``currhashcode``, ``crosshashcode``, ``currunix``, ``state``, ``seqnum``,
-the lifecycle's ``creaunix``, ``exprunix``, ``recdunix``,
+vocabulary answers, each the message's own property (``uuid``, ``crossuuid``, ``crosscode``,
+``hashcode``, ``crosshashcode``, ``transunix``, ``state``, ``seqnum``,
+the lifecycle's ``creaunix``, ``exprunix``, ``sendunix``,
 ``prevunix``, ``prevuuid`` and ``snapunix``; the market's ``price``,
 ``currency``, ``quantity``, ``unit``, ``side`` - a :class:`yggdryl.Side`,
 ``UKNW`` where none is stated - its ``securityids`` - an :class:`yggdryl.Identifiers`
@@ -113,26 +113,26 @@ row-header captures that state its ``msgpluginid``, ``msgsessionid``,
 capture is which, once for the whole run, and a ``msgdirection`` capture or
 column states the direction FIX's own tag 385 carries, filled from the verb
 in front of the payload where the row states none. A line's ``timestamp``
-capture is context and stamps nothing; the line's own ``currunix`` - an
+capture is context and stamps nothing; the line's own ``transunix`` - an
 ``mtime`` capture, else its handle's modification time - is the message's
-``recdunix``. A parse builds the message, lifts
+``sendunix``. A parse builds the message, lifts
 its typed facts, explodes a nested ``XmlData`` into it, restates deprecated
 fields to their latest aliases, runs the crate's native derivations, reads
 the identifier maps off the fields that state them, splits an execution a
 report or a trade states into sided messages of their own - a quote stays
 one message holding both its legs - and settles the identity: ``SendingTime`` is the message's own, else
-a row cell reaching tag 52, else the ``currunix`` of the line it was read out
+a row cell reaching tag 52, else the ``transunix`` of the line it was read out
 of, else the codec's ``default_sending_time``, else UTC now
 read once - a clock the parse supplied is never the message's own, so the
 wire and the ``sendingtime`` column state none - and the instant
-``currunix`` is the stated one, else the official
+``transunix`` is the stated one, else the official
 transaction clock standing within ``official_time_delay_ms`` of that
 ``SendingTime`` - a ``TransactTime``, else the ``TrdRegTimestamp`` its
 ``TrdRegTimestampType`` says is about the event or a hop - else that
 ``SendingTime``; what ``OrigSendingTime`` says is the lifecycle's to read off
 the structured message. A message reporting an execution that states no
 execution clock executed at that instant: its ``execunix`` is its
-``currunix``. No clock is read after that intake,
+``transunix``. No clock is read after that intake,
 so replay carries the settled row or pins the same ``default_sending_time``.
 There is no separate enriching step: a parsed message already carries what
 it implied. Nothing a capture states is an error: a value that will not type is
@@ -186,7 +186,7 @@ catalog entry whose plugin role every message is stamped with as
 ``snapshot_ns``, ``sorted_lifecycle``, ``official_time_delay_ms``,
 ``dedup_window_ms`` and ``market_metadata`` - is on the codec; a positive
 ``snapshot_ns`` emits independent living views on its epoch-aligned grid -
-each the live event as of its tick, dated at it, so its ``curruuid`` is the
+each the live event as of its tick, dated at it, so its ``uuid`` is the
 identity that tick derives - and
 zero, a negative width or ``None`` disables them; ``sorted_lifecycle`` states
 that the lifecycle's messages arrive in instant order, so it walks them one
@@ -208,8 +208,8 @@ the tag stays on each column's ``FIX:tag``. One ``fixentries`` sorted map
 closes the row with the residual content the dictionary resolves, each entry
 under its ``tag:name`` key - the wire text of a leaf, the JSON of a group or
 component - while a key no dictionary resolves lands in ``metadata``;
-``beginstring``, ``currunix``, ``creaunix``,
-``currhashcode``, ``crosshashcode``, ``curruuid`` and ``crossuuid`` are its
+``beginstring``, ``transunix``, ``creaunix``,
+``hashcode``, ``crosshashcode``, ``uuid`` and ``crossuuid`` are its
 non-null columns. :func:`fix_schema_carrying` puts a capture's own columns in
 front of them, dropping a capture column whose folded name a FIX column
 already takes. :meth:`FixMsg.into_row` fills that row and
@@ -276,8 +276,8 @@ declaration and row.
 every line, as a ``rowheader`` for
 :class:`~yggdryl.text.TextOptions` - the crate's own text rather than a
 second copy of it. Its clock is ``mtime``, so the header dates each line it
-matches: the capture is consumed into the line's ``currunix`` - the
-``recdunix`` of its messages and the sending clock of one stating no
+matches: the capture is consumed into the line's ``transunix`` - the
+``sendunix`` of its messages and the sending clock of one stating no
 ``SendingTime(52)`` - and read at ``datetime64(ns, UTC)`` under the text
 options' ``timezone``, never the file's modification time. Four of the other
 six captures are named for the fields they fill - ``msgsessionid``,

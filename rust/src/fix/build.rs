@@ -465,12 +465,12 @@ pub(super) struct RowExtras<'row> {
     /// the row answers for states as its one source; none for bytes no line
     /// stands behind.
     pub(super) source: Option<crate::Uuid>,
-    /// When the carrier recorded the row - the line's own `currunix` - in
-    /// nanoseconds since the Unix epoch. Applied after the row's explicit
-    /// fills, so a stated crate `recdunix` stands; it is also the sending
-    /// clock a message stating no `SendingTime(52)` is dated by where no
-    /// fill reaches tag 52, ahead of the codec's default.
-    pub(super) recdunix: Option<i64>,
+    /// When the message crossed the wire as its carrier saw it - the line's
+    /// own `transunix` - in nanoseconds since the Unix epoch. Applied after
+    /// the row's explicit fills, so a stated crate `sendunix` stands; it is
+    /// also the sending clock a message stating no `SendingTime(52)` is
+    /// dated by where no fill reaches tag 52, ahead of the codec's default.
+    pub(super) sendunix: Option<i64>,
     /// The plugin the prose in front of the payload says the message came
     /// into the bridge through.
     pub(super) originator: Option<&'row str>,
@@ -497,7 +497,7 @@ pub(super) struct RowStamp {
     /// The identity of the line the row was read from.
     source: Option<crate::Uuid>,
     /// When the carrier recorded the row.
-    recdunix: Option<i64>,
+    sendunix: Option<i64>,
     /// The plugin the row's prose names the message's arrival through.
     originator: Option<SmolStr>,
     /// The conversation the row's prose files the message under.
@@ -511,7 +511,7 @@ impl RowStamp {
             && extras.fills.is_empty()
             && extras.direction.is_none()
             && extras.source.is_none()
-            && extras.recdunix.is_none()
+            && extras.sendunix.is_none()
             && extras.originator.is_none()
             && extras.conversation.is_none()
         {
@@ -526,7 +526,7 @@ impl RowStamp {
                 .collect(),
             direction: extras.direction.map(SmolStr::new),
             source: extras.source,
-            recdunix: extras.recdunix,
+            sendunix: extras.sendunix,
             originator: extras.originator.map(SmolStr::new),
             conversation: extras.conversation.map(SmolStr::new),
         }))
@@ -552,7 +552,7 @@ impl RowStamp {
             direction: self.direction.as_deref(),
             direction_pin: None,
             source: self.source,
-            recdunix: self.recdunix,
+            sendunix: self.sendunix,
             originator: self.originator.as_deref(),
             conversation: self.conversation.as_deref(),
         }
@@ -591,7 +591,7 @@ impl RowExtras<'static> {
         direction: None,
         direction_pin: None,
         source: None,
-        recdunix: None,
+        sendunix: None,
         originator: None,
         conversation: None,
     };

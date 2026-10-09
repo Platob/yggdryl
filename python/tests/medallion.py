@@ -4,7 +4,7 @@
 live, two local Iceberg warehouse folders in the suite - and
 `record_keeping` the namespace in each. One function per stage, each taking
 the :class:`Lake` the run writes through and a UTC window, half-open on
-`currunix`; every read is `read_serie` with the window pushed into it, so
+`transunix`; every read is `read_serie` with the window pushed into it, so
 the scan prunes by the quarter hour each table is partitioned by, every
 stage runs through the codec's serie doors, and the writes are of two
 kinds. The first stage - the capture's lines into
@@ -38,7 +38,7 @@ the silver catalog before anything reads the refined messages. When the
 parse itself learns the instruments (the instrument phase's SPEC §10a) the
 stage follows the raw parse instead.
 
-The window rule: a row is windowed by `currunix`, and a stage reads the
+The window rule: a row is windowed by `transunix`, and a stage reads the
 rows of its source inside the window alone. A walk - the lifecycle, the book
 fold - starts at the window with no state from before it: a chain that
 began earlier follows no predecessor inside the window, and a book's first
@@ -83,7 +83,7 @@ NAMESPACE = "record_keeping"
 # The primary key every table of the pipeline declares: when a row happened,
 # which object it came from, its place there and the hash of what it states -
 # the instant and the content alone repeat wherever two lines are one text.
-PRIMARY_KEY = ("currunix", "crosshashcode", "seqnum", "currhashcode")
+PRIMARY_KEY = ("transunix", "crosshashcode", "seqnum", "hashcode")
 
 # What every table of the pipeline requires of each row: its key and the code
 # of its chain.
@@ -91,9 +91,9 @@ REQUIRED = (*PRIMARY_KEY, "crosscode")
 
 # The partition every table computes for each row it is written: the quarter
 # of an hour the row's instant falls in.
-PARTUNIX = "time_bucket('15 minutes', currunix) as partunix"
+PARTUNIX = "time_bucket('15 minutes', transunix) as partunix"
 PARTUNIX_DESCRIPTION = (
-    "The quarter of an hour the row's instant falls in: currunix floored to fifteen minutes."
+    "The quarter of an hour the row's instant falls in: transunix floored to fifteen minutes."
 )
 
 # The book stage's snapshot grid: every book whole each quarter of an hour.
@@ -113,7 +113,7 @@ EVENTS: tuple[tuple[str, Callable[[Any, str | None], StreamChunkedSerie], str], 
 
 
 def window_filter(start: dt.datetime, end: dt.datetime) -> str:
-    """The `where` of one window: `currunix >= start and currunix < end`.
+    """The `where` of one window: `transunix >= start and transunix < end`.
 
     Both instants state UTC; a naive instant, or one in another zone, is
     refused by name rather than read as something it is not.
@@ -124,7 +124,7 @@ def window_filter(start: dt.datetime, end: dt.datetime) -> str:
     if end <= start:
         raise ValueError(f"expected a window with end after start, got {start!r} to {end!r}")
     text = lambda instant: instant.astimezone(dt.timezone.utc).isoformat().replace("+00:00", "Z")  # noqa: E731
-    return f"currunix >= '{text(start)}' and currunix < '{text(end)}'"
+    return f"transunix >= '{text(start)}' and transunix < '{text(end)}'"
 
 
 def unnumbered(field: Field) -> Field:
@@ -160,7 +160,7 @@ def declared(row: Field, partition_by: Iterable[str] = (PARTUNIX,)) -> Field:
     partunix = schema["partunix"]
     partunix.set_description(PARTUNIX_DESCRIPTION)
     schema["partunix"] = partunix
-    schema.sort.by = ["partunix", "currunix", "seqnum", "currhashcode"]
+    schema.sort.by = ["partunix", "transunix", "seqnum", "hashcode"]
     schema = yggdryl.iceberg.assign_field_ids(schema)
     # Iceberg names a key by the identifiers of its columns, which exist once
     # the schema is numbered.

@@ -378,12 +378,12 @@ impl JsMarketData {
             .map_err(napi_error)
     }
 
-    /// `MarketData(<curruuid>, kind=.., crosscode=..)`.
+    /// `MarketData(<uuid>, kind=.., crosscode=..)`.
     #[napi(js_name = "toString")]
     pub fn js_string(&self) -> String {
         format!(
             "MarketData({}, kind={:?}, crosscode={:?})",
-            yggdryl::graph::Element::get_curruuid(&self.inner),
+            yggdryl::graph::Element::get_uuid(&self.inner),
             self.inner.kind().as_str(),
             yggdryl::graph::Element::get_crosscode(&self.inner),
         )

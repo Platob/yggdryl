@@ -67,8 +67,8 @@ impl TradeEvent {
         &self.data
     }
 
-    fn rebase_currunix(&mut self, unix: i64) {
-        self.data.set_currunix(unix);
+    fn rebase_transunix(&mut self, unix: i64) {
+        self.data.set_transunix(unix);
         rebase_executions(&mut self.executions, unix);
         self.refresh();
     }
@@ -80,19 +80,19 @@ impl TradeEvent {
                 "expected a trade to contain at least one execution",
             ));
         }
-        let root_unix = self.data.get_currunix();
+        let root_unix = self.data.get_transunix();
         let root_symbol = self.data.get_ticker();
         let mut crosscodes = HashSet::with_capacity(self.executions.len());
         for (index, execution) in self.executions.iter().enumerate() {
             let path = |name: &str| format_smolstr!("$.executions[{index}].{name}");
             // Any side stands, `UKNW` included: a trade side nobody
             // stated is still a fill.
-            if execution.get_currunix() != root_unix {
+            if execution.get_transunix() != root_unix {
                 return Err(invalid(
-                    path("currunix"),
+                    path("transunix"),
                     format_smolstr!(
                         "expected the trade timestamp {root_unix}, got {}",
-                        execution.get_currunix()
+                        execution.get_transunix()
                     ),
                 ));
             }
@@ -135,7 +135,7 @@ impl TradeEvent {
         for execution in &self.executions {
             data.set_seqnum(data.get_seqnum().max(execution.get_seqnum()));
             data.set_creaunix(earliest(data.get_creaunix(), execution.get_creaunix()));
-            data.set_recdunix(earliest(data.get_recdunix(), execution.get_recdunix()));
+            data.set_sendunix(earliest(data.get_sendunix(), execution.get_sendunix()));
             data.set_execunix(latest(data.get_execunix(), execution.get_execunix()), true);
         }
         data.fill_market();
@@ -144,25 +144,25 @@ impl TradeEvent {
         let mut digest = data.digest_operation_event();
         digest.write(&(self.executions.len() as u64).to_be_bytes());
         for execution in &self.executions {
-            digest.write(&execution.get_curruuid().get().to_be_bytes());
+            digest.write(&execution.get_uuid().get().to_be_bytes());
         }
         data.finalized(digest.finish());
         data
     }
 
     fn refresh(&mut self) {
-        rebase_executions(&mut self.executions, self.data.get_currunix());
+        rebase_executions(&mut self.executions, self.data.get_transunix());
         self.data = self.canonical_data();
     }
 }
 
 impl Element for TradeEvent {
-    fn get_curruuid(&self) -> Uuid {
-        self.data.get_curruuid()
+    fn get_uuid(&self) -> Uuid {
+        self.data.get_uuid()
     }
 
-    fn set_curruuid(&mut self, curruuid: Uuid) {
-        self.data.set_curruuid(curruuid);
+    fn set_uuid(&mut self, uuid: Uuid) {
+        self.data.set_uuid(uuid);
     }
 
     fn get_crossuuid(&self) -> Uuid {
@@ -181,12 +181,12 @@ impl Element for TradeEvent {
         self.data.set_crosscode(crosscode);
     }
 
-    fn get_currhashcode(&self) -> u64 {
-        self.data.get_currhashcode()
+    fn get_hashcode(&self) -> u64 {
+        self.data.get_hashcode()
     }
 
-    fn set_currhashcode(&mut self, hashcode: u64) {
-        self.data.set_currhashcode(hashcode);
+    fn set_hashcode(&mut self, hashcode: u64) {
+        self.data.set_hashcode(hashcode);
     }
 
     fn get_crosshashcode(&self) -> u64 {
@@ -219,13 +219,13 @@ impl Element for TradeEvent {
     /// are part of it.
     fn with_previous(mut self, previous: &Self) -> Option<Self> {
         if self.get_crosscode() != previous.get_crosscode()
-            || self.get_currunix() < previous.get_currunix()
+            || self.get_transunix() < previous.get_transunix()
         {
             return None;
         }
         let data = std::mem::take(&mut self.data).following_operation(&previous.data)?;
         let mut executions = combine_executions(&self.executions, &previous.executions);
-        rebase_executions(&mut executions, data.get_currunix());
+        rebase_executions(&mut executions, data.get_transunix());
         Self::from_facts(data, executions).ok()
     }
 
@@ -242,18 +242,18 @@ impl Element for TradeEvent {
         let mut data = reference.data.clone();
         super::market::merge_operation_event_into_reference(&mut data, &supplement.data);
         let mut executions = combine_executions(&reference.executions, &supplement.executions);
-        rebase_executions(&mut executions, data.get_currunix());
+        rebase_executions(&mut executions, data.get_transunix());
         let merged = Self::from_facts(data, executions).ok()?;
         (merged != self).then_some(merged)
     }
 }
 
 impl Event for TradeEvent {
-    fn get_currunix(&self) -> i64 {
-        self.data.get_currunix()
+    fn get_transunix(&self) -> i64 {
+        self.data.get_transunix()
     }
-    fn set_currunix(&mut self, unix: i64) {
-        self.rebase_currunix(unix);
+    fn set_transunix(&mut self, unix: i64) {
+        self.rebase_transunix(unix);
     }
     fn get_state(&self) -> &crate::State {
         self.data.get_state()
@@ -276,11 +276,11 @@ impl Event for TradeEvent {
     fn set_creaunix(&mut self, unix: Option<i64>) {
         self.data.set_creaunix(unix);
     }
-    fn get_recdunix(&self) -> Option<i64> {
-        self.data.get_recdunix()
+    fn get_sendunix(&self) -> Option<i64> {
+        self.data.get_sendunix()
     }
-    fn set_recdunix(&mut self, unix: Option<i64>) {
-        self.data.set_recdunix(unix);
+    fn set_sendunix(&mut self, unix: Option<i64>) {
+        self.data.set_sendunix(unix);
     }
     fn get_exprunix(&self) -> Option<i64> {
         self.data.get_exprunix()
@@ -324,12 +324,12 @@ fn compare_executions(left: &ExecutionEvent, right: &ExecutionEvent) -> std::cmp
     (
         left.get_side().as_str(),
         left.get_crosscode(),
-        left.get_curruuid(),
+        left.get_uuid(),
     )
         .cmp(&(
             right.get_side().as_str(),
             right.get_crosscode(),
-            right.get_curruuid(),
+            right.get_uuid(),
         ))
 }
 
@@ -349,8 +349,8 @@ fn combine_executions(left: &[ExecutionEvent], right: &[ExecutionEvent]) -> Vec<
 /// an event of that instant, so it starts at its first place.
 fn rebase_executions(executions: &mut [ExecutionEvent], unix: i64) {
     for execution in executions {
-        if execution.get_currunix() != unix {
-            execution.set_currunix(unix);
+        if execution.get_transunix() != unix {
+            execution.set_transunix(unix);
             execution.set_seqnum(0);
             execution.finalize();
         }
@@ -372,9 +372,9 @@ fn merge_execution(left: &ExecutionEvent, right: &ExecutionEvent) -> ExecutionEv
 
 fn reference_key<E: Event + ?Sized>(event: &E) -> (Option<i64>, i64, Uuid) {
     (
-        event.get_recdunix(),
-        event.get_currunix(),
-        event.get_curruuid(),
+        event.get_sendunix(),
+        event.get_transunix(),
+        event.get_uuid(),
     )
 }
 

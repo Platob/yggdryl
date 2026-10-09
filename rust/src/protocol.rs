@@ -842,7 +842,7 @@ impl FieldPropertiesField<'_> {
     /// use yggdryl::{DataType, Representation, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut digest = DataType::UInt64.required_field("currhashcode");
+    /// let mut digest = DataType::UInt64.required_field("hashcode");
     /// assert_eq!(digest.as_field_properties().representation(), Representation::Value);
     /// assert!(digest.scalar(Scalar::from(-1_i64)).is_err());
     ///

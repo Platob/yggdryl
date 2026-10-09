@@ -362,11 +362,11 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
         Some("8:SESSION-2:CONTEXT-2:7")
     );
     assert_eq!(
-        message.get_currhashcode(),
-        other_capture.get_currhashcode(),
+        message.get_hashcode(),
+        other_capture.get_hashcode(),
         "capture provenance is not message content"
     );
-    assert_eq!(message.get_curruuid(), other_capture.get_curruuid());
+    assert_eq!(message.get_uuid(), other_capture.get_uuid());
 
     // The fixed row states it at its own column, and reads it back.
     let schema = fix_schema(&registry, "fix").unwrap();
@@ -580,7 +580,7 @@ fn session_event_identifier_tracks_typed_capture_edits_without_losing_other_name
         "header mutations resettle the complete delivery key"
     );
 
-    let implicit_uuid = message.get_curruuid();
+    let implicit_uuid = message.get_uuid();
     message.set_crosscode("EXPLICIT".to_owned());
     // The code is stored under its kind and side - an order's, no side
     // stated - and the cross hash is the digest of the stored code.
@@ -592,8 +592,8 @@ fn session_event_identifier_tracks_typed_capture_edits_without_losing_other_name
     // Naming the chain moves both identities: the content code still leaves
     // the cross code out, while the event UUID seeds its payload with the
     // cross hash so two cross chains cannot project the same generic ID.
-    assert_ne!(message.get_curruuid(), implicit_uuid);
-    assert_eq!(message.get_curruuid(), message.time_uuid().unwrap());
+    assert_ne!(message.get_uuid(), implicit_uuid);
+    assert_eq!(message.get_uuid(), message.time_uuid().unwrap());
     assert_eq!(
         message.get_crossuuid(),
         yggdryl::Uuid::from_v8(u128::from(message.get_crosshashcode()))
@@ -864,7 +864,7 @@ fn a_captured_line_states_its_session_event_at_its_own_column() {
 
 /// An execution report that states no execution clock executed when it
 /// happened, and says so from the moment it is parsed: its `execunix` is its
-/// `currunix`, rather than waiting for a lifecycle walk to date it. Only a
+/// `transunix`, rather than waiting for a lifecycle walk to date it. Only a
 /// report of an execution is dated, and only a raw observation - a clock the
 /// message states is its own, and a lifecycle output's state may be one it
 /// inherited.
@@ -879,7 +879,7 @@ fn a_parsed_execution_report_states_its_execution_at_its_instant() {
     let (registry, reader) = reader();
     let fill = reader.sole_line(FILL).unwrap();
     assert!(fill.get_prevuuid().is_none(), "a raw observation");
-    assert_eq!(fill.get_currunix(), SENT);
+    assert_eq!(fill.get_transunix(), SENT);
     assert_eq!(fill.get_execunix(), Some(SENT));
 
     // A request and an acknowledgement report no execution, so nothing
@@ -889,7 +889,7 @@ fn a_parsed_execution_report_states_its_execution_at_its_instant() {
         b"8=FIX.4.4|35=8|52=20240102-10:15:30.100|37=O|17=A|150=0|39=0|14=0|151=100|10=0|",
     ] {
         let held = reader.sole_line(line).unwrap();
-        assert_eq!(held.get_currunix(), SENT);
+        assert_eq!(held.get_transunix(), SENT);
         assert_eq!(
             held.get_execunix(),
             None,
@@ -906,14 +906,14 @@ fn a_parsed_execution_report_states_its_execution_at_its_instant() {
         .unwrap();
     // TransactTime within the official delay of the sending clock is also
     // the report's instant.
-    assert_eq!(transacted.get_currunix(), TRANSACTED);
+    assert_eq!(transacted.get_transunix(), TRANSACTED);
     assert_eq!(transacted.get_execunix(), Some(TRANSACTED));
     let executed = reader
         .sole_line(
             b"8=FIX.4.4|35=8|52=20240102-10:15:30.100|2749=20240102-10:15:30.020|37=O|17=E|150=F|39=2|14=100|151=0|10=0|",
         )
         .unwrap();
-    assert_eq!(executed.get_currunix(), SENT);
+    assert_eq!(executed.get_transunix(), SENT);
     assert_eq!(executed.get_execunix(), Some(EXECUTED));
 
     // The filled clock is a fact the row states, read back as stated, and
@@ -949,7 +949,7 @@ fn a_parsed_execution_report_states_its_execution_at_its_instant() {
         .unwrap();
     assert_eq!(chained.len(), 2);
     let output = &chained[1];
-    assert_eq!(output.get_prevuuid(), Some(chained[0].get_curruuid()));
+    assert_eq!(output.get_prevuuid(), Some(chained[0].get_uuid()));
     assert_eq!(output.get_execunix(), Some(SENT));
     let mut columns = output
         .into_row(&schema)
@@ -989,7 +989,7 @@ fn an_expire_date_is_good_through_its_day_and_a_maturity_is_no_deadline() {
         .collect::<yggdryl::Result<_>>()
         .expect("two messages");
     let placed = &parsed[0];
-    assert_eq!(placed.get_currunix(), PLACED);
+    assert_eq!(placed.get_transunix(), PLACED);
     assert_eq!(placed.get_exprunix(), Some(DAY_ENDS));
     let chained: Vec<FixMsg> = reader
         .lifecycle(parsed)
@@ -1001,10 +1001,10 @@ fn an_expire_date_is_good_through_its_day_and_a_maturity_is_no_deadline() {
             chained.len()
         )
     };
-    assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
+    assert_eq!(ack.get_prevuuid(), Some(order.get_uuid()));
     assert_eq!(ack.get_crossuuid(), order.get_crossuuid());
-    assert_eq!(expired.get_prevuuid(), Some(ack.get_curruuid()));
-    assert_eq!(expired.get_currunix(), DAY_ENDS);
+    assert_eq!(expired.get_prevuuid(), Some(ack.get_uuid()));
+    assert_eq!(expired.get_transunix(), DAY_ENDS);
     assert_eq!(*expired.get_state(), yggdryl::State::Expired);
 
     // A written date reads back as the day it names, so the wire a walk
@@ -1107,7 +1107,7 @@ fn a_set_value_replaces_an_existing_child_in_place_and_keeps_the_tag_index() {
         if tag == 55 || tag == 54 {
             continue;
         }
-        if tag == yggdryl::CURRHASHCODE_TAG_NAME.0 {
+        if tag == yggdryl::HASHCODE_TAG_NAME.0 {
             assert_ne!(message.by_tag(tag).unwrap(), value);
             continue;
         }
@@ -1347,7 +1347,7 @@ fn remove_answers_the_value_and_the_other_tags_still_reach_their_children() {
         if *tag == 55 {
             continue;
         }
-        if *tag == yggdryl::CURRHASHCODE_TAG_NAME.0 {
+        if *tag == yggdryl::HASHCODE_TAG_NAME.0 {
             assert_ne!(message.by_tag(*tag).unwrap(), *value);
             continue;
         }
@@ -1375,7 +1375,7 @@ fn a_row_reads_back_into_the_message_that_made_it() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let mut parsed = reader.sole_line(ORDER).unwrap();
-    parsed.set_recdunix(Some(100));
+    parsed.set_sendunix(Some(100));
     parsed.set_execunix(Some(200), true);
     let row = parsed.into_row(&schema).unwrap();
 
@@ -1403,12 +1403,12 @@ fn a_row_reads_back_into_the_message_that_made_it() {
     assert_eq!(held.header().beginstring(), parsed.header().beginstring());
     assert_eq!(held.header().msgtype(), parsed.header().msgtype());
     assert_eq!(held.header().msgseqnum(), parsed.header().msgseqnum());
-    assert_eq!(held.get_currunix(), parsed.get_currunix());
-    assert_eq!(held.get_curruuid(), parsed.get_curruuid());
+    assert_eq!(held.get_transunix(), parsed.get_transunix());
+    assert_eq!(held.get_uuid(), parsed.get_uuid());
     assert_eq!(held.get_crossuuid(), parsed.get_crossuuid());
-    assert_eq!(held.get_currhashcode(), parsed.get_currhashcode());
+    assert_eq!(held.get_hashcode(), parsed.get_hashcode());
     assert_eq!(held.get_crosshashcode(), parsed.get_crosshashcode());
-    assert_eq!(held.get_recdunix(), Some(100));
+    assert_eq!(held.get_sendunix(), Some(100));
     assert_eq!(held.get_execunix(), Some(200));
 }
 
@@ -1456,7 +1456,7 @@ fn a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
         .sole_line(&[&party[..], b"802=0|10=0|"].concat())
         .unwrap();
     assert_ne!(counted.entries(), absent.entries());
-    assert_ne!(counted.get_currhashcode(), absent.get_currhashcode());
+    assert_ne!(counted.get_hashcode(), absent.get_hashcode());
     assert_ne!(counted.digest(), absent.digest());
     let wire = |message: &FixMsg| String::from_utf8(message.into_bytes(b'|')).unwrap();
     assert!(
@@ -1469,8 +1469,8 @@ fn a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
     // A row that does not record its content code is settled from what it
     // states, so the row is read without that column.
     let fixed = fixed_with_party_group(&registry);
-    let hashcode_at = yggdryl::fix_column_of(&fixed, yggdryl::CURRHASHCODE_TAG_NAME.0)
-        .expect("a currhashcode column");
+    let hashcode_at =
+        yggdryl::fix_column_of(&fixed, yggdryl::HASHCODE_TAG_NAME.0).expect("a hashcode column");
     let schema = StructType::from_fields(
         fixed
             .fields()
@@ -1512,12 +1512,8 @@ fn a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
         let [as_written, as_read_back] = [written, read_back]
             .map(|row| FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap());
         for (held, read) in [(&as_written, "as written"), (&as_read_back, "as read back")] {
-            assert_eq!(
-                held.get_currhashcode(),
-                message.get_currhashcode(),
-                "{read}"
-            );
-            assert_eq!(held.get_curruuid(), message.get_curruuid(), "{read}");
+            assert_eq!(held.get_hashcode(), message.get_hashcode(), "{read}");
+            assert_eq!(held.get_uuid(), message.get_uuid(), "{read}");
             assert_eq!(wire(held).contains("|802=0|"), stated, "{read}");
         }
         // What the row states agrees, whichever way the list was stored.
@@ -1546,8 +1542,8 @@ fn a_root_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
     // Read without the content code, so each message is settled from what
     // its row states.
     let fixed = fixed_with_party_group(&registry);
-    let hashcode_at = yggdryl::fix_column_of(&fixed, yggdryl::CURRHASHCODE_TAG_NAME.0)
-        .expect("a currhashcode column");
+    let hashcode_at =
+        yggdryl::fix_column_of(&fixed, yggdryl::HASHCODE_TAG_NAME.0).expect("a hashcode column");
     let schema = StructType::from_fields(
         fixed
             .fields()
@@ -1568,12 +1564,8 @@ fn a_root_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
         let read_back = Scalar::from_sequence(cells);
         for (row, read) in [(&written, "as written"), (&read_back, "as read back")] {
             let held = FixMsg::from_row(Arc::clone(&registry), &schema, row).unwrap();
-            assert_eq!(
-                held.get_currhashcode(),
-                message.get_currhashcode(),
-                "{read}"
-            );
-            assert_eq!(held.get_curruuid(), message.get_curruuid(), "{read}");
+            assert_eq!(held.get_hashcode(), message.get_hashcode(), "{read}");
+            assert_eq!(held.get_uuid(), message.get_uuid(), "{read}");
             assert_eq!(wire(&held).contains("|453="), stated, "{read}");
         }
     }
@@ -2019,7 +2011,7 @@ fn a_walk_keeps_the_execution_intake_dated_on_a_successor() {
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
     assert_eq!(walked.len(), 2);
-    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_uuid()));
     assert_eq!(walked[0].get_execunix(), Some(PARTIAL));
     assert_eq!(walked[1].get_execunix(), Some(FILLED));
 }
@@ -2076,7 +2068,7 @@ fn a_regulatory_group_held_as_a_column_dates_the_message() {
         )
         .expect("a report stamping its execution");
     assert_eq!(parsed.get_execunix(), Some(EXECUTION));
-    assert_eq!(parsed.get_currunix(), EXECUTION);
+    assert_eq!(parsed.get_transunix(), EXECUTION);
     let (root, row) = super::restatable(&registry, &parsed, &[35, 52]);
     let run = FixMsg::with_registry(Arc::clone(&registry), root.clone(), row.clone())
         .expect("the run-backed message");
@@ -2090,8 +2082,8 @@ fn a_regulatory_group_held_as_a_column_dates_the_message() {
 
     assert_eq!(run.get_execunix(), Some(EXECUTION));
     assert_eq!(column.get_execunix(), Some(EXECUTION));
-    assert_eq!(run.get_currunix(), EXECUTION);
-    assert_eq!(column.get_currunix(), EXECUTION);
+    assert_eq!(run.get_transunix(), EXECUTION);
+    assert_eq!(column.get_transunix(), EXECUTION);
 }
 
 /// A quote's `BidPx(132)`, `BidSize(134)`, `OfferPx(133)` and
@@ -2592,7 +2584,7 @@ mod identifier_maps {
         };
         assert_eq!(tokens(&again), tokens(&held));
         assert_eq!(again.digest(), held.digest());
-        assert_eq!(again.get_currhashcode(), held.get_currhashcode());
+        assert_eq!(again.get_hashcode(), held.get_hashcode());
         assert_eq!(again.into_row(&schema).expect("a row again"), row);
     }
 
@@ -3186,18 +3178,18 @@ mod identifier_maps {
 /// longer feeds `seqnum`, which this message states as zero. It last moved
 /// when the category the content code feeds took the column's own name:
 /// the label `msgcat` became `marketdatakind`, its value the same code.
-/// That relabelling moves every message's `currhashcode` and `curruuid`, a
-/// `crossuuid` that is its own `curruuid`, the `srcuuids` and `prevuuid`
+/// That relabelling moves every message's `hashcode` and `uuid`, a
+/// `crossuuid` that is its own `uuid`, the `srcuuids` and `prevuuid`
 /// naming a moved message, and the cross code of an execution split off a
 /// report naming no `ExecID` or `TradeID` (it derives from its report's
-/// `currhashcode`); never the wire, the digest's entries or `seqnum`.
+/// `hashcode`); never the wire, the digest's entries or `seqnum`.
 #[test]
 fn a_message_naming_no_pair_digests_as_it_did_before_detection() {
     let (_, reader) = reader();
     let message = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=100|40=2|44=10.5|15=USD|167=CS|10=0|")
         .expect("an order");
-    assert_eq!(message.get_currhashcode(), 11_376_276_928_047_898_508);
+    assert_eq!(message.get_hashcode(), 11_376_276_928_047_898_508);
 }
 
 /// What settle derives about the market a message is in: the rates it
@@ -3578,15 +3570,15 @@ fn a_row_stating_a_digest_its_column_cannot_read_is_refused_by_name() {
     // unsigned type stores it, to a scale that can hold a fraction beside
     // the twenty digits.
     let mut schema = fix_schema(&registry, "fix").unwrap();
-    let name = yggdryl::CURRHASHCODE_TAG_NAME.1;
+    let name = yggdryl::HASHCODE_TAG_NAME.1;
     let widened = DataType::decimal128(22, 2).unwrap().nullable_field(name);
     schema.set_field(name, widened).unwrap();
-    let at = schema.index_of(name).expect("a currhashcode column");
+    let at = schema.index_of(name).expect("a hashcode column");
     let row = message.into_row(&schema).unwrap();
     // Whole, the digest reads back as the number it was.
     let read = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
-    assert_eq!(read.get_currhashcode(), message.get_currhashcode());
-    assert_ne!(read.get_currhashcode(), 0);
+    assert_eq!(read.get_hashcode(), message.get_hashcode());
+    assert_ne!(read.get_hashcode(), 0);
     // With a fraction, the row is refused by its column.
     let cells = row.as_sequence().expect("a row");
     let broken = Scalar::from_sequence(cells.iter().enumerate().map(|(index, cell)| {
@@ -3599,7 +3591,7 @@ fn a_row_stating_a_digest_its_column_cannot_read_is_refused_by_name() {
     let error = FixMsg::from_row(Arc::clone(&registry), &schema, &broken)
         .unwrap_err()
         .to_string();
-    assert!(error.contains("$.currhashcode"), "{error}");
+    assert!(error.contains("$.hashcode"), "{error}");
     assert!(error.contains("uint64"), "{error}");
 }
 
@@ -3614,14 +3606,14 @@ fn a_row_reads_a_long_digest_as_its_bits_and_refuses_a_negative_place() {
         .unwrap();
     // The fixed row as a table of longs lays it out, stating nothing.
     let mut schema = fix_schema(&registry, "fix").unwrap();
-    for name in [yggdryl::CURRHASHCODE_TAG_NAME.1, yggdryl::SEQNUM_TAG_NAME.1] {
+    for name in [yggdryl::HASHCODE_TAG_NAME.1, yggdryl::SEQNUM_TAG_NAME.1] {
         let mut long = schema.get_field(name).expect("an identity column").clone();
         long.set_dtype(DataType::Int64).unwrap();
         schema.set_field(name, long).unwrap();
     }
     let digest_at = schema
-        .index_of(yggdryl::CURRHASHCODE_TAG_NAME.1)
-        .expect("a currhashcode column");
+        .index_of(yggdryl::HASHCODE_TAG_NAME.1)
+        .expect("a hashcode column");
     let place_at = schema
         .index_of(yggdryl::SEQNUM_TAG_NAME.1)
         .expect("a seqnum column");
@@ -3643,7 +3635,7 @@ fn a_row_reads_a_long_digest_as_its_bits_and_refuses_a_negative_place() {
         &cells(Scalar::from(-1_i64), Scalar::from(0_i64)),
     )
     .unwrap();
-    assert_eq!(read.get_currhashcode(), u64::MAX);
+    assert_eq!(read.get_hashcode(), u64::MAX);
 
     let error = FixMsg::from_row(
         Arc::clone(&registry),

@@ -242,7 +242,7 @@ def test_threads_read_what_one_thread_reads_and_a_message_carries_its_rows_cells
     # The line doors answer on four threads what they answer on one: the
     # same messages, in the same order.
     def stated(messages: Iterator[Any]) -> list[tuple[Scalar, bytes]]:
-        return [(held.curruuid, held.into_bytes(ord("|"))) for held in messages]
+        return [(held.uuid, held.into_bytes(ord("|"))) for held in messages]
 
     assert stated(four.parse_lines(CAPTURE)) == stated(one.parse_lines(CAPTURE))
     parsed = four.parse_text_arrow_reader(_capture(CAPTURE, 3)).read_all()
@@ -297,13 +297,13 @@ def test_the_schema_is_decided_before_the_first_row_is_read(seed_batch: FixRegis
     # clocks; the capture's own column and the fixed columns follow - a table
     # is read by time and joined by identity.
     assert names[:7] == [
-        "curruuid",
+        "uuid",
         "crossuuid",
         "crosscode",
-        "currhashcode",
+        "hashcode",
         "crosshashcode",
         "srcuuids",
-        "currunix",
+        "transunix",
     ]
     assert "body" in names
     # A column is read by name rather than by position: the bands the row is
@@ -315,8 +315,8 @@ def test_the_schema_is_decided_before_the_first_row_is_read(seed_batch: FixRegis
     assert names[-1] == "fixentries" and names.count("metadata") == 1
     assert reader.schema.field("msgtype").metadata[b"FIX:tag"] == b"35"
     # The identities cross as what a lake reads: a UUID and a 64-bit integer.
-    assert reader.schema.field("curruuid").type == pa.uuid()
-    assert reader.schema.field("currhashcode").type == pa.uint64()
+    assert reader.schema.field("uuid").type == pa.uuid()
+    assert reader.schema.field("hashcode").type == pa.uint64()
     # And an empty capture yields no batch at all.
     assert reader.read_all().num_rows == 0
 
@@ -328,8 +328,8 @@ def test_a_capture_answers_one_row_per_message_not_one_per_line(seed_batch: FixR
     msgtype = _column(parsed, "msgtype")
     assert msgtype[0] == "D", "a framed row states its type"
     # Every row settles its identity, so the non-null columns are filled.
-    assert all(held is not None for held in _column(parsed, "curruuid"))
-    assert all(held is not None for held in _column(parsed, "currhashcode"))
+    assert all(held is not None for held in _column(parsed, "uuid"))
+    assert all(held is not None for held in _column(parsed, "hashcode"))
     # This ordinary message is fully projected; the residual record remains
     # present but empty rather than restaging projected facts.
     assert _column(parsed, "fixentries")[0] == []
@@ -392,8 +392,8 @@ def test_messages_and_arrow_reader_invert_each_other(seed_batch: FixRegistry) ->
     for held, message in zip(again, parsed):
         # Arrow reconstruction combines projected and residual content in
         # schema order; its row and stored identities are the contract.
-        assert held.currhashcode == message.currhashcode
-        assert held.curruuid == message.curruuid
+        assert held.hashcode == message.hashcode
+        assert held.uuid == message.uuid
         assert held.into_row(schema) == message.into_row(schema)
     # And the batches the second pass makes are the batches the first made.
     first = codec.arrow_reader(schema, parsed).read_all()
@@ -423,7 +423,7 @@ def test_book_arrow_reader_streams_lifted_market_data_books(seed_batch: FixRegis
     assert reader.schema == MarketData.field().into_arrow_schema()
     names = reader.schema.names
     assert len(names) == 65
-    assert names[0] == "curruuid"
+    assert names[0] == "uuid"
     assert names.index("marketdatakind") == 15
     assert {"bookaction", "bookposition"} <= set(names)
     assert {"alive", "delta", "events", "executions", "bidlimits", "asklimits"} <= set(names)
@@ -513,7 +513,7 @@ def test_market_data_answer_the_sorted_captures_leaves(seed_batch: FixRegistry) 
             b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|55=AAPL|54=1|44=99|38=5|10=0|",
         )
     ]
-    ordered = sorted(unsorted, key=lambda message: message.currunix)
+    ordered = sorted(unsorted, key=lambda message: message.transunix)
     operations = codec.market_data(iter(unsorted))
     assert isinstance(operations, graph.MarketDataRowIterator)
     assert iter(operations) is operations
@@ -653,8 +653,8 @@ def test_market_metadata_carries_what_no_typed_column_reads(seed_batch: FixRegis
     for leaf in (stated, bare):
         assert _kinds(leaf.as_order_event().partyids) == {"account": "ACC1"}
     # The map is part of the leaf, so it is part of its identity.
-    assert stated.curruuid != bare.curruuid
-    assert stated.currhashcode != bare.currhashcode
+    assert stated.uuid != bare.uuid
+    assert stated.hashcode != bare.hashcode
     # The message door always carries it; the book door honours the switch.
     # With no grid the book is a delta book: the order is its one entry.
     assert message.market_data() == [stated]
@@ -695,12 +695,12 @@ def test_a_parse_places_each_message_among_the_messages_of_its_instant(seed_batc
         # By order: the order read again stands third at its instant, an
         # identity of its own.
         assert [held.seqnum for held in parsed] == [0, 1, 2, 0]
-        assert parsed[0].curruuid != parsed[2].curruuid
-        assert parsed[0].currhashcode == parsed[2].currhashcode
+        assert parsed[0].uuid != parsed[2].uuid
+        assert parsed[0].hashcode == parsed[2].hashcode
         # The place orders the identities of one millisecond.
-        assert parsed[1].curruuid > parsed[0].curruuid
+        assert parsed[1].uuid > parsed[0].uuid
         # A place is where a message stands, never what it says.
-        assert parsed[0].currhashcode != parsed[1].currhashcode
+        assert parsed[0].hashcode != parsed[1].hashcode
 
 
 ULBRIDGE_LOG = pathlib.Path(__file__).resolve().parent.parent.parent / "rust" / "tests" / "fix" / "ulbridge.log"
@@ -735,8 +735,8 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     every = list(codec.with_dedup_window_ms(None).lifecycle(messages))
     assert len(every) == 42
     seen: set[object] = set()
-    once = [held.curruuid for held in every if not (held.curruuid in seen or seen.add(held.curruuid))]
-    assert once == [held.curruuid for held in walked]
+    once = [held.uuid for held in every if not (held.uuid in seen or seen.add(held.uuid))]
+    assert once == [held.uuid for held in walked]
 
     # Twenty-one deliveries are market data - eight fills and ten order
     # reports, a fill and a report of the twenty yielded once, and the NOVN
@@ -793,7 +793,7 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     # book records an order or a quote among its events.
     assert sum(len(book.executions) for book in books) == 8
     assert all(len(book.executions) == len(book.events) for book in books)
-    assert last.currhashcode == 10_745_751_629_392_559_435
+    assert last.hashcode == 10_745_751_629_392_559_435
     # Every book is keyed by the ISIN its inputs state, else their ticker:
     # the masked line's number keys its own book, and the trade capture's
     # execution, of an instrument no order names, opens that instrument's.
@@ -842,7 +842,7 @@ def test_lifecycled_two_sided_trade_streams_executions_and_no_book(
         (State.FILLED, Side.BUYS),
         (State.FILLED, Side.SELL),
     ]
-    assert all(source.curruuid in fill.srcuuids for fill in fills)
+    assert all(source.uuid in fill.srcuuids for fill in fills)
 
     # A book records the executions of its instant among its events - a
     # fill moves a book through its order's report, and the fills stand
@@ -870,7 +870,7 @@ def test_lifecycled_two_sided_trade_streams_executions_and_no_book(
     assert all(
         execution["marketdatakind"] == MarketDataKind.EXEC
         and execution["ticker"] == "AAPL"
-        and execution["currunix"] == pa.scalar(source.currunix, pa.timestamp("ns", "UTC")).as_py()
+        and execution["transunix"] == pa.scalar(source.transunix, pa.timestamp("ns", "UTC")).as_py()
         for execution in by_side.values()
     )
     buy_ids, sell_ids = _row_kinds(buy["identifiers"]), _row_kinds(sell["identifiers"])
@@ -880,7 +880,7 @@ def test_lifecycled_two_sided_trade_streams_executions_and_no_book(
     assert sell_ids["orderid"] == "SELL-ORDER"
     assert buy_ids["clordid"] == "BUY-CLIENT"
     assert sell_ids["clordid"] == "SELL-CLIENT"
-    assert buy["curruuid"] != sell["curruuid"]
+    assert buy["uuid"] != sell["uuid"]
     assert buy["crossuuid"] != sell["crossuuid"]
     # Each fill's stored cross code is its kind and its side, then its base.
     assert buy["crosscode"].startswith("8:1:") and sell["crosscode"].startswith("8:2:")
@@ -986,10 +986,10 @@ def test_a_row_reads_back_into_the_message_that_made_it(seed_batch: FixRegistry)
     assert held.by_tag(11) == parsed.by_tag(11)
     assert held.by_tag(55) == parsed.by_tag(55)
     assert held.into_row(schema) == row
-    assert held.currhashcode == parsed.currhashcode
-    assert held.curruuid == parsed.curruuid
+    assert held.hashcode == parsed.hashcode
+    assert held.uuid == parsed.uuid
     assert held.crossuuid == parsed.crossuuid
-    assert held.currunix == parsed.currunix
+    assert held.transunix == parsed.transunix
     assert held.header() == parsed.header()
     for tag in (11, 55):
         assert held.by_tag(tag) == parsed.by_tag(tag), tag
@@ -1074,7 +1074,7 @@ def test_a_bridges_code_aliases_land_in_securityids_and_leave_the_rows_metadata(
     )
     again = FixMsg.from_row(schema, row, seed_batch)
     assert again.securityids == held.securityids
-    assert (again.currhashcode, again.curruuid) == (held.currhashcode, held.curruuid)
+    assert (again.hashcode, again.uuid) == (held.hashcode, held.uuid)
 
 
 def test_a_captures_own_columns_are_carried_and_never_become_facts(seed_batch: FixRegistry) -> None:
@@ -1117,7 +1117,7 @@ def test_a_captures_own_columns_are_carried_and_never_become_facts(seed_batch: F
     stated[schema.index_of("rownum")] = 42
     again = FixMsg.from_row(schema, stated, seed_batch)
     assert again.into_row(schema).as_py() == stated
-    assert again.currhashcode == parsed.currhashcode
+    assert again.hashcode == parsed.hashcode
     assert {name: value.as_py() for name, value in again.carried} == {
         "url": "file:///capture.log",
         "rownum": 42,
@@ -1153,10 +1153,10 @@ def test_a_row_without_the_entries_column_keeps_projected_content(seed_batch: Fi
     # A row without residual entries still reconstructs projected content.
     assert held.by_tag(55).as_py() == "AAPL"
     assert held.header() == parsed.header()
-    assert held.currunix == parsed.currunix
+    assert held.transunix == parsed.transunix
     again = held.into_row(narrow).as_py()
     assert again[narrow.index_of("symbol")] == "AAPL"
-    assert again[narrow.index_of("currunix")] == row.as_py()[narrow.index_of("currunix")]
+    assert again[narrow.index_of("transunix")] == row.as_py()[narrow.index_of("transunix")]
     # A row that does not fit the schema is refused.
     with pytest.raises(ValueError):
         FixMsg.from_row(narrow, {"nosuchcolumn": 1}, seed_batch)
@@ -1177,7 +1177,7 @@ def test_a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not(
     party = b"8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|453=1|448=X|447=D|452=1|"
     absent = _one(codec, party + b"10=0|")
     counted = _one(codec, party + b"802=0|10=0|")
-    assert counted.currhashcode != absent.currhashcode
+    assert counted.hashcode != absent.hashcode
     assert counted.digest() != absent.digest()
     assert "|452=1|802=0|" in counted.into_text("|")
     assert "802=" not in absent.into_text("|")
@@ -1192,7 +1192,7 @@ def test_a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not(
     for column in wide:
         if column.name == "fixentries":
             columns.append(group_field)
-        if column.name not in ("currhashcode", "partyids"):
+        if column.name not in ("hashcode", "partyids"):
             columns.append(column)
     narrow = Field("fix", DataType.from_fields(columns), nullable=False)
     parties = narrow.index_of("parties")
@@ -1206,8 +1206,8 @@ def test_a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not(
         read_back[parties][0][subids] = []
         for row in (written, read_back):
             held = FixMsg.from_row(narrow, row, seed_batch)
-            assert held.currhashcode == message.currhashcode
-            assert held.curruuid == message.curruuid
+            assert held.hashcode == message.hashcode
+            assert held.uuid == message.uuid
             assert ("|802=0|" in held.into_text("|")) is stated
 
 
@@ -1229,7 +1229,7 @@ def test_a_root_group_counting_none_is_stated_and_a_map_read_back_empty_is_not(
     wide = fix_schema(seed_batch)
     narrow = Field(
         "fix",
-        DataType.from_fields([column for column in wide if column.name != "currhashcode"]),
+        DataType.from_fields([column for column in wide if column.name != "hashcode"]),
         nullable=False,
     )
     partyids = narrow.index_of("partyids")
@@ -1240,8 +1240,8 @@ def test_a_root_group_counting_none_is_stated_and_a_map_read_back_empty_is_not(
             read_back[partyids] = {}
         for row in (written, read_back):
             held = FixMsg.from_row(narrow, row, seed_batch)
-            assert held.currhashcode == message.currhashcode
-            assert held.curruuid == message.curruuid
+            assert held.hashcode == message.hashcode
+            assert held.uuid == message.uuid
             assert ("|453=" in held.into_text("|")) is stated
 
 
@@ -1277,9 +1277,9 @@ def test_the_lifecycle_twin_walks_the_rows_a_batch_holds(seed_batch: FixRegistry
     for held, message in zip(by_rows, by_stream):
         assert held.seqnum == message.seqnum
         assert held.prevuuid == message.prevuuid
-        assert held.curruuid == message.curruuid
+        assert held.uuid == message.uuid
         assert held.crossuuid == message.crossuuid
-        assert held.currhashcode == message.currhashcode
+        assert held.hashcode == message.hashcode
 
 
 def test_format_answers_the_rows_one_message_field_holds(seed_batch: FixRegistry) -> None:
@@ -1313,11 +1313,11 @@ def test_a_column_a_narrow_row_dropped_is_lifted_out_of_the_record(seed_batch: F
         "beginstring",
         "msgtype",
         "sendingtime",
-        "currunix",
+        "transunix",
         "creaunix",
-        "currhashcode",
+        "hashcode",
         "crosshashcode",
-        "curruuid",
+        "uuid",
         "crossuuid",
         "fixentries",
     )
@@ -1810,12 +1810,12 @@ CLOCK_INSTANT = dt.datetime(2024, 1, 2, 10, 15, 30, tzinfo=dt.timezone.utc)
 # contiguously from 65001 in the fixed row's band order (A11).
 UNIX_TAG = 65007
 EXECUNIX_TAG = 65024
-RECDUNIX_TAG = 65009
+SENDUNIX_TAG = 65009
 CREAUNIX_TAG = 65008
 PREVUNIX_TAG = 65011
 SNAPUNIX_TAG = 65012
 EXPRUNIX_TAG = 65010
-CURRUUID_TAG = 65001
+UUID_TAG = 65001
 CROSSUUID_TAG = 65002
 CROSSCODE_TAG = 65003
 HASHCODE_TAG = 65004
@@ -2108,7 +2108,7 @@ def test_a_bridge_line_names_the_plugin_and_conversation_on_the_capture(
     assert bare.capture().msgoriginator is None
     assert bare.capture().conversationid is None
     assert named.into_bytes(124) == bare.into_bytes(124)
-    assert named.currhashcode == bare.currhashcode
+    assert named.hashcode == bare.hashcode
     assert named.capture() != bare.capture()
 
     schema = fix_schema(seed)
@@ -2310,15 +2310,15 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # and the option's strike price is the derived `strikepx` beside its
     # StrikePrice(202).
     assert list(fields) == [
-        "curruuid",
+        "uuid",
         "crossuuid",
         "crosscode",
-        "currhashcode",
+        "hashcode",
         "crosshashcode",
         "srcuuids",
-        "currunix",
+        "transunix",
         "creaunix",
-        "recdunix",
+        "sendunix",
         "exprunix",
         "prevunix",
         "snapunix",
@@ -2365,7 +2365,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     ]
     tags = [field.fix.tag for field in fields.values()]
     assert tags == sorted(tags)
-    assert tags[0] == CURRUUID_TAG and tags[-1] == SOURCEURL_TAG
+    assert tags[0] == UUID_TAG and tags[-1] == SOURCEURL_TAG
     assert tags == list(range(65001, 65053))
     assert all(field.fix.sources == [] for field in fields.values())
     assert all(field.description is not None for field in fields.values())
@@ -2374,12 +2374,12 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # messages of its instant with them, zero for the first; every other one
     # is nullable, because a message that carried nothing there answers null.
     assert [name for name, field in fields.items() if not field.nullable] == [
-        "curruuid",
+        "uuid",
         "crossuuid",
         "crosscode",
-        "currhashcode",
+        "hashcode",
         "crosshashcode",
-        "currunix",
+        "transunix",
         "creaunix",
         "seqnum",
         "msgpluginside",
@@ -2389,13 +2389,13 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # what a lake reads as a UUID and a 64-bit integer; the facts a row
     # derives are typed as the thing they hold.
     for name in (
-        "currunix",
+        "transunix",
         "prevunix",
         "creaunix",
         "snapunix",
         "exprunix",
         "execunix",
-        "recdunix",
+        "sendunix",
     ):
         assert fields[name].dtype == DataType('datetime64(ns,"UTC")'), name
     assert fields["state"].dtype == DataType("state")
@@ -2415,9 +2415,9 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         ("miccode", "mic"),
     ):
         assert fields[name].dtype == DataType(dtype), name
-    for name in ("curruuid", "crossuuid", "prevuuid"):
+    for name in ("uuid", "crossuuid", "prevuuid"):
         assert fields[name].dtype == DataType("uuid"), name
-    for name in ("currhashcode", "crosshashcode", "seqnum"):
+    for name in ("hashcode", "crosshashcode", "seqnum"):
         assert fields[name].dtype == DataType("uint64"), name
     assert fields["sourceurl"].dtype == DataType("url")
     assert fields["crosscode"].dtype == DataType("utf8")
@@ -3264,10 +3264,10 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     # The transaction stands one second from the sending clock, which is
     # exactly the codec's default delay, so the two are the one event said
     # twice and the more exact saying of it dates the message.
-    assert event.currunix == CLOCK_NS + 1_000_000_000
-    assert event.creaunix == event.currunix
+    assert event.transunix == CLOCK_NS + 1_000_000_000
+    assert event.creaunix == event.transunix
     assert event.execunix is None
-    assert event.recdunix == CLOCK_NS
+    assert event.sendunix == CLOCK_NS
     assert not hasattr(event, "refrecdunix")
     assert not hasattr(event, "marketoperationid")
     assert event.marketdatakind is MarketDataKind.ORDR
@@ -3320,13 +3320,13 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert message.market_data() == [operation]
 
     # The leaf the message expands to states the facts the message states.
-    assert leaf.currunix == message.currunix
+    assert leaf.transunix == message.transunix
     assert leaf.crossuuid == message.crossuuid
     assert leaf.crosscode == message.crosscode
     assert (leaf.price, leaf.quantity, leaf.side) == (message.price, message.quantity, message.side)
     assert leaf.identifiers == message.identifiers and leaf.bidpx == message.bidpx
     assert message.crosscode == event.crosscode
-    assert message.currhashcode == event.currhashcode
+    assert message.hashcode == event.hashcode
     assert message.crosshashcode == event.crosshashcode
     assert message.identifiers == event.identifiers
     assert message.securityids == event.securityids
@@ -3349,10 +3349,10 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert message.side == event.side
     assert message.currency == event.currency
     # The identities are uuid scalars, the codes uint64.
-    assert message.curruuid.dtype == DataType("uuid")
-    assert isinstance(message.currhashcode, int) and message.currhashcode != 0
+    assert message.uuid.dtype == DataType("uuid")
+    assert isinstance(message.hashcode, int) and message.hashcode != 0
     # The cross identity derives from the cross code, so it is not the own one.
-    assert message.crossuuid != message.curruuid
+    assert message.crossuuid != message.uuid
     assert message.crosshashcode != 0
 
     # Tag 58 and a bridge's namespaced keys are the two extras.
@@ -3368,8 +3368,8 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert message.by_tag(52) == CLOCK
     assert message.by_tag(54).as_py() is Side.BUYS
     assert message.by_tag(58).as_py() == "note"
-    assert message.by_tag(HASHCODE_TAG).as_py() == message.currhashcode
-    assert message.by_tag(CURRUUID_TAG) == message.curruuid
+    assert message.by_tag(HASHCODE_TAG).as_py() == message.hashcode
+    assert message.by_tag(UUID_TAG) == message.uuid
     # The instant is the transaction, one second from the sending clock and
     # so inside the codec's default delay.
     assert message.by_tag(UNIX_TAG).as_py() == dt.datetime.fromtimestamp(
@@ -3416,21 +3416,21 @@ def test_a_message_settles_its_identity_from_what_it_states(seed: FixRegistry) -
     plain = codec.parse_fix_line(b"8=FIX.4.4|35=0|52=20240102-10:15:30|10=0|")
     assert plain.crosscode == ""
     assert plain.crosshashcode == 0
-    assert plain.crossuuid == plain.curruuid
+    assert plain.crossuuid == plain.uuid
 
     # Two reads of one line are one message, identities included.
     again = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|52=20240102-10:15:30|10=0|")
     assert again == order
-    assert again.curruuid == order.curruuid
-    assert again.currhashcode == order.currhashcode
+    assert again.uuid == order.uuid
+    assert again.hashcode == order.hashcode
     assert again.digest() == order.digest()
 
     # A write settles it again: the content moves, so the hash code and the
     # own identity move with it while the cross identity stands.
     written = copy.copy(order)
     written.set(55, "MSFT")
-    assert written.currhashcode != order.currhashcode
-    assert written.curruuid != order.curruuid
+    assert written.hashcode != order.hashcode
+    assert written.uuid != order.uuid
     assert written.crossuuid == order.crossuuid
     # Writing the cross code moves the cross identity too.
     # A code is stored under the message's kind and side whatever it names.
@@ -3460,26 +3460,26 @@ def test_the_bridge_session_event_is_captured_but_never_the_crosscode_or_content
     assert _kinds(message.identifiers) == {"clordid": "CLIENT-1", "orderid": "ORDER-1"}
     assert message.get_by_tag(55) is None
     assert message.get_by_name("venueownthing") is None
-    content_hash = message.currhashcode
-    content_uuid = message.curruuid
+    content_hash = message.hashcode
+    content_uuid = message.uuid
 
     # Every write settles it again, and none of it is content.
     message.set("msgsessionid", "SESSION-2")
     assert message.capture().msgsessionid == "SESSION-2"
     assert message.capture().msgsesseventid == "8:SESSION-2:CONTEXT-1:7"
     assert _kinds(message.identifiers) == {"clordid": "CLIENT-1", "orderid": "ORDER-1"}
-    assert message.currhashcode == content_hash
-    assert message.curruuid == content_uuid
+    assert message.hashcode == content_hash
+    assert message.uuid == content_uuid
 
     # A missing part unsays it rather than leaving a stale key behind.
     message.set("msgctxid", None)
     assert message.capture().msgctxid is None
     assert message.capture().msgsesseventid is None
-    assert message.currhashcode == content_hash
+    assert message.hashcode == content_hash
 
     message.set("msgctxid", "CONTEXT-2")
     assert message.capture().msgsesseventid == "8:SESSION-2:CONTEXT-2:7"
-    assert message.currhashcode == content_hash
+    assert message.hashcode == content_hash
 
     # It is a column of the fixed row, and a row read back states it again.
     schema = fix_schema(seed)
@@ -3674,10 +3674,10 @@ def test_message_is_hashable_copyable_and_picklable(seed: FixRegistry) -> None:
     assert restored == message
     assert restored.registry == seed
     assert restored.header() == message.header()
-    assert (restored.currunix, restored.creaunix, restored.recdunix, restored.side) == (
-        message.currunix,
+    assert (restored.transunix, restored.creaunix, restored.sendunix, restored.side) == (
+        message.transunix,
         message.creaunix,
-        message.recdunix,
+        message.sendunix,
         message.side,
     )
     assert restored.by_path("parties[0].partyid").as_py() == "BROKER"
@@ -3809,11 +3809,11 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes(seed: FixReg
     first = next(codec.parse_line(wire))
     second = next(codec.parse_line(wire))
     assert first == second
-    assert first.currhashcode == second.currhashcode
+    assert first.hashcode == second.hashcode
     assert first.digest() == second.digest()
     assert first.header().sendingtime == CLOCK_NS
     assert not first.header().stated_sendingtime
-    assert first.currunix == CLOCK_NS
+    assert first.transunix == CLOCK_NS
     assert first.creaunix == CLOCK_NS
     # A settled clock is not the message's own, so the wire does not state it.
     assert first.into_bytes(ord("|")) == wire
@@ -3830,7 +3830,7 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes(seed: FixReg
     assert stated.by_tag(52) == DataType('datetime64(ns,"UTC")').scalar(2_123_456_789)
     assert stated.header().sendingtime == 2_123_456_789
     assert stated.header().stated_sendingtime
-    assert stated.currunix == 2_123_456_789
+    assert stated.transunix == 2_123_456_789
     assert stated.creaunix == 2_123_456_789
     assert stated.by_tag(60) == DataType('datetime64(ns,"UTC")').scalar(3_987_654_321)
     # `OrigSendingTime(122)` dates nothing at the parse, and a `TransactTime`
@@ -3841,7 +3841,7 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes(seed: FixReg
     assert resent.creaunix == CLOCK_NS
     assert resent.by_tag(122) == DataType('datetime64(ns,"UTC")').scalar(1_000_000_000)
     day = next(dictionary.parse_line(b"8=FIX.4.4|35=D|11=A|60=20260814|10=0|"))
-    assert day.currunix == CLOCK_NS
+    assert day.transunix == CLOCK_NS
 
     # The pin is exact: another unit, a naive clock or text is refused.
     for refused in (DataType('datetime64(us,"UTC")').scalar(0), DataType("datetime64(ns)").scalar(0), "1970-01-01T00:00:00Z"):
@@ -3890,18 +3890,18 @@ def test_a_timestamp_reads_an_offset_after_one_blank() -> None:
 def test_a_lines_own_clock_dates_a_message_stating_no_sending_time(seed: FixRegistry) -> None:
     """The line was recorded as its message went by: nearer the send than any pin."""
     line = _dated_line(b"8=FIX.4.4|35=8|10=0|")
-    assert line.currunix == RECORDED_NS
+    assert line.transunix == RECORDED_NS
     schema = fix_schema(seed)
 
     # Unpinned and pinned alike, the line's clock is the sending clock an
     # undated frame on it is read against - ahead of the default and of now -
-    # and so the instant, the creation and the recording.
+    # and so the `transunix`, the creation and the `sendunix`.
     for codec in (FixCodec(seed), _fixed(seed)):
         (message,) = list(codec.parse_text_line(line))
         assert message.header().sendingtime == RECORDED_NS
-        assert message.currunix == RECORDED_NS
+        assert message.transunix == RECORDED_NS
         assert message.creaunix == RECORDED_NS
-        assert message.recdunix == RECORDED_NS
+        assert message.sendunix == RECORDED_NS
         # Supplied, never stated: neither the wire nor the row's own column
         # says what the frame did not.
         assert not message.header().stated_sendingtime
@@ -3914,23 +3914,23 @@ def test_a_lines_own_clock_dates_a_message_stating_no_sending_time(seed: FixRegi
     (message,) = list(FixCodec(seed).parse_text_line(stated))
     assert message.header().sendingtime == CLOCK_NS
     assert message.header().stated_sendingtime
-    assert message.currunix == CLOCK_NS
-    assert message.recdunix == RECORDED_NS
+    assert message.transunix == CLOCK_NS
+    assert message.sendunix == RECORDED_NS
 
-    # The Arrow door reads the same clock off a row's `currunix` cell.
+    # The Arrow door reads the same clock off a row's `transunix` cell.
     source = pa.table(
         {
-            "currunix": pa.array([RECORDED_NS], pa.timestamp("ns", tz="UTC")),
+            "transunix": pa.array([RECORDED_NS], pa.timestamp("ns", tz="UTC")),
             "body": pa.array([b"8=FIX.4.4|35=8|10=0|"], pa.binary()),
         }
     )
     parsed = _fixed(seed).parse_text_arrow_reader(source).read_all()
-    assert parsed.column("currunix").cast(pa.int64()).to_pylist() == [RECORDED_NS]
-    assert parsed.column("recdunix").cast(pa.int64()).to_pylist() == [RECORDED_NS]
+    assert parsed.column("transunix").cast(pa.int64()).to_pylist() == [RECORDED_NS]
+    assert parsed.column("sendunix").cast(pa.int64()).to_pylist() == [RECORDED_NS]
     assert parsed.column("sendingtime").to_pylist() == [None]
 
     # A raw-byte door holds no line, so the same frame there takes the pin.
-    assert _fixed(seed).parse_fix_line(b"8=FIX.4.4|35=8|10=0|").currunix == CLOCK_NS
+    assert _fixed(seed).parse_fix_line(b"8=FIX.4.4|35=8|10=0|").transunix == CLOCK_NS
 
 
 def test_a_quote_states_its_bid_and_offer_and_holds_both_legs(seed: FixRegistry) -> None:
@@ -3965,7 +3965,7 @@ def test_a_quote_states_its_bid_and_offer_and_holds_both_legs(seed: FixRegistry)
     assert book is not None and not book.is_complete
     assert [delta.crosscode for delta in book.delta] == ["14:0:Q3"]
     assert (book.bidpx, book.askpx) == (quote.bidpx, quote.askpx)
-    whole = book.with_previous(BookEvent.keyed(book.currunix, "AAPL"))
+    whole = book.with_previous(BookEvent.keyed(book.transunix, "AAPL"))
     assert whole is not None
     assert [entry.crosscode for entry in whole.alive] == ["14:0:Q3"]
     assert whole.alive_on(Side.BUYS) == whole.alive_on(Side.SELL) == whole.alive
@@ -3985,7 +3985,7 @@ def test_an_execution_report_stating_no_execution_clock_executed_at_its_instant(
     # A fill stating no ExecutionTimestamp, no execution TrdRegTimestamp and
     # no TransactTime executed when it happened.
     fill = codec.parse_fix_line(b"8=FIX.4.4|35=8|37=O1|17=E1|150=F|39=2|10=0|")
-    assert fill.currunix == CLOCK_NS
+    assert fill.transunix == CLOCK_NS
     assert fill.execunix == CLOCK_NS
     assert fill.prevuuid is None
     # The row states it, and a row read back keeps it.
@@ -3999,7 +3999,7 @@ def test_an_execution_report_stating_no_execution_clock_executed_at_its_instant(
     dated, execution = list(codec.parse_text_line(_dated_line(b"8=FIX.4.4|35=8|150=F|39=2|10=0|")))
     assert dated.execunix == execution.execunix == RECORDED_NS
     # Read from the line and from the report it split out of.
-    assert len(execution.srcuuids) == 2 and dated.curruuid in execution.srcuuids
+    assert len(execution.srcuuids) == 2 and dated.uuid in execution.srcuuids
 
     # A trade's own TransactTime is its execution clock.
     traded = codec.parse_fix_line(
@@ -4340,26 +4340,26 @@ def test_a_message_read_from_a_line_states_the_line_as_its_one_source(seed: FixR
     lines = [TextLine(at, body) for at, body in enumerate(LIFE)]
     # A line is an event of its own, and the message read from it names it.
     [message] = list(codec.parse_text_line(lines[0]))
-    assert message.srcuuids == [lines[0].curruuid]
-    assert message.srcuuids == [lines[0].curruuid]
+    assert message.srcuuids == [lines[0].uuid]
+    assert message.srcuuids == [lines[0].uuid]
     # The source is no part of the code: the same bytes are the same message.
     [raw] = list(codec.parse_lines(LIFE[:1]))
     assert raw.srcuuids == []
-    assert raw.curruuid == message.curruuid
-    assert raw.currhashcode == message.currhashcode
+    assert raw.uuid == message.uuid
+    assert raw.hashcode == message.hashcode
     # A walk links the chain by predecessor and leaves every source its own.
     parsed = list(codec.parse_text_lines(lines))
     walked = list(codec.lifecycle(parsed))
-    assert [held.srcuuids for held in walked[:3]] == [[line.curruuid] for line in lines]
-    assert walked[2].prevuuid == walked[1].curruuid
+    assert [held.srcuuids for held in walked[:3]] == [[line.uuid] for line in lines]
+    assert walked[2].prevuuid == walked[1].uuid
     # The fill's execution was read from the line and from the report it
     # split out of, as the parse identified it (A12), and starts a chain of
     # its own.
     execution = walked[3]
     assert execution.state is State.FILLED and execution.prevuuid is None
     assert {held.as_py() for held in execution.srcuuids} == {
-        lines[2].curruuid.as_py(),
-        parsed[2].curruuid.as_py(),
+        lines[2].uuid.as_py(),
+        parsed[2].uuid.as_py(),
     }
 
 
@@ -4372,9 +4372,9 @@ def test_a_message_split_off_one_of_three_twins_names_its_own_report(seed: FixRe
     fill = b"8=FIX.4.4|35=8|52=20260102-10:15:30.000|37=ORD-1|17=E-1|150=F|39=2|54=1|55=AAPL|32=5|31=10|10=0|"
     parsed = list(codec.parse_lines([fill, fill, fill]))
     assert [message.seqnum for message in parsed] == [0, 1, 2, 3, 4, 5]
-    assert len({parsed[at].curruuid for at in (0, 2, 4)}) == 3
+    assert len({parsed[at].uuid for at in (0, 2, 4)}) == 3
     for report, split in ((0, 1), (2, 3), (4, 5)):
-        assert parsed[split].srcuuids == [parsed[report].curruuid]
+        assert parsed[split].srcuuids == [parsed[report].uuid]
 
 
 def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegistry) -> None:
@@ -4403,8 +4403,8 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
     assert [held.seqnum for held in walked] == [0, 0, 0, 1]
     assert walked[0].prevuuid is None and execution.prevuuid is None
     for earlier, later in zip(order_chain, order_chain[1:]):
-        assert later.prevuuid == earlier.curruuid
-        assert later.prevunix == earlier.currunix
+        assert later.prevuuid == earlier.uuid
+        assert later.prevunix == earlier.transunix
     # The lifecycle's own creation instant is carried forward.
     assert {held.creaunix for held in order_chain} == {walked[0].creaunix}
     # The state moves with the messages, and an execution is filled (A14).
@@ -4436,7 +4436,7 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
     # The walk sorts by instant, so a stream that arrived out of order is
     # chained in the order the messages happened in.
     reordered = list(codec.lifecycle([parsed[2], parsed[0], parsed[1]]))
-    assert [held.currunix for held in reordered] == sorted(held.currunix for held in reordered)
+    assert [held.transunix for held in reordered] == sorted(held.transunix for held in reordered)
     # Sorted, each is again a later instant than its predecessor, so each
     # keeps its own place.
     assert [held.seqnum for held in reordered] == [0, 0, 0]
@@ -4448,7 +4448,7 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
     heartbeat = next(session.parse_line(b"8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|"))
     (held,) = list(session.lifecycle(item for item in [heartbeat]))
     assert held.crosscode == ""
-    assert held.crossuuid == held.curruuid
+    assert held.crossuuid == held.uuid
     assert held.prevuuid is None
 
     # An item that is not a message is refused where it is met.
@@ -4513,13 +4513,13 @@ def test_official_time_delay_bounds_which_clock_dates_the_message(seed: FixRegis
     near = codec.parse_fix_line(
         b"8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|11=A|10=0|"
     )
-    assert near.currunix == 1_787_308_199_900_000_000
-    assert near.creaunix == near.currunix
+    assert near.transunix == 1_787_308_199_900_000_000
+    assert near.creaunix == near.transunix
     # Five seconds out is a different event of the session's day.
     apart = codec.parse_fix_line(
         b"8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:55|11=A|10=0|"
     )
-    assert apart.currunix == sending
+    assert apart.transunix == sending
 
     # A message stating no transaction is dated by the regulatory stamp its
     # `TrdRegTimestampType(770)` says is about the event; the nearer stamp is
@@ -4528,23 +4528,23 @@ def test_official_time_delay_bounds_which_clock_dates_the_message(seed: FixRegis
         b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=2|"
         b"769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.900|770=1|10=0|"
     )
-    assert stamped.currunix == 1_787_308_199_900_000_000
+    assert stamped.transunix == 1_787_308_199_900_000_000
     # With only the unranked stamp, the one clock every message carries keeps it.
     unranked = codec.parse_fix_line(
         b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|"
         b"769=20260821-10:30:00.400|770=23|10=0|"
     )
-    assert unranked.currunix == sending
+    assert unranked.transunix == sending
 
     # The pin is the caller's to widen and to close.
     wide = FixCodec(seed, exclude_msgtypes=[], official_time_delay_ms=10_000)
     assert wide.parse_fix_line(
         b"8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:55|11=A|10=0|"
-    ).currunix == 1_787_308_195_000_000_000
+    ).transunix == 1_787_308_195_000_000_000
     shut = FixCodec(seed, exclude_msgtypes=[], official_time_delay_ms=0)
     assert shut.parse_fix_line(
         b"8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|11=A|10=0|"
-    ).currunix == sending
+    ).transunix == sending
 
 
 def test_lifecycle_learns_a_later_missing_instrument_code(seed: FixRegistry) -> None:
@@ -4578,10 +4578,10 @@ HOURS = [
 def test_a_sorted_lifecycle_walks_one_hour_at_a_time_as_the_whole_capture(seed: FixRegistry) -> None:
     """A capture in instant order walks alike held one hour at a time."""
     codec = _fixed(seed)
-    messages = sorted(codec.parse_lines(HOURS), key=lambda held: held.currunix)
+    messages = sorted(codec.parse_lines(HOURS), key=lambda held: held.transunix)
 
     def walk(codec: FixCodec) -> list[tuple[Any, int, Any]]:
-        return [(held.curruuid, held.seqnum, held.prevuuid) for held in codec.lifecycle(messages)]
+        return [(held.uuid, held.seqnum, held.prevuuid) for held in codec.lifecycle(messages)]
 
     whole = walk(codec)
     # Each fill splits into its report and one execution (A12).
@@ -4604,7 +4604,7 @@ def test_the_lifecycle_hands_the_expirations_of_an_instant_over_first(seed: FixR
         ]
     )
     walked = list(codec.lifecycle(messages))
-    deadline = [held for held in walked if held.currunix == walked[-1].currunix]
+    deadline = [held for held in walked if held.transunix == walked[-1].transunix]
     assert [(held.state, held.seqnum) for held in deadline] == [
         (State.EXPIRED, 0),
         (State.EXPIRED, 1),
@@ -4612,7 +4612,7 @@ def test_the_lifecycle_hands_the_expirations_of_an_instant_over_first(seed: FixR
     ]
     # What the walk made keeps its place, so the walk answers itself.
     again = list(codec.lifecycle(walked))
-    assert [(held.curruuid, held.seqnum) for held in again] == [(held.curruuid, held.seqnum) for held in walked]
+    assert [(held.uuid, held.seqnum) for held in again] == [(held.uuid, held.seqnum) for held in walked]
 
 
 def test_the_lifecycle_yields_an_identity_once_within_its_dedup_window(seed: FixRegistry) -> None:
@@ -4641,9 +4641,9 @@ def test_the_lifecycle_yields_an_identity_once_within_its_dedup_window(seed: Fix
     messages = [order(1, "A1"), order(2, "B1"), order(3, "A1")]
     every = list(codec.with_dedup_window_ms(None).lifecycle(messages))
     assert len(every) == 3
-    assert every[2].curruuid == every[0].curruuid
+    assert every[2].uuid == every[0].uuid
     once = list(codec.lifecycle(messages))
-    assert [held.curruuid for held in once] == [held.curruuid for held in every[:2]]
+    assert [held.uuid for held in once] == [held.uuid for held in every[:2]]
 
 
 def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed: FixRegistry) -> None:
@@ -4732,32 +4732,32 @@ def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed
     expired = next(
         held
         for held in walked
-        if held.snapunix is None and held.currunix == deadline
+        if held.snapunix is None and held.transunix == deadline
     )
     assert expired.entries() == entries
     snapshots = [held for held in walked if held.snapunix is not None]
     assert snapshots
     assert expired.state is State.EXPIRED
-    [live] = [held for held in walked if held.snapunix is None and held.currunix < deadline]
+    [live] = [held for held in walked if held.snapunix is None and held.transunix < deadline]
     # A view is the live message as of its tick: dated at it, so its identity
     # is the one that tick derives, while its content, its place and its cross
     # element are the live message's, and its snapshot instant the one the
     # live message was stated at.
-    assert [held.currunix for held in snapshots] == [
-        live.currunix,
-        live.currunix + 1_000_000_000,
+    assert [held.transunix for held in snapshots] == [
+        live.transunix,
+        live.transunix + 1_000_000_000,
     ]
     for held in snapshots:
-        assert held.snapunix == live.currunix
-        snapunix = held.currunix
+        assert held.snapunix == live.transunix
+        snapunix = held.transunix
         assert snapunix < deadline
-        assert held.currhashcode == live.currhashcode
+        assert held.hashcode == live.hashcode
         assert (held.seqnum, held.prevuuid, held.crossuuid) == (
             live.seqnum,
             live.prevuuid,
             live.crossuuid,
         )
-        assert (held.curruuid == live.curruuid) == (snapunix == live.currunix)
+        assert (held.uuid == live.uuid) == (snapunix == live.transunix)
 
 
 def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> None:
@@ -4776,13 +4776,13 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     # clocks follow - a table is read by time - and the one arrival record
     # closes it.
     assert columns[:7] == [
-        "curruuid",
+        "uuid",
         "crossuuid",
         "crosscode",
-        "currhashcode",
+        "hashcode",
         "crosshashcode",
         "srcuuids",
-        "currunix",
+        "transunix",
     ]
     # `fixentries` is a tag:name map that counts itself; no counter column (A8).
     assert columns[-1] == "fixentries" and columns.count("metadata") == 1
@@ -4801,12 +4801,12 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     # The columns every message settles are the non-null ones; which band
     # each falls in is the core's to order.
     assert {child.name for child in schema if not child.nullable} == {
-        "currunix",
+        "transunix",
         "creaunix",
-        "currhashcode",
+        "hashcode",
         "crosshashcode",
         "crosscode",
-        "curruuid",
+        "uuid",
         "crossuuid",
         "seqnum",
         "msgpluginside",
@@ -4815,7 +4815,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     # The facts a row derives are typed as the thing they hold.
     assert schema[schema.index_of("securityexchange")].dtype == DataType("mic")
     assert schema[schema.index_of("price")].dtype == DataType("decimal128(38, 18)")
-    assert schema[schema.index_of("curruuid")].dtype == DataType("uuid")
+    assert schema[schema.index_of("uuid")].dtype == DataType("uuid")
     assert schema[schema.index_of("metadata")].fix.counter == METADATA_TAG
 
     # The session event a bridge delivered the message as closes the session
@@ -4851,12 +4851,12 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert row[schema.index_of("msgtype")] == "D"
     assert row[schema.index_of("marketdatakind")] == 10
     assert row[schema.index_of("clordid")] == "A"
-    assert row[schema.index_of("currunix")] == CLOCK_INSTANT
+    assert row[schema.index_of("transunix")] == CLOCK_INSTANT
     assert row[schema.index_of("creaunix")] == CLOCK_INSTANT
     assert row[schema.index_of("sendingtime")] == CLOCK_INSTANT
     assert row[schema.index_of("crosscode")] == "10:0:A"
-    assert row[schema.index_of("currhashcode")] == message.currhashcode
-    assert str(row[schema.index_of("curruuid")]) == message.curruuid.as_py()
+    assert row[schema.index_of("hashcode")] == message.hashcode
+    assert str(row[schema.index_of("uuid")]) == message.uuid.as_py()
     # A read is not a snapshot, and a fact the message gave nothing for is
     # null rather than a shift.
     assert row[schema.index_of("snapunix")] is None
@@ -4885,7 +4885,7 @@ def test_a_captures_own_columns_follow_the_shared_ones(seed: FixRegistry) -> Non
     carried = fix_schema_carrying(carrier, plain)
 
     after = plain.index_of("partyids") + 1
-    assert [child.name for child in carried][0] == "curruuid"
+    assert [child.name for child in carried][0] == "uuid"
     assert [child.name for child in carried][after : after + 2] == ["url", "body"]
     assert len(carried) == len(plain) + 2
     assert carried.index_of("msgtype") == plain.index_of("msgtype") + 2
@@ -4958,7 +4958,7 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
     # A capture column whose folded name a fixed column takes fills that
     # column instead of riding beside the shared ones; no fixed column is
     # named `timestamp`, so the capture's clock is carried as context.
-    assert names[0] == "curruuid"
+    assert names[0] == "uuid"
     assert names.index("body") == names.index("timestamp") + 1
     assert names.index("timestamp") > names.index("partyids")
     for once in ("timestamp", "msgsessionid", "msgseqnum"):
@@ -4967,11 +4967,11 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
     assert names[-1] == "fixentries" and names.count("metadata") == 1
 
     # The capture's clock stamps nothing: the wire's own clock settles the
-    # message, else - with no `currunix` column dating the row's line - the
+    # message, else - with no `transunix` column dating the row's line - the
     # codec's default SendingTime.
     instant = dt.datetime(2026, 1, 2, 9, 29, 59, 250000, tzinfo=dt.timezone.utc)
     assert parsed.column("timestamp").to_pylist() == [clock, None]
-    assert parsed.column("currunix").to_pylist() == [CLOCK_INSTANT, instant]
+    assert parsed.column("transunix").to_pylist() == [CLOCK_INSTANT, instant]
     # Only a stated SendingTime lands in its column: the first row settled
     # on the codec's default and states none of its own.
     assert parsed.column("sendingtime").to_pylist() == [None, instant]
@@ -5000,7 +5000,7 @@ def test_a_rows_msgpluginid_fills_its_field_and_selects_nothing(seed: FixRegistr
         }
     )
     parsed = codec.parse_text_arrow_reader(source).read_all()
-    assert parsed.schema.names[0] == "curruuid"
+    assert parsed.schema.names[0] == "uuid"
     assert parsed.schema.names.count("body") == 1
     assert parsed.schema.names.count("msgpluginid") == 1
     assert parsed.column("msgpluginid").to_pylist() == spellings
@@ -5227,7 +5227,7 @@ def test_the_bridge_row_header_is_the_crates_own_text_and_names_its_captures() -
     assert str(captures.field("msgthreadid").dtype) == "int64"
     assert str(captures.field("loglevel").dtype) == "utf8"
     assert str(captures.field("msgseqnum").dtype) == "int64"
-    # The clock is `mtime`, consumed into each line's `currunix`, so it leads
+    # The clock is `mtime`, consumed into each line's `transunix`, so it leads
     # no column of its own.
     assert "mtime" not in names and "timestamp" not in names
 
@@ -5242,11 +5242,11 @@ def test_the_bridge_row_header_dates_each_line_by_its_own_clock(tmp_path: pathli
     lines = list(IOBase(capture).read_text_lines(options=options))
     assert len(lines) == 144
     # `2026-08-14 14:46:39.769` in front of the first line, read in UTC.
-    assert lines[0].currunix == 1_786_718_799_769_000_000
-    assert lines[0].mtime == lines[0].currunix
+    assert lines[0].transunix == 1_786_718_799_769_000_000
+    assert lines[0].mtime == lines[0].transunix
     # One instant per clock the bridge wrote, none of them the file's.
     clocks = {line.split(" [", 1)[0] for line in ULBRIDGE_LOG.read_text(encoding="utf-8", errors="replace").splitlines() if line}
-    dated = {line.currunix for line in lines}
+    dated = {line.transunix for line in lines}
     assert len(clocks) == 40
     assert len(dated) == len(clocks)
     assert int(capture.stat().st_mtime_ns) not in dated
@@ -5256,7 +5256,7 @@ def test_the_bridge_row_header_dates_each_line_by_its_own_clock(tmp_path: pathli
         b"2026-08-14 14:46:39,769_123 [7] [P] (INFO) b\n"
         b"2026-08-14 14:46:40 [7] [P] (WARN) c\n"
     )
-    assert [line.currunix for line in loose.read_text_lines(options=options)] == [
+    assert [line.transunix for line in loose.read_text_lines(options=options)] == [
         1_786_718_799_769_000_000,
         1_786_718_799_769_123_000,
         1_786_718_800_000_000_000,
@@ -5307,11 +5307,11 @@ def test_the_serie_faces_keep_a_capture_native_from_text_rows_to_walked_rows(
 # the hash of what it states. A capture repeats a line's bytes at one
 # instant, so the instant and the content alone are no key, and an append to
 # a keyed table leaves out a row whose key it holds.
-CAPTURE_PRIMARY_KEY = ("currunix", "crosshashcode", "seqnum", "currhashcode")
+CAPTURE_PRIMARY_KEY = ("transunix", "crosshashcode", "seqnum", "hashcode")
 # What the partition column every table of the pipeline computes holds: a
 # derived column is described by whoever declares it.
 CAPTURE_PARTUNIX = (
-    "The quarter of an hour the row's instant falls in: currunix floored to fifteen minutes."
+    "The quarter of an hour the row's instant falls in: transunix floored to fifteen minutes."
 )
 
 # What every table of the pipeline requires of each row: its key - its
@@ -5323,13 +5323,13 @@ CAPTURE_REQUIRED = (*CAPTURE_PRIMARY_KEY, "crosscode")
 def _capture_table(root: pathlib.Path, row: Field) -> yggdryl.iceberg.IcebergTable:
     """A format-v3 table for rows of ``row``, as Iceberg states them.
 
-    Partitioned by ``partunix`` - ``currunix`` floored to the quarter hour, a
+    Partitioned by ``partunix`` - ``transunix`` floored to the quarter hour, a
     column the table computes for every row written to it - sorted by it, the
     instant, the place within the instant and the content hash, with the
     instant and the hash its primary key.
     """
     schema = row.into_scheme_compat("iceberg").with_partition_by(
-        ["time_bucket('15 minutes', currunix) as partunix"]
+        ["time_bucket('15 minutes', transunix) as partunix"]
     )
     for name in CAPTURE_REQUIRED:
         column = schema[name]
@@ -5338,7 +5338,7 @@ def _capture_table(root: pathlib.Path, row: Field) -> yggdryl.iceberg.IcebergTab
     partunix = schema["partunix"]
     partunix.set_description(CAPTURE_PARTUNIX)
     schema["partunix"] = partunix
-    schema.sort.by = ["partunix", "currunix", "seqnum", "currhashcode"]
+    schema.sort.by = ["partunix", "transunix", "seqnum", "hashcode"]
     schema = yggdryl.iceberg.assign_field_ids(schema)
     # Iceberg names a key by the identifiers of its columns, which exist once
     # the schema is numbered.
@@ -5562,11 +5562,11 @@ def test_the_capture_pipeline_lands_table_to_table_on_series(
     # computes, sorted, keyed, and its identity columns typed `uuid`.
     stored = text.schema
     assert stored.metadata["PARTITION:by"] == '["partunix"]'
-    assert stored.metadata["SORT:by"] == '["partunix","currunix","seqnum","currhashcode"]'
+    assert stored.metadata["SORT:by"] == '["partunix","transunix","seqnum","hashcode"]'
     key = sorted(stored[name].parquet_field_id for name in CAPTURE_PRIMARY_KEY)
     assert stored.iceberg.get("identifier-field-ids") == ",".join(map(str, key))
     assert not any(stored[name].nullable for name in CAPTURE_REQUIRED)
-    assert {str(stored[name].dtype) for name in ("curruuid", "crossuuid", "prevuuid")} == {"uuid"}
+    assert {str(stored[name].dtype) for name in ("uuid", "crossuuid", "prevuuid")} == {"uuid"}
     # Every column says what it holds, which the table states as its doc:
     # the partition column as the pipeline declared it.
     assert [column.name for column in stored if column.description is None] == []
@@ -5575,17 +5575,17 @@ def test_the_capture_pipeline_lands_table_to_table_on_series(
     def ordered(table: yggdryl.iceberg.IcebergTable) -> list[tuple[int, int]]:
         # The two instants as their nanosecond counts, in the order read.
         keys: list[tuple[int, int]] = []
-        for batch in table.read_arrow_reader(select=["partunix", "currunix"]):
+        for batch in table.read_arrow_reader(select=["partunix", "transunix"]):
             partunix = batch.column("partunix").cast(pa.int64()).to_pylist()
-            currunix = batch.column("currunix").cast(pa.int64()).to_pylist()
-            keys.extend(zip(partunix, currunix))
+            transunix = batch.column("transunix").cast(pa.int64()).to_pylist()
+            keys.extend(zip(partunix, transunix))
         return keys
 
     quarter = 900 * 1_000_000_000
     instants = ordered(text)
     assert len(instants) == 144
     assert instants == sorted(instants)
-    assert all(partunix == currunix - currunix % quarter for partunix, currunix in instants)
+    assert all(partunix == transunix - transunix % quarter for partunix, transunix in instants)
 
     # The stored text, in the table's order, parsed and walked.
     # Every available CPU, as a pipeline runs: the parse spreads by batch and
@@ -5781,7 +5781,7 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
         stored = table.schema
         partitioned = '["partunix"]'
         assert stored.metadata["PARTITION:by"] == partitioned, name
-        assert stored.metadata["SORT:by"] == '["partunix","currunix","seqnum","currhashcode"]', name
+        assert stored.metadata["SORT:by"] == '["partunix","transunix","seqnum","hashcode"]', name
         assert not any(stored[column].nullable for column in medallion.REQUIRED), name
         assert table.format_version == 3, name
         rows = written[f"{catalog.name}.{name}"].written_rows

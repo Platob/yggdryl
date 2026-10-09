@@ -26,10 +26,10 @@ fn current_content_hash_never_depends_on_the_file_url() {
     )));
     assert_ne!(first.sourceurl(), second.sourceurl());
     let expected = yggdryl::xxhash::xxh3(line.body().as_bytes());
-    assert_eq!(first.get_currhashcode(), expected);
-    assert_eq!(second.get_currhashcode(), expected);
+    assert_eq!(first.get_hashcode(), expected);
+    assert_eq!(second.get_hashcode(), expected);
     second.set_sourceuri(None);
-    assert_eq!(second.get_currhashcode(), expected);
+    assert_eq!(second.get_hashcode(), expected);
 }
 
 #[cfg(feature = "internals")]
@@ -749,15 +749,15 @@ mod text {
     /// out of it contains the same fifteen under the same names and
     /// datatypes.
     const EVENT_COLUMNS: [&str; 15] = [
-        "curruuid",
+        "uuid",
         "crossuuid",
         "crosscode",
-        "currhashcode",
+        "hashcode",
         "crosshashcode",
         "srcuuids",
-        "currunix",
+        "transunix",
         "creaunix",
-        "recdunix",
+        "sendunix",
         "exprunix",
         "prevunix",
         "snapunix",
@@ -894,10 +894,10 @@ mod text {
         /// A chain's lines: an instant and a state, with an anonymous token in the
         /// wire grammar. The source URL is the code every line shares.
         const CHAIN: &str = r"^(?<mtime>\S+) \[(?<state>[A-Za-z]+)\] \S+ ";
-        /// The execution and recording instants, then a capture named after
+        /// The execution instant and the wire clock, then a capture named after
         /// the merge-reference clock the event no longer carries: an ordinary
         /// capture now, beside the two the event consumes.
-        const EVENT_TIMES: &str = r"^(?<execunix>\S+) (?<recdunix>\S+) (?<refrecdunix>\S+) ";
+        const EVENT_TIMES: &str = r"^(?<execunix>\S+) (?<sendunix>\S+) (?<refrecdunix>\S+) ";
         const INSTANT: i64 = 1_767_348_930_000_000_000;
         const PREVIOUS: &str = "0198a3b2-1c4d-7e5f-8a9b-0c1d2e3f4a5b";
 
@@ -946,7 +946,7 @@ mod text {
             // come from the line itself. This manually made line is row zero and
             // has no source.
             assert_eq!(line.mtime().unwrap(), Some(INSTANT));
-            assert_eq!(line.get_currunix(), INSTANT);
+            assert_eq!(line.get_transunix(), INSTANT);
             assert!(line.get_state().is_done());
             assert_eq!(line.get_seqnum(), 0);
             let Scalar::Uuid(previous) = yggdryl::DataType::Uuid
@@ -959,27 +959,27 @@ mod text {
             assert_eq!(line.get_crosscode(), "");
             assert_eq!(line.get_crosshashcode(), 0);
             assert_eq!(line.get_crossuuid(), line.cross_uuid());
-            assert_eq!(line.get_crossuuid(), line.get_curruuid());
+            assert_eq!(line.get_crossuuid(), line.get_uuid());
             assert_eq!((line.get_creaunix(), line.get_exprunix()), (None, None));
-            assert_eq!(line.get_recdunix(), None);
+            assert_eq!(line.get_sendunix(), None);
             assert_eq!((line.get_prevunix(), line.get_snapunix()), (None, None));
             // The identity: the instant coupled with the content code, and no
             // cross-hash seed on this unlocated line. The code is the body's
             // XXH3-64 and nothing else - not the captures the header lifted,
             // the state or the element it follows.
             assert_eq!(
-                line.get_currhashcode(),
+                line.get_hashcode(),
                 yggdryl::xxhash::xxh3(b"k=v|x=y"),
                 "the code is the body alone"
             );
-            assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
+            assert_eq!(line.get_uuid(), line.time_uuid().expect("an identity"));
             // The header stays out of the code, the capture that dates the
             // line included, because the instant is coupled with the code
             // rather than fed into it: the same line at another instant says
             // the same thing and is another event.
             let later = self::line(&body.replace("10:15:30Z", "10:15:31Z"), &options);
-            assert_eq!(later.get_currhashcode(), line.get_currhashcode());
-            assert_ne!(later.get_curruuid(), line.get_curruuid());
+            assert_eq!(later.get_hashcode(), line.get_hashcode());
+            assert_ne!(later.get_uuid(), line.get_uuid());
             // A header stating another state or predecessor is the same code,
             // and the same identity at the same instant and row.
             let restated = self::line(
@@ -991,20 +991,17 @@ mod text {
             );
             assert!(!restated.get_state().is_done());
             assert_ne!(restated.get_prevuuid(), line.get_prevuuid());
-            assert_eq!(restated.get_currhashcode(), line.get_currhashcode());
-            assert_eq!(restated.get_curruuid(), line.get_curruuid());
+            assert_eq!(restated.get_hashcode(), line.get_hashcode());
+            assert_eq!(restated.get_uuid(), line.get_uuid());
             // A line is read from a handle: no source.
             assert!(line.get_srcuuids().is_empty());
             // The same bytes, instant, physical sequence and absent cross seed
             // derive the same identity.
-            assert_eq!(
-                line.get_curruuid(),
-                self::line(&body, &options).get_curruuid()
-            );
+            assert_eq!(line.get_uuid(), self::line(&body, &options).get_uuid());
         }
 
         #[test]
-        fn a_recording_capture_is_a_typed_event_instant_and_execution_is_no_event_fact() {
+        fn a_sendunix_capture_is_a_typed_event_instant_and_execution_is_no_event_fact() {
             const RECORDED: i64 = INSTANT + 2_000_000_000;
             /// The first capture's text: when a market element executed is a
             /// market fact, never a line's, so `execunix` names no event fact
@@ -1023,10 +1020,10 @@ mod text {
                 &options,
             );
 
-            assert_eq!(line.recdunix().unwrap(), Some(RECORDED));
-            assert_eq!(line.get_recdunix(), Some(RECORDED));
+            assert_eq!(line.sendunix().unwrap(), Some(RECORDED));
+            assert_eq!(line.get_sendunix(), Some(RECORDED));
             assert_eq!(
-                line.event_fact(EventColumn::RecdUnix)
+                line.event_fact(EventColumn::SendUnix)
                     .unwrap()
                     .and_then(|value| value.temporal_count()),
                 Some(RECORDED)
@@ -1046,11 +1043,11 @@ mod text {
                 .expect("a page"),
             )
             .expect("a body");
-            assert_eq!(line.get_recdunix(), Some(INSTANT + 4_000_000_000));
+            assert_eq!(line.get_sendunix(), Some(INSTANT + 4_000_000_000));
             assert_eq!(line.capture(2), Some("2026-01-02T10:15:35Z"));
 
             // A value stated through the Event contract stands over later bodies.
-            line.set_recdunix(Some(8));
+            line.set_sendunix(Some(8));
             line.set_body(
                 TextBytes::from_bytes(
                     "2026-01-02T10:15:35Z 2026-01-02T10:15:36Z 2026-01-02T10:15:37Z stated",
@@ -1058,9 +1055,9 @@ mod text {
                 .expect("a page"),
             )
             .expect("a body");
-            assert_eq!(line.get_recdunix(), Some(8));
+            assert_eq!(line.get_sendunix(), Some(8));
 
-            // The recording capture feeds the event column itself, not a
+            // The wire clock capture feeds the event column itself, not a
             // duplicate text column behind it: it is consumed, so the row is
             // the fifteen, the body, and the two captures no event fact owns
             // - `execunix` and `refrecdunix`, as the text the header matched.
@@ -1081,7 +1078,7 @@ mod text {
                 super::with_event(&["body", "execunix", "refrecdunix"])
             );
             assert_eq!(
-                schema.field_with_name("recdunix").unwrap().data_type(),
+                schema.field_with_name("sendunix").unwrap().data_type(),
                 &arrow_schema::DataType::Timestamp(
                     arrow_schema::TimeUnit::Nanosecond,
                     Some("UTC".into())
@@ -1104,13 +1101,13 @@ mod text {
                 );
             }
             let back = yggdryl::text::from_arrow_batch(&batch, &options).expect("a line");
-            assert_eq!(back[0].get_recdunix(), Some(RECORDED));
+            assert_eq!(back[0].get_sendunix(), Some(RECORDED));
             assert_eq!(back[0].named_captures()["execunix"], FIRST);
             assert_eq!(back[0].named_captures()["refrecdunix"], THIRD);
         }
 
         #[test]
-        fn a_recording_capture_refuses_a_bad_instant_by_name() {
+        fn a_sendunix_capture_refuses_a_bad_instant_by_name() {
             let options = Arc::new(
                 TextOptions::new()
                     .try_with_rowheader(EVENT_TIMES)
@@ -1120,19 +1117,19 @@ mod text {
                 "not-an-instant still-not-an-instant nor-an-instant body",
                 &options,
             );
-            let refused = line.recdunix().expect_err("recdunix refuses").to_string();
-            assert!(refused.contains("$[0].recdunix"), "{refused}");
-            assert_eq!(line.get_recdunix(), None);
+            let refused = line.sendunix().expect_err("sendunix refuses").to_string();
+            assert!(refused.contains("$[0].sendunix"), "{refused}");
+            assert_eq!(line.get_sendunix(), None);
             // `execunix` and `refrecdunix` name no event fact, so nothing
             // reads them as instants and nothing refuses them: each is the
             // text it matched.
             assert_eq!(line.capture(0), Some("not-an-instant"));
             assert_eq!(line.capture(2), Some("nor-an-instant"));
             let error = line
-                .event_fact(EventColumn::RecdUnix)
+                .event_fact(EventColumn::SendUnix)
                 .expect_err("the event column refuses")
                 .to_string();
-            assert!(error.contains("$[0].recdunix"), "{error}");
+            assert!(error.contains("$[0].sendunix"), "{error}");
         }
 
         #[test]
@@ -1140,12 +1137,12 @@ mod text {
             let options = Arc::new(TextOptions::new());
             let mut line = line("plain", &options);
             assert_eq!(line.mtime().unwrap(), None);
-            assert_eq!(line.get_currunix(), 0);
+            assert_eq!(line.get_transunix(), 0);
             assert!(line.captures().is_empty());
             assert!(line.named_captures().is_empty());
             assert_eq!(line.get_crosscode(), "");
             assert_eq!(line.get_crosshashcode(), 0);
-            assert_eq!(line.get_crossuuid(), line.get_curruuid());
+            assert_eq!(line.get_crossuuid(), line.get_uuid());
             assert_eq!(line.get_state().as_str(), "UNKNOWN");
             // The place is the row number under `start_rownum`, else the
             // physical line number.
@@ -1157,12 +1154,12 @@ mod text {
             let numbered = self::line("plain", &Arc::new(numbered));
             assert_eq!(numbered.get_seqnum(), 10);
             // The handle's own time dates it, and the identity follows.
-            let before = line.get_curruuid();
+            let before = line.get_uuid();
             line.set_handle_mtime(Some(INSTANT));
             assert_eq!(line.mtime().unwrap(), Some(INSTANT));
-            assert_eq!(line.get_currunix(), INSTANT);
-            assert_ne!(line.get_curruuid(), before);
-            assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
+            assert_eq!(line.get_transunix(), INSTANT);
+            assert_ne!(line.get_uuid(), before);
+            assert_eq!(line.get_uuid(), line.time_uuid().expect("an identity"));
         }
 
         /// A read is addressed by an identifier, and only sometimes by a
@@ -1174,7 +1171,7 @@ mod text {
         fn a_line_read_under_a_name_is_crossed_by_it_and_located_where_it_resolves() {
             let options = Arc::new(TextOptions::new());
             let mut line = line("plain", &options);
-            let anonymous = line.get_curruuid();
+            let anonymous = line.get_uuid();
 
             let name = Arc::new(
                 Uri::from_str("urn:lake:trades:2026:part.log").expect("a source identifier"),
@@ -1198,7 +1195,7 @@ mod text {
             // Where it resolved is no part of what it is crossed by, so a
             // read of this name in another directory crosses the same.
             assert_ne!(line.get_crosscode(), at.as_str());
-            let named = line.get_curruuid();
+            let named = line.get_uuid();
             assert_ne!(named, anonymous);
 
             // A name that resolves nowhere is still a name: it crosses by
@@ -1220,14 +1217,14 @@ mod text {
                 Some(located.to_string())
             );
             assert_eq!(line.get_crosscode(), located.to_string().as_str());
-            assert_ne!(line.get_curruuid(), named);
+            assert_ne!(line.get_uuid(), named);
         }
 
         #[test]
         fn the_object_states_the_cross_facts_and_a_stated_code_names_an_unlocated_line() {
             let options = Arc::new(TextOptions::new());
             let mut line = line("plain", &options);
-            let anonymous_uuid = line.get_curruuid();
+            let anonymous_uuid = line.get_uuid();
             let first = Arc::new(Uri::from_str("file:///first.log").expect("a source identifier"));
             line.set_sourceuri(Some(Arc::clone(&first)));
             let first_code = first.to_string();
@@ -1236,7 +1233,7 @@ mod text {
                 line.get_crosshashcode(),
                 yggdryl::xxhash::xxh3(first_code.as_bytes())
             );
-            let first_uuid = line.get_curruuid();
+            let first_uuid = line.get_uuid();
             assert_ne!(first_uuid, anonymous_uuid);
             let first_crossuuid = line.get_crossuuid();
 
@@ -1249,22 +1246,22 @@ mod text {
                 line.get_crosshashcode(),
                 yggdryl::xxhash::xxh3(second_code.as_bytes())
             );
-            let second_uuid = line.get_curruuid();
+            let second_uuid = line.get_uuid();
             assert_ne!(second_uuid, first_uuid);
             assert_ne!(line.get_crossuuid(), first_crossuuid);
 
             line.set_sourceuri(None);
             assert_eq!(line.get_crosscode(), "");
             assert_eq!(line.get_crosshashcode(), 0);
-            assert_eq!(line.get_curruuid(), anonymous_uuid);
-            assert_eq!(line.get_crossuuid(), line.get_curruuid());
+            assert_eq!(line.get_uuid(), anonymous_uuid);
+            assert_eq!(line.get_crossuuid(), line.get_uuid());
 
             // A stated code names the chain of a line no object located - a
             // buffer, a line built by hand - and nothing else: locate the line
             // again and the object is the chain, exactly as it was, because a
             // located line's chain is the object it was read from.
             line.set_crosscode("stated-chain".to_owned());
-            let stated_uuid = line.get_curruuid();
+            let stated_uuid = line.get_uuid();
             assert_ne!(stated_uuid, anonymous_uuid);
             line.set_sourceuri(Some(first));
             assert_eq!(line.get_crosscode(), first_code.as_str());
@@ -1272,19 +1269,19 @@ mod text {
                 line.get_crosshashcode(),
                 yggdryl::xxhash::xxh3(first_code.as_bytes())
             );
-            assert_eq!(line.get_curruuid(), first_uuid);
+            assert_eq!(line.get_uuid(), first_uuid);
             assert_eq!(line.get_crossuuid(), first_crossuuid);
         }
 
         #[test]
         fn changing_identity_inputs_rederives_a_restored_lines_generic_identities() {
             fn state_generic_identities(line: &mut TextLine) {
-                line.set_curruuid(Uuid::from_v8(1));
+                line.set_uuid(Uuid::from_v8(1));
                 line.set_crossuuid(Uuid::from_v8(2));
             }
 
             fn assert_derived_identities(line: &TextLine) {
-                assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
+                assert_eq!(line.get_uuid(), line.time_uuid().expect("an identity"));
                 assert_eq!(line.get_crossuuid(), line.cross_uuid());
             }
 
@@ -1298,8 +1295,8 @@ mod text {
             let crosshashcode = yggdryl::xxhash::xxh3(b"stated-chain");
             assert_eq!(line.get_crosshashcode(), crosshashcode);
             assert_derived_identities(&line);
-            assert_ne!(line.get_curruuid(), before);
-            assert_ne!(line.get_curruuid(), Uuid::from_v8(1));
+            assert_ne!(line.get_uuid(), before);
+            assert_ne!(line.get_uuid(), Uuid::from_v8(1));
             assert_eq!(
                 line.get_crossuuid(),
                 Uuid::from_v8(u128::from(crosshashcode))
@@ -1309,39 +1306,39 @@ mod text {
             let before = line.time_uuid().expect("an identity");
             line.set_crosshashcode(0xEF);
             assert_derived_identities(&line);
-            assert_ne!(line.get_curruuid(), before, "the cross hash is the seed");
+            assert_ne!(line.get_uuid(), before, "the cross hash is the seed");
 
             state_generic_identities(&mut line);
             let before = line.time_uuid().expect("an identity");
-            line.set_currhashcode(0xAB);
+            line.set_hashcode(0xAB);
             assert_derived_identities(&line);
-            assert_ne!(line.get_curruuid(), before, "the content moved");
+            assert_ne!(line.get_uuid(), before, "the content moved");
 
             state_generic_identities(&mut line);
             let before = line.time_uuid().expect("an identity");
-            line.set_currunix(1_000_000);
+            line.set_transunix(1_000_000);
             assert_derived_identities(&line);
-            assert_ne!(line.get_curruuid(), before, "the millisecond moved");
+            assert_ne!(line.get_uuid(), before, "the millisecond moved");
 
             state_generic_identities(&mut line);
             let before = line.time_uuid().expect("an identity");
             line.set_seqnum(17);
             assert_derived_identities(&line);
-            assert_ne!(line.get_curruuid(), before, "the sequence moved");
-            assert_eq!((line.get_curruuid().get() >> 64) & 0xfff, 17);
+            assert_ne!(line.get_uuid(), before, "the sequence moved");
+            assert_eq!((line.get_uuid().get() >> 64) & 0xfff, 17);
 
             state_generic_identities(&mut line);
             let before = line.time_uuid().expect("an identity");
             line.set_crosscode(String::new());
             assert_eq!(line.get_crosshashcode(), 0);
             assert_derived_identities(&line);
-            assert_ne!(line.get_curruuid(), before);
-            assert_eq!(line.get_crossuuid(), line.get_curruuid());
+            assert_ne!(line.get_uuid(), before);
+            assert_eq!(line.get_crossuuid(), line.get_uuid());
 
             line.set_seqnum(4_096);
-            let overflow = line.get_curruuid();
+            let overflow = line.get_uuid();
             line.set_seqnum(8_192);
-            let farther = line.get_curruuid();
+            let farther = line.get_uuid();
             assert_eq!((overflow.get() >> 64) & 0xfff, 4_095);
             assert_eq!((farther.get() >> 64) & 0xfff, 4_095);
             assert_ne!(overflow, farther, "the whole sequence reaches rand_b");
@@ -1370,7 +1367,7 @@ mod text {
                 assert!(refused.contains("physical line 1"), "{name}: {refused}");
             }
             // The trait door cannot refuse: it answers each fact's default.
-            assert_eq!(line.get_currunix(), 0);
+            assert_eq!(line.get_transunix(), 0);
             assert_eq!(line.get_state().as_str(), "UNKNOWN");
             assert_eq!(line.get_seqnum(), 0);
             assert_eq!(line.get_prevuuid(), None);
@@ -1386,31 +1383,31 @@ mod text {
             let options = options();
             let body = format!("2026-01-02T10:15:30Z [New] 1 {PREVIOUS} O-100 k=v");
             let mut line = line(&body, &options);
-            let resolved = line.get_curruuid();
+            let resolved = line.get_uuid();
             line.set_state(yggdryl::State::from_spelling("Filled").expect("a state"));
             line.set_seqnum(9);
             line.set_srcuuids(vec![Uuid::from_v8(70)]);
             assert!(line.get_state().is_done());
             assert_eq!(line.get_seqnum(), 9);
-            let sequenced = line.get_curruuid();
+            let sequenced = line.get_uuid();
             assert_ne!(sequenced, resolved, "the sequence is part of the identity");
             assert_eq!(sequenced, line.time_uuid().expect("an identity"));
             // A new body: the readings resolve afresh from it, and the stated
             // facts stand.
             line.set_body(TextBytes::from_bytes("plain").expect("a page"))
                 .expect("a body");
-            assert_ne!(line.get_curruuid(), sequenced);
+            assert_ne!(line.get_uuid(), sequenced);
             // The content code is the new body's, whatever the caller stated.
-            assert_eq!(line.get_currhashcode(), yggdryl::xxhash::xxh3(b"plain"));
+            assert_eq!(line.get_hashcode(), yggdryl::xxhash::xxh3(b"plain"));
             assert_eq!(line.mtime().unwrap(), None, "the header no longer matches");
             assert!(line.get_state().is_done(), "stated, so it stands");
             assert_eq!(line.get_seqnum(), 9);
             assert_eq!(line.get_srcuuids(), [Uuid::from_v8(70)]);
             // The stated identity is dropped by finalizing, which derives it.
-            line.set_curruuid(Uuid::from_v8(1));
-            assert_eq!(line.get_curruuid(), Uuid::from_v8(1));
+            line.set_uuid(Uuid::from_v8(1));
+            assert_eq!(line.get_uuid(), Uuid::from_v8(1));
             line.finalize();
-            assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
+            assert_eq!(line.get_uuid(), line.time_uuid().expect("an identity"));
         }
 
         /// A line is read across threads as any event is: the slots its readings
@@ -1486,7 +1483,7 @@ mod text {
             let options = options();
             let body = format!("2026-01-02T10:15:30Z [New] 1 {PREVIOUS} O-100 k=v");
             let mut line = line(&body, &options);
-            let (code, identity) = (line.get_currhashcode(), line.get_curruuid());
+            let (code, identity) = (line.get_hashcode(), line.get_uuid());
             line.set_state(yggdryl::State::from_spelling("Filled").expect("a state"));
             line.set_prevuuid(Some(Uuid::from_v8(9)));
             line.set_named_captures(std::collections::BTreeMap::from([(
@@ -1494,16 +1491,16 @@ mod text {
                 "WARN".to_owned(),
             )]));
             assert_eq!(
-                (line.get_currhashcode(), line.get_curruuid()),
+                (line.get_hashcode(), line.get_uuid()),
                 (code, identity),
                 "the code is the body's, and the identity reads none of them"
             );
             // A stated code stands until finalizing derives the body's again.
-            line.set_currhashcode(0xAB);
-            assert_eq!(line.get_currhashcode(), 0xAB);
+            line.set_hashcode(0xAB);
+            assert_eq!(line.get_hashcode(), 0xAB);
             line.finalize();
-            assert_eq!(line.get_currhashcode(), yggdryl::xxhash::xxh3(b"k=v"));
-            assert_eq!(line.get_curruuid(), identity);
+            assert_eq!(line.get_hashcode(), yggdryl::xxhash::xxh3(b"k=v"));
+            assert_eq!(line.get_uuid(), identity);
         }
 
         #[test]
@@ -1516,19 +1513,19 @@ mod text {
             // the cross element and sources do not enter it.
             let mut crossed = line(&body, &options);
             crossed.set_crosshashcode(0xCD);
-            let seeded = crossed.get_curruuid();
-            assert_ne!(seeded, stated.get_curruuid());
+            let seeded = crossed.get_uuid();
+            assert_ne!(seeded, stated.get_uuid());
             crossed.set_crossuuid(Uuid::from_v8(77));
             crossed.set_srcuuids(vec![Uuid::from_v8(70)]);
-            assert_eq!(crossed.get_currhashcode(), stated.get_currhashcode());
-            assert_eq!(crossed.get_curruuid(), seeded);
+            assert_eq!(crossed.get_hashcode(), stated.get_hashcode());
+            assert_eq!(crossed.get_uuid(), seeded);
             assert_eq!(
                 crossed.get_crossuuid(),
                 Uuid::from_v8(77),
                 "stated, so answered"
             );
             crossed.finalize();
-            assert_eq!(crossed.get_curruuid(), stated.get_curruuid());
+            assert_eq!(crossed.get_uuid(), stated.get_uuid());
             assert_eq!(crossed.get_crosshashcode(), stated.get_crosshashcode());
             assert_eq!(crossed.get_crossuuid(), stated.get_crossuuid());
 
@@ -1537,11 +1534,11 @@ mod text {
             // than dropping it, because the cross code still states it.
             let mut sourced = line(&body, &options);
             sourced.set_crosscode("O-100".to_owned());
-            assert_eq!(sourced.get_currhashcode(), stated.get_currhashcode());
-            let moved = sourced.get_curruuid();
-            assert_ne!(moved, stated.get_curruuid());
+            assert_eq!(sourced.get_hashcode(), stated.get_hashcode());
+            let moved = sourced.get_uuid();
+            assert_ne!(moved, stated.get_uuid());
             sourced.finalize();
-            assert_eq!(sourced.get_curruuid(), moved);
+            assert_eq!(sourced.get_uuid(), moved);
         }
 
         #[test]
@@ -1552,7 +1549,7 @@ mod text {
             let mut right = line(&body, &options);
             assert_eq!(left, right);
             let _ = right.captures();
-            let _ = right.get_curruuid();
+            let _ = right.get_uuid();
             let _ = right.entries();
             assert_eq!(left, right, "a resolved slot is not a fact");
             right.set_seqnum(4);
@@ -1595,12 +1592,12 @@ mod text {
                 panic!("three lines")
             };
             assert_eq!((first.get_seqnum(), first.get_prevuuid()), (0, None));
-            assert_eq!(second.get_prevuuid(), Some(first.get_curruuid()));
-            assert_eq!(second.get_prevunix(), Some(first.get_currunix()));
+            assert_eq!(second.get_prevuuid(), Some(first.get_uuid()));
+            assert_eq!(second.get_prevunix(), Some(first.get_transunix()));
             // A line's place is its row number, and a later line keeps its
             // own: each of these was read as a first line.
             assert_eq!(second.get_seqnum(), 0);
-            assert_eq!(third.get_prevuuid(), Some(second.get_curruuid()));
+            assert_eq!(third.get_prevuuid(), Some(second.get_uuid()));
             assert!(third.get_state().is_done());
             assert!(walked.iter().all(|line| line.get_srcuuids().is_empty()));
             assert!(
@@ -1627,7 +1624,7 @@ mod text {
                 .expect("a reader")
                 .map(|line| line.expect("a line"))
                 .collect();
-            assert_eq!(lines[0].get_currunix(), INSTANT);
+            assert_eq!(lines[0].get_transunix(), INSTANT);
             assert_eq!(lines[0].get_seqnum(), 7);
             let sourceurl = lines[0].sourceurl().expect("a source").to_string();
             assert_eq!(lines[0].get_crosscode(), sourceurl.as_str());
@@ -1673,14 +1670,14 @@ mod text {
             // again, the identity a message named as its source included.
             let back = yggdryl::text::from_arrow_batch(&batch, &options).expect("lines read back");
             assert_eq!(back.len(), 1);
-            assert_eq!(back[0].get_currunix(), INSTANT);
+            assert_eq!(back[0].get_transunix(), INSTANT);
             assert_eq!(back[0].get_seqnum(), 7);
             assert!(back[0].get_state().is_done());
             assert_eq!(back[0].get_prevuuid(), lines[0].get_prevuuid());
             assert_eq!(back[0].get_crosscode(), sourceurl.as_str());
-            assert_eq!(back[0].get_curruuid(), lines[0].get_curruuid());
+            assert_eq!(back[0].get_uuid(), lines[0].get_uuid());
             assert_eq!(back[0].get_crossuuid(), lines[0].get_crossuuid());
-            assert_eq!(back[0].get_currhashcode(), lines[0].get_currhashcode());
+            assert_eq!(back[0].get_hashcode(), lines[0].get_hashcode());
             // The named captures are the line's own reading of its header, not
             // a column of the batch: a line read back off a batch has a body
             // and no header to read them from, and its code, which never fed

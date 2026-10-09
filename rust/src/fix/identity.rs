@@ -466,8 +466,8 @@ pub(super) const MARKET_TAGS: [i32; 47] = [
     62,              // ValidUntilTime: exprunix
     432,             // ExpireDate: exprunix
     2749,            // ExecutionTimestamp: execunix
-    60,              // TransactTime: execunix, and currunix within the delay
-    768,             // NoTrdRegTimestamps, a clock group: currunix, execunix
+    60,              // TransactTime: execunix, and transunix within the delay
+    768,             // NoTrdRegTimestamps, a clock group: transunix, execunix
     140,             // PrevClosePx: prevpx
     99,              // StopPx: stoppx
     202,             // StrikePrice: strikepx
@@ -492,8 +492,8 @@ pub(super) const BOOK_ENTRY_TAGS: [i32; 23] = [
     271,  // MDEntrySize: quantity, and the control's entry size
     1026, // MDEntrySpotRate: spotrate
     1027, // MDEntryForwardPoints: forwardpoints
-    272,  // MDEntryDate: currunix, creaunix or execunix
-    273,  // MDEntryTime: currunix, creaunix or execunix
+    272,  // MDEntryDate: transunix, creaunix or execunix
+    273,  // MDEntryTime: transunix, creaunix or execunix
     37,   // OrderID: an order rather than a quote, and the orderid identifier
     55,   // Symbol: ticker, and the book scope
     54,   // Side: a trade entry's side

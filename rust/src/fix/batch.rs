@@ -22,7 +22,7 @@
 //!
 //! | group | columns |
 //! | --- | --- |
-//! | identity | `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid`, `snapunix`, `sendingtime` |
+//! | identity | `transunix`, `creaunix`, `hashcode`, `crosshashcode`, `uuid`, `crossuuid`, `snapunix`, `sendingtime` |
 //! | meaning | one per lifted facet, typed as that facet's field is typed |
 //! | residual | `fixentries`, a sorted `map<utf8, utf8>` keyed by each field's `tag:name` |
 //!
@@ -177,7 +177,7 @@ impl FixCodec {
     /// [`Self::parse_line`] reads it, the `beginstring` column as
     /// [`Self::parse_text_line`] reads the captures of those names, the
     /// `msgdirection` column as the direction the row states, the
-    /// `currunix` column - the text reader's `mtime` - as when the row's
+    /// `transunix` column - the text reader's `mtime` - as when the row's
     /// line was written, which dates a message stating no `SendingTime(52)`
     /// as that door dates it, and every other column
     /// named after a field the dictionary knows, `msgpluginid` among them,
@@ -191,7 +191,7 @@ impl FixCodec {
     /// the row and carried by every message parsed out of it, under the
     /// column's name, so whoever writes the messages back as rows states
     /// them again at their columns. Every message states the row's line,
-    /// dated by its `currunix` cell, as its one source.
+    /// dated by its `transunix` cell, as its one source.
     ///
     /// A line the reader cannot classify yields no message; malformed-body
     /// recovery still obeys the mandatory field contract. A bulk
@@ -959,7 +959,7 @@ struct Columns {
     /// `sourceurl`. Every message parsed out of a row carries them, and
     /// states each again at the column of its name.
     carried: Vec<(usize, SmolStr)>,
-    /// The carrier's `curruuid`, where it carries the event columns: the
+    /// The carrier's `uuid`, where it carries the event columns: the
     /// identity of the line each row is, which every message the row
     /// answers for states as its one source.
     source: Option<usize>,
@@ -982,7 +982,7 @@ impl Columns {
         // A carrier's element and event columns are the carrier's own facts
         // - the line each row is, identified, dated and placed as the text
         // reader states it - and fill nothing on the message: its
-        // `curruuid` is the message's source, and the rest say nothing
+        // `uuid` is the message's source, and the rest say nothing
         // about the message.
         let fills = fields
             .iter()
@@ -1019,8 +1019,8 @@ impl Columns {
             payload: payload_at,
             beginstring: named(BEGINSTRING_COLUMN),
             direction: named(DIRECTION_COLUMN),
-            mtime: named(EventColumn::CurrUnix.name()),
-            source: named(ElementColumn::CurrUuid.name()),
+            mtime: named(EventColumn::TransUnix.name()),
+            source: named(ElementColumn::Uuid.name()),
             fills,
             carried,
         })
@@ -1067,7 +1067,7 @@ impl SeamedBatch {
             let placing = match (&tail, &message) {
                 (Some(_), _) => true,
                 (None, Ok(held)) => {
-                    let unix = crate::graph::Event::get_currunix(held);
+                    let unix = crate::graph::Event::get_transunix(held);
                     let opens = first.is_some_and(|first| first != unix);
                     first = Some(unix);
                     opens
@@ -1271,7 +1271,7 @@ impl RowReader {
             direction: direction.as_deref(),
             direction_pin: codec.direction(),
             source,
-            recdunix: None,
+            sendunix: None,
             originator: None,
             conversation: None,
         };

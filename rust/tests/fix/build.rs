@@ -184,7 +184,7 @@ fn every_field_states_the_fix_datatype_it_was_declared_under() {
     // an instant, a count an int, a code its FIX datatype where FIX has
     // one and a string otherwise.
     assert_eq!(
-        declared(yggdryl::CURRUNIX_TAG_NAME.0).as_deref(),
+        declared(yggdryl::TRANSUNIX_TAG_NAME.0).as_deref(),
         Some("UTCTimestamp")
     );
     assert_eq!(declared(yggdryl::SEQNUM_TAG_NAME.0).as_deref(), Some("int"));

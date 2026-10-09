@@ -1422,7 +1422,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(message.side, 'BUYS')
     // A market message's stored cross code is its kind, its side, its base.
     assert.equal(message.crosscode, '10:1:C-1')
-    assert.equal(message.currunix, SENDING_NS)
+    assert.equal(message.transunix, SENDING_NS)
     assert.equal(message.creaunix, SENDING_NS)
     // A new order stating no status asks for a new order.
     assert.equal(message.state, 'PENDING_NEW')
@@ -1465,8 +1465,8 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(message.byTag(54).asJs(), 'BUYS')
     assert.ok(message.byTag(52).equals(SENDING))
     assert.ok(message.byTag(65007).equals(SENDING), 'unix, as the clock its column holds')
-    assert.equal(message.byTag(65001).asJs(), message.curruuid)
-    assert.equal(message.byTag(65004).asJs(), message.currhashcode)
+    assert.equal(message.byTag(65001).asJs(), message.uuid)
+    assert.equal(message.byTag(65004).asJs(), message.hashcode)
     assert.equal(message.byTag(65003).asJs(), '10:1:C-1')
     assert.equal(message.byTag(55).asJs(), 'AAPL')
     assert.equal(message.byId(registry.fieldByTag(55).fix.id).asJs(), 'AAPL')
@@ -1520,11 +1520,11 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const event = operationOf(message)
     assert.ok(event instanceof graph.OrderEvent)
 
-    assert.equal(event.currunix, SENDING_NS + 1_000_000_000n)
-    assert.equal(event.creaunix, event.currunix)
+    assert.equal(event.transunix, SENDING_NS + 1_000_000_000n)
+    assert.equal(event.creaunix, event.transunix)
     assert.equal(event.execunix, null)
     // The message was received when its sender sent it.
-    assert.equal(event.recdunix, SENDING_NS)
+    assert.equal(event.sendunix, SENDING_NS)
     // A merge keeps no clock of the reference it chose.
     assert.equal('refrecdunix' in event, false)
     assert.equal(event.marketdatakind, 'ORDR')
@@ -1655,32 +1655,32 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const other = new fix.FixMsg(root, { ...ORDER_VALUE, symbol: 'MSFT' }, registry)
 
     // A UUID crosses as its hyphenated text, a hash as a bigint.
-    assert.match(message.curruuid, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+    assert.match(message.uuid, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/)
     assert.match(message.crossuuid, /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/)
-    assert.equal(typeof message.currhashcode, 'bigint')
+    assert.equal(typeof message.hashcode, 'bigint')
     assert.equal(typeof message.crosshashcode, 'bigint')
-    assert.notEqual(message.currhashcode, 0n)
+    assert.notEqual(message.hashcode, 0n)
     assert.notEqual(message.crosshashcode, 0n)
     // Two builds of one statement are one identity; other content is another
     // message of the same chain.
-    assert.equal(message.currhashcode, same.currhashcode)
-    assert.equal(message.curruuid, same.curruuid)
-    assert.notEqual(other.currhashcode, message.currhashcode)
-    assert.notEqual(other.curruuid, message.curruuid)
+    assert.equal(message.hashcode, same.hashcode)
+    assert.equal(message.uuid, same.uuid)
+    assert.notEqual(other.hashcode, message.hashcode)
+    assert.notEqual(other.uuid, message.uuid)
     assert.equal(other.crossuuid, message.crossuuid)
     assert.equal(other.crosshashcode, message.crosshashcode)
     // The order the message expands to states the same facts the getters
     // do; its own identity digests the leaf it is, the kind included.
     const event = operationOf(message)
     assert.ok(event instanceof graph.OrderEvent)
-    assert.notEqual(event.curruuid, message.curruuid)
+    assert.notEqual(event.uuid, message.uuid)
     assert.equal(event.crossuuid, message.crossuuid)
     assert.equal(event.crosshashcode, message.crosshashcode)
     assert.equal(event.crosscode, message.crosscode)
     assert.ok(event.identifiers.equals(message.identifiers))
     assert.ok(event.securityids.equals(message.securityids))
     assert.equal(event.side, message.side)
-    assert.equal(event.currunix, message.currunix)
+    assert.equal(event.transunix, message.transunix)
     assert.equal(event.state, message.state)
     assert.equal(event.seqnum, message.seqnum)
     assert.equal(event.prevuuid, message.prevuuid)
@@ -1712,7 +1712,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     )
     assert.equal(heartbeat.crosscode, '')
     assert.equal(heartbeat.crosshashcode, 0n)
-    assert.equal(heartbeat.crossuuid, heartbeat.curruuid)
+    assert.equal(heartbeat.crossuuid, heartbeat.uuid)
     assert.equal(heartbeat.size, 0)
     assert.deepEqual(heartbeat.entries(), [])
     assert.equal(heartbeat.intoText('|'), '35=0|52=20240102-10:15:30|')
@@ -1735,27 +1735,27 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.deepEqual(kinds(message.identifiers), { clordid: 'CLIENT-1', orderid: 'ORDER-1' })
     assert.equal(message.getByTag(55), null)
     assert.equal(message.getByName('venueownthing'), null)
-    const contentHash = message.currhashcode
-    const contentUuid = message.curruuid
+    const contentHash = message.hashcode
+    const contentUuid = message.uuid
 
     // Every write settles it again, and none of it is content.
     message.set('msgsessionid', 'SESSION-2')
     assert.equal(message.capture().msgsessionid, 'SESSION-2')
     assert.equal(message.capture().msgsesseventid, '8:SESSION-2:CONTEXT-1:7')
     assert.deepEqual(kinds(message.identifiers), { clordid: 'CLIENT-1', orderid: 'ORDER-1' })
-    assert.equal(message.currhashcode, contentHash)
-    assert.equal(message.curruuid, contentUuid)
+    assert.equal(message.hashcode, contentHash)
+    assert.equal(message.uuid, contentUuid)
 
     // A missing part unsays it rather than leaving a stale key behind.
     message.set('msgctxid', null)
     assert.equal(message.capture().msgctxid, null)
     assert.equal(message.capture().msgsesseventid, null)
     assert.equal(message.getByTag(65047), null)
-    assert.equal(message.currhashcode, contentHash)
+    assert.equal(message.hashcode, contentHash)
 
     message.set('msgctxid', 'CONTEXT-2')
     assert.equal(message.capture().msgsesseventid, '8:SESSION-2:CONTEXT-2:7')
-    assert.equal(message.currhashcode, contentHash)
+    assert.equal(message.hashcode, contentHash)
 
     // It is a column of the fixed row, closing the session band it is joined
     // from, and a row read back states it again. The merge reference's
@@ -1793,7 +1793,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(bare.capture().msgoriginator, null)
     assert.equal(bare.capture().conversationid, null)
     assert.equal(named.intoText('|'), bare.intoText('|'))
-    assert.equal(named.currhashcode, bare.currhashcode)
+    assert.equal(named.hashcode, bare.hashcode)
 
     const schema = fix.schema(registry)
     const row = named.intoRow(schema)
@@ -2050,7 +2050,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const copy = message.clone()
     assert.ok(copy.equals(message))
     assert.ok(copy.registry.equals(registry))
-    assert.equal(copy.curruuid, message.curruuid)
+    assert.equal(copy.uuid, message.uuid)
     assert.equal(message.toString(), 'FixMsg("NewOrderSingle", 4 values)')
 
     // The JSON is the content row's two documents; the typed facts are the
@@ -2279,7 +2279,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(pairs.byTag(8).toJSON(), 'FIX.4.4')
     assert.equal(pairs.header().sendingtime, SENDING_NS)
     assert.ok(pairs.byTag(52).equals(SENDING))
-    assert.equal(pairs.currunix, SENDING_NS)
+    assert.equal(pairs.transunix, SENDING_NS)
     assert.equal(pairs.creaunix, SENDING_NS)
     assert.deepEqual(flat(pairs), [[55, 'symbol', 'AAPL']])
     assert.equal(pairs.intoText('|'), '8=FIX.4.4|55=AAPL|')
@@ -2289,13 +2289,13 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // clock dates the event.
     const dated = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|52=20240102-10:15:30|60=20260102-10:15:31.5|11=A|10=0|'))
     assert.equal(dated.header().sendingtime, SENDING_NS)
-    assert.equal(dated.currunix, SENDING_NS)
+    assert.equal(dated.transunix, SENDING_NS)
     assert.ok(dated.byTag(60).equals(new DataType('datetime64(ns,"UTC")').scalar(1_767_348_931_500_000_000n)))
     assert.equal(dated.intoText('|').startsWith('8=FIX.4.4|35=D|52=20240102-10:15:30|'), true)
     // A transaction time stating only a day is no different: the sending
     // clock stands.
     const day = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|60=20260814|11=A|10=0|'))
-    assert.equal(day.currunix, SENDING_NS)
+    assert.equal(day.transunix, SENDING_NS)
 
     // A bridge frame, byte for byte: `#`-prefixed name keys, one occurrence
     // whose value packs its members behind the two control bytes ULLINK uses.
@@ -2414,13 +2414,13 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const near = codec.parseFixLine(
       Buffer.from('8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|11=A|10=0|'),
     )
-    assert.equal(near.currunix, 1_787_308_199_900_000_000n)
-    assert.equal(near.creaunix, near.currunix)
+    assert.equal(near.transunix, 1_787_308_199_900_000_000n)
+    assert.equal(near.creaunix, near.transunix)
     // Five seconds out is a different event of the session's day.
     const apart = codec.parseFixLine(
       Buffer.from('8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:55|11=A|10=0|'),
     )
-    assert.equal(apart.currunix, SENT)
+    assert.equal(apart.transunix, SENT)
 
     // A message stating no transaction is dated by the regulatory stamp its
     // `TrdRegTimestampType(770)` says is about the event; the nearer stamp is
@@ -2431,25 +2431,25 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
           '769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.900|770=1|10=0|',
       ),
     )
-    assert.equal(stamped.currunix, 1_787_308_199_900_000_000n)
+    assert.equal(stamped.transunix, 1_787_308_199_900_000_000n)
     const unranked = codec.parseFixLine(
       Buffer.from('8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|769=20260821-10:30:00.400|770=23|10=0|'),
     )
-    assert.equal(unranked.currunix, SENT)
+    assert.equal(unranked.transunix, SENT)
 
     // The pin is the caller's to widen and to close.
     const wide = reading(registry, { officialTimeDelayMs: 10_000 })
     assert.equal(
       wide.parseFixLine(
         Buffer.from('8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:55|11=A|10=0|'),
-      ).currunix,
+      ).transunix,
       1_787_308_195_000_000_000n,
     )
     const shut = reading(registry, { officialTimeDelayMs: 0 })
     assert.equal(
       shut.parseFixLine(
         Buffer.from('8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|11=A|10=0|'),
-      ).currunix,
+      ).transunix,
       SENT,
     )
   })
@@ -2505,7 +2505,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // A fill stating no ExecutionTimestamp, no execution TrdRegTimestamp and
     // no TransactTime executed when it happened, and is a raw observation.
     const fill = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=8|37=O1|17=E1|150=F|39=2|10=0|'))
-    assert.equal(fill.currunix, SENDING_NS)
+    assert.equal(fill.transunix, SENDING_NS)
     assert.equal(fill.execunix, SENDING_NS)
     assert.equal(fill.prevuuid, null)
     // The row states it, and a row read back keeps it.
@@ -2552,9 +2552,9 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const messages = [order(1, 'A1'), order(2, 'B1'), order(3, 'A1')]
     const every = [...codec.withDedupWindowMs(null).lifecycle(messages)]
     assert.equal(every.length, 3)
-    assert.equal(every[2].curruuid, every[0].curruuid)
+    assert.equal(every[2].uuid, every[0].uuid)
     const once = [...codec.lifecycle(messages)]
-    assert.deepEqual(once.map((held) => held.curruuid), every.slice(0, 2).map((held) => held.curruuid))
+    assert.deepEqual(once.map((held) => held.uuid), every.slice(0, 2).map((held) => held.uuid))
   })
 
   test('the lifecycle redirects categories snapshots dedup and normalized rows', () => {
@@ -2633,10 +2633,10 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const walked = [...snapshots.lifecycle([expiring])]
     assert.deepEqual(expiring.entries(), entries)
     assert.equal(expiring.snapunix, null)
-    assert.ok(walked.some((message) => message.currunix === deadline && message.state === 'EXPIRED'))
+    assert.ok(walked.some((message) => message.transunix === deadline && message.state === 'EXPIRED'))
     const emittedSnapshots = walked.filter((message) => message.snapunix !== null)
     assert.ok(emittedSnapshots.length > 0)
-    assert.ok(emittedSnapshots.every((message) => message.currunix < deadline))
+    assert.ok(emittedSnapshots.every((message) => message.transunix < deadline))
     // A view is the live message as of its tick: dated at it, so it has the
     // identity that tick derives, while its content, its place and its
     // cross element are the live message's, and its snapshot instant the
@@ -2644,14 +2644,14 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const [live] = walked
     assert.equal(live.snapunix, null)
     for (const view of emittedSnapshots) {
-      assert.equal(view.snapunix, live.currunix)
-      assert.equal(view.currhashcode, live.currhashcode)
+      assert.equal(view.snapunix, live.transunix)
+      assert.equal(view.hashcode, live.hashcode)
       assert.equal(view.seqnum, live.seqnum)
       assert.equal(view.prevuuid, live.prevuuid)
       assert.equal(view.crossuuid, live.crossuuid)
-      assert.equal(view.curruuid === live.curruuid, view.currunix === live.currunix)
+      assert.equal(view.uuid === live.uuid, view.transunix === live.transunix)
     }
-    assert.ok(emittedSnapshots.some((view) => view.curruuid !== live.curruuid))
+    assert.ok(emittedSnapshots.some((view) => view.uuid !== live.uuid))
   })
 
   // Twelve messages over four hours in instant order: three orders placed,
@@ -2671,7 +2671,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
 
   test('a sorted lifecycle walks an ordered capture as the whole sort does', () => {
     const codec = fixedCodec(seed())
-    const chain = (walk) => [...walk].map((message) => [message.curruuid, message.seqnum, message.prevuuid])
+    const chain = (walk) => [...walk].map((message) => [message.uuid, message.seqnum, message.prevuuid])
     const whole = chain(codec.lifecycle(fourHours(codec)))
     const sorted = chain(codec.withSortedLifecycle(true).lifecycle(fourHours(codec)))
     assert.equal(whole.length, 12)
@@ -2894,8 +2894,8 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // internal child order may differ, while the row and every named fact stay
     // fixed and the row-provided identity remains exact.
     assert.ok(held.field.equals(schema) === false, 'the root is the content, not the schema')
-    assert.equal(held.currhashcode, message.currhashcode)
-    assert.equal(held.curruuid, message.curruuid)
+    assert.equal(held.hashcode, message.hashcode)
+    assert.equal(held.uuid, message.uuid)
     assert.equal(held.crossuuid, message.crossuuid)
     assert.deepEqual(held.header(), message.header())
     assert.equal(held.side, 'BUYS')
@@ -2918,14 +2918,14 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const party = '8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|453=1|448=X|447=D|452=1|'
     const absent = reader.parseFixLine(Buffer.from(`${party}10=0|`))
     const counted = reader.parseFixLine(Buffer.from(`${party}802=0|10=0|`))
-    assert.notEqual(counted.currhashcode, absent.currhashcode)
+    assert.notEqual(counted.hashcode, absent.hashcode)
     assert.ok(!counted.digest().equals(absent.digest()))
     assert.ok(counted.intoText('|').includes('|452=1|802=0|'))
     assert.ok(!absent.intoText('|').includes('802='))
 
     // A row that does not record its content code is settled from what it
     // states, so the fixed row is read without that column.
-    const narrow = withPartyGroup(registry, ['currhashcode'])
+    const narrow = withPartyGroup(registry, ['hashcode'])
     const parties = narrow.indexOf('parties')
     const item = narrow.fieldByPath('parties').fieldAt(0)
     const subids = item.indexOf('partysubids')
@@ -2941,8 +2941,8 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       })
       for (const row of [written, readBack]) {
         const held = fix.FixMsg.fromRow(narrow, row, registry)
-        assert.equal(held.currhashcode, message.currhashcode)
-        assert.equal(held.curruuid, message.curruuid)
+        assert.equal(held.hashcode, message.hashcode)
+        assert.equal(held.uuid, message.uuid)
         assert.equal(held.intoText('|').includes('|802=0|'), stated)
       }
     }
@@ -2960,7 +2960,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.ok(counted.intoText('|').includes('|453=0|'))
     assert.ok(!absent.intoText('|').includes('453='))
 
-    const narrow = withPartyGroup(registry, ['currhashcode'])
+    const narrow = withPartyGroup(registry, ['hashcode'])
     const parties = narrow.indexOf('parties')
     for (const [message, stated] of [[absent, false], [counted, true]]) {
       const written = message.intoRow(narrow).asJs()
@@ -2969,8 +2969,8 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       readBack[parties] = []
       for (const row of [written, readBack]) {
         const held = fix.FixMsg.fromRow(narrow, row, registry)
-        assert.equal(held.currhashcode, message.currhashcode)
-        assert.equal(held.curruuid, message.curruuid)
+        assert.equal(held.hashcode, message.hashcode)
+        assert.equal(held.uuid, message.uuid)
         assert.equal(held.intoText('|').includes('|453='), stated)
       }
     }
@@ -2990,7 +2990,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
 
     // The shared columns open the row, the capture follows them.
     const after = plain.indexOf('partyids') + 1
-    assert.equal(carried.fieldAt(0).name, 'curruuid')
+    assert.equal(carried.fieldAt(0).name, 'uuid')
     assert.equal(carried.fieldAt(after).name, 'url')
     assert.equal(carried.fieldAt(after + 1).name, 'body')
     assert.equal(carried.fieldLen, plain.fieldLen + 2)
@@ -3265,7 +3265,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   const SENDING = new DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000n)
   // The columns a row must carry a value at: the settled identity, the
   // place at its instant, and the version every message opens with.
-  const REQUIRED = ['currunix', 'creaunix', 'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode', 'seqnum', 'beginstring']
+  const REQUIRED = ['transunix', 'creaunix', 'uuid', 'crossuuid', 'crosscode', 'hashcode', 'crosshashcode', 'seqnum', 'beginstring']
 
   // Two frames on one row: a line is none, one or many messages, and this
   // one is two.
@@ -3508,8 +3508,8 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const stamped = reading(registry, { source: 'desk' }).parseFixLine(dated)
     assert.equal(unstamped.capture().msgpluginside, 'UKNW')
     assert.equal(stamped.capture().msgpluginside, 'BUYS')
-    assert.equal(stamped.currhashcode, unstamped.currhashcode)
-    assert.equal(stamped.curruuid, unstamped.curruuid)
+    assert.equal(stamped.hashcode, unstamped.hashcode)
+    assert.equal(stamped.uuid, unstamped.uuid)
     assert.equal(stamped.intoText('|'), unstamped.intoText('|'))
 
     // A line spelling the crate tag, and a row-header capture named for the
@@ -3604,17 +3604,17 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const schema = fix.schema(registry)
     const line = datedLine('8=FIX.4.4|35=8|10=0|')
     assert.equal(line.mtime, RECORDED_NS)
-    assert.equal(line.currunix, RECORDED_NS)
+    assert.equal(line.transunix, RECORDED_NS)
 
     // Unpinned and pinned alike, the line's clock is the sending clock an
     // undated frame on it is read against - ahead of the default and of now -
-    // and so the instant, the creation and the recording.
+    // and so the `transunix`, the creation and the `sendunix`.
     for (const codec of [reading(registry), reading(registry, { defaultSendingTime: SENDING })]) {
       const [message] = codec.parseTextLine(line)
       assert.equal(message.header().sendingtime, RECORDED_NS)
-      assert.equal(message.currunix, RECORDED_NS)
+      assert.equal(message.transunix, RECORDED_NS)
       assert.equal(message.creaunix, RECORDED_NS)
-      assert.equal(message.recdunix, RECORDED_NS)
+      assert.equal(message.sendunix, RECORDED_NS)
       // Supplied, never stated: neither the wire nor the row's own column
       // says what the frame did not.
       assert.ok(!message.intoText('|').includes('52='))
@@ -3625,8 +3625,8 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // it was recorded.
     const [stated] = reading(registry).parseTextLine(datedLine('8=FIX.4.4|35=8|52=20240102-10:15:30|10=0|'))
     assert.equal(stated.header().sendingtime, SENDING_NS)
-    assert.equal(stated.currunix, SENDING_NS)
-    assert.equal(stated.recdunix, RECORDED_NS)
+    assert.equal(stated.transunix, SENDING_NS)
+    assert.equal(stated.sendunix, RECORDED_NS)
     assert.ok(stated.intoText('|').includes('|52=20240102-10:15:30|'))
 
     // An execution report on it executed at that instant.
@@ -3634,9 +3634,9 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       .parseTextLine(datedLine('8=FIX.4.4|35=8|150=F|39=2|10=0|'))
     assert.equal(filled.execunix, RECORDED_NS)
 
-    // The Arrow door reads the same clock off a row's `currunix` cell.
+    // The Arrow door reads the same clock off a row's `transunix` cell.
     const source = new arrow.Table({
-      currunix: arrow.makeVector(arrow.makeData({
+      transunix: arrow.makeVector(arrow.makeData({
         type: new arrow.TimestampNanosecond('UTC'),
         length: 1,
         data: BigInt64Array.from([RECORDED_NS]),
@@ -3646,14 +3646,14 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const parsed = reading(registry, { defaultSendingTime: SENDING })
       .parseTextArrowReader(BatchReader.from(source))
       .intoTable()
-    assert.deepEqual([...parsed.getChild('currunix').toArray()], [RECORDED_NS])
-    assert.deepEqual([...parsed.getChild('recdunix').toArray()], [RECORDED_NS])
+    assert.deepEqual([...parsed.getChild('transunix').toArray()], [RECORDED_NS])
+    assert.deepEqual([...parsed.getChild('sendunix').toArray()], [RECORDED_NS])
     assert.deepEqual(column(parsed, 'sendingtime'), [null])
 
     // A raw-byte door holds no line, so the same frame there takes the pin.
     const raw = reading(registry, { defaultSendingTime: SENDING }).parseFixLine(Buffer.from('8=FIX.4.4|35=8|10=0|'))
-    assert.equal(raw.currunix, SENDING_NS)
-    assert.equal(raw.recdunix, null)
+    assert.equal(raw.transunix, SENDING_NS)
+    assert.equal(raw.sendunix, null)
   })
 
   test("threads preserve ordered multi-batch rows and a message carries its row's cells", () => {
@@ -3670,7 +3670,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // batches than its four workers and the output closes one row at a time.
     // By content code and wire: the lines state no clock, so each parse dates
     // them by its own now, and the identity the instant derives differs.
-    const stated = (messages) => [...messages].map((held) => [held.currhashcode, held.intoText('|')])
+    const stated = (messages) => [...messages].map((held) => [held.hashcode, held.intoText('|')])
     const lines = [TWO_FRAMES, ...CAPTURE]
     const bytes = lines.map((line) => Buffer.from(line))
     assert.deepEqual(stated(four.parseLines(bytes)), stated(one.parseLines(bytes)))
@@ -3699,7 +3699,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // The shared columns open the row and the capture's own column follows
     // them; the fixed columns come after, each named by its folded name and
     // carrying its tag.
-    assert.equal(names[0], 'curruuid')
+    assert.equal(names[0], 'uuid')
     assert.equal(names.indexOf('body'), names.indexOf('partyids') + 1)
     const header = names.indexOf('beginstring')
     assert.ok(header > 0)
@@ -3795,7 +3795,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // levels nested (A2, A10).
     assert.ok(reader.field.equals(graph.MarketData.field()))
     const names = Array.from({ length: reader.field.fieldLen }, (_, at) => reader.field.fieldAt(at).name)
-    assert.equal(names[0], 'curruuid')
+    assert.equal(names[0], 'uuid')
     assert.ok(names.includes('marketdatakind'))
     for (const name of ['alive', 'delta', 'events', 'executions', 'bidlimits', 'asklimits', 'price', 'quantity']) {
       assert.ok(names.includes(name), name)
@@ -3861,8 +3861,8 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(books("marketdatakind = 'EXEC'").length, 1)
     // A filter keeping every row folds what no filter does; not given is none.
     const all = books(undefined)
-    assert.deepEqual(books('true').map((book) => book.curruuid), all.map((book) => book.curruuid))
-    assert.deepEqual(books(null).map((book) => book.curruuid), all.map((book) => book.curruuid))
+    assert.deepEqual(books('true').map((book) => book.uuid), all.map((book) => book.uuid))
+    assert.deepEqual(books(null).map((book) => book.uuid), all.map((book) => book.uuid))
     // A column the row does not carry is refused before a message is read.
     assert.throws(() => codec.bookArrowReader(capture(), 0, 'nope = 1'), /nope/)
   })
@@ -3882,7 +3882,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       ['EXEC', 'BUYS', 'FILLED'],
       ['EXEC', 'SELL', 'FILLED'],
     ])
-    assert.ok(messages.slice(1).every((execution) => execution.srcuuids.includes(messages[0].curruuid)))
+    assert.ok(messages.slice(1).every((execution) => execution.srcuuids.includes(messages[0].uuid)))
     // A book places no execution - a fill moves it through its order's
     // report - and records each: the trade's instant emits one book stating
     // its two executions alone.
@@ -3916,7 +3916,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // A sided execution goes by its side's own execution identifier (A12).
     assert.equal(rowKinds(buy.identifiers).get('execid'), 'BUY-EXEC')
     assert.equal(rowKinds(sell.identifiers).get('execid'), 'SELL-EXEC')
-    assert.notDeepEqual(buy.curruuid, sell.curruuid)
+    assert.notDeepEqual(buy.uuid, sell.uuid)
     assert.notDeepEqual(buy.crossuuid, sell.crossuuid)
     assert.notEqual(buy.crosscode, sell.crosscode)
   })
@@ -3971,10 +3971,10 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.ok(operations.every((operation) => operation instanceof graph.MarketData))
     const expected = [snapshot, update].flatMap((message) => message.marketData())
     assert.deepEqual(operations.map((operation) => operation.kind), expected.map((operation) => operation.kind))
-    assert.deepEqual(operations.map((operation) => operation.curruuid), expected.map((operation) => operation.curruuid))
+    assert.deepEqual(operations.map((operation) => operation.uuid), expected.map((operation) => operation.uuid))
     const clocks = operations.map((operation) => {
       const leaf = operation.intoLeaf()
-      return leaf.snapunix ?? leaf.currunix
+      return leaf.snapunix ?? leaf.transunix
     })
     assert.ok(clocks.every((clock, at) => at === 0 || clocks[at - 1] <= clock), 'sorted by the fold instant')
     assert.deepEqual(clocks, [...clocks].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0)))
@@ -3994,7 +3994,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       codec.marketDataArrowReader(codec.arrowReader(schema, [update, heartbeat, snapshot])),
     )]
     assert.deepEqual(twin.map((row) => row.kind), operations.map((operation) => operation.kind))
-    assert.deepEqual(twin.map((row) => row.curruuid), operations.map((operation) => operation.curruuid))
+    assert.deepEqual(twin.map((row) => row.uuid), operations.map((operation) => operation.uuid))
     // A schema that makes no root is refused before a row is read, as the
     // lifecycle twin refuses it, and whatever `BatchReader.from` takes -
     // an Apache Arrow JS table here - is a source.
@@ -4021,12 +4021,12 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.deepEqual(kept.metadata, { countryofissue: 'US', currencycodesource: '6' })
     assert.deepEqual(dropped.metadata, {})
     // The map is part of the leaf's identity, and nothing else moves.
-    assert.notEqual(kept.curruuid, dropped.curruuid)
+    assert.notEqual(kept.uuid, dropped.uuid)
     assert.equal(kept.crosscode, dropped.crosscode)
     assert.equal(kept.price, dropped.price)
     // The batch door honours the same switch.
     const [row] = [...graph.MarketData.fromArrowReader(off.marketArrowReader([off.parseFixLine(line)]))]
-    assert.equal(row.curruuid, dropped.curruuid)
+    assert.equal(row.uuid, dropped.uuid)
     assert.deepEqual(row.metadata, {})
   })
 
@@ -4062,7 +4062,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const stream = codec.marketData(failing())
     const expected = [snapshot, update].flatMap((message) => message.marketData())
     for (const operation of expected) {
-      assert.equal(stream.next().value.curruuid, operation.curruuid)
+      assert.equal(stream.next().value.uuid, operation.uuid)
     }
     assert.throws(() => stream.next(), RangeError)
     assert.deepEqual(stream.next(), { value: undefined, done: true })
@@ -4120,8 +4120,8 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       const message = parsed[at]
       // Projected columns and residual entries may rebuild in another child
       // order; the semantic values, supplied identity and fixed row stay exact.
-      assert.equal(held.currhashcode, message.currhashcode)
-      assert.equal(held.curruuid, message.curruuid)
+      assert.equal(held.hashcode, message.hashcode)
+      assert.equal(held.uuid, message.uuid)
       for (const tag of [35, 11, 55, 54, 17, 37, 65004, 65001]) {
         const value = message.getByTag(tag)
         if (value !== null && value.kind !== 'null') assert.ok(held.byTag(tag).equals(value), `tag ${tag}`)
@@ -4320,7 +4320,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       }
       assert.ok(message.byTag(tag).equals(value), `tag ${tag}`)
     }
-    assert.equal(message.byTag(65004).asJs(), message.currhashcode)
+    assert.equal(message.byTag(65004).asJs(), message.hashcode)
   })
 
   test('a set leaves the entries, the wire and the digest untouched', () => {
@@ -4434,9 +4434,9 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(message.side, 'UKNW')
     assert.equal(message.size, size - 1)
     // An ordinary child leaves, and the content identity follows it.
-    const identity = message.currhashcode
+    const identity = message.hashcode
     assert.equal(message.remove('VenueThing').asJs(), '7')
-    assert.notEqual(message.currhashcode, identity)
+    assert.notEqual(message.hashcode, identity)
     const settled = message.clone()
     assert.equal(message.remove('absent'), null)
     assert.ok(message.equals(settled))
@@ -4455,8 +4455,8 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
 
     // Rebuilding combines projected fields with residual entries. Semantic row
     // equality, rather than arrival entry order or wire spelling, is the contract.
-    assert.equal(held.currhashcode, parsed.currhashcode)
-    assert.equal(held.curruuid, parsed.curruuid)
+    assert.equal(held.hashcode, parsed.hashcode)
+    assert.equal(held.uuid, parsed.uuid)
     for (const tag of [8, 35, 11, 55, 54]) assert.ok(held.byTag(tag).equals(parsed.byTag(tag)), `tag ${tag}`)
     // And it makes the row it came from, whole.
     assert.ok(held.intoRow(schema).equals(row))
@@ -4471,7 +4471,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const named = fix.FixMsg.fromRow(schema, row.asJs(), registry)
     assert.ok(named.byTag(55).equals(parsed.byTag(55)))
     assert.ok(named.intoRow(schema).equals(row))
-    assert.equal(named.currhashcode, held.currhashcode)
+    assert.equal(named.hashcode, held.hashcode)
     assert.notEqual(fix.FixMsg.fromRow(schema, row).registry, null)
   })
 
@@ -4536,7 +4536,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     stated[schema.indexOf('rownum')] = 42n
     const again = fix.FixMsg.fromRow(schema, stated, registry)
     assert.ok(again.intoRow(schema).equals(schema.scalar(stated)))
-    assert.equal(again.currhashcode, parsed.currhashcode)
+    assert.equal(again.hashcode, parsed.hashcode)
     assert.deepEqual(Object.keys(again.carried).sort(), ['rownum', 'url'])
     assert.equal(again.carried.url.asJs(), 'file:///capture.log')
     assert.equal(Number(again.carried.rownum.asJs()), 42)
@@ -4572,10 +4572,10 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // A row without residual entries still reconstructs projected content.
     assert.equal(held.byTag(55).asJs(), 'AAPL')
     assert.equal(held.header().msgtype, parsed.header().msgtype)
-    assert.equal(held.currunix, parsed.currunix)
+    assert.equal(held.transunix, parsed.transunix)
     const again = held.intoRow(narrow).asJs()
     assert.equal(again[narrow.indexOf('symbol')], 'AAPL')
-    assert.deepEqual(again[narrow.indexOf('currunix')], row.asJs()[narrow.indexOf('currunix')])
+    assert.deepEqual(again[narrow.indexOf('transunix')], row.asJs()[narrow.indexOf('transunix')])
     // A row that does not fit the schema is refused.
     assert.throws(() => fix.FixMsg.fromRow(narrow, { nosuchcolumn: 1 }, registry))
   })
@@ -4697,7 +4697,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // No cross code names no chain, so nothing precedes it and its own
     // identity is the chain's.
     assert.equal(walked.crosscode, '')
-    assert.equal(walked.crossuuid, walked.curruuid)
+    assert.equal(walked.crossuuid, walked.uuid)
     assert.equal(walked.prevuuid, null)
     assert.equal(walked.seqnum, 0)
     assert.ok(walked.equals(heartbeat))
@@ -4714,17 +4714,17 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(walkedPair.length, 4)
     assert.equal(walkedPair[0].prevuuid, null)
     assert.equal(walkedPair[1].prevuuid, null, 'another chain, another first message')
-    assert.equal(walkedPair[2].prevuuid, walkedPair[0].curruuid)
-    assert.equal(walkedPair[3].prevuuid, walkedPair[1].curruuid)
+    assert.equal(walkedPair[2].prevuuid, walkedPair[0].uuid)
+    assert.equal(walkedPair[3].prevuuid, walkedPair[1].uuid)
 
     // A message read from a line states the line as its one source, and the
     // source is no part of the code: the same bytes are the same content,
     // whether the walk dated the message by its transaction or not.
     const line = new TextLine(0n, lines[0])
     const [sourced] = codec.parseTextLine(line)
-    assert.deepEqual(sourced.srcuuids, [line.curruuid])
-    assert.deepEqual(sourced.srcuuids, [line.curruuid])
-    assert.equal(sourced.currhashcode, walkedPair[0].currhashcode)
+    assert.deepEqual(sourced.srcuuids, [line.uuid])
+    assert.deepEqual(sourced.srcuuids, [line.uuid])
+    assert.equal(sourced.hashcode, walkedPair[0].hashcode)
     assert.deepEqual(walkedPair[0].srcuuids, [])
   })
 
@@ -4736,9 +4736,9 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const fill = '8=FIX.4.4|35=8|52=20260102-10:15:30.000|37=ORD-1|17=E-1|150=F|39=2|54=1|55=AAPL|32=5|31=10|10=0|'
     const parsed = [...codec.parseLines([fill, fill, fill])]
     assert.deepEqual(parsed.map((message) => message.seqnum), [0, 1, 2, 3, 4, 5])
-    assert.equal(new Set([0, 2, 4].map((at) => parsed[at].curruuid)).size, 3)
+    assert.equal(new Set([0, 2, 4].map((at) => parsed[at].uuid)).size, 3)
     for (const [report, split] of [[0, 1], [2, 3], [4, 5]]) {
-      assert.deepEqual(parsed[split].srcuuids, [parsed[report].curruuid])
+      assert.deepEqual(parsed[split].srcuuids, [parsed[report].uuid])
     }
   })
 
@@ -4793,7 +4793,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       assert.equal(message.seqnum, expected[at].seqnum, `message ${at}`)
       assert.equal(message.crosscode, expected[at].crosscode, `message ${at}`)
       assert.ok(message.intoRow(schema).equals(expected[at].intoRow(schema)), `message ${at}`)
-      assert.equal(message.prevuuid, at === 0 ? null : back[at - 1].curruuid, `message ${at}`)
+      assert.equal(message.prevuuid, at === 0 ? null : back[at - 1].uuid, `message ${at}`)
       assert.deepEqual(message.srcuuids, [], `message ${at} was read from bytes`)
       assert.equal(message.crossuuid, back[0].crossuuid, `message ${at}`)
     }
@@ -4838,7 +4838,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
 
     // The finite capture fully merges observations carrying one forced
     // delivery key: message type, session, context and delivery sequence. The
-    // latest recording is the reference and earlier observations fill it.
+    // observation sent last is the reference and earlier ones fill it.
     // That coalesces 54 reports, one order, six cancel rejects and the six
     // rows that state no FIX type at all. One additional output expires a
     // live order at its stated deadline.
@@ -4868,8 +4868,8 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const every = [...codec.withDedupWindowMs(null).lifecycle(messages)]
     assert.equal(every.length, 42)
     const seen = new Set()
-    const once = every.filter((message) => !seen.has(message.curruuid) && seen.add(message.curruuid))
-    assert.deepEqual(once.map((message) => message.curruuid), walked.map((message) => message.curruuid))
+    const once = every.filter((message) => !seen.has(message.uuid) && seen.add(message.uuid))
+    assert.deepEqual(once.map((message) => message.uuid), walked.map((message) => message.uuid))
 
     const counts = (held) => {
       const found = new Map()
@@ -4903,7 +4903,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // A walked message descends from the whole chain before it. A fully merged
     // delivery keeps every observation's source, with each source belonging to
     // one output; only the four twins the window yields once take their own
-    // sources with them, now that seqnum no longer feeds currhashcode and the
+    // sources with them, now that seqnum no longer feeds hashcode and the
     // six rows that state no FIX type fold their provenance in instead of
     // losing it. Two cancel rejects lost theirs as well until the row
     // header's clock admitted the bridge's grouped microseconds - unread,
@@ -4920,9 +4920,9 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(new Set(retainedSources).size, inputSources.size - 4)
 
     const [expiry] = expired
-    const predecessor = retained.find((message) => message.curruuid === expiry.prevuuid)
+    const predecessor = retained.find((message) => message.uuid === expiry.prevuuid)
     assert.ok(predecessor)
-    assert.equal(expiry.currunix, predecessor.exprunix)
+    assert.equal(expiry.transunix, predecessor.exprunix)
     // The expiry starts at 0, and its deadline is a later instant than its
     // live predecessor, so it keeps that place.
     assert.equal(expiry.seqnum, 0)
@@ -4953,8 +4953,8 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
         capture: message.capture(),
         metadata: message.metadata,
         event: {
-          curruuid: event.curruuid,
-          currhashcode: event.currhashcode,
+          uuid: event.uuid,
+          hashcode: event.hashcode,
           prevuuid: event.prevuuid,
           crossuuid: event.crossuuid,
           crosscode: event.crosscode,
@@ -4963,7 +4963,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
           securityids: event.securityids.toString(),
           partyids: event.partyids.toString(),
           srcuuids: event.srcuuids,
-          currunix: event.currunix,
+          transunix: event.transunix,
           state: event.state,
           seqnum: event.seqnum,
           creaunix: event.creaunix,
@@ -4975,7 +4975,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     }
     assert.deepEqual(chained.map(signature), walked.map(signature))
     const topology = (held) => {
-      const indices = new Map(held.map((message, at) => [message.curruuid, at]))
+      const indices = new Map(held.map((message, at) => [message.uuid, at]))
       const indexOf = (uuid) => {
         const at = indices.get(uuid)
         assert.notEqual(at, undefined, `${uuid} names a row in the finite walk`)
@@ -5033,8 +5033,8 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const every = [...codec.marketData([...codec.withDedupWindowMs(null).lifecycle(messages)])]
     assert.equal(every.length, 23)
     const seen = new Set()
-    const once = every.filter((operation) => !seen.has(operation.curruuid) && seen.add(operation.curruuid))
-    assert.deepEqual(once.map((operation) => operation.curruuid), operations.map((operation) => operation.curruuid))
+    const once = every.filter((operation) => !seen.has(operation.uuid) && seen.add(operation.uuid))
+    assert.deepEqual(once.map((operation) => operation.uuid), operations.map((operation) => operation.uuid))
 
     // Every order folds into a book and every execution is recorded among
     // its book's events - a fill moved its book through its order's report
@@ -5093,7 +5093,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // and the snapshot controls - and came to digest the events after the
     // delta: this book holds no event, so it feeds the empty list's count
     // beside its two delta entries.
-    assert.equal(last.currhashcode, 10_745_751_629_392_559_435n)
+    assert.equal(last.hashcode, 10_745_751_629_392_559_435n)
   })
 
   test('a transaction time stating only a day leaves the sending clock standing', () => {
@@ -5102,10 +5102,10 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // nothing at the parse anyway: the event is the sending time
     // (`rust/tests/fix/`).
     const day = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A|60=20260814|10=0|'))
-    assert.equal(day.currunix, 1_704_190_530_000_000_000n)
-    assert.equal(day.header().sendingtime, day.currunix)
+    assert.equal(day.transunix, 1_704_190_530_000_000_000n)
+    assert.equal(day.header().sendingtime, day.transunix)
     const [walked] = codec.lifecycle([day])
-    assert.equal(walked.currunix, day.currunix)
+    assert.equal(walked.transunix, day.transunix)
   })
 
   test('the bridge row header crosses whole and names its own captures', () => {
@@ -5128,7 +5128,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(String(captures.field('msgthreadid').dtype), 'int64')
     assert.equal(String(captures.field('loglevel').dtype), 'utf8')
     assert.equal(String(captures.field('msgseqnum').dtype), 'int64')
-    // The clock is `mtime`, consumed into each line's `currunix`, so it
+    // The clock is `mtime`, consumed into each line's `transunix`, so it
     // leads no column of its own.
     assert.ok(!names.includes('mtime') && !names.includes('timestamp'))
   })
@@ -5142,8 +5142,8 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const lines = [...new IOBase(CAPTURE).readTextLines(options)]
     assert.equal(lines.length, 144)
     // `2026-08-14 14:46:39.769` in front of the first line, read in UTC.
-    assert.equal(lines[0].currunix, 1_786_718_799_769_000_000n)
-    assert.equal(lines[0].mtime, lines[0].currunix)
+    assert.equal(lines[0].transunix, 1_786_718_799_769_000_000n)
+    assert.equal(lines[0].mtime, lines[0].transunix)
     const clocks = new Set(
       fs
         .readFileSync(CAPTURE, 'latin1')
@@ -5151,7 +5151,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
         .filter((line) => line.length > 0)
         .map((line) => line.split(' [')[0]),
     )
-    const dated = new Set(lines.map((line) => line.currunix))
+    const dated = new Set(lines.map((line) => line.transunix))
     assert.equal(clocks.size, 40)
     assert.equal(dated.size, clocks.size)
     assert.ok(!dated.has(BigInt(Math.trunc(fs.statSync(CAPTURE).mtimeMs)) * 1_000_000n))
@@ -5162,7 +5162,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       ),
     )
     assert.deepEqual(
-      [...loose.readTextLines(options)].map((line) => line.currunix),
+      [...loose.readTextLines(options)].map((line) => line.transunix),
       [1_786_718_799_769_000_000n, 1_786_718_799_769_123_000n, 1_786_718_800_000_000_000n],
     )
   })
@@ -5176,10 +5176,10 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       // By order: the order read again stands third at its instant, an
       // identity of its own.
       assert.deepEqual(parsed.map((held) => held.seqnum), [0, 1, 2, 0])
-      assert.notEqual(parsed[0].curruuid, parsed[2].curruuid)
-      assert.equal(parsed[0].currhashcode, parsed[2].currhashcode)
+      assert.notEqual(parsed[0].uuid, parsed[2].uuid)
+      assert.equal(parsed[0].hashcode, parsed[2].hashcode)
       // The place orders the identities of one millisecond.
-      assert.ok(parsed[1].curruuid > parsed[0].curruuid)
+      assert.ok(parsed[1].uuid > parsed[0].uuid)
     }
   })
 

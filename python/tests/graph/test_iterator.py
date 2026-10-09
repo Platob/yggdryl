@@ -29,7 +29,7 @@ def test_an_order_chains_to_the_live_order_it_follows() -> None:
     # event its own instant, every later one the chain's.
     assert head.seqnum == 0 and head.prevuuid is None
     assert first.creaunix is None and head.creaunix == CLOCK and tail.creaunix == CLOCK
-    assert tail.prevuuid == first.curruuid
+    assert tail.prevuuid == first.uuid
     # A later instant keeps its own place, even one nanosecond on.
     assert tail.prevunix == CLOCK and tail.seqnum == 0
 
@@ -56,7 +56,7 @@ def test_an_execution_and_every_other_leaf_walk_through() -> None:
 def test_unsorted_items_are_sorted_first() -> None:
     first, second = order(CLOCK), order(CLOCK + 1, state="REPLACED")
     walked = [data.as_order_event() for data in graph.EventIterator([second, first], sorted=False)]
-    assert [event.currunix for event in walked if event is not None] == [CLOCK, CLOCK + 1]
+    assert [event.transunix for event in walked if event is not None] == [CLOCK, CLOCK + 1]
 
 
 def test_alive_and_the_snapshot_grid() -> None:
@@ -66,7 +66,7 @@ def test_alive_and_the_snapshot_grid() -> None:
     # Each view is dated at its tick and keeps the instant the order was
     # stated at.
     assert [
-        (event.currunix, event.snapunix) for event in walked if event is not None
+        (event.transunix, event.snapunix) for event in walked if event is not None
     ] == [(CLOCK, None), (CLOCK, CLOCK), (CLOCK + 5, CLOCK), (CLOCK + 10, None)]
     assert walked[-1] is not None and walked[-1].state is State.EXPIRED
     assert walk.alive() == []
@@ -86,22 +86,22 @@ def test_a_view_is_the_live_event_as_of_its_tick() -> None:
     events = [event for event in walked if event is not None]
     sources = [event for event in events if event.snapunix is None]
     views = [event for event in events if event.snapunix is not None]
-    assert [view.currunix for view in views] == [CLOCK, CLOCK + ms, CLOCK + 2 * ms]
+    assert [view.transunix for view in views] == [CLOCK, CLOCK + ms, CLOCK + 2 * ms]
     for view in views:
-        tick = view.currunix
-        source = [held for held in sources if held.currunix <= tick][-1]
+        tick = view.transunix
+        source = [held for held in sources if held.transunix <= tick][-1]
         # Dated at its tick, so its identity is the one that tick derives -
         # a row of its own - while its content, its place and its cross
         # element are the live event's, and its snapshot instant the one
         # the live event was stated at.
-        assert view.snapunix == source.currunix
-        assert view.currhashcode == source.currhashcode
+        assert view.snapunix == source.transunix
+        assert view.hashcode == source.hashcode
         assert (view.seqnum, view.prevuuid, view.crossuuid) == (source.seqnum, source.prevuuid, source.crossuuid)
-        assert (view.curruuid == source.curruuid) == (tick == source.currunix)
+        assert (view.uuid == source.uuid) == (tick == source.transunix)
     # The tick past the replacement views it: a later instant keeps its own
     # place, the chain it follows kept.
-    assert views[-1].prevuuid == first.curruuid and views[-1].seqnum == 0
-    assert views[1].curruuid != first.curruuid
+    assert views[-1].prevuuid == first.uuid and views[-1].seqnum == 0
+    assert views[1].uuid != first.uuid
 
 
 def test_a_python_failure_is_raised_as_itself() -> None:
@@ -150,7 +150,7 @@ def test_a_walk_carries_the_parents_of_each_identifier_along_its_chain() -> None
     ]
     # One chain: each event follows the one before.
     assert all(
-        later is not None and earlier is not None and later.prevuuid == earlier.curruuid
+        later is not None and earlier is not None and later.prevuuid == earlier.uuid
         for earlier, later in zip(walked, walked[1:])
     )
 
@@ -189,11 +189,11 @@ def test_an_element_joins_a_live_chain_through_a_parent_identifiers_value() -> N
     assert only.identifiers.get_from("orderid") == "A"
     [head, joined] = [data.as_order_event() for data in graph.EventIterator([first, replacement])]
     assert head is not None and joined is not None
-    assert joined.prevuuid == head.curruuid and joined.crossuuid == head.crossuuid
+    assert joined.prevuuid == head.uuid and joined.crossuuid == head.crossuuid
     assert joined.crosscode == "10:1:O-100", "the chain's stored code"
     assert held(joined, "orderid", "parentorderid", "origorderid") == ["B", "A", "A"]
     [_, filled] = [data.as_order_event() for data in graph.EventIterator([first, only])]
-    assert filled is not None and filled.prevuuid == head.curruuid
+    assert filled is not None and filled.prevuuid == head.uuid
 
     # The previous-value slot beside an `orderid` of its own names nothing: a
     # hierarchy parent, a chain of its own.

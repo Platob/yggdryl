@@ -4,13 +4,13 @@
     "type": "struct",
     "fields": [
       {
-        "name": "curruuid",
+        "name": "uuid",
         "dtype": {
           "type": "null"
         },
         "nullable": false,
         "metadata": {
-          "FIX:field": "curruuid",
+          "FIX:field": "uuid",
           "FIX:tag": "65001"
         }
       },
@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "currhashcode",
+        "name": "hashcode",
         "dtype": {
           "type": "null"
         },
         "nullable": false,
         "metadata": {
-          "FIX:field": "currhashcode",
+          "FIX:field": "hashcode",
           "FIX:tag": "65004"
         }
       },
@@ -70,13 +70,13 @@
         }
       },
       {
-        "name": "currunix",
+        "name": "transunix",
         "dtype": {
           "type": "null"
         },
         "nullable": false,
         "metadata": {
-          "FIX:field": "currunix",
+          "FIX:field": "transunix",
           "FIX:tag": "65007"
         }
       },
@@ -92,13 +92,13 @@
         }
       },
       {
-        "name": "recdunix",
+        "name": "sendunix",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:field": "recdunix",
+          "FIX:field": "sendunix",
           "FIX:tag": "65009"
         }
       },

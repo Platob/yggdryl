@@ -190,7 +190,7 @@ fn an_unsorted_stream_is_refused_at_the_book_and_the_walk_fuses() {
     let error = candles.next().unwrap().unwrap_err().to_string();
     assert_eq!(
         error,
-        "invalid record value at $.book.currunix: expected an instant at or after 2000, got 1000"
+        "invalid record value at $.book.transunix: expected an instant at or after 2000, got 1000"
     );
     assert!(candles.next().is_none(), "the walk fuses");
     assert!(candles.next().is_none());
@@ -555,7 +555,7 @@ fn a_refused_book_follows_the_candles_of_the_bucket_it_completed() {
     assert_eq!((first.start, first.end, first.books), (0, MINUTE, 2));
     let error = walk.next().unwrap().unwrap_err().to_string();
     assert!(
-        error.starts_with("invalid record value at $.book.currunix:"),
+        error.starts_with("invalid record value at $.book.transunix:"),
         "{error}"
     );
     assert!(walk.next().is_none(), "the walk fuses");
@@ -773,7 +773,7 @@ fn candles_from_delta_books_equal_candles_from_complete_books() {
     assert!(books.iter().all(|book| !book.is_complete()));
     let mut whole: Vec<BookEvent> = Vec::with_capacity(books.len());
     for book in &books {
-        let origin = BookEvent::new(book.get_currunix(), book.get_crosscode());
+        let origin = BookEvent::new(book.get_transunix(), book.get_crosscode());
         let previous = whole.last().unwrap_or(&origin);
         whole.push(book.clone().with_previous(previous).unwrap());
     }

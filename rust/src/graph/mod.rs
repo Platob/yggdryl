@@ -51,8 +51,8 @@ macro_rules! delegate_event {
             $($field).+,
             restating = $restating,
             is_execution = |this: &$type| $crate::graph::Event::is_execution(&this.$($field).+),
-            set_currunix = |this: &mut $type, unix: i64| {
-                $crate::graph::Event::set_currunix(&mut this.$($field).+, unix);
+            set_transunix = |this: &mut $type, unix: i64| {
+                $crate::graph::Event::set_transunix(&mut this.$($field).+, unix);
             }
         );
     };
@@ -61,14 +61,14 @@ macro_rules! delegate_event {
         $($field:ident).+,
         restating = $restating:expr,
         is_execution = $is_execution:expr,
-        set_currunix = $set_currunix:expr
+        set_transunix = $set_transunix:expr
     ) => {
         impl $crate::graph::Event for $type {
-            fn get_currunix(&self) -> i64 {
-                $crate::graph::Event::get_currunix(&self.$($field).+)
+            fn get_transunix(&self) -> i64 {
+                $crate::graph::Event::get_transunix(&self.$($field).+)
             }
-            fn set_currunix(&mut self, unix: i64) {
-                ($set_currunix)(self, unix);
+            fn set_transunix(&mut self, unix: i64) {
+                ($set_transunix)(self, unix);
             }
             fn get_state(&self) -> &$crate::State {
                 $crate::graph::Event::get_state(&self.$($field).+)
@@ -91,11 +91,11 @@ macro_rules! delegate_event {
             fn set_creaunix(&mut self, unix: Option<i64>) {
                 $crate::graph::Event::set_creaunix(&mut self.$($field).+, unix);
             }
-            fn get_recdunix(&self) -> Option<i64> {
-                $crate::graph::Event::get_recdunix(&self.$($field).+)
+            fn get_sendunix(&self) -> Option<i64> {
+                $crate::graph::Event::get_sendunix(&self.$($field).+)
             }
-            fn set_recdunix(&mut self, unix: Option<i64>) {
-                $crate::graph::Event::set_recdunix(&mut self.$($field).+, unix);
+            fn set_sendunix(&mut self, unix: Option<i64>) {
+                $crate::graph::Event::set_sendunix(&mut self.$($field).+, unix);
             }
             fn get_exprunix(&self) -> Option<i64> {
                 $crate::graph::Event::get_exprunix(&self.$($field).+)

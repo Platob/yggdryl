@@ -27,7 +27,7 @@ pub struct BookLimit {
     /// The exact sum of the quantities its entries state, as decimal text;
     /// an entry stating none adds nothing.
     pub quantity: String,
-    /// Its entries' `curruuid`s in live order: position, then arrival.
+    /// Its entries' `uuid`s in live order: position, then arrival.
     pub uuids: Vec<String>,
     /// Whether the level can trade: any of its entries does not state
     /// `tradable = false`.
@@ -79,24 +79,24 @@ impl JsBookEvent {
 
 #[napi]
 impl JsBookEvent {
-    /// An empty book of the ticker `symbol` at `currunix` nanoseconds since
+    /// An empty book of the ticker `symbol` at `transunix` nanoseconds since
     /// the epoch, keyed by that ticker; an empty `symbol` keys the book
     /// `XX0000000000`, the ISIN that states none, and states no ticker.
     #[napi(constructor)]
-    pub fn new(currunix: Either<BigInt, f64>, symbol: String) -> Result<Self> {
-        let currunix = instant_of(currunix, "currunix")?;
-        Ok(Self::from_core(CoreBookEvent::new(currunix, symbol)))
+    pub fn new(transunix: Either<BigInt, f64>, symbol: String) -> Result<Self> {
+        let transunix = instant_of(transunix, "transunix")?;
+        Ok(Self::from_core(CoreBookEvent::new(transunix, symbol)))
     }
 
-    /// An empty book keyed `key` at `currunix` nanoseconds since the epoch:
+    /// An empty book keyed `key` at `transunix` nanoseconds since the epoch:
     /// `key` is its crosscode - an instrument's ISIN, a ticker, or
     /// `XX0000000000` - and the book states neither a ticker nor an ISIN.
     /// The empty base a code's first book, a delta book, rebuilds over
     /// with `withPrevious`.
     #[napi(factory)]
-    pub fn keyed(currunix: Either<BigInt, f64>, key: String) -> Result<Self> {
-        let currunix = instant_of(currunix, "currunix")?;
-        Ok(Self::from_core(CoreBookEvent::keyed(currunix, key)))
+    pub fn keyed(transunix: Either<BigInt, f64>, key: String) -> Result<Self> {
+        let transunix = instant_of(transunix, "transunix")?;
+        Ok(Self::from_core(CoreBookEvent::keyed(transunix, key)))
     }
 
     /// Whether the book holds its sides - every entry alive on it - rather
@@ -210,7 +210,7 @@ impl JsBookEvent {
 
     /// One limit per price level of the side `side` names - read through
     /// the `Side` vocabulary - best first and the one unpriced limit last,
-    /// each naming its entries' `curruuid`s in position order; empty for a
+    /// each naming its entries' `uuid`s in position order; empty for a
     /// side that is neither a bid nor an ask, and on a delta book.
     #[napi]
     pub fn limits(&self, side: Either<String, f64>) -> Result<Vec<BookLimit>> {

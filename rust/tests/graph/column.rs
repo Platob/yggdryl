@@ -8,7 +8,7 @@ use yggdryl::{Scalar, State, Uuid};
 fn every_column_states_back_what_it_read() {
     let mut event = OrderEvent::at(1_700_000_000_000_000_000);
     event.set_creaunix(Some(1_600_000_000_000_000_000));
-    event.set_recdunix(Some(1_675_000_000_000_000_000));
+    event.set_sendunix(Some(1_675_000_000_000_000_000));
     event.set_exprunix(Some(1_800_000_000_000_000_000));
     event.set_prevunix(Some(1_650_000_000_000_000_000));
     event.set_snapunix(Some(1_700_000_000_000_000_001));
@@ -25,9 +25,9 @@ fn every_column_states_back_what_it_read() {
             .expect("the fact fits the column");
         column.record(&mut again, &fact);
     }
-    assert_eq!(again.get_currunix(), event.get_currunix());
+    assert_eq!(again.get_transunix(), event.get_transunix());
     assert_eq!(again.get_creaunix(), event.get_creaunix());
-    assert_eq!(again.get_recdunix(), event.get_recdunix());
+    assert_eq!(again.get_sendunix(), event.get_sendunix());
     assert_eq!(again.get_exprunix(), event.get_exprunix());
     assert_eq!(again.get_prevunix(), event.get_prevunix());
     assert_eq!(again.get_snapunix(), event.get_snapunix());
@@ -63,13 +63,13 @@ fn a_negative_place_is_still_the_first_place() {
 fn a_null_clears_and_nothing_stated_is_none() {
     let mut event = OrderEvent::at(7);
     event.set_seqnum(3);
-    event.set_recdunix(Some(5));
+    event.set_sendunix(Some(5));
     EventColumn::SeqNum.record(&mut event, &Scalar::Null);
     EventColumn::State.record(&mut event, &Scalar::Null);
-    EventColumn::RecdUnix.record(&mut event, &Scalar::Null);
+    EventColumn::SendUnix.record(&mut event, &Scalar::Null);
     assert_eq!(event.get_seqnum(), 0);
     assert_eq!(event.get_state(), &State::unknown());
-    assert_eq!(event.get_recdunix(), None);
+    assert_eq!(event.get_sendunix(), None);
     assert_eq!(
         EventColumn::SeqNum.fact(&event),
         Some(Scalar::from(0_u64)),
@@ -81,8 +81,8 @@ fn a_null_clears_and_nothing_stated_is_none() {
         "the state is never absent"
     );
     // A null instant is silence: the instant is never absent.
-    EventColumn::CurrUnix.record(&mut event, &Scalar::Null);
-    assert_eq!(event.get_currunix(), 7);
+    EventColumn::TransUnix.record(&mut event, &Scalar::Null);
+    assert_eq!(event.get_transunix(), 7);
 }
 
 #[test]
@@ -94,8 +94,15 @@ fn the_columns_are_the_event_trait_s_in_one_order() {
     assert_eq!(
         names,
         [
-            "currunix", "creaunix", "recdunix", "exprunix", "prevunix", "snapunix", "prevuuid",
-            "seqnum", "state",
+            "transunix",
+            "creaunix",
+            "sendunix",
+            "exprunix",
+            "prevunix",
+            "snapunix",
+            "prevuuid",
+            "seqnum",
+            "state",
         ]
     );
     let nullable: Vec<&str> = EventColumn::ALL
@@ -105,22 +112,16 @@ fn the_columns_are_the_event_trait_s_in_one_order() {
         .collect();
     assert_eq!(
         nullable,
-        ["currunix", "seqnum"],
+        ["transunix", "seqnum"],
         "only the instant and the place at it are never absent"
     );
     assert_eq!(EventColumn::of_name("no such"), None);
     // An identity, a code and a source are the element's facts, a column of
     // its own.
-    for element in [
-        "curruuid",
-        "crossuuid",
-        "crosscode",
-        "currhashcode",
-        "srcuuids",
-    ] {
+    for element in ["uuid", "crossuuid", "crosscode", "hashcode", "srcuuids"] {
         assert_eq!(EventColumn::of_name(element), None, "{element}");
     }
-    // The merge reference is chosen from `recdunix` alone, so no column
+    // The merge reference is chosen from `sendunix` alone, so no column
     // persists a separate reference recording clock any more.
     assert_eq!(EventColumn::of_name("refrecdunix"), None);
     // The names an element went by left the event: a book control is typed

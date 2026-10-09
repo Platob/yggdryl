@@ -103,15 +103,15 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     assert_eq!(
         &tags[..15],
         [
-            yggdryl::CURRUUID_TAG_NAME.0,
+            yggdryl::UUID_TAG_NAME.0,
             yggdryl::CROSSUUID_TAG_NAME.0,
             yggdryl::CROSSCODE_TAG_NAME.0,
-            yggdryl::CURRHASHCODE_TAG_NAME.0,
+            yggdryl::HASHCODE_TAG_NAME.0,
             yggdryl::CROSSHASHCODE_TAG_NAME.0,
             yggdryl::SRCUUIDS_TAG_NAME.0,
-            yggdryl::CURRUNIX_TAG_NAME.0,
+            yggdryl::TRANSUNIX_TAG_NAME.0,
             yggdryl::CREAUNIX_TAG_NAME.0,
-            yggdryl::RECDUNIX_TAG_NAME.0,
+            yggdryl::SENDUNIX_TAG_NAME.0,
             yggdryl::EXPRUNIX_TAG_NAME.0,
             yggdryl::PREVUNIX_TAG_NAME.0,
             yggdryl::SNAPUNIX_TAG_NAME.0,
@@ -245,7 +245,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     );
     for tag in [
         yggdryl::EXECUNIX_TAG_NAME.0,
-        yggdryl::RECDUNIX_TAG_NAME.0,
+        yggdryl::SENDUNIX_TAG_NAME.0,
         yggdryl::MSGSESSEVENTID_TAG_NAME.0,
         yggdryl::PREVUNIX_TAG_NAME.0,
         yggdryl::PREVUUID_TAG_NAME.0,
@@ -262,7 +262,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     }
     let clock = DataType::datetime64(yggdryl::TimeUnit::Nanosecond, yggdryl::Timezone::UTC)
         .expect("the event clock");
-    for tag in [yggdryl::EXECUNIX_TAG_NAME.0, yggdryl::RECDUNIX_TAG_NAME.0] {
+    for tag in [yggdryl::EXECUNIX_TAG_NAME.0, yggdryl::SENDUNIX_TAG_NAME.0] {
         assert_eq!(schema.fields()[column_of(&schema, tag)].dtype(), &clock);
     }
     // The session event is the text its four parts join to.
@@ -271,7 +271,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         &DataType::utf8()
     );
     // The merge reference's recording clock is no column: the reference is
-    // the latest `recdunix`, which the row already states.
+    // the latest `sendunix`, which the row already states.
     assert!(schema.index_of("refrecdunix").is_none());
     assert!(!tags.contains(&65_064));
 }
@@ -296,9 +296,9 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
             .unwrap_or_else(|| panic!("a {name} column"))
     };
     for pair in [
-        "curruuid",
+        "uuid",
         "srcuuids",
-        "currunix",
+        "transunix",
         "creaunix",
         "prevunix",
         "snapunix",
@@ -342,17 +342,17 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     assert_eq!(typed(53), typed(44));
     assert_eq!(
         typed(yggdryl::PREVUNIX_TAG_NAME.0),
-        typed(yggdryl::CURRUNIX_TAG_NAME.0)
+        typed(yggdryl::TRANSUNIX_TAG_NAME.0)
     );
     assert_eq!(typed(yggdryl::PREVUUID_TAG_NAME.0), DataType::Uuid);
-    assert_eq!(typed(yggdryl::CURRUUID_TAG_NAME.0), DataType::Uuid);
-    assert_eq!(typed(yggdryl::CURRHASHCODE_TAG_NAME.0), DataType::UInt64);
+    assert_eq!(typed(yggdryl::UUID_TAG_NAME.0), DataType::Uuid);
+    assert_eq!(typed(yggdryl::HASHCODE_TAG_NAME.0), DataType::UInt64);
 
     // Crate-owned columns follow the same contract as FIX's: the stable
     // identity is the folded name, while renderers receive the readable
     // spelling the field keeps as its display.
     for (tag, display) in [
-        (yggdryl::CURRUNIX_TAG_NAME.0, "Current Time"),
+        (yggdryl::TRANSUNIX_TAG_NAME.0, "Transaction Time"),
         (yggdryl::MSGCTXID_TAG_NAME.0, "Message Context ID"),
         (yggdryl::MSGPLUGINID_TAG_NAME.0, "Message Plugin ID"),
         (yggdryl::MSGPLUGINSIDE_TAG_NAME.0, "Message Plugin Side"),
@@ -361,7 +361,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
             yggdryl::MSGSESSEVENTID_TAG_NAME.0,
             "Message Session Event ID",
         ),
-        (yggdryl::CURRHASHCODE_TAG_NAME.0, "Current Hash Code"),
+        (yggdryl::HASHCODE_TAG_NAME.0, "Hash Code"),
         (yggdryl::CROSSHASHCODE_TAG_NAME.0, "Cross Hash Code"),
         (yggdryl::CROSSCODE_TAG_NAME.0, "Cross Code"),
         (yggdryl::PREVUNIX_TAG_NAME.0, "Previous Time"),
@@ -388,12 +388,12 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     assert_eq!(
         required,
         [
-            "curruuid",
+            "uuid",
             "crossuuid",
             "crosscode",
-            "currhashcode",
+            "hashcode",
             "crosshashcode",
-            "currunix",
+            "transunix",
             "creaunix",
             "seqnum",
             "beginstring",
@@ -412,9 +412,7 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
     use yggdryl::holder::Buffer;
     use yggdryl::ipc::{Ipc, IpcOptions};
     use yggdryl::media::RecordOptions;
-    use yggdryl::{
-        CROSSHASHCODE_TAG_NAME, CURRHASHCODE_TAG_NAME, FixMsg, IOMedia, PREVUUID_TAG_NAME,
-    };
+    use yggdryl::{CROSSHASHCODE_TAG_NAME, FixMsg, HASHCODE_TAG_NAME, IOMedia, PREVUUID_TAG_NAME};
 
     let (registry, codec) = reader();
     let codec = codec.with_separator(b'|');
@@ -451,7 +449,7 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
 
     let schema = fix_schema(&registry, "fix").unwrap();
     let row = message.into_row(&schema).unwrap();
-    for (tag, _) in [CURRHASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME] {
+    for (tag, _) in [HASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME] {
         assert!(
             at(&row, &schema, tag).as_u64().is_some(),
             "tag {tag} is a settled code"
@@ -477,15 +475,15 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
     }
     // A complete row carries the supplied event identity rather than deriving
     // another identity from the reconstructed content order.
-    assert_eq!(restored.get_curruuid(), message.get_curruuid());
+    assert_eq!(restored.get_uuid(), message.get_uuid());
     assert_eq!(restored.get_crossuuid(), message.get_crossuuid());
-    assert_eq!(restored.get_currhashcode(), message.get_currhashcode());
+    assert_eq!(restored.get_hashcode(), message.get_hashcode());
     assert_eq!(restored.get_crosshashcode(), message.get_crosshashcode());
     assert_eq!(restored.get_prevuuid(), message.get_prevuuid());
     assert_eq!(restored.get_prevunix(), message.get_prevunix());
 
     let identity = (
-        message.get_curruuid(),
+        message.get_uuid(),
         message.get_crossuuid(),
         message.get_prevuuid(),
         message.get_prevunix(),
@@ -502,12 +500,12 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
     // A code is a plain `uint64`; an identity is sixteen bytes under the
     // canonical Arrow extension name for one, which is what a lake engine
     // reads it back as.
-    for (_, name) in [CURRHASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME] {
+    for (_, name) in [HASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME] {
         let field = arrow_schema.field_with_name(name).unwrap();
         assert_eq!(field.data_type(), &arrow_schema::DataType::UInt64);
         assert!(!field.metadata().contains_key("ARROW:extension:name"));
     }
-    for (_, name) in [PREVUUID_TAG_NAME, yggdryl::CURRUUID_TAG_NAME] {
+    for (_, name) in [PREVUUID_TAG_NAME, yggdryl::UUID_TAG_NAME] {
         let field = arrow_schema.field_with_name(name).unwrap();
         assert_eq!(
             field.data_type(),
@@ -531,7 +529,7 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
     let restored = messages.next().unwrap().unwrap();
     assert!(messages.next().is_none());
     assert_eq!(restored.into_row(&schema).unwrap(), row);
-    assert_eq!(restored.get_curruuid(), identity.0);
+    assert_eq!(restored.get_uuid(), identity.0);
     assert_eq!(restored.get_crossuuid(), identity.1);
     assert_eq!(restored.get_prevuuid(), identity.2);
     assert_eq!(restored.get_prevunix(), identity.3);
@@ -631,24 +629,24 @@ fn projections_derive_facets_but_keep_the_hard_identity_bundle() {
     let row = order.into_row(&schema).unwrap();
 
     // The code the content digests to, a sixty-four-bit number the row holds.
-    assert!(!at(&row, &schema, yggdryl::CURRHASHCODE_TAG_NAME.0).is_null());
+    assert!(!at(&row, &schema, yggdryl::HASHCODE_TAG_NAME.0).is_null());
 
     // The clock the row is cut by - how a layout is cut from it is the
     // target's, not a column of this crate's.
-    assert!(!at(&row, &schema, yggdryl::CURRUNIX_TAG_NAME.0).is_null());
+    assert!(!at(&row, &schema, yggdryl::TRANSUNIX_TAG_NAME.0).is_null());
 
     // The version it was read at, which the header holds and the row states.
     assert_eq!(at(&row, &schema, 8).as_str(), Some("FIX.4.4"));
 
     // Hard identities and clocks are stored mirrors, never invented arrivals.
     assert!(order.get_by_tag(65_000).is_none());
-    assert!(order.get_by_tag(yggdryl::CURRHASHCODE_TAG_NAME.0).is_some());
-    assert!(order.get_by_tag(yggdryl::CURRUNIX_TAG_NAME.0).is_some());
+    assert!(order.get_by_tag(yggdryl::HASHCODE_TAG_NAME.0).is_some());
+    assert!(order.get_by_tag(yggdryl::TRANSUNIX_TAG_NAME.0).is_some());
     assert!(
         order
             .entries()
             .iter()
-            .all(|entry| entry.tag() != yggdryl::CURRUNIX_TAG_NAME.0)
+            .all(|entry| entry.tag() != yggdryl::TRANSUNIX_TAG_NAME.0)
     );
 }
 
@@ -793,8 +791,8 @@ fn a_captured_key_leaves_the_metadata_cell_rides_the_residual_and_comes_back() {
     };
     assert_eq!(tokens(&restored), tokens(&message));
     assert_eq!(restored.digest(), message.digest());
-    assert_eq!(restored.get_currhashcode(), message.get_currhashcode());
-    assert_eq!(restored.get_curruuid(), message.get_curruuid());
+    assert_eq!(restored.get_hashcode(), message.get_hashcode());
+    assert_eq!(restored.get_uuid(), message.get_uuid());
     assert_eq!(restored.get_securityids(), message.get_securityids());
     assert_eq!(restored.get_identifiers(), message.get_identifiers());
     assert_eq!(restored.get_partyids(), message.get_partyids());
@@ -1202,7 +1200,7 @@ fn the_identity_columns_cross_an_iceberg_table_in_the_storage_their_width_asks_f
         FormatVersion, IcebergTable, PartitionSpec, PrimitiveType, assign_field_ids,
     };
     use yggdryl::local::LocalFolder;
-    use yggdryl::{CROSSHASHCODE_TAG_NAME, CURRHASHCODE_TAG_NAME, PREVUUID_TAG_NAME, Scheme};
+    use yggdryl::{CROSSHASHCODE_TAG_NAME, HASHCODE_TAG_NAME, PREVUUID_TAG_NAME, Scheme};
 
     let (registry, codec) = reader();
     let codec = codec.with_separator(b'|');
@@ -1224,11 +1222,10 @@ fn the_identity_columns_cross_an_iceberg_table_in_the_storage_their_width_asks_f
 
     // The digests are unsigned, so the fixed schema is refused before a table
     // exists, and the refusal names both the type and the way out.
-    let refused =
-        PrimitiveType::from_dtype(fixed.get_field(CURRHASHCODE_TAG_NAME.1).unwrap().dtype())
-            .map(|held| held.to_string())
-            .unwrap_err()
-            .to_string();
+    let refused = PrimitiveType::from_dtype(fixed.get_field(HASHCODE_TAG_NAME.1).unwrap().dtype())
+        .map(|held| held.to_string())
+        .unwrap_err()
+        .to_string();
     assert!(refused.contains("uint64"), "{refused}");
     assert!(refused.contains("into_scheme_compat"), "{refused}");
 
@@ -1236,7 +1233,7 @@ fn the_identity_columns_cross_an_iceberg_table_in_the_storage_their_width_asks_f
     // messages state and the table's business is to carry those values back:
     // `msghash` digests the row it lands in (see
     // `message.md#clocks-and-identity`).
-    let digests = [CURRHASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME];
+    let digests = [HASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME];
     let expected_digests: Vec<Vec<Option<u64>>> = stamped
         .iter()
         .map(|held| {
@@ -1413,7 +1410,7 @@ fn a_value_a_column_will_not_hold_is_that_columns_null() {
     assert!(at(&row, &schema, 15).is_null());
     // The row is still a row: the columns beside the unreadable ones are
     // filled, and the identity bundle still settled.
-    assert!(!at(&row, &schema, yggdryl::CURRHASHCODE_TAG_NAME.0).is_null());
+    assert!(!at(&row, &schema, yggdryl::HASHCODE_TAG_NAME.0).is_null());
 }
 
 /// A market spelled wider than a MIC is no market, and the trait says so.
@@ -1890,7 +1887,7 @@ fn an_iceberg_stop_order_states_its_terms_in_the_shared_columns() {
     assert_eq!(message.get_hiddenqty(), Some(Decimal::from_int(6)));
     assert_eq!(message.get_marketdatatype(), MarketDataType::OrdStopLimit);
     assert_eq!(message.get_ticker(), Some("AAPL"));
-    assert_eq!(message.get_recdunix(), Some(message.header().sendingtime()));
+    assert_eq!(message.get_sendunix(), Some(message.header().sendingtime()));
 
     let row = message.clone().into_row(&schema).unwrap();
     let cell =
@@ -1923,7 +1920,7 @@ fn an_iceberg_stop_order_states_its_terms_in_the_shared_columns() {
         "FIX's own column stays"
     );
     assert!(!cell("timeinforce").is_null());
-    assert_eq!(cell("recdunix"), cell("sendingtime"));
+    assert_eq!(cell("sendunix"), cell("sendingtime"));
     let again = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     assert_eq!(again.into_row(&schema).unwrap(), row);
 
@@ -2143,8 +2140,8 @@ fn a_row_read_back_under_a_schema_keeping_no_fix_key_settles_to_the_identity_the
         "the parse holds both parties"
     );
     assert_eq!(
-        back.get_currhashcode(),
-        message.get_currhashcode(),
+        back.get_hashcode(),
+        message.get_hashcode(),
         "the row's code is kept"
     );
     // Settled again - as the lifecycle settles a message it follows or
@@ -2153,14 +2150,14 @@ fn a_row_read_back_under_a_schema_keeping_no_fix_key_settles_to_the_identity_the
     held.finalize();
     back.finalize();
     assert_eq!(
-        back.get_currhashcode(),
-        held.get_currhashcode(),
+        back.get_hashcode(),
+        held.get_hashcode(),
         "the read-back message settles to the code the parse settles to"
     );
-    assert_eq!(back.get_curruuid(), held.get_curruuid());
+    assert_eq!(back.get_uuid(), held.get_uuid());
     assert_eq!(
-        held.get_currhashcode(),
-        message.get_currhashcode(),
+        held.get_hashcode(),
+        message.get_hashcode(),
         "settling the parsed message again moves nothing"
     );
     // The row is its own fixed point, column by column.
@@ -2197,7 +2194,7 @@ fn digests_stating_bits_cross_an_iceberg_table_as_longs() {
     use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
     use yggdryl::local::LocalFolder;
     use yggdryl::{
-        CROSSHASHCODE_TAG_NAME, CURRHASHCODE_TAG_NAME, Representation, SEQNUM_TAG_NAME, Scheme,
+        CROSSHASHCODE_TAG_NAME, HASHCODE_TAG_NAME, Representation, SEQNUM_TAG_NAME, Scheme,
     };
 
     let (registry, codec) = reader();
@@ -2214,10 +2211,10 @@ fn digests_stating_bits_cross_an_iceberg_table_as_longs() {
         .lifecycle(messages)
         .map(|held| held.unwrap())
         .collect();
-    let digests = [CURRHASHCODE_TAG_NAME.1, CROSSHASHCODE_TAG_NAME.1];
+    let digests = [HASHCODE_TAG_NAME.1, CROSSHASHCODE_TAG_NAME.1];
     let expected: Vec<(u64, u64)> = stamped
         .iter()
-        .map(|held| (held.get_currhashcode(), held.get_crosshashcode()))
+        .map(|held| (held.get_hashcode(), held.get_crosshashcode()))
         .collect();
     assert!(
         expected
@@ -2281,7 +2278,7 @@ fn digests_stating_bits_cross_an_iceberg_table_as_longs() {
         .messages(scan)
         .map(|held| {
             let held = held.unwrap();
-            (held.get_currhashcode(), held.get_crosshashcode())
+            (held.get_hashcode(), held.get_crosshashcode())
         })
         .collect();
     assert_eq!(read, expected, "the digests come back exactly as they went");

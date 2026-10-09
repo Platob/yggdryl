@@ -91,7 +91,7 @@ fn an_operation_is_an_execution_by_its_kind_or_by_a_state_reporting_one() {
     assert_eq!(ExecutionEvent::from(&order).kind(), MarketKind::Execution);
     let default = OrderEvent::default();
     assert_eq!(default.kind(), MarketKind::Order);
-    assert_eq!(default.get_currunix(), 0);
+    assert_eq!(default.get_transunix(), 0);
 }
 
 #[test]
@@ -102,7 +102,7 @@ fn an_operation_of_another_kind_copies_every_fact_and_no_book_control() {
     });
     let operation = QuoteEvent::from(&source);
     assert_eq!(operation.book(), None, "the control is the leaf's own");
-    assert_eq!(operation.get_currunix(), source.get_currunix());
+    assert_eq!(operation.get_transunix(), source.get_transunix());
     assert_eq!(operation.get_state(), source.get_state());
     assert_eq!(operation.get_price(), source.get_price());
     assert_eq!(operation.get_lastpx(), source.get_lastpx());
@@ -118,15 +118,15 @@ fn an_operation_of_another_kind_copies_every_fact_and_no_book_control() {
     assert_eq!(operation.get_unit(), source.get_unit());
     assert_eq!(operation.get_identifiers(), source.get_identifiers());
     assert_eq!(
-        operation.get_curruuid(),
-        source.get_curruuid(),
+        operation.get_uuid(),
+        source.get_uuid(),
         "copied as stated, not refinalized"
     );
     let mut finalized = operation.clone();
     finalized.finalize();
     assert_ne!(
-        finalized.get_curruuid(),
-        source.get_curruuid(),
+        finalized.get_uuid(),
+        source.get_uuid(),
         "the kind digests into the operation's identity"
     );
 }
@@ -144,23 +144,23 @@ fn an_element_is_the_operation_undated_and_dates_again_at_an_instant() {
     assert_eq!(element.get_crosscode(), "10:1:O-100");
     // The element keeps the identity the operation derived - its kind is in
     // it - until it is finalized as an element.
-    assert_eq!(element.get_curruuid(), operation.get_curruuid());
+    assert_eq!(element.get_uuid(), operation.get_uuid());
     let mut undated = element.clone();
     undated.finalize();
     assert_ne!(
-        undated.get_curruuid(),
-        operation.get_curruuid(),
+        undated.get_uuid(),
+        operation.get_uuid(),
         "an undated element digests no clock"
     );
     assert_eq!(
-        undated.get_curruuid(),
-        Uuid::from_v8(u128::from(undated.get_currhashcode())),
+        undated.get_uuid(),
+        Uuid::from_v8(u128::from(undated.get_hashcode())),
         "an undated element's identity is its code"
     );
 
     let redated = element.clone().at(1_700_000_000_000_000_000);
     assert_eq!(redated.kind(), MarketKind::Order);
-    assert_eq!(redated.get_currunix(), 1_700_000_000_000_000_000);
+    assert_eq!(redated.get_transunix(), 1_700_000_000_000_000_000);
     assert_eq!(redated.get_price(), operation.get_price());
     assert_eq!(
         redated.get_state(),
@@ -170,7 +170,7 @@ fn an_element_is_the_operation_undated_and_dates_again_at_an_instant() {
     assert_eq!(redated.get_seqnum(), 0);
     assert_eq!(redated.book(), None, "the book control stayed behind too");
     assert_eq!(
-        redated.get_curruuid(),
+        redated.get_uuid(),
         redated.time_uuid().expect("an identity"),
         "dated, so finalized"
     );
@@ -197,7 +197,7 @@ fn the_same_facts_as_two_kinds_are_two_elements() {
     quote.set_crosscode("O-100".to_owned());
     quote.set_price(Some(Decimal::from_int(82)), true);
     quote.finalize();
-    assert_ne!(order.get_curruuid(), quote.get_curruuid());
+    assert_ne!(order.get_uuid(), quote.get_uuid());
     // Each category stores the code under its own prefix, so the two are
     // two cross elements too.
     assert_eq!(order.get_crosscode(), "10:0:O-100");
@@ -236,16 +236,16 @@ fn the_book_control_rides_typed_beside_the_operation_and_its_scope_digests_into_
     assert_eq!(controlled.scope(), "PRIMARY");
     assert!(controlled.is_full_snapshot());
     assert_eq!(
-        controlled.get_curruuid(),
-        bare.get_curruuid(),
+        controlled.get_uuid(),
+        bare.get_uuid(),
         "setting the control does not refinalize"
     );
     controlled.finalize();
     let mut finalized_bare = bare.clone();
     finalized_bare.finalize();
     assert_ne!(
-        controlled.get_curruuid(),
-        finalized_bare.get_curruuid(),
+        controlled.get_uuid(),
+        finalized_bare.get_uuid(),
         "the scope is part of what the operation states"
     );
     // The rest of the control is walk-time: an action, a position and the
@@ -255,7 +255,7 @@ fn the_book_control_rides_typed_beside_the_operation_and_its_scope_digests_into_
         ..BookRef::default()
     });
     walked.finalize();
-    assert_eq!(walked.get_curruuid(), controlled.get_curruuid());
+    assert_eq!(walked.get_uuid(), controlled.get_uuid());
     assert_ne!(walked, controlled, "the control itself still differs");
     // Undated, the control stays behind: the two elements finalize alike.
     let mut controlled_element = controlled.clone().into_element();
@@ -328,7 +328,7 @@ fn an_operation_follows_and_merges_and_keeps_its_kind() {
     let second = second
         .with_previous(&first)
         .expect("the later order follows");
-    assert_eq!(second.get_prevuuid(), Some(first.get_curruuid()));
+    assert_eq!(second.get_prevuuid(), Some(first.get_uuid()));
     assert_eq!(second.get_prevpx(), Some(Decimal::from_int(80)));
     // A later instant keeps its own place.
     assert_eq!(second.get_seqnum(), 0);
@@ -337,7 +337,7 @@ fn an_operation_follows_and_merges_and_keeps_its_kind() {
     // The same facts as a quote are another operation.
     let mut quote = QuoteEvent::from(&second);
     quote.finalize();
-    assert_ne!(quote.get_curruuid(), second.get_curruuid());
+    assert_ne!(quote.get_uuid(), second.get_uuid());
     let mut restated = second.clone();
     restated.set_srcuuids(vec![Uuid::from_v8(9)]);
     let merged = second
@@ -423,10 +423,10 @@ fn merging_an_undated_element_lets_this_statement_lead() {
     );
     // Finalized: the identity is what the merged element states.
     assert_eq!(
-        merged.get_curruuid(),
-        Uuid::from_v8(u128::from(merged.get_currhashcode()))
+        merged.get_uuid(),
+        Uuid::from_v8(u128::from(merged.get_hashcode()))
     );
-    assert_ne!(merged.get_curruuid(), this.get_curruuid());
+    assert_ne!(merged.get_uuid(), this.get_uuid());
     // Another element does not merge, and nothing new answers nothing.
     let mut stranger = Order::new();
     stranger.set_crosscode("T-2".to_owned());
@@ -543,7 +543,7 @@ fn an_execution_stating_only_its_last_price_never_states_a_price() {
 fn an_operation_digests_its_marketdatakind() {
     let order: OrderEvent = full();
     let quote: QuoteEvent = full();
-    assert_ne!(order.get_currhashcode(), quote.get_currhashcode());
+    assert_ne!(order.get_hashcode(), quote.get_hashcode());
 }
 
 /// A copy of an operation into its own kind states every fact its source

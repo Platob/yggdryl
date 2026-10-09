@@ -7,9 +7,9 @@
 //! the fake object store of `rust/tests/support/` ([`S3TablesFake`],
 //! [`FakeS3`]): two table buckets, `bronze` and `silver`, one namespace each,
 //! every table format version 3, partitioned by
-//! `time_bucket('15 minutes', currunix) as partunix`, sorted by
-//! `partunix, currunix, seqnum, currhashcode` and keyed by
-//! `currunix, crosshashcode, seqnum, currhashcode`. The first stage is a keyed
+//! `time_bucket('15 minutes', transunix) as partunix`, sorted by
+//! `partunix, transunix, seqnum, hashcode` and keyed by
+//! `transunix, crosshashcode, seqnum, hashcode`. The first stage is a keyed
 //! append, every later one a `read_serie` of the window then an
 //! `overwrite_serie`, and the books are read once into three event tables.
 //! The FIX codec, the lifecycle and the book fold are left out - each stage
@@ -130,10 +130,10 @@ fn row() -> Field {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
             }
-            .required_field("currunix"),
+            .required_field("transunix"),
             DataType::Int64.required_field("crosshashcode"),
             DataType::Int64.required_field("seqnum"),
-            DataType::Int64.required_field("currhashcode"),
+            DataType::Int64.required_field("hashcode"),
             DataType::utf8().required_field("crosscode"),
             DataType::utf8().nullable_field("body"),
         ])
@@ -145,16 +145,16 @@ fn row() -> Field {
 /// `row` laid out as `medallion.py` lays every table out.
 fn declared() -> Field {
     let mut schema = row()
-        .with_partition_by(["time_bucket('15 minutes', currunix) as partunix"
+        .with_partition_by(["time_bucket('15 minutes', transunix) as partunix"
             .parse()
             .expect("a projection")])
         .expect("a partition");
     schema
         .as_sort_mut()
-        .set_by_texts(["partunix", "currunix", "seqnum", "currhashcode"])
+        .set_by_texts(["partunix", "transunix", "seqnum", "hashcode"])
         .expect("an order");
     assign_field_ids(&mut schema, 1).expect("numbered");
-    let mut key: Vec<i32> = ["currunix", "crosshashcode", "seqnum", "currhashcode"]
+    let mut key: Vec<i32> = ["transunix", "crosshashcode", "seqnum", "hashcode"]
         .iter()
         .map(|name| {
             schema
@@ -455,7 +455,7 @@ fn stored_rows(table: &Table, start: i64, end: i64) -> Serie {
         .with_select("* exclude (partunix)")
         .expect("a select")
         .with_filter(format!(
-            "currunix >= '{}' and currunix < '{}'",
+            "transunix >= '{}' and transunix < '{}'",
             iso(start),
             iso(end)
         ))

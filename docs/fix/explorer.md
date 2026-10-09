@@ -24,12 +24,12 @@ A Serie group and its scalar count have separate definitions: `NoPartyIDs` is th
 | Messages, a subset of components | 181 | 181 |
 | Code sets, read by 2,027 fields | 735 | 739 |
 
-The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketdatakind`, `isincode`, `forexcode`, `figicode`, `execunix`, `recdunix`, the session-event key `msgsesseventid`, a bridge's originating plugin and conversation among them - and its `metadata` Map group. `SendingTime` and `TransactTime` are seeded standard clocks; the builtin `marketdatakindcodeset`, `marketdatatypecodeset` and `statecodeset` make the live code-set count 738. The native fixed capture schema has 150 columns.
+The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketdatakind`, `isincode`, `forexcode`, `figicode`, `execunix`, `sendunix`, the session-event key `msgsesseventid`, a bridge's originating plugin and conversation among them - and its `metadata` Map group. `SendingTime` and `TransactTime` are seeded standard clocks; the builtin `marketdatakindcodeset`, `marketdatatypecodeset` and `statecodeset` make the live code-set count 738. The native fixed capture schema has 150 columns.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{CURRUNIX_TAG_NAME, DataType, FixField, FixId, FixRegistry};
+    use yggdryl::{TRANSUNIX_TAG_NAME, DataType, FixField, FixId, FixRegistry};
     use yggdryl::local::LocalFolder;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -51,11 +51,11 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     assert_eq!(registry.msgtype("D")?.as_str(), "D");
     // The crate's own columns are fields from tag 65007, held by every registry;
     // an identity is the tag and the name together.
-    let (tag, name) = CURRUNIX_TAG_NAME;
-    let currunix = registry.field_by_id(FixId::of(tag, name)?)?;
-    assert_eq!(currunix.name(), "currunix");
-    assert_eq!(currunix.display(), Some("Current Time"));
-    assert_eq!(FixField::new(currunix).id()?, Some(FixId::of(65_007, "CurrUnix")?));
+    let (tag, name) = TRANSUNIX_TAG_NAME;
+    let transunix = registry.field_by_id(FixId::of(tag, name)?)?;
+    assert_eq!(transunix.name(), "transunix");
+    assert_eq!(transunix.display(), Some("Transaction Time"));
+    assert_eq!(FixField::new(transunix).id()?, Some(FixId::of(65_007, "TransUnix")?));
     ```
 
 === "Python"
@@ -80,10 +80,10 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     assert registry.msgtype("D").value == "D"
     # The crate's own columns are fields from tag 65007, held by every registry;
     # an identity is the tag and the name together, an int derived on every read.
-    currunix = registry.field_by_tag(65_007)
-    assert currunix.name == "currunix"
-    assert currunix.display == "Current Time"
-    assert registry.field_by_id(currunix.fix.id) == currunix
+    transunix = registry.field_by_tag(65_007)
+    assert transunix.name == "transunix"
+    assert transunix.display == "Transaction Time"
+    assert registry.field_by_id(transunix.fix.id) == transunix
     ```
 
 === "JavaScript"
@@ -110,10 +110,10 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     assert.equal(registry.msgtype('D').asStr(), 'D')
     // The crate's own columns are fields from tag 65007, held by every registry;
     // an identity is the tag and the name together, a number derived on every read.
-    const currunix = registry.fieldByTag(65_007)
-    assert.equal(currunix.name, 'currunix')
-    assert.equal(currunix.display, 'Current Time')
-    assert.ok(registry.fieldById(currunix.fix.id).equals(currunix))
+    const transunix = registry.fieldByTag(65_007)
+    assert.equal(transunix.name, 'transunix')
+    assert.equal(transunix.display, 'Transaction Time')
+    assert.ok(registry.fieldById(transunix.fix.id).equals(transunix))
     ```
 
 ## What the registry holds

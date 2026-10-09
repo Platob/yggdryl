@@ -17,10 +17,10 @@
 //! ```
 //!
 //! Every table is created from the schema of the stream written to it, as
-//! Iceberg states it, partitioned by `partunix` - `currunix` floored to the
+//! Iceberg states it, partitioned by `partunix` - `transunix` floored to the
 //! quarter hour, a column the table computes for every row it is written -
-//! and sorted by `partunix, currunix, seqnum, currhashcode`, with
-//! `currunix, crosshashcode, seqnum, currhashcode` - when, which object,
+//! and sorted by `partunix, transunix, seqnum, hashcode`, with
+//! `transunix, crosshashcode, seqnum, hashcode` - when, which object,
 //! which line of it, what content - declared its primary key, Iceberg's
 //! identifier fields, so an append of a row the table holds leaves it out.
 //! A read yields
@@ -129,13 +129,13 @@ const SMOKE_COPIES: u64 = 3;
 /// instant and the hash of what it states. A capture repeats a line's bytes
 /// at one instant, so the instant and the content alone are no key, and an
 /// append to a keyed table leaves out a row whose key it holds.
-const PRIMARY_KEY: [&str; 4] = ["currunix", "crosshashcode", "seqnum", "currhashcode"];
+const PRIMARY_KEY: [&str; 4] = ["transunix", "crosshashcode", "seqnum", "hashcode"];
 
 /// What the partition column every table of the pipeline computes holds,
 /// as the table states it: a derived column is described by whoever
 /// declares it.
 const PARTUNIX: &str =
-    "The quarter of an hour the row's instant falls in: currunix floored to fifteen minutes.";
+    "The quarter of an hour the row's instant falls in: transunix floored to fifteen minutes.";
 
 /// The columns every table of the pipeline requires of each row: its key,
 /// its place among the rows of its instant, and the code and hash of the
@@ -143,8 +143,8 @@ const PARTUNIX: &str =
 /// `marketdata` row lets a leaf that is no event state none, and these
 /// tables hold events alone.
 const REQUIRED: [&str; 5] = [
-    "currunix",
-    "currhashcode",
+    "transunix",
+    "hashcode",
     "seqnum",
     "crosscode",
     "crosshashcode",
@@ -523,7 +523,7 @@ fn reading() -> TextOptions {
 
 /// A table for the rows of one stream, created from the stream's own schema
 /// as Iceberg states it: partitioned by the quarter of an hour each row's
-/// `currunix` falls in - `partunix`, a column the table computes for every
+/// `transunix` falls in - `partunix`, a column the table computes for every
 /// row it is written - and sorted by it, the instant, the place within the
 /// instant and the content hash, the instant and the hash its primary key.
 fn create(root: &Path, row: &Field) -> IcebergTable<LocalFolder> {
@@ -531,7 +531,7 @@ fn create(root: &Path, row: &Field) -> IcebergTable<LocalFolder> {
         .clone()
         .into_scheme_compat(&Scheme::ICEBERG)
         .expect("the row as Iceberg states it")
-        .with_partition_by(["time_bucket('15 minutes', currunix) as partunix"
+        .with_partition_by(["time_bucket('15 minutes', transunix) as partunix"
             .parse()
             .expect("the partition entry")])
         .expect("the partition column");
@@ -558,7 +558,7 @@ fn create(root: &Path, row: &Field) -> IcebergTable<LocalFolder> {
         .expect("the described column");
     schema
         .as_sort_mut()
-        .set_by_texts(["partunix", "currunix", "seqnum", "currhashcode"])
+        .set_by_texts(["partunix", "transunix", "seqnum", "hashcode"])
         .expect("the sort order");
     assign_field_ids(&mut schema, 1).expect("the field identifiers");
     // Iceberg names a key by the identifiers of its columns, which exist
@@ -657,7 +657,7 @@ fn held(table: &IcebergTable<LocalFolder>) -> Stored {
 }
 
 /// Every row of `table` as its sort key, in the order a read yields them:
-/// `(partunix, currunix, seqnum, currhashcode)`, the two instants as their
+/// `(partunix, transunix, seqnum, hashcode)`, the two instants as their
 /// nanosecond counts.
 fn keys(table: &IcebergTable<LocalFolder>, window: Option<&str>) -> Vec<(i64, i64, i128, i128)> {
     let options = table.record_options().expect("the table's options");
@@ -691,15 +691,15 @@ fn keys(table: &IcebergTable<LocalFolder>, window: Option<&str>) -> Vec<(i64, i6
                 .unwrap_or_else(|| panic!("{name} is stored as decimal(20, 0)"))
                 .clone()
         };
-        let (partunix, currunix) = (instants("partunix"), instants("currunix"));
-        let (seqnum, currhashcode) = (counts("seqnum"), counts("currhashcode"));
+        let (partunix, transunix) = (instants("partunix"), instants("transunix"));
+        let (seqnum, hashcode) = (counts("seqnum"), counts("hashcode"));
         assert_eq!(seqnum.null_count(), 0, "every row states its place");
         for row in 0..batch.num_rows() {
             keys.push((
                 partunix.value(row),
-                currunix.value(row),
+                transunix.value(row),
                 seqnum.value(row),
-                currhashcode.value(row),
+                hashcode.value(row),
             ));
         }
     }
@@ -716,16 +716,16 @@ fn verify(name: &str, table: &IcebergTable<LocalFolder>, expected: &Stored) {
         expected.rows,
         "{name}: every stored row reads back"
     );
-    for (partunix, currunix, _, _) in &keys {
+    for (partunix, transunix, _, _) in &keys {
         assert_eq!(
             *partunix,
-            currunix.div_euclid(QUARTER_NS) * QUARTER_NS,
-            "{name}: partunix is currunix floored to the quarter hour"
+            transunix.div_euclid(QUARTER_NS) * QUARTER_NS,
+            "{name}: partunix is transunix floored to the quarter hour"
         );
     }
     assert!(
         keys.windows(2).all(|pair| pair[0] <= pair[1]),
-        "{name}: a read yields the rows in partunix, currunix, seqnum, currhashcode order"
+        "{name}: a read yields the rows in partunix, transunix, seqnum, hashcode order"
     );
     let mut quarters: Vec<i64> = keys.iter().map(|key| key.0).collect();
     quarters.dedup();
@@ -736,7 +736,7 @@ fn verify(name: &str, table: &IcebergTable<LocalFolder>, expected: &Stored) {
     );
     let schema = table.schema().expect("the table's schema");
     for child in schema.fields() {
-        if matches!(child.name(), "curruuid" | "crossuuid" | "prevuuid") {
+        if matches!(child.name(), "uuid" | "crossuuid" | "prevuuid") {
             assert_eq!(
                 *child.dtype(),
                 DataType::uuid(),
@@ -782,7 +782,7 @@ fn verify(name: &str, table: &IcebergTable<LocalFolder>, expected: &Stored) {
             .identifier_field_ids()
             .expect("the identifier fields"),
         primary_key(stated),
-        "{name}: currunix, crosshashcode, seqnum and currhashcode are the table's primary key"
+        "{name}: transunix, crosshashcode, seqnum and hashcode are the table's primary key"
     );
 }
 
@@ -1063,7 +1063,7 @@ fn reprocess(
     if shape.copies < 3 {
         return;
     }
-    let window = "currunix >= '2026-08-14T05:00:00Z' and currunix < '2026-08-14T09:00:00Z'";
+    let window = "transunix >= '2026-08-14T05:00:00Z' and transunix < '2026-08-14T09:00:00Z'";
     let plan = text.plan_matching(window).expect("the window plans");
     let all = text.data_files().expect("the data files").len();
     assert!(

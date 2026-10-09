@@ -37,7 +37,7 @@ fn operation<K: OperationKind>(
     operation.set_seqnum(u64::try_from(unix).unwrap());
     operation.set_creaunix(Some(unix - 3));
     operation.set_execunix(Some(unix - 2), true);
-    operation.set_recdunix(Some(unix - 1));
+    operation.set_sendunix(Some(unix - 1));
     operation.set_price(Some(Decimal::from_int(100 + unix)), true);
     operation.set_quantity(Some(Decimal::from_int(10 + unix)), true);
     operation.set_currency(Ccy::new("USD").unwrap(), true);
@@ -350,8 +350,8 @@ fn the_field_is_every_fact_in_trait_order_then_the_nested_columns() {
         .collect();
     assert_eq!(names[..56], shared[..]);
     assert_eq!(shared.len(), 6 + 9 + 36 + 5);
-    assert_eq!(names[0], "curruuid");
-    assert_eq!(names[6], "currunix");
+    assert_eq!(names[0], "uuid");
+    assert_eq!(names[6], "transunix");
     assert!(
         field.fields()[..15].iter().all(Field::is_nullable),
         "an undated leaf states no clock, and a root states only its leaf's identity"
@@ -515,7 +515,7 @@ fn every_leaf_round_trips_in_bounded_batches() {
     // without them and keep their identity, their action and position.
     assert_eq!(rewritten(actual.clone(), 5), batches);
     for (index, (read, stated)) in actual.iter().zip(&expected).enumerate() {
-        assert_eq!(read.get_curruuid(), stated.get_curruuid(), "{index}");
+        assert_eq!(read.get_uuid(), stated.get_uuid(), "{index}");
         if index != 4 && index != 8 {
             assert_eq!(read, stated, "{index}");
         }
@@ -580,20 +580,14 @@ fn an_undated_leaf_states_no_clock() {
     let batch = written(vec![MarketData::from(
         element::<yggdryl::graph::OrderKind>(1, "O-1"),
     )]);
-    for column in ["currunix", "creaunix", "prevuuid", "seqnum", "state"] {
+    for column in ["transunix", "creaunix", "prevuuid", "seqnum", "state"] {
         assert_eq!(
             batch.column_by_name(column).unwrap().null_count(),
             1,
             "{column}"
         );
     }
-    for column in [
-        "curruuid",
-        "crossuuid",
-        "crosscode",
-        "currhashcode",
-        "price",
-    ] {
+    for column in ["uuid", "crossuuid", "crosscode", "hashcode", "price"] {
         assert_eq!(
             batch.column_by_name(column).unwrap().null_count(),
             0,
@@ -748,14 +742,14 @@ fn an_unknown_or_null_kind_is_named_then_the_stream_fuses() {
 fn an_undated_trade_is_refused() {
     let batch = written(vec![MarketData::from(trade(8, "T-8"))]);
     let schema = batch.schema();
-    let without = schema.index_of("currunix").unwrap();
+    let without = schema.index_of("transunix").unwrap();
     let kept: Vec<usize> = (0..schema.fields().len())
         .filter(|at| *at != without)
         .collect();
     let error = refusal(batch.project(&kept).unwrap());
     assert!(error.contains("$[0].marketdatakind"), "{error}");
     assert!(
-        error.contains("expected a dated TRAD row, got currunix null"),
+        error.contains("expected a dated TRAD row, got transunix null"),
         "{error}"
     );
 }
@@ -810,14 +804,14 @@ fn a_dated_book_row_is_told_by_its_alive_entries() {
     );
 
     // An undated `BOOK` row names no leaf.
-    let without = schema.index_of("currunix").unwrap();
+    let without = schema.index_of("transunix").unwrap();
     let kept: Vec<usize> = (0..schema.fields().len())
         .filter(|at| *at != without)
         .collect();
     let error = refusal(batch.project(&kept).unwrap());
     assert!(error.contains("$[0].marketdatakind"), "{error}");
     assert!(
-        error.contains("expected a dated BOOK row, got currunix null"),
+        error.contains("expected a dated BOOK row, got transunix null"),
         "{error}"
     );
 
@@ -891,7 +885,7 @@ fn every_leaf_reads_back_where_a_table_stores_a_null_list_as_an_empty_one() {
         expected.iter().map(MarketData::kind).collect::<Vec<_>>()
     );
     for (index, (read, stated)) in actual.iter().zip(&expected).enumerate() {
-        assert_eq!(read.get_curruuid(), stated.get_curruuid(), "{index}");
+        assert_eq!(read.get_uuid(), stated.get_uuid(), "{index}");
     }
     assert_eq!(
         actual[11].as_snapshot_event().unwrap().book().scope,
@@ -1354,7 +1348,7 @@ fn fxrates_round_trip_and_are_null_where_none_is_stated() {
         "fxrates",
         Arc::clone(differing.column_by_name("fxrates").unwrap()),
     ));
-    assert!(error.contains("$[0].curruuid"), "{error}");
+    assert!(error.contains("$[0].uuid"), "{error}");
 }
 
 /// The retired struct shape of an identifier map - `map<utf8,
@@ -1409,7 +1403,7 @@ fn two_columns_naming_one_fact_are_refused_before_a_batch() {
         .collect();
     let mut columns = batch.columns().to_vec();
     fields.push(arrow_schema::Field::new(
-        "CURRUNIX",
+        "TRANSUNIX",
         arrow_schema::DataType::Utf8,
         true,
     ));
@@ -1419,7 +1413,7 @@ fn two_columns_naming_one_fact_are_refused_before_a_batch() {
         .err()
         .unwrap()
         .to_string();
-    assert!(error.contains("CURRUNIX"), "{error}");
+    assert!(error.contains("TRANSUNIX"), "{error}");
 }
 
 #[test]
@@ -1427,10 +1421,10 @@ fn decoding_refuses_identity_facts_not_derived_from_the_row() {
     let batch = written(vec![MarketData::from(order(1, "O-1"))]);
     let error = refusal(with_column(
         &batch,
-        "currhashcode",
+        "hashcode",
         Arc::new(UInt64Array::from(vec![u64::MAX])),
     ));
-    assert!(error.contains("$[0].currhashcode"), "{error}");
+    assert!(error.contains("$[0].hashcode"), "{error}");
 }
 
 /// An identity column that stands must state its identity: a null one is
@@ -1438,7 +1432,7 @@ fn decoding_refuses_identity_facts_not_derived_from_the_row() {
 #[test]
 fn decoding_refuses_a_null_identity_fact() {
     let batch = written(vec![MarketData::from(order(1, "O-1"))]);
-    for name in ["curruuid", "crossuuid", "currhashcode", "crosshashcode"] {
+    for name in ["uuid", "crossuuid", "hashcode", "crosshashcode"] {
         let held = batch.column_by_name(name).unwrap();
         let error = refusal(with_column(
             &batch,
@@ -1450,7 +1444,7 @@ fn decoding_refuses_a_null_identity_fact() {
     }
     let schema = batch.schema();
     let kept: Vec<usize> = (0..schema.fields().len())
-        .filter(|at| schema.field(*at).name() != "curruuid")
+        .filter(|at| schema.field(*at).name() != "uuid")
         .collect();
     let expected = MarketData::from(order(1, "O-1"));
     let batch = batch.project(&kept).unwrap();
@@ -1612,7 +1606,7 @@ fn encoding_yields_a_completed_prefix_before_a_source_error() {
 #[test]
 fn encoding_yields_a_completed_prefix_before_a_located_identity_error() {
     let mut invalid = order(2, "O-2");
-    invalid.set_currhashcode(u64::MAX);
+    invalid.set_hashcode(u64::MAX);
     let mut reader = MarketData::arrow_reader(
         [MarketData::from(order(1, "O-1")), MarketData::from(invalid)],
         Some(2),
@@ -1621,7 +1615,7 @@ fn encoding_yields_a_completed_prefix_before_a_located_identity_error() {
     .unwrap();
     assert_eq!(reader.next().unwrap().unwrap().num_rows(), 1);
     let error = reader.next().unwrap().unwrap_err().to_string();
-    assert!(error.contains("$[1].curruuid"), "{error}");
+    assert!(error.contains("$[1].uuid"), "{error}");
     assert!(reader.next().is_none());
 }
 
@@ -1661,7 +1655,7 @@ fn undated_leaves_of_each_kind_are_distinct_rows() {
     let order = element::<yggdryl::graph::OrderKind>(1, "X-1");
     let quote: Quote = element(1, "X-1");
     let execution: Execution = element(1, "X-1");
-    assert_ne!(order.get_curruuid(), quote.get_curruuid());
+    assert_ne!(order.get_uuid(), quote.get_uuid());
     let expected = vec![
         MarketData::from(order.clone()),
         MarketData::from(quote),
@@ -1722,7 +1716,7 @@ fn a_book_round_trips_its_price_levels() {
     let alive: Vec<_> = book
         .alive()
         .filter(|entry| entry.get_side().is_bid())
-        .map(Element::get_curruuid)
+        .map(Element::get_uuid)
         .collect();
     assert_eq!(
         bid.iter()
@@ -1931,7 +1925,7 @@ fn metadata_round_trips_and_a_stated_entry_that_differs_is_refused() {
         "metadata",
         Arc::clone(other.column_by_name("metadata").unwrap()),
     ));
-    assert!(error.contains("$[0].curruuid"), "{error}");
+    assert!(error.contains("$[0].uuid"), "{error}");
 
     // A key stated twice has no one reading, and the landing refuses it on
     // its row before any fact is read.
@@ -2087,7 +2081,7 @@ fn a_complete_empty_book_stating_a_delta_and_no_snapshot_instant_reads_back_as_a
             !read_back.is_complete(),
             "the row does not carry the completeness of an empty book"
         );
-        assert_eq!(read_back.get_curruuid(), book.get_curruuid());
+        assert_eq!(read_back.get_uuid(), book.get_uuid());
         assert_eq!(read_back.delta().len(), 2);
         assert_eq!(read_back.events().len(), 0);
         let rebuilt = read_back
@@ -2096,7 +2090,7 @@ fn a_complete_empty_book_stating_a_delta_and_no_snapshot_instant_reads_back_as_a
             .unwrap();
         assert!(rebuilt.is_complete());
         assert_eq!(rebuilt.alive().count(), 0);
-        assert_eq!(rebuilt.get_curruuid(), book.get_curruuid());
+        assert_eq!(rebuilt.get_uuid(), book.get_uuid());
     }
 }
 
@@ -2140,7 +2134,7 @@ fn a_delta_book_row_states_no_alive_entry_and_no_limits() {
             [false, false, true]
         );
         for (read, stated) in actual.iter().zip(&values) {
-            assert_eq!(read.get_curruuid(), stated.get_curruuid());
+            assert_eq!(read.get_uuid(), stated.get_uuid());
         }
         assert_eq!(actual[1].delta().len(), 1);
         assert_eq!(actual[1].events().len(), 0);
@@ -2155,10 +2149,10 @@ fn a_delta_book_row_states_no_alive_entry_and_no_limits() {
             .clone()
             .with_previous(&BookEvent::new(20, "ACME"))
             .unwrap();
-        assert_eq!(first.get_curruuid(), books[0].get_curruuid());
+        assert_eq!(first.get_uuid(), books[0].get_uuid());
         assert_eq!(first.alive().count(), 2);
         let rebuilt = actual[1].clone().with_previous(&first).unwrap();
-        assert_eq!(rebuilt.get_curruuid(), books[1].get_curruuid());
+        assert_eq!(rebuilt.get_uuid(), books[1].get_uuid());
         assert_eq!(rebuilt.alive().count(), 3);
     }
 }
@@ -2223,7 +2217,7 @@ fn an_event_only_book_row_reads_back_as_a_delta_book_never_a_control() {
         assert_eq!(read_back.kind(), MarketKind::BookEvent, "never a control");
         let read_back = read_back.as_book_event().unwrap();
         assert!(!read_back.is_complete());
-        assert_eq!(read_back.get_curruuid(), book.get_curruuid());
+        assert_eq!(read_back.get_uuid(), book.get_uuid());
         assert_eq!((read_back.delta().len(), read_back.events().len()), (0, 1));
         assert_eq!(
             read_back
@@ -2237,16 +2231,10 @@ fn an_event_only_book_row_reads_back_as_a_delta_book_never_a_control() {
         // settles on are that book's, under its own identity.
         let rebuilt = read_back.clone().with_previous(&previous).unwrap();
         assert!(rebuilt.is_complete());
-        assert_eq!(rebuilt.get_curruuid(), book.get_curruuid());
+        assert_eq!(rebuilt.get_uuid(), book.get_uuid());
         assert_eq!(
-            rebuilt
-                .alive()
-                .map(Element::get_curruuid)
-                .collect::<Vec<_>>(),
-            previous
-                .alive()
-                .map(Element::get_curruuid)
-                .collect::<Vec<_>>()
+            rebuilt.alive().map(Element::get_uuid).collect::<Vec<_>>(),
+            previous.alive().map(Element::get_uuid).collect::<Vec<_>>()
         );
         assert_eq!(
             rebuilt.best_price(Side::Buy),
@@ -2415,13 +2403,10 @@ fn delta_books_read_back_replay_their_ranges_and_positions() {
     );
     assert_eq!(read_back.len(), 3);
     for (read, walked) in read_back.iter().zip(&walked) {
-        assert_eq!(read.get_curruuid(), walked.get_curruuid());
+        assert_eq!(read.get_uuid(), walked.get_uuid());
         assert_eq!(
-            read.alive().map(Element::get_curruuid).collect::<Vec<_>>(),
-            walked
-                .alive()
-                .map(Element::get_curruuid)
-                .collect::<Vec<_>>()
+            read.alive().map(Element::get_uuid).collect::<Vec<_>>(),
+            walked.alive().map(Element::get_uuid).collect::<Vec<_>>()
         );
         assert_eq!(
             read.limits(Side::Buy).collect::<Vec<_>>(),
@@ -2508,25 +2493,25 @@ fn a_book_row_and_a_two_sided_quote_row_state_both_sides() {
 /// and the events it recorded: a row naming another predecessor, or
 /// stating another delta or other events, derives another identity and is
 /// refused at its
-/// `curruuid`.
+/// `uuid`.
 #[test]
 fn a_delta_book_row_stating_another_chain_is_refused_at_its_identity() {
     let books = walked_books(20);
     let batch = written(vec![MarketData::from(books[1].clone())]);
-    let itself = Arc::clone(batch.column_by_name("curruuid").unwrap());
+    let itself = Arc::clone(batch.column_by_name("uuid").unwrap());
     let error = refusal(with_column(&batch, "prevuuid", itself));
-    assert!(error.contains("$[0].curruuid"), "{error}");
+    assert!(error.contains("$[0].uuid"), "{error}");
 
     let empty = written(vec![MarketData::from(BookEvent::new(21, "EMPTY"))]);
     let none = Arc::clone(empty.column_by_name("delta").unwrap());
     let error = refusal(with_column(&batch, "delta", none));
-    assert!(error.contains("$[0].curruuid"), "{error}");
+    assert!(error.contains("$[0].uuid"), "{error}");
 
     // An event-only book stating no event is another book.
     let executed = written(vec![MarketData::from(event_only_books(40)[1].clone())]);
     let none = Arc::clone(empty.column_by_name("events").unwrap());
     let error = refusal(with_column(&executed, "events", none));
-    assert!(error.contains("$[0].curruuid"), "{error}");
+    assert!(error.contains("$[0].uuid"), "{error}");
 }
 
 /// The delta and the events of a stream of books lay out as the rows of
@@ -2594,8 +2579,8 @@ fn the_delta_and_the_events_of_books_lay_out_as_the_rows_of_their_kind() {
     assert_eq!(controls.len(), 1);
     assert_eq!(controls[0].kind(), MarketKind::SnapshotEvent);
     assert_eq!(
-        controls[0].get_curruuid(),
-        snapshot(4, "W-4").get_curruuid(),
+        controls[0].get_uuid(),
+        snapshot(4, "W-4").get_uuid(),
         "the control the snapshot recorded"
     );
     // No event is an order or a quote.
@@ -2700,7 +2685,7 @@ fn market_rows_whose_digests_a_table_stored_as_longs_read_back_as_their_leaves()
     // stating nothing: a foreign layout.
     let mut foreign = MarketData::field().unwrap();
     for prefix in ["", "alive[0].", "delta[0].", "events[0].", "executions[0]."] {
-        for name in ["currhashcode", "crosshashcode"] {
+        for name in ["hashcode", "crosshashcode"] {
             let path = format!("{prefix}{name}");
             let mut child = foreign.get_field_by_path(&path).unwrap().clone();
             child.set_dtype(yggdryl::DataType::Int64).unwrap();
@@ -2717,7 +2702,7 @@ fn market_rows_whose_digests_a_table_stored_as_longs_read_back_as_their_leaves()
     .map(Result::unwrap)
     .collect();
     let digests = stored[0]
-        .column_by_name("currhashcode")
+        .column_by_name("hashcode")
         .unwrap()
         .as_any()
         .downcast_ref::<Int64Array>()
@@ -2731,11 +2716,7 @@ fn market_rows_whose_digests_a_table_stored_as_longs_read_back_as_their_leaves()
     let actual = read(batch_reader(stored[0].schema(), stored)).unwrap();
     assert_eq!(actual.len(), expected.len());
     for (index, (read, stated)) in actual.iter().zip(&expected).enumerate() {
-        assert_eq!(
-            read.get_currhashcode(),
-            stated.get_currhashcode(),
-            "{index}"
-        );
+        assert_eq!(read.get_hashcode(), stated.get_hashcode(), "{index}");
         assert_eq!(
             read.get_crosshashcode(),
             stated.get_crosshashcode(),

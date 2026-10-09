@@ -179,12 +179,12 @@ const lineCaptures: Array<string | null> = lineFromBytes.captures
 const decoded: number = textLine.decodedByteSize
 const lineMtime: bigint | null = lineUnderOptions.mtime
 const lineBodytype: string = lineUnderOptions.bodytype
-const lineIdentity: string = textLine.curruuid
+const lineIdentity: string = textLine.uuid
 const lineCross: string = textLine.crossuuid
 const lineCrosscode: string = textLine.crosscode
-const lineHashcode: bigint = textLine.currhashcode
+const lineHashcode: bigint = textLine.hashcode
 const lineCrosshash: bigint = textLine.crosshashcode
-const lineUnix: bigint = textLine.currunix
+const lineUnix: bigint = textLine.transunix
 const lineSeqnum: bigint = textLine.seqnum
 void [lineIndex, lineMtime, lineBodytype, lineIdentity, lineCross, lineCrosscode, lineHashcode, lineCrosshash, lineUnix, lineSeqnum]
 // A located read answers one identifier at both; a read under a name answers

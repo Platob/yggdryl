@@ -214,7 +214,7 @@ fn sole_message(
         .expect("a fixture of one message yields it")?;
     for split in messages {
         assert!(
-            split?.get_srcuuids().contains(&message.get_curruuid()),
+            split?.get_srcuuids().contains(&message.get_uuid()),
             "a fixture of one message yields exactly one, and what it splits into"
         );
     }

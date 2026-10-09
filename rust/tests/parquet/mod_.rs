@@ -3935,7 +3935,7 @@ mod uuid_columns {
         );
         DataType::from(
             StructType::from_fields([
-                DataType::Uuid.required_field("curruuid"),
+                DataType::Uuid.required_field("uuid"),
                 DataType::Uuid.nullable_field("prevuuid"),
                 DataType::serie(DataType::Uuid.required_field("item")).nullable_field("srcuuids"),
                 DataType::map_of(DataType::utf8(), DataType::Uuid, true)
@@ -4080,7 +4080,7 @@ mod uuid_columns {
         let descriptor = SchemaDescriptor::new(Arc::new(
             parse_message_type(
                 "message row {
-                    required fixed_len_byte_array(16) curruuid (UUID);
+                    required fixed_len_byte_array(16) uuid (UUID);
                     optional fixed_len_byte_array(16) prevuuid (UUID);
                 }",
             )
@@ -4090,7 +4090,7 @@ mod uuid_columns {
             ArrowField::new(name, ArrowDataType::FixedSizeBinary(16), nullable)
         };
         let schema = Arc::new(Schema::new(vec![
-            storage(false, "curruuid"),
+            storage(false, "uuid"),
             storage(true, "prevuuid"),
         ]));
         let batch = RecordBatch::try_new(
@@ -4128,7 +4128,7 @@ mod uuid_columns {
         assert_eq!(
             fields,
             vec![
-                DataType::Uuid.required_field("curruuid"),
+                DataType::Uuid.required_field("uuid"),
                 DataType::Uuid.nullable_field("prevuuid"),
             ]
         );

@@ -662,10 +662,10 @@ impl JsIsinRegistry {
     }
 
     /// Learns what a message states about its instrument - keyed by its
-    /// stated real ISIN, dated at its `currunix`: its CFI code, its market,
+    /// stated real ISIN, dated at its `transunix`: its CFI code, its market,
     /// its ticker, its currency, the pair it states and its real
     /// equivalents and the origin currency it states, onto the listing its
-    /// market names - and moves `firstunix` to its `currunix` where that is
+    /// market names - and moves `firstunix` to its `transunix` where that is
     /// earlier and `lastunix` where it is later, so meeting a known
     /// instrument again moves the registry too. Whether anything moved.
     #[napi]

@@ -9,7 +9,7 @@ Signatures with no storage: a FIX message, a text line or a book entry can each 
 | Trait | Page | Answers |
 | --- | --- | --- |
 | `Element` | [Element](element.md) | identity, cross element/code, digest, sources; order, finalization, following, merging |
-| `Event: Element` | [Event](event.md) | instant, state, place at its instant, clocks (creation, recording, expiration, predecessor, snapshot), UUIDv7 identity; lifecycle walk `EventIterator` |
+| `Event: Element` | [Event](event.md) | instant, state, place at its instant, clocks (creation, wire, expiration, predecessor, snapshot), UUIDv7 identity; lifecycle walk `EventIterator` |
 | `Market` | [Market](market.md) | thirty-six facts, each setter [filling or overwriting](market.md#setting-fill-or-overwrite): the `marketdatatype`, price and stop price, the option's strike price, quantity and its shown and hidden parts, currency/unit, the currency the instrument was issued in (`origccy`), side, the security's identifiers (`securityids`) and the ISIN, classification/market, the last execution clock, trade and FX numbers, bid and ask, FX rates, ticker, metadata; `marketdatakind` - the category a lifecycle chains within - `is_sided` (true for an order or an execution, whose stored cross code `{kind}:{side}:{base}` states its side; a quote holds its bid and its ask and tags a side) and the [book key](market.md#the-book-key) - the ISIN, else the ticker, else `XX0000000000` |
 | `Operation: Market` | [Operation](operation.md) | five more: the ordered quantity (`ordqty`), time in force, tradability, its own identifiers (`identifiers`), the parties it names (`partyids`) |
 
@@ -43,7 +43,7 @@ Two readings stand over the books, neither a leaf:
 
 Rust-only traits; the leaves plus `MarketData`, `BookRef`, `BookIterator`, `EventIterator` and `MarketDataRowIterator` are one class each in Python's `yggdryl.graph`/JS's `graph`:
 
-- built from named facts by column name (`...`/`undefined` skips one, `None`/`null` clears it), checked by its field, finalized on construction; a derived identity (`curruuid`, `crossuuid`, `currhashcode`, `crosshashcode`) refused by name;
+- built from named facts by column name (`...`/`undefined` skips one, `None`/`null` clears it), checked by its field, finalized on construction; a derived identity (`uuid`, `crossuuid`, `hashcode`, `crosshashcode`) refused by name;
 - immutable: every verb - `with_previous`, `merge_with`, `restating`, `with_book`, `with_operations` - answers a new value;
 - Python reads a decimal, code or identity as [`Scalar`](../types/scalar.md) (`.as_py()`), `isincode` as `str`, `securityids`, `identifiers` and `partyids` as an [`Identifiers`](identifier.md), `fxrates` as a `dict` of decimal `Scalar`s, and an enum fact - `state`, `side`, `marketdatakind` - as its `IntEnum` member (`yggdryl.State`, `Side`, `MarketDataKind`); JavaScript reads decimals and codes as text, the three identifier maps as an `Identifiers`, `fxrates` as an object of decimal text, an enum fact as its member's name (`'BUYS'`, `'ORDR'`), an instant as `bigint`;
 - a side is never absent: `Side.UKNW`/`'UKNW'` where none is stated;
@@ -74,7 +74,7 @@ An Apple buy order - 100 shares at 189.50 USD - built, finalized, written as one
 
     // Finalizing derived the identity and what the facts imply: the CUSIP
     // the ISIN carries, and the cross code stored under the side.
-    assert_eq!(order.get_curruuid(), order.time_uuid()?);
+    assert_eq!(order.get_uuid(), order.time_uuid()?);
     assert_eq!(order.get_crosscode(), "10:1:O-1001");
     assert_eq!(order.get_isincode(), Some("US0378331005"));
     assert_eq!(order.get_securityids().to_string(), "[cusip=037833100, derived:cusip=037833100, isin=US0378331005]");

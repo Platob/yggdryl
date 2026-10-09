@@ -5996,9 +5996,9 @@ const Execution = publicClass(NativeExecution, 'Execution', (facts) =>
   new NativeExecution(operationFacts('Execution', facts, false)[0]),
 )
 function operationEvent(Native, name) {
-  return publicClass(Native, name, (currunix, facts) => {
+  return publicClass(Native, name, (transunix, facts) => {
     const [stated, book] = operationFacts(name, facts, true)
-    return new Native(currunix, stated, book)
+    return new Native(transunix, stated, book)
   })
 }
 const OrderEvent = operationEvent(NativeOrderEvent, 'OrderEvent')

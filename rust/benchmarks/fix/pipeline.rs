@@ -240,7 +240,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         });
     });
     // The walk alone over the decoded stream's messages: the row header's
-    // captures state each hop's session event and recording clock, so this
+    // captures state each hop's session event and wire clock, so this
     // is the walk a bridge capture pays - its observations folded, its
     // frames dated by their transactions - without the parse in front.
     let decoded: Vec<FixMsg> = composed
@@ -304,10 +304,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
-    // The same walk over the messages as a table read by `currunix` hands
+    // The same walk over the messages as a table read by `transunix` hands
     // them over, held one hour at a time rather than sorted whole.
     let mut ordered = decoded.clone();
-    ordered.sort_by_key(yggdryl::graph::Event::get_currunix);
+    ordered.sort_by_key(yggdryl::graph::Event::get_transunix);
     let hourly = composed.clone().with_sorted_lifecycle(true);
     group.bench_function("decoded_lifecycle_sorted", |bencher| {
         bencher.iter_batched(
@@ -349,7 +349,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .collect::<yggdryl::Result<_>>()
         .expect("the decoded copies");
     assert_eq!(distinct.len(), MESSAGES * REPEATS);
-    distinct.sort_by_key(yggdryl::graph::Event::get_currunix);
+    distinct.sort_by_key(yggdryl::graph::Event::get_transunix);
     group.bench_function("decoded_lifecycle_distinct", |bencher| {
         bencher.iter_batched(
             || distinct.clone(),
@@ -439,8 +439,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .cloned()
         .enumerate()
         .map(|(index, mut message)| {
-            message
-                .set_currunix(SNAPSHOT_BASE + i64::try_from(index).expect("sixteen rows") * MINUTE);
+            message.set_transunix(
+                SNAPSHOT_BASE + i64::try_from(index).expect("sixteen rows") * MINUTE,
+            );
             message.set_crosscode(format!("SNAPSHOT-{index}"));
             message.set_state(State::read("new").expect("the shipped new state"));
             message.set_exprunix(Some(SNAPSHOT_BASE + 60 * MINUTE));
@@ -769,7 +770,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
     let market_messages = (0..MARKET_REPEATS)
         .map(|index| {
             let mut message = snapshot.clone();
-            message.set_currunix(i64::try_from(index + 1).expect("the market corpus fits i64"));
+            message.set_transunix(i64::try_from(index + 1).expect("the market corpus fits i64"));
             message.finalize();
             message
         })
@@ -798,13 +799,13 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
         operation.finalize();
         dense_operations.push(MarketData::from(operation));
     }
-    let mut dense_book = BookEvent::new(quote_of(&dense_operations[0]).get_currunix(), "AAPL");
+    let mut dense_book = BookEvent::new(quote_of(&dense_operations[0]).get_transunix(), "AAPL");
     dense_book
         .add_operations(dense_operations.clone())
         .expect("the dense initial book");
     let mut dense_update = quote_of(&dense_operations[0]);
-    let update_unix = dense_update.get_currunix() + 1;
-    dense_update.set_currunix(update_unix);
+    let update_unix = dense_update.get_transunix() + 1;
+    dense_update.set_transunix(update_unix);
     dense_update.set_state(State::read("Replaced").expect("the shipped replaced state"));
     let mut book = dense_update.book().cloned().unwrap_or_default();
     book.action = Some(MdUpdateAction::Change);
@@ -825,7 +826,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
     });
     let previous = OrderEvent::from(&direct);
     let mut next = previous.clone();
-    next.set_currunix(previous.get_currunix() + 1);
+    next.set_transunix(previous.get_transunix() + 1);
     next.set_ticker(None, true);
     next.finalize();
     group.bench_function("market_event_with_previous", |bencher| {

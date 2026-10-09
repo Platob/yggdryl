@@ -44,8 +44,8 @@ macro_rules! element_getters {
         impl $class {
             /// The element's own identity, as its hyphenated text.
             #[napi(getter)]
-            pub fn curruuid(&self) -> String {
-                ::yggdryl::graph::Element::get_curruuid(&self.inner).to_string()
+            pub fn uuid(&self) -> String {
+                ::yggdryl::graph::Element::get_uuid(&self.inner).to_string()
             }
 
             /// The identity every statement of one element shares: derived
@@ -68,8 +68,8 @@ macro_rules! element_getters {
 
             /// The XXH3-64 code the element's content digests to.
             #[napi(getter)]
-            pub fn currhashcode(&self) -> ::napi::bindgen_prelude::BigInt {
-                ::napi::bindgen_prelude::BigInt::from(::yggdryl::graph::Element::get_currhashcode(
+            pub fn hashcode(&self) -> ::napi::bindgen_prelude::BigInt {
+                ::napi::bindgen_prelude::BigInt::from(::yggdryl::graph::Element::get_hashcode(
                     &self.inner,
                 ))
             }
@@ -102,10 +102,11 @@ macro_rules! event_getters {
     ($class:ident) => {
         #[napi]
         impl $class {
-            /// When this happened: nanoseconds since the Unix epoch, UTC.
+            /// When the operation happened - the transaction instant:
+            /// nanoseconds since the Unix epoch, UTC.
             #[napi(getter)]
-            pub fn currunix(&self) -> ::napi::bindgen_prelude::BigInt {
-                ::napi::bindgen_prelude::BigInt::from(::yggdryl::graph::Event::get_currunix(
+            pub fn transunix(&self) -> ::napi::bindgen_prelude::BigInt {
+                ::napi::bindgen_prelude::BigInt::from(::yggdryl::graph::Event::get_transunix(
                     &self.inner,
                 ))
             }
@@ -133,10 +134,11 @@ macro_rules! event_getters {
                     .map(::napi::bindgen_prelude::BigInt::from)
             }
 
-            /// When this was recorded, where stated.
+            /// When the message crossed the wire - the technical clock -
+            /// where stated.
             #[napi(getter)]
-            pub fn recdunix(&self) -> Option<::napi::bindgen_prelude::BigInt> {
-                ::yggdryl::graph::Event::get_recdunix(&self.inner)
+            pub fn sendunix(&self) -> Option<::napi::bindgen_prelude::BigInt> {
+                ::yggdryl::graph::Event::get_sendunix(&self.inner)
                     .map(::napi::bindgen_prelude::BigInt::from)
             }
 
@@ -571,7 +573,7 @@ macro_rules! common_verbs {
             /// The code the content digests to, which equal values share.
             #[napi]
             pub fn stable_hash(&self) -> ::napi::bindgen_prelude::BigInt {
-                ::napi::bindgen_prelude::BigInt::from(::yggdryl::graph::Element::get_currhashcode(
+                ::napi::bindgen_prelude::BigInt::from(::yggdryl::graph::Element::get_hashcode(
                     &self.inner,
                 ))
             }
@@ -609,13 +611,13 @@ macro_rules! element_repr {
     ($class:ident, $name:literal) => {
         #[napi]
         impl $class {
-            /// `<Class>(<curruuid>, crosscode=..)`.
+            /// `<Class>(<uuid>, crosscode=..)`.
             #[napi(js_name = "toString")]
             pub fn js_string(&self) -> String {
                 format!(
                     "{}({}, crosscode={:?})",
                     $name,
-                    ::yggdryl::graph::Element::get_curruuid(&self.inner),
+                    ::yggdryl::graph::Element::get_uuid(&self.inner),
                     ::yggdryl::graph::Element::get_crosscode(&self.inner),
                 )
             }
@@ -639,14 +641,14 @@ macro_rules! event_verbs {
                 ))
             }
 
-            /// `<Class>(<curruuid>, currunix=.., crosscode=..)`.
+            /// `<Class>(<uuid>, transunix=.., crosscode=..)`.
             #[napi(js_name = "toString")]
             pub fn js_string(&self) -> String {
                 format!(
-                    "{}({}, currunix={}, crosscode={:?})",
+                    "{}({}, transunix={}, crosscode={:?})",
                     $name,
-                    ::yggdryl::graph::Element::get_curruuid(&self.inner),
-                    ::yggdryl::graph::Event::get_currunix(&self.inner),
+                    ::yggdryl::graph::Element::get_uuid(&self.inner),
+                    ::yggdryl::graph::Event::get_transunix(&self.inner),
                     ::yggdryl::graph::Element::get_crosscode(&self.inner),
                 )
             }
@@ -801,7 +803,7 @@ impl Fact {
 
     /// The refusal of a fact the leaf does not take from a caller: an
     /// identity, which `finalize` derives; the category, which the leaf is;
-    /// `currunix` on an event, stated once as the constructor's first
+    /// `transunix` on an event, stated once as the constructor's first
     /// argument; and on an undated element every event fact.
     fn refuse_unstated(
         self,
@@ -826,8 +828,8 @@ impl Fact {
             Self::Event(_) if undated => Err(format!(
                 "{owner} states no fact {name:?}: an undated element has no clock, state or chain"
             )),
-            Self::Event(EventColumn::CurrUnix) => Err(format!(
-                "{owner} states currunix once, as its first argument"
+            Self::Event(EventColumn::TransUnix) => Err(format!(
+                "{owner} states transunix once, as its first argument"
             )),
             Self::Element(_) | Self::Operation(_) | Self::Market(_) | Self::Event(_) => Ok(()),
         }
@@ -861,7 +863,7 @@ impl Fact {
     }
 }
 
-/// An operation of kind `K` at `currunix` with every named fact in `facts`
+/// An operation of kind `K` at `transunix` with every named fact in `facts`
 /// stated through its column, not yet finalized.
 ///
 /// `facts` is one record `Scalar` keyed by column name - the loader drops a
@@ -871,11 +873,11 @@ impl Fact {
 /// naming the fact.
 pub(crate) fn stated_operation<K: CoreOperationKind>(
     owner: &str,
-    currunix: i64,
+    transunix: i64,
     facts: Option<&JsScalar>,
     undated: bool,
 ) -> Result<OperationEvent<K>> {
-    let mut leaf = OperationEvent::<K>::at(currunix);
+    let mut leaf = OperationEvent::<K>::at(transunix);
     let Some(facts) = facts else {
         return Ok(leaf);
     };

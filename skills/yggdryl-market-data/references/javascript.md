@@ -35,10 +35,10 @@ const order = new graph.OrderEvent(T, {
   identifiers: [new Identifier('orderid', 'O-1001')],
 })
 // A dated identity is a UUIDv7: its millisecond leads.
-assert.ok(order.curruuid.startsWith('018bcfe5-6800-7'))
+assert.ok(order.uuid.startsWith('018bcfe5-6800-7'))
 // A cross code is stored as `{kind}:{side}:{base}`: one chain per side.
 assert.equal(order.crosscode, '10:1:O-1001')
-assert.notEqual(order.crossuuid, order.curruuid, 'the cross code names a chain')
+assert.notEqual(order.crossuuid, order.uuid, 'the cross code names a chain')
 // Derived on construction: the CUSIP inside the ISIN; the ISIN itself reads as `isincode`.
 assert.equal(order.securityids.toString(), '[cusip=037833100, derived:cusip=037833100, isin=US0378331005]')
 assert.equal(order.securityids.get('cusip'), '037833100')
@@ -97,13 +97,13 @@ assert.deepEqual([offer.crosscode, offer.askpx], ['14:0:Q-8', '189.52'])
 // Placed in a book by its control; the scope is a fact, the rest walk-time.
 const entry = offer.withBook(new graph.BookRef({ action: 'new', position: 1, scope: 'L2' }))
 assert.deepEqual([entry.action, entry.book.position, entry.scope], ['0', 1, 'L2'])
-assert.notEqual(entry.curruuid, offer.curruuid, 'the scope digests')
+assert.notEqual(entry.uuid, offer.uuid, 'the scope digests')
 ```
 
 ## Chain two events and merge two statements of one
 
 `withPrevious` states an event as the one after its predecessor; `mergeWith`
-folds another statement of the same event (the later recording leads, sources
+folds another statement of the same event (the later `sendunix` leads, sources
 union). Both answer a new value, or `null` when nothing moved.
 
 ```javascript
@@ -118,7 +118,7 @@ const event = (unix, state) => new graph.OrderEvent(unix, {
 const placed = event(T, 'NEW')
 const filled = event(T + 1_000_000_000n, 'PARTIALLY_FILLED').withPrevious(placed)
 // A later instant keeps its own place: the first there.
-assert.deepEqual([filled.prevuuid, filled.prevunix, filled.seqnum], [placed.curruuid, T, 0])
+assert.deepEqual([filled.prevuuid, filled.prevunix, filled.seqnum], [placed.uuid, T, 0])
 assert.equal(filled.crossuuid, placed.crossuuid, 'one chain')
 assert.equal(filled.prevpx, '189.5')
 // Never itself, never one that happened after it.
@@ -130,15 +130,15 @@ const option = new graph.OrderEvent(T, { crosscode: 'O-1001', side: 'BUYS', stri
 const follower = new graph.OrderEvent(T + 1_000_000_000n, { crosscode: 'O-1001', side: 'BUYS' }).withPrevious(option)
 assert.equal(follower.strikepx, '190')
 
-// One report recorded by two hops: recording clocks and sources are not content.
+// One report sent through two hops: wire clocks and sources are not content.
 const LINE_1 = '018bcfe5-6800-7000-8000-000000000001'
 const LINE_2 = '018bcfe5-6800-7000-8000-000000000002'
-const hop = (recorded, line) => new graph.OrderEvent(T + 1_000_000_000n, { crosscode: 'O-1001', recdunix: recorded, srcuuids: [line] })
+const hop = (sent, line) => new graph.OrderEvent(T + 1_000_000_000n, { crosscode: 'O-1001', sendunix: sent, srcuuids: [line] })
 const gateway = hop(T + 1_002_000_000n, LINE_1)
 const oms = hop(T + 1_005_000_000n, LINE_2)
-assert.equal(gateway.curruuid, oms.curruuid)
+assert.equal(gateway.uuid, oms.uuid)
 const merged = oms.mergeWith(gateway)
-assert.equal(merged.recdunix, T + 1_002_000_000n)
+assert.equal(merged.sendunix, T + 1_002_000_000n)
 assert.deepEqual(merged.srcuuids, [LINE_1, LINE_2])
 ```
 
@@ -174,8 +174,8 @@ const chained = walk([
 // Each step is at an instant of its own, so each is the first there; the
 // chain is in prevuuid.
 assert.deepEqual(chained.map((held) => held.seqnum), [0, 0, 0, 0, 0])
-assert.equal(chained[3].prevuuid, chained[1].curruuid)
-assert.equal(chained[1].curruuid, chained[2].curruuid, 'a twin, not a successor')
+assert.equal(chained[3].prevuuid, chained[1].uuid)
+assert.equal(chained[1].uuid, chained[2].uuid, 'a twin, not a successor')
 assert.equal(chained[4].prevuuid, null, 'the fill ended the chain')
 // A chain's creation instant is its first element's, carried along it.
 assert.ok(chained.slice(0, 4).every((held) => held.creaunix === T))
@@ -184,23 +184,23 @@ assert.ok(chained.slice(0, 4).every((held) => held.creaunix === T))
 // one side alive under its code, and a NEW over a live NEW reads UPDATED.
 const walked = walk([event(0n, 'O-2002', 'NEW', 'BUYS'), event(1n, 'O-2002', 'NEW', 'SELL'), event(2n, 'O-2002', 'NEW', 'BUYS')])
 assert.deepEqual([walked[1].crosscode, walked[1].seqnum], ['10:2:O-2002', 0])
-assert.deepEqual([walked[2].prevuuid, walked[2].state], [walked[0].curruuid, 'UPDATED'])
+assert.deepEqual([walked[2].prevuuid, walked[2].state], [walked[0].uuid, 'UPDATED'])
 const joined = walk([event(0n, 'O-3003', 'NEW', 'BUYS'), event(1n, 'O-3003', 'CANCELED')])
-assert.equal(joined[1].prevuuid, joined[0].curruuid)
+assert.equal(joined[1].prevuuid, joined[0].uuid)
 assert.deepEqual([joined[1].side, joined[1].crosscode], ['BUYS', '10:1:O-3003'])
 
 // A 10 ms grid: a view of the living order per tick, then its deadline.
 const MS = 1_000_000n
 const expiring = new graph.OrderEvent(T + 50n * MS, { crosscode: 'O-4004', exprunix: T + 70n * MS })
 const timed = [...new graph.EventIterator([expiring], true, 10n * MS)].map((value) => value.asOrderEvent())
-const view = timed.find((held) => held.snapunix !== null && held.currunix === T + 60n * MS)
+const view = timed.find((held) => held.snapunix !== null && held.transunix === T + 60n * MS)
 // Dated at its tick: the identity is the tick's, the content the order's,
 // and its snapshot instant the one the order was stated at.
 assert.equal(view.snapunix, T + 50n * MS)
-assert.deepEqual([view.currunix, view.seqnum], [T + 60n * MS, 0])
-assert.equal(view.currhashcode, expiring.currhashcode)
+assert.deepEqual([view.transunix, view.seqnum], [T + 60n * MS, 0])
+assert.equal(view.hashcode, expiring.hashcode)
 const expired = timed[timed.length - 1]
-assert.deepEqual([expired.currunix, expired.state], [T + 70n * MS, 'EXPIRED'])
+assert.deepEqual([expired.transunix, expired.state], [T + 70n * MS, 'EXPIRED'])
 ```
 
 ## Build a composite trade
@@ -222,9 +222,9 @@ const trade = graph.TradeEvent.fromParts(root, [fill('E-SELL', 'SELL'), fill('E-
 assert.deepEqual(trade.executions.map((execution) => execution.crosscode), ['8:1:E-BUYS', '8:2:E-SELL'])
 assert.equal(trade.isExecution, true)
 const again = graph.TradeEvent.fromParts(root, [fill('E-BUYS', 'BUYS'), fill('E-SELL', 'SELL')])
-assert.equal(again.curruuid, trade.curruuid)
+assert.equal(again.uuid, trade.uuid)
 // Each execution at the trade's instant; none at all is refused.
-assert.throws(() => graph.TradeEvent.fromParts(root, [fill('E-LATE', 'BUYS', T + 1n)]), /\$\.executions\[0\]\.currunix/)
+assert.throws(() => graph.TradeEvent.fromParts(root, [fill('E-LATE', 'BUYS', T + 1n)]), /\$\.executions\[0\]\.transunix/)
 assert.throws(() => graph.TradeEvent.fromParts(root, []), /at least one execution/)
 ```
 
@@ -254,7 +254,7 @@ assert.ok(value.intoLeaf() instanceof graph.OrderEvent)
 `MarketData.arrowReader` streams leaves into bounded batches of the lifted row;
 `fromArrowReader` reads any source `BatchReader.from` accepts back, tolerant of
 a subset of columns in any order. `marketdatakind` and, for a dated leaf,
-`currunix` are the minimum.
+`transunix` are the minimum.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -278,12 +278,12 @@ read.forEach((held, at) => assert.ok(held.intoLeaf().equals(values[at])))
 // A foreign table: three columns, one the row does not name.
 const foreign = new arrow.Table({
   marketdatakind: arrow.vectorFromArray([MarketDataKind.ORDR], new arrow.Int32()),
-  currunix: arrow.vectorFromArray([1_700_000_000_000_000_000n], new arrow.Int64()),
+  transunix: arrow.vectorFromArray([1_700_000_000_000_000_000n], new arrow.Int64()),
   crosscode: arrow.vectorFromArray(['10:0:O-1001'], new arrow.Utf8()),
   msgtype: arrow.vectorFromArray(['D'], new arrow.Utf8()),
 })
 const [lifted] = graph.MarketData.fromArrowReader(BatchReader.from(foreign))
-assert.deepEqual([lifted.asOrderEvent().crosscode, lifted.asOrderEvent().currunix], ['10:0:O-1001', 1_700_000_000_000_000_000n])
+assert.deepEqual([lifted.asOrderEvent().crosscode, lifted.asOrderEvent().transunix], ['10:0:O-1001', 1_700_000_000_000_000_000n])
 ```
 
 ## Persist a marketdata stream and read it back
@@ -339,7 +339,7 @@ assert.equal(books.length, 2, 'one book per instant that moved it; the execution
 // delta, the execution in its events - and its top of book.
 const last = books[1]
 assert.equal(last.isComplete, false)
-assert.deepEqual([last.currunix, last.delta().length, last.events().length, last.alive().length], [T + SECOND, 1, 1, 0])
+assert.deepEqual([last.transunix, last.delta().length, last.events().length, last.alive().length], [T + SECOND, 1, 1, 0])
 assert.deepEqual(last.executions().map((execution) => execution.crosscode), ['8:1:E-1'])
 assert.equal(last.bestPrice('BUYS'), '189.49')
 // Rebuilt whole: the first over the empty book its key starts from, the next over it.
@@ -347,7 +347,7 @@ assert.equal(books[0].prevuuid, null)
 const first = books[0].withPrevious(graph.BookEvent.keyed(T, 'AAPL'))
 const whole = last.withPrevious(first)
 assert.equal(whole.isComplete, true)
-assert.deepEqual([whole.alive().length, whole.curruuid], [2, last.curruuid], 'depth persists')
+assert.deepEqual([whole.alive().length, whole.uuid], [2, last.uuid], 'depth persists')
 
 // A 500 ms grid states the whole living book at each crossed tick.
 const gridded = [...new graph.BookIterator(stream, 500)]
@@ -573,7 +573,7 @@ assert.ok(graph.Candle.fromScalar(rows.scalar(1)).equals(second))
 assert.equal(JSON.parse(JSON.stringify(second)).askopen, '189.51')
 assert.ok(graph.Candle.fromJSON(JSON.stringify(second)).equals(second))
 // Books must arrive sorted; a bare quote is not a book.
-assert.throws(() => graph.candles([...books].reverse(), '1m'), /\$\.book\.currunix/)
+assert.throws(() => graph.candles([...books].reverse(), '1m'), /\$\.book\.transunix/)
 assert.throws(() => graph.candles([stream[0]], '1m'), /expected book_event, got quote_event/)
 ```
 

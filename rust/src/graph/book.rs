@@ -89,11 +89,11 @@ impl SnapshotEvent {
 }
 
 impl Element for SnapshotEvent {
-    fn get_curruuid(&self) -> Uuid {
-        self.event.get_curruuid()
+    fn get_uuid(&self) -> Uuid {
+        self.event.get_uuid()
     }
-    fn set_curruuid(&mut self, curruuid: Uuid) {
-        self.event.set_curruuid(curruuid);
+    fn set_uuid(&mut self, uuid: Uuid) {
+        self.event.set_uuid(uuid);
     }
     fn get_crossuuid(&self) -> Uuid {
         self.event.get_crossuuid()
@@ -107,11 +107,11 @@ impl Element for SnapshotEvent {
     fn set_crosscode(&mut self, crosscode: String) {
         self.event.set_crosscode(crosscode);
     }
-    fn get_currhashcode(&self) -> u64 {
-        self.event.get_currhashcode()
+    fn get_hashcode(&self) -> u64 {
+        self.event.get_hashcode()
     }
-    fn set_currhashcode(&mut self, hashcode: u64) {
-        self.event.set_currhashcode(hashcode);
+    fn set_hashcode(&mut self, hashcode: u64) {
+        self.event.set_hashcode(hashcode);
     }
     fn get_crosshashcode(&self) -> u64 {
         self.event.get_crosshashcode()
@@ -153,7 +153,7 @@ delegate_event!(
         this
     },
     is_execution = |_: &SnapshotEvent| false,
-    set_currunix = |this: &mut SnapshotEvent, unix: i64| this.event.set_currunix(unix)
+    set_transunix = |this: &mut SnapshotEvent, unix: i64| this.event.set_transunix(unix)
 );
 
 /// Where a level stands on its side. The derived order is the side's: the
@@ -645,7 +645,7 @@ impl Level<'_> {
             uuids: self
                 .entries
                 .iter()
-                .map(|operation| operation.get_curruuid())
+                .map(|operation| operation.get_uuid())
                 .collect(),
             tradable: self.tradable(),
         }
@@ -839,7 +839,7 @@ impl Ladder {
     /// Rebuilds one canonical side from its live entries - each beside its
     /// position in the book's `alive` list, which a refusal names - in book
     /// order: by level, then stated position, then the order `order` lists
-    /// their `curruuid`s in - a side's own order, which one `alive` list
+    /// their `uuid`s in - a side's own order, which one `alive` list
     /// cannot state for both sides of a two-sided quote - then the order
     /// given.
     fn from_live(
@@ -885,7 +885,7 @@ impl Ladder {
                     .collect();
                 entries.sort_by_cached_key(|held| {
                     let (price, position) = ladder.key_of(held);
-                    let rank = ranks.get(&held.get_curruuid()).copied();
+                    let rank = ranks.get(&held.get_uuid()).copied();
                     (price, position, rank.unwrap_or(usize::MAX))
                 });
             }
@@ -1267,7 +1267,7 @@ impl Ladder {
             staged.write(&(self.len() as u64).to_be_bytes());
             for operation in self.live() {
                 staged.write(operation.operation_event().operation_word().as_bytes());
-                staged.write(&operation.get_curruuid().get().to_be_bytes());
+                staged.write(&operation.get_uuid().get().to_be_bytes());
             }
         }
         digest.finish()
@@ -1339,7 +1339,7 @@ impl Sides {
 
     /// The sides `alive` states, each entry standing as one on every side
     /// it rests on, each side in the order `orders` lists its entries'
-    /// `curruuid`s - the bid's, then the ask's - where given, checked.
+    /// `uuid`s - the bid's, then the ask's - where given, checked.
     ///
     /// # Errors
     ///
@@ -1529,7 +1529,7 @@ impl Sides {
         let live = event.get_state().is_live()
             && event
                 .get_exprunix()
-                .is_none_or(|expiration| expiration > event.get_currunix());
+                .is_none_or(|expiration| expiration > event.get_transunix());
         let own = LiveKey::of(entry);
         for bid in [true, false] {
             let rests = live && leg(entry, bid).is_some();
@@ -1821,7 +1821,7 @@ impl BookJournal {
     /// where the group replaces membership; the delta and the events taken
     /// where the group starts a new instant.
     fn new(book: &mut BookEvent, unix: i64, whole: bool) -> Self {
-        let advancing = book.event.get_currunix() != unix;
+        let advancing = book.event.get_transunix() != unix;
         Self {
             event: book.event.clone(),
             sides: match &book.sides {
@@ -1864,10 +1864,10 @@ impl BookJournal {
 struct EventBounds {
     /// The member's instant: its place bounds the book's only at the book's
     /// own instant, because a place counts the events of one instant.
-    currunix: i64,
+    transunix: i64,
     seqnum: u64,
     creaunix: Option<i64>,
-    recdunix: Option<i64>,
+    sendunix: Option<i64>,
     execunix: Option<i64>,
 }
 
@@ -1876,10 +1876,10 @@ impl EventBounds {
     /// market's fact, which a caller holding one sets.
     fn of<E: Event + ?Sized>(event: &E) -> Self {
         Self {
-            currunix: event.get_currunix(),
+            transunix: event.get_transunix(),
             seqnum: event.get_seqnum(),
             creaunix: event.get_creaunix(),
-            recdunix: event.get_recdunix(),
+            sendunix: event.get_sendunix(),
             execunix: None,
         }
     }
@@ -1894,14 +1894,14 @@ impl EventBounds {
 
 /// Folds a member's facts into the book's `event`: the highest place of
 /// the members at the book's instant, a new instant having started the
-/// book's own at zero, the earliest creation and recording, and the latest
-/// execution.
+/// book's own at zero, the earliest creation and `sendunix`, and the
+/// latest execution.
 fn fold_bounds(event: &mut MarketEventFacts, bounds: EventBounds) {
-    if bounds.currunix == event.get_currunix() && bounds.seqnum > event.get_seqnum() {
+    if bounds.transunix == event.get_transunix() && bounds.seqnum > event.get_seqnum() {
         event.set_seqnum(bounds.seqnum);
     }
     event.set_creaunix(earliest(event.get_creaunix(), bounds.creaunix));
-    event.set_recdunix(earliest(event.get_recdunix(), bounds.recdunix));
+    event.set_sendunix(earliest(event.get_sendunix(), bounds.sendunix));
     event.set_execunix(latest(event.get_execunix(), bounds.execunix), true);
 }
 
@@ -1910,8 +1910,8 @@ fn fold_bounds(event: &mut MarketEventFacts, bounds: EventBounds) {
 /// moved. The one link every book takes from the book before it.
 fn follow_book(event: &mut MarketEventFacts, head: &MarketEventFacts) -> bool {
     let link = (
-        Some(head.get_curruuid()),
-        Some(head.get_currunix()),
+        Some(head.get_uuid()),
+        Some(head.get_transunix()),
         head.get_price(),
         head.get_quantity(),
     );
@@ -2053,7 +2053,7 @@ impl BookEvent {
     /// entries alive on both sides - none for a delta book - and its delta
     /// and its events in the order applied, each entry standing as one on
     /// every side it rests on, each side in the order `orders` lists its
-    /// entries' `curruuid`s where the row states it - its price levels do -
+    /// entries' `uuid`s where the row states it - its price levels do -
     /// validating that the entries, the delta, the events and every symbol
     /// agree with the event, without replaying anything as a fresh
     /// mutation. A complete book settles its top of book on its sides; a
@@ -2129,7 +2129,7 @@ impl BookEvent {
         validate_symbols(key, ALIVE, self.alive())?;
         validate_symbols(key, DELTA, self.delta())?;
         validate_symbols(key, EVENTS, self.events())?;
-        let unix = self.event.get_currunix();
+        let unix = self.event.get_transunix();
         validate_component_times(unix, ALIVE, entries(self.alive()), true)?;
         validate_component_times(unix, DELTA, entries(self.delta()), false)?;
         validate_component_times(unix, EVENTS, dated(self.events()), false)?;
@@ -2175,7 +2175,7 @@ impl BookEvent {
     /// let rebuilt = books[1].clone().with_previous(&first).expect("a rebuild");
     /// assert!(first.is_complete() && rebuilt.is_complete());
     /// assert_eq!(rebuilt.alive().count(), 2);
-    /// assert_eq!(rebuilt.get_curruuid(), books[1].get_curruuid());
+    /// assert_eq!(rebuilt.get_uuid(), books[1].get_uuid());
     /// # Ok(())
     /// # }
     /// ```
@@ -2279,7 +2279,7 @@ impl BookEvent {
     /// fill.set_lastqty(Some(Decimal::ONE), true);
     /// fill.finalize();
     /// book.add_operations([MarketData::from(fill)])?;
-    /// assert_eq!(book.get_currunix(), 2);
+    /// assert_eq!(book.get_transunix(), 2);
     /// assert_eq!(book.delta().len(), 0);
     /// let recorded: Vec<_> = book.events().map(Element::get_crosscode).collect();
     /// assert_eq!(recorded, ["8:1:E-1"]);
@@ -2489,7 +2489,7 @@ impl BookEvent {
 
     /// One [`Limit`] per level of the side `side` takes, best first and the
     /// unpriced limit last: its price, the exact sum of its entries'
-    /// quantities, their `curruuid`s in position order, ties in arrival
+    /// quantities, their `uuid`s in position order, ties in arrival
     /// order, and whether any of them does not state `tradable = false` - an
     /// entry stating nothing trades, and a level every entry of which states
     /// `false` cannot. Nothing for a side that is neither a bid nor an ask,
@@ -2817,15 +2817,15 @@ impl BookEvent {
         {
             return Err(invalid(
                 "$.operations",
-                "expected every operation in one atomic group to have the same currunix",
+                "expected every operation in one atomic group to have the same transunix",
             ));
         }
-        if unix < self.event.get_currunix() {
+        if unix < self.event.get_transunix() {
             return Err(invalid(
                 "$.operations",
                 format_smolstr!(
                     "expected a timestamp at or after {}, got {unix}",
-                    self.event.get_currunix()
+                    self.event.get_transunix()
                 ),
             ));
         }
@@ -2904,12 +2904,12 @@ impl BookEvent {
         partitions: &BTreeSet<SnapshotPartition>,
         unix: i64,
     ) -> Result<()> {
-        if unix < self.event.get_currunix() {
+        if unix < self.event.get_transunix() {
             return Err(invalid(
                 "$.snapshot",
                 format_smolstr!(
                     "expected a timestamp at or after {}, got {unix}",
-                    self.event.get_currunix()
+                    self.event.get_transunix()
                 ),
             ));
         }
@@ -2987,7 +2987,7 @@ impl BookEvent {
             ));
         };
         validate_component_times(
-            self.event.get_currunix(),
+            self.event.get_transunix(),
             "operation",
             std::iter::once(event_view),
             false,
@@ -3106,7 +3106,7 @@ impl BookEvent {
     /// follows the book it was ([`follow_book`]), its place, its delta and
     /// its events start again.
     fn advance(&mut self, unix: i64) {
-        if self.event.get_currunix() == unix {
+        if self.event.get_transunix() == unix {
             return;
         }
         let head = self.event.clone();
@@ -3114,7 +3114,7 @@ impl BookEvent {
         self.delta.clear();
         self.events.clear();
         self.event.set_seqnum(0);
-        self.event.set_currunix(unix);
+        self.event.set_transunix(unix);
     }
 
     /// The book a walk emits at its instant - complete at a snapshot
@@ -3123,7 +3123,7 @@ impl BookEvent {
     /// walk's copy keeping the identity it emitted: the sides shared, never
     /// copied.
     fn emit(&mut self, tick: bool) -> Self {
-        let unix = self.event.get_currunix();
+        let unix = self.event.get_transunix();
         self.event.set_snapunix(tick.then_some(unix));
         self.finalize();
         Self {
@@ -3148,25 +3148,25 @@ impl BookEvent {
                 ),
             ));
         }
-        if self.get_currunix() < previous.get_currunix() {
+        if self.get_transunix() < previous.get_transunix() {
             return Err(invalid(
                 "$.prevunix",
                 format_smolstr!(
                     "expected a book at or before {}, got {}",
-                    self.get_currunix(),
-                    previous.get_currunix()
+                    self.get_transunix(),
+                    previous.get_transunix()
                 ),
             ));
         }
-        if self.get_curruuid() == previous.get_curruuid() {
+        if self.get_uuid() == previous.get_uuid() {
             return Err(invalid("$.prevuuid", "a book does not follow itself"));
         }
         match self.event.get_prevuuid() {
-            Some(named) if named != previous.get_curruuid() => Err(invalid(
+            Some(named) if named != previous.get_uuid() => Err(invalid(
                 "$.prevuuid",
                 format_smolstr!(
                     "expected the book {named} this one follows, got {}",
-                    previous.get_curruuid()
+                    previous.get_uuid()
                 ),
             )),
             _ => Ok(()),
@@ -3230,7 +3230,7 @@ impl BookEvent {
             return Ok(self);
         }
         let empty = Self::keyed(
-            self.event.get_currunix(),
+            self.event.get_transunix(),
             super::market::base_crosscode(self.event.get_crosscode()),
         );
         let sides = empty.sides.expect("an empty book is complete");
@@ -3289,7 +3289,7 @@ impl BookEvent {
 fn order_chains(operations: &mut Vec<MarketData>) {
     let place = |operation: &MarketData| {
         operation.as_event().map_or(0, |event| {
-            if event.get_prevunix() == Some(event.get_currunix()) {
+            if event.get_prevunix() == Some(event.get_transunix()) {
                 event.get_seqnum()
             } else {
                 0
@@ -3344,7 +3344,7 @@ const CHAINS_SCANNED: usize = 32;
 fn withdrawn(entry: &MarketData, unix: i64, state: State) -> MarketData {
     let mut operation = entry.clone();
     let event = operation.operation_event_mut();
-    event.set_currunix(unix);
+    event.set_transunix(unix);
     event.set_state(state);
     let mut book = event.control().cloned().unwrap_or_default();
     book.action = Some(MdUpdateAction::Delete);
@@ -3358,7 +3358,7 @@ fn withdrawn(entry: &MarketData, unix: i64, state: State) -> MarketData {
     }
     super::iterator::clear_fill(event);
     event.set_execunix(None, true);
-    event.set_recdunix(None);
+    event.set_sendunix(None);
     event.set_snapunix(None);
     operation
 }
@@ -3390,8 +3390,8 @@ fn median_quantity(bid: Option<Decimal>, ask: Option<Decimal>) -> Option<Decimal
 /// follows and every market fact, its top of book included - its instant,
 /// the digest of each side's live entries only where it states a snapshot
 /// instant, then its delta - its length and each entry's operation word and
-/// `curruuid` - and its events - their count and each one's leaf kind and
-/// `curruuid`, since a snapshot control states no operation - in the order
+/// `uuid` - and its events - their count and each one's leaf kind and
+/// `uuid`, since a snapshot control states no operation - in the order
 /// applied. A book between snapshots is pinned by the book it follows, its
 /// delta, its events and the facts they settled on, so a delta book and
 /// the book rebuilt from it share one identity, and a book walks its sides
@@ -3406,7 +3406,7 @@ fn finalize_book_event(
     event.set_side(Side::Both, true);
     event.sync_cross();
     let mut digest = event.digest_market_event();
-    digest.write(&event.get_currunix().to_be_bytes());
+    digest.write(&event.get_transunix().to_be_bytes());
     if event.get_snapunix().is_some()
         && let Some(sides) = sides
     {
@@ -3417,12 +3417,12 @@ fn finalize_book_event(
     digest.write(&(delta.len() as u64).to_be_bytes());
     for entry in delta {
         digest.write(entry.operation_event().operation_word().as_bytes());
-        digest.write(&entry.get_curruuid().get().to_be_bytes());
+        digest.write(&entry.get_uuid().get().to_be_bytes());
     }
     digest.write(&(events.len() as u64).to_be_bytes());
     for item in events {
         digest.write(item.kind().as_str().as_bytes());
-        digest.write(&item.get_curruuid().get().to_be_bytes());
+        digest.write(&item.get_uuid().get().to_be_bytes());
     }
     event.finalized(digest.finish());
 }
@@ -3441,12 +3441,12 @@ impl BookEvent {
 }
 
 impl Element for BookEvent {
-    fn get_curruuid(&self) -> Uuid {
-        self.event.get_curruuid()
+    fn get_uuid(&self) -> Uuid {
+        self.event.get_uuid()
     }
 
-    fn set_curruuid(&mut self, curruuid: Uuid) {
-        self.event.set_curruuid(curruuid);
+    fn set_uuid(&mut self, uuid: Uuid) {
+        self.event.set_uuid(uuid);
     }
 
     fn get_crossuuid(&self) -> Uuid {
@@ -3465,12 +3465,12 @@ impl Element for BookEvent {
         self.event.set_crosscode(crosscode);
     }
 
-    fn get_currhashcode(&self) -> u64 {
-        self.event.get_currhashcode()
+    fn get_hashcode(&self) -> u64 {
+        self.event.get_hashcode()
     }
 
-    fn set_currhashcode(&mut self, hashcode: u64) {
-        self.event.set_currhashcode(hashcode);
+    fn set_hashcode(&mut self, hashcode: u64) {
+        self.event.set_hashcode(hashcode);
     }
 
     fn get_crosshashcode(&self) -> u64 {
@@ -3492,8 +3492,8 @@ impl Element for BookEvent {
     fn set_srcuuids(&mut self, _sources: Vec<Uuid>) {}
 
     fn is_after(&self, other: &Self) -> bool {
-        self.get_currunix() > other.get_currunix()
-            || self.get_currunix() == other.get_currunix()
+        self.get_transunix() > other.get_transunix()
+            || self.get_transunix() == other.get_transunix()
                 && self.get_crosscode() > other.get_crosscode()
     }
 
@@ -3536,19 +3536,19 @@ impl Element for BookEvent {
     }
 
     /// This book merged with another statement of it at its instant, the
-    /// reference chosen by its recording clock: two complete books' sides
+    /// reference chosen by its wire clock: two complete books' sides
     /// joined - the reference's entries, then each of the supplement's it
     /// does not hold, unless the reference is a snapshot, which is
     /// authoritative and keeps its own delta and events - each of the two
     /// lists the union of both books', the reference's first, then each of
-    /// the supplement's it lacks by kind and `curruuid`; a complete book
+    /// the supplement's it lacks by kind and `uuid`; a complete book
     /// over a delta book, which it is authoritative over; two delta books,
     /// the reference's facts over the union of both books' delta and of
     /// both books' events. `None` where they are not one book at one
     /// instant or nothing moves.
     fn merge_with(self, other: &Self) -> Option<Self> {
         if self.get_crosscode() != other.get_crosscode()
-            || self.get_currunix() != other.get_currunix()
+            || self.get_transunix() != other.get_transunix()
         {
             return None;
         }
@@ -3610,7 +3610,7 @@ delegate_event!(
         this
     },
     is_execution = |_: &BookEvent| false,
-    set_currunix = |this: &mut BookEvent, unix: i64| this.event.set_currunix(unix)
+    set_transunix = |this: &mut BookEvent, unix: i64| this.event.set_transunix(unix)
 );
 
 /// Books from a sorted operation stream, one per book crosscode and
@@ -3899,7 +3899,7 @@ where
                 || (book.is_empty()
                     && book.delta.is_empty()
                     && book.events.is_empty()
-                    && book.get_currunix() != snapshot)
+                    && book.get_transunix() != snapshot)
             {
                 continue;
             }
@@ -3938,7 +3938,7 @@ where
                 expirations.remove(&held);
             }
         }
-        let unix = book.get_currunix();
+        let unix = book.get_transunix();
         let stated = if resync {
             Box::new(book.alive()) as Box<dyn Iterator<Item = &MarketData>>
         } else {
@@ -3960,7 +3960,7 @@ where
                 unix: expiration,
                 book: symbol.to_owned(),
                 identity: identity.clone(),
-                generation: operation.get_curruuid(),
+                generation: operation.get_uuid(),
             };
             expirations.insert(schedule.clone());
             schedules.insert(identity, schedule);
@@ -3987,7 +3987,7 @@ where
             .get(&expiration.book)?
             .live_entry(&expiration.identity)?;
         let event = operation.operation_event();
-        (operation.get_curruuid() == expiration.generation
+        (operation.get_uuid() == expiration.generation
             && event.get_exprunix() == Some(expiration.unix)
             && event.get_state().is_live())
         .then_some(operation)
@@ -4355,14 +4355,16 @@ where
 /// The instant a dated input states; every input `foldable` admits is
 /// dated, so the zero is never read.
 fn input_unix(input: &MarketData) -> i64 {
-    input.as_event().map_or(0, Event::get_currunix)
+    input.as_event().map_or(0, Event::get_transunix)
 }
 
 /// The instant an input takes effect at: the snapshot it belongs to, else
 /// its own.
 fn effective_unix(input: &MarketData) -> i64 {
     input.as_event().map_or(0, |event| {
-        event.get_snapunix().unwrap_or_else(|| event.get_currunix())
+        event
+            .get_snapunix()
+            .unwrap_or_else(|| event.get_transunix())
     })
 }
 
@@ -4561,7 +4563,7 @@ fn continue_entry(
         }
     }
     let data = operation_event_data(&operation).clone();
-    let data = if data.get_curruuid() == previous.get_curruuid() {
+    let data = if data.get_uuid() == previous.get_uuid() {
         data.restating(operation_event_data(previous))
     } else {
         data.clone()
@@ -4621,20 +4623,20 @@ fn merge_book_sides(reference: &Sides, supplement: &Sides, authoritative: bool) 
 
 /// One list two statements of one book recorded - their delta, or their
 /// events: the reference's in their order, then each of the supplement's
-/// it lacks, by kind and `curruuid`.
+/// it lacks, by kind and `uuid`.
 fn union_recorded(
     reference: &[Arc<MarketData>],
     supplement: &[Arc<MarketData>],
 ) -> Vec<Arc<MarketData>> {
     let mut keys = reference
         .iter()
-        .map(|operation| (operation.kind(), operation.get_curruuid()))
+        .map(|operation| (operation.kind(), operation.get_uuid()))
         .collect::<HashSet<_>>();
     let mut recorded = reference.to_vec();
     recorded.extend(
         supplement
             .iter()
-            .filter(|operation| keys.insert((operation.kind(), operation.get_curruuid())))
+            .filter(|operation| keys.insert((operation.kind(), operation.get_uuid())))
             .cloned(),
     );
     recorded
@@ -4687,7 +4689,7 @@ fn grid_at_or_after(unix: i64, step: i64) -> Option<i64> {
 }
 
 fn reference_clock<E: Event>(event: &E) -> (Option<i64>, i64) {
-    (event.get_recdunix(), event.get_currunix())
+    (event.get_sendunix(), event.get_transunix())
 }
 
 fn earliest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
@@ -4728,12 +4730,12 @@ where
 {
     for (index, operation) in operations.into_iter().enumerate() {
         let path = |field: &str| format_smolstr!("$.{name}[{index}].{field}");
-        if operation.get_currunix() > book_unix {
+        if operation.get_transunix() > book_unix {
             return Err(invalid(
-                path("currunix"),
+                path("transunix"),
                 format_smolstr!(
                     "expected a component timestamp at or before {book_unix}, got {}",
-                    operation.get_currunix()
+                    operation.get_transunix()
                 ),
             ));
         }
@@ -4808,7 +4810,7 @@ where
 {
     for (index, operation) in operations.into_iter().enumerate() {
         let path = |field: &str| format_smolstr!("$.{name}[{index}].{field}");
-        if operation.get_currunix() == event.get_currunix()
+        if operation.get_transunix() == event.get_transunix()
             && event.get_seqnum() < operation.get_seqnum()
         {
             return Err(invalid(
@@ -4826,9 +4828,9 @@ where
             path("creaunix"),
         )?;
         validate_earliest_bound(
-            event.get_recdunix(),
-            operation.get_recdunix(),
-            path("recdunix"),
+            event.get_sendunix(),
+            operation.get_sendunix(),
+            path("sendunix"),
         )?;
         validate_latest_bound(
             event.get_execunix(),

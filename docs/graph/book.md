@@ -21,9 +21,9 @@ All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY
 | A delta book | holds no sides and states its `delta()` and `events()` alone, beside the top-of-book facts they settled on - `bidpx`, `bidqty`, `bidccy`, `askpx`, `askqty`, `askccy`, `price`, `quantity` - and names the book it follows as its `prevuuid`, none for a code's first book, which follows the empty book; `alive()`, `alive_on`, `limits`, `depth` and `imbalance` answer nothing on it. An instant that recorded only an execution is a delta book whose `delta` is empty and whose `events` hold the execution |
 | Read in both forms | `best_price`, `best_quantity`, `spread`, `bbo_midpoint`, `median_quantity`, `is_crossed` and `is_locked` read the book's own top-of-book facts, never a side, so a delta book answers them as its rebuilt book does |
 | `with_previous(&previous)` | a delta book rebuilt over the complete book it follows: `previous`' sides taken, each `delta` entry replayed in the order applied, whole and under its own identity, its `events` kept and replaying nothing. A delta book naming no `prevuuid` - a code's first book - rebuilds over the empty book `BookEvent::keyed(unix, key)` every walk starts from, whatever `previous` holds. `None` where it cannot follow `previous`: another book code, a later instant than this book's, itself, another book than its `prevuuid` names, a `previous` holding no sides, a `delta` entry that does not replay, or a rebuild settling on another top of book than the one it states. A complete book is authoritative: it only takes the link - `prevuuid`, `prevunix`, `prevpx`, `prevqty` - and answers `None` where nothing moves |
-| `BookEvent::keyed(unix, key)` | an empty, complete book keyed `key` - an ISIN, a ticker or `XX0000000000` - stating neither a ticker nor an ISIN until its first input states each: the empty base a code's first book rebuilds over, `delta.with_previous(&BookEvent::keyed(unix, key))`. Python `graph.BookEvent.keyed(currunix, key)`, JavaScript `graph.BookEvent.keyed(currunix, key)` |
+| `BookEvent::keyed(unix, key)` | an empty, complete book keyed `key` - an ISIN, a ticker or `XX0000000000` - stating neither a ticker nor an ISIN until its first input states each: the empty base a code's first book rebuilds over, `delta.with_previous(&BookEvent::keyed(unix, key))`. Python `graph.BookEvent.keyed(transunix, key)`, JavaScript `graph.BookEvent.keyed(transunix, key)` |
 | `add_operations` on a delta book | refused at `$.alive` (`a delta book takes no operations: rebuild it with with_previous first`) |
-| Identity | chain form: the book's market event - its state, the book it follows and every market fact, its top of book included - its instant, each side's digest only where it states a `snapunix`, then its `delta` count and each entry's operation word and `curruuid`, then its `events` count and each event's kind and `curruuid`. A delta book and the book rebuilt from it share one identity, and a book walks its sides only at a snapshot |
+| Identity | chain form: the book's market event - its state, the book it follows and every market fact, its top of book included - its instant, each side's digest only where it states a `snapunix`, then its `delta` count and each entry's operation word and `uuid`, then its `events` count and each event's kind and `uuid`. A delta book and the book rebuilt from it share one identity, and a book walks its sides only at a snapshot |
 | Its row | a complete book states `alive` - an empty list included - and its `bidlimits` and `asklimits`; a delta book leaves those three null; every book states its `delta` and `events`. One distinction is lost in every table, because a table may store a null list as an empty one and the reader takes one rule: a complete book holding no live entry that states a `delta` or `events` entry and no `snapunix` - one built or rebuilt, never one a walk emits - reads back as a delta book, its identity and both lists kept. An event-only row - `delta` empty, `events` holding an execution, no `snapunix` - is a delta book, never a snapshot control ([the leaf a row names](market-data.md#the-leaf-a-row-names)) |
 
 ## Entries
@@ -52,7 +52,7 @@ All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY
 
 ## Limits
 
-`Limit { price: Option<Decimal>, quantity: Decimal, uuids: Vec<Uuid>, tradable: bool }` is one price level of a side: its price (`None` folds the unpriced entries), the sum of its entries' quantities on that side - an order's quantity, a quote's leg - their `curruuid`s in live order, and whether it can trade - read by equality and hash.
+`Limit { price: Option<Decimal>, quantity: Decimal, uuids: Vec<Uuid>, tradable: bool }` is one price level of a side: its price (`None` folds the unpriced entries), the sum of its entries' quantities on that side - an order's quantity, a quote's leg - their `uuid`s in live order, and whether it can trade - read by equality and hash.
 
 | Key | Rule |
 | --- | --- |
@@ -72,14 +72,14 @@ All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY
 | `BookEvent::new(unix, symbol)` | an empty, complete book at that nanosecond, state `NEW`, keyed by the ticker `symbol`, which it states - stored `3:0:{symbol}` - taking the inputs stating that ticker and no ISIN, and those stating neither; an empty `symbol` keys it `XX0000000000` ([`Isin::NONE`](../types/codes/isin.md#the-check-digit-and-the-rank)) and states no ticker |
 | `BookEvent::keyed(unix, key)` | an empty, complete book keyed `key` ([above](#complete-books-and-delta-books)) |
 | Its instrument | a book takes its ticker and its ISIN - as its `isin` security identifier - from the first input stating each; no input moves them after |
-| `add_operations` | any `IntoIterator` of `MarketData`/`Result<MarketData>`, no-op if empty; every input `MarketDataKind::is_recorded` does not admit - a `TradeEvent` - is pruned first, so a group of nothing else changes nothing: the instant does not advance and the `delta` and `events` stand. `OrderEvent`/`QuoteEvent` fold into the sides and the `delta`, a `SnapshotEvent` replaces membership and is recorded among the `events`, and an `ExecutionEvent` is recorded among the `events`, resting on no side; any other variant - an undated leaf, a `BookEvent` - is refused at `$.operations[index].kind`; every `currunix` must agree, regression refused, applied in source order; atomic - the book is unchanged on every error; the refusals on this page are this explicit call's, which [the fold](#book-fold) answers by leaving what a book refuses out, with a warning |
+| `add_operations` | any `IntoIterator` of `MarketData`/`Result<MarketData>`, no-op if empty; every input `MarketDataKind::is_recorded` does not admit - a `TradeEvent` - is pruned first, so a group of nothing else changes nothing: the instant does not advance and the `delta` and `events` stand. `OrderEvent`/`QuoteEvent` fold into the sides and the `delta`, a `SnapshotEvent` replaces membership and is recorded among the `events`, and an `ExecutionEvent` is recorded among the `events`, resting on no side; any other variant - an undated leaf, a `BookEvent` - is refused at `$.operations[index].kind`; every `transunix` must agree, regression refused, applied in source order; atomic - the book is unchanged on every error; the refusals on this page are this explicit call's, which [the fold](#book-fold) answers by leaving what a book refuses out, with a warning |
 | A new instant | the book follows the book it was - its identity and instant as `prevuuid` and `prevunix`, its price and quantity as `prevpx` and `prevqty` - and its `delta`, `events`, place and snapshot stamp start again; live depth stays |
 | Snapshots | a full-snapshot order/quote/`SnapshotEvent` clears only its `(symbol, scope)` partition on both sides (an empty FIX `W` is one) before its group applies, and the book states the group's instant as its `snapunix`; which partitions the last snapshot replaced is walk state - no row states it, and neither the digest nor equality reads it |
-| Bounds | the highest place of its members at the book's own instant (reset when the instant advances), earliest creation/recording instants, latest execution instant (the book's [`execunix`](market.md#contract)) of the finalized generation, after any predecessor advanced it; a rehydrated book checks all four against every nested operation, the place only against those at its instant |
+| Bounds | the highest place of its members at the book's own instant (reset when the instant advances), earliest creation instant and wire clock, latest execution instant (the book's [`execunix`](market.md#contract)) of the finalized generation, after any predecessor advanced it; a rehydrated book checks all four against every nested operation, the place only against those at its instant |
 | As a market | `price`: `bbo_midpoint()` - the overflow-safe `(bid + offer) / 2` of a two-sided BBO, per [SEC](https://www.sec.gov/files/rules/sro/btnl/2026/34-106421-ex4.pdf) - else the one best price, `None` if crossed; `quantity`: `median_quantity()` - [NIST](https://www.itl.nist.gov/div898/handbook/eda/section3/eda351.htm) mean of the two best quantities, one-sided its own; currency the best legs agree on and unit the best entries agree on (one-sided: its own; else none); `bidpx`/`bidqty` and `askpx`/`askqty` the best tradable levels, `bidccy`/`askccy` the book's currency beside a best - nothing where no level of a side can trade |
 | Following | `with_previous`, [above](#complete-books-and-delta-books): a delta book rebuilt over the book it follows, a complete one linked to it |
-| Merging | only one book code at one instant, the reference chosen by its recording clock - the later `recdunix`, then `currunix`: two complete books join their sides - the reference's entries, then each of the other's identities it holds on neither side, unless the reference states a `snapunix`, which is authoritative - and union their `delta` and their `events`, each list apart; a complete book is authoritative over a delta book whichever records later; two delta books keep the reference's facts over the `delta` and `events` of both, the reference's first; self-merge changes nothing |
-| Bindings | Python `graph.BookEvent(currunix, symbol)`, `graph.BookEvent.keyed(currunix, key)`, `with_operations(items)` (a new book), `with_previous(previous)`, the properties `alive`, `delta`, `events`, `ordlive`, `orddelta`, `quotes`, `executions`, `controls` and `is_complete`, the method `alive_on(side)`; JavaScript `new graph.BookEvent(currunix, symbol)`, `graph.BookEvent.keyed(currunix, key)`, `withOperations(items)`, `withPrevious(previous)`, the methods `alive()`, `delta()`, `events()`, `ordlive()`, `orddelta()`, `quotes()`, `executions()`, `controls()`, `aliveOn(side)` and the property `isComplete` |
+| Merging | only one book code at one instant, the reference chosen by its wire clock - the later `sendunix`, then `transunix`: two complete books join their sides - the reference's entries, then each of the other's identities it holds on neither side, unless the reference states a `snapunix`, which is authoritative - and union their `delta` and their `events`, each list apart; a complete book is authoritative over a delta book whichever records later; two delta books keep the reference's facts over the `delta` and `events` of both, the reference's first; self-merge changes nothing |
+| Bindings | Python `graph.BookEvent(transunix, symbol)`, `graph.BookEvent.keyed(transunix, key)`, `with_operations(items)` (a new book), `with_previous(previous)`, the properties `alive`, `delta`, `events`, `ordlive`, `orddelta`, `quotes`, `executions`, `controls` and `is_complete`, the method `alive_on(side)`; JavaScript `new graph.BookEvent(transunix, symbol)`, `graph.BookEvent.keyed(transunix, key)`, `withOperations(items)`, `withPrevious(previous)`, the methods `alive()`, `delta()`, `events()`, `ordlive()`, `orddelta()`, `quotes()`, `executions()`, `controls()`, `aliveOn(side)` and the property `isComplete` |
 
 ## Snapshot controls
 
@@ -97,7 +97,7 @@ All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY
 | `with_filter(filter)` | an expression [`Filter`](../expression/filters.md) - a filter, a term or its text - over the [`marketdata` row](market-data.md#arrow), bound once, answered by the expression engine over one batch per 1,024 recorded inputs the walk pulls ahead; the kind rule prunes first, so a filter narrows what a book folds and never admits a trade. A filter that keeps every row installs nothing. Refused where it is bound: its own parse error, a column the row does not carry, an answer that is no boolean; a filter that cannot answer a batch ends the walk as a source failure does |
 | Books | one per [book key](market.md#the-book-key): the input's ISIN where it holds one, else its ticker, else `XX0000000000`; each book opens keyed - `BookEvent::keyed` - stores its key as `3:0:{key}`, and takes its ticker and ISIN from the first input stating each |
 | Moving between books | an order or quote identity restated under another key - a chain stated by its ticker alone and then, its instrument learned, under its ISIN - is withdrawn from the book it stood in by an entry of its `delta` there: the entry as it stood, deleted in state `REMOVED`, reporting no fill, no execution, no recording and no snapshot instant - a snapshot's member as any other statement - and opens in its own book at the same instant, so an entry rests in one book at a time |
-| Groups | by effective instant (`snapunix`, else `currunix`) - one book per touched key, key order, atomic per instant and key; ordinary groups apply via `add_operations`, each chain where its first step arrived, its steps by place only where a step follows one of its chain at that instant, else in arrival order; supplied-membership stages replacement with its `delta` and expirations; a group the book refuses is left out whole, with a warning: none of its updates lands, the book and its pending expirations stand as they were, and the walk goes on |
+| Groups | by effective instant (`snapunix`, else `transunix`) - one book per touched key, key order, atomic per instant and key; ordinary groups apply via `add_operations`, each chain where its first step arrived, its steps by place only where a step follows one of its chain at that instant, else in arrival order; supplied-membership stages replacement with its `delta` and expirations; a group the book refuses is left out whole, with a warning: none of its updates lands, the book and its pending expirations stand as they were, and the walk goes on |
 | Emitted | a book is yielded where it records an entry of its `delta` - every order and quote folded into it but a repeat of the live entry it continues, resting anywhere or not - or an event - an execution, a snapshot control - or at a snapshot tick where it holds an entry; a snapshot emptying a book is yielded too, empty and complete, its control among its `events`, for the books after it to rebuild over, and so is an empty snapshot of an empty book. An instant whose inputs only repeat what the book holds yields no book, and neither does a grid tick finding a book empty that nothing changed there: the next book follows the last one yielded |
 | Keyframes | a book is yielded complete - its alive entries, its limits, its instant as its `snapunix` - only at a snapshot tick: every grid tick `snapshot_millis` crosses, the ticks the walk catches up on and the quiet buckets included; and a group that replaced membership - a FIX `W` full refresh, an empty snapshot control, inputs stating `snapunix`. Every other book is a delta book naming the book it follows as its `prevuuid`; a code's first book names none and follows the empty book, `BookEvent::keyed(unix, key)`. With `snapshot_millis = 0` and no snapshot input, every book is a delta book |
 | Rebuilding | `with_previous` over the complete book before rebuilds a delta book whole; with no grid, rebuilding the book at an instant reads back to the code's first book or its last full refresh |
@@ -668,22 +668,22 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     assert_eq!(books.len(), 2);
     assert!(books.iter().all(|book| !book.is_complete()));
     let last = &books[1];
-    assert_eq!((last.get_currunix(), last.delta().len(), last.events().len(), last.alive().count()), (T + SECOND, 1, 1, 0));
+    assert_eq!((last.get_transunix(), last.delta().len(), last.events().len(), last.alive().count()), (T + SECOND, 1, 1, 0));
     assert_eq!(last.best_price(Side::Buy), Some("189.49".parse()?));
-    assert_eq!((books[0].get_prevuuid(), last.get_prevuuid()), (None, Some(books[0].get_curruuid())));
+    assert_eq!((books[0].get_prevuuid(), last.get_prevuuid()), (None, Some(books[0].get_uuid())));
 
     // Rebuilt: the first over the empty book a walk starts from, the next over it.
     let first = books[0].clone().with_previous(&BookEvent::keyed(T, "AAPL")).expect("a rebuild");
     let whole = last.clone().with_previous(&first).expect("a rebuild");
     assert!(whole.is_complete());
     assert_eq!(whole.alive().count(), 2, "depth persists");
-    assert_eq!(whole.get_curruuid(), last.get_curruuid(), "one book, one identity");
+    assert_eq!(whole.get_uuid(), last.get_uuid(), "one book, one identity");
 
     // A 500 ms grid yields every book whole, the crossed tick between included.
     let gridded = BookIterator::new(stream()?.into_iter(), 500)?.collect::<yggdryl::Result<Vec<_>>>()?;
     let ticks: Vec<(i64, usize, usize, bool)> = gridded
         .iter()
-        .map(|book| (book.get_currunix() - T, book.delta().len(), book.events().len(), book.is_complete()))
+        .map(|book| (book.get_transunix() - T, book.delta().len(), book.events().len(), book.is_complete()))
         .collect();
     assert_eq!(ticks, [(0, 1, 0, true), (500_000_000, 0, 0, true), (SECOND, 1, 1, true)]);
 
@@ -720,10 +720,10 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     assert len(books) == 2
     assert not any(book.is_complete for book in books)
     last = books[1]
-    assert (last.currunix, len(last.delta), len(last.events), len(last.alive)) == (T + SECOND, 1, 1, 0)
+    assert (last.transunix, len(last.delta), len(last.events), len(last.alive)) == (T + SECOND, 1, 1, 0)
     best = last.best_price(Side.BUYS)
     assert best is not None and best.as_py() == Decimal("189.49")
-    assert (books[0].prevuuid, last.prevuuid) == (None, books[0].curruuid)
+    assert (books[0].prevuuid, last.prevuuid) == (None, books[0].uuid)
 
     # Rebuilt: the first over the empty book a walk starts from, the next over it.
     first = books[0].with_previous(graph.BookEvent.keyed(T, "AAPL"))
@@ -731,11 +731,11 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     whole = last.with_previous(first)
     assert whole is not None and whole.is_complete
     assert len(whole.alive) == 2, "depth persists"
-    assert whole.curruuid == last.curruuid, "one book, one identity"
+    assert whole.uuid == last.uuid, "one book, one identity"
 
     # A 500 ms grid yields every book whole, the crossed tick between included.
     gridded = list(graph.BookIterator(stream, snapshot_millis=500))
-    assert [(book.currunix - T, len(book.delta), len(book.events), book.is_complete) for book in gridded] == [
+    assert [(book.transunix - T, len(book.delta), len(book.events), book.is_complete) for book in gridded] == [
         (0, 1, 0, True),
         (500_000_000, 0, 0, True),
         (SECOND, 1, 1, True),
@@ -773,22 +773,22 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     assert.equal(books.length, 2)
     assert.ok(books.every((book) => !book.isComplete))
     const last = books[1]
-    assert.equal(last.currunix, T + SECOND)
+    assert.equal(last.transunix, T + SECOND)
     assert.deepEqual([last.delta().length, last.events().length, last.alive().length], [1, 1, 0])
     assert.equal(last.bestPrice('BUYS'), '189.49')
     assert.equal(books[0].prevuuid, null)
-    assert.equal(last.prevuuid, books[0].curruuid)
+    assert.equal(last.prevuuid, books[0].uuid)
 
     // Rebuilt: the first over the empty book a walk starts from, the next over it.
     const first = books[0].withPrevious(graph.BookEvent.keyed(T, 'AAPL'))
     const whole = last.withPrevious(first)
     assert.equal(whole.isComplete, true)
     assert.equal(whole.alive().length, 2, 'depth persists')
-    assert.equal(whole.curruuid, last.curruuid, 'one book, one identity')
+    assert.equal(whole.uuid, last.uuid, 'one book, one identity')
 
     // A 500 ms grid yields every book whole, the crossed tick between included.
     const gridded = [...new graph.BookIterator(stream, 500)]
-    assert.deepEqual(gridded.map((book) => [book.currunix - T, book.delta().length, book.events().length, book.isComplete]), [
+    assert.deepEqual(gridded.map((book) => [book.transunix - T, book.delta().length, book.events().length, book.isComplete]), [
       [0n, 1, 0, true], [500_000_000n, 0, 0, true], [SECOND, 1, 1, true],
     ])
 
@@ -831,7 +831,7 @@ A bid, an offer and a fill: the fill is recorded among its book's `events`, and 
         if let Some(filter) = filter {
             walk = walk.with_filter(filter)?;
         }
-        walk.map(|book| book.map(|book| book.get_currunix() - T)).collect()
+        walk.map(|book| book.map(|book| book.get_transunix() - T)).collect()
     };
 
     // The fill's instant yields a delta book: its delta empty, its events the execution.
@@ -860,7 +860,7 @@ A bid, an offer and a fill: the fill is recorded among its book's `events`, and 
     inputs = [order(T, "B-1", "BUYS"), order(T + 1, "A-1", "SELL"), fill]
 
     def walk(filter: str | None = None) -> list[int]:
-        return [book.currunix - T for book in graph.BookIterator(inputs, filter=filter)]
+        return [book.transunix - T for book in graph.BookIterator(inputs, filter=filter)]
 
     # The fill's instant yields a delta book: its delta empty, its events the execution.
     assert walk() == [0, 1, 2]
@@ -889,7 +889,7 @@ A bid, an offer and a fill: the fill is recorded among its book's `events`, and 
     })
     const fill = new graph.ExecutionEvent(T + 2n, { crosscode: 'E-1', ticker: 'AAPL', side: 'BUYS', lastqty: 100 })
     const inputs = [order(T, 'B-1', 'BUYS'), order(T + 1n, 'A-1', 'SELL'), fill]
-    const walk = (filter) => [...new graph.BookIterator(inputs, 0, filter)].map((book) => book.currunix - T)
+    const walk = (filter) => [...new graph.BookIterator(inputs, 0, filter)].map((book) => book.transunix - T)
 
     // The fill's instant yields a delta book: its delta empty, its events the execution.
     assert.deepEqual(walk(), [0n, 1n, 2n])
@@ -1035,7 +1035,7 @@ An order stated by its ticker alone, then restated a millisecond later once its 
     ];
 
     let books = BookIterator::new(inputs.into_iter(), 0)?.collect::<yggdryl::Result<Vec<_>>>()?;
-    let keyed: Vec<(i64, &str)> = books.iter().map(|book| (book.get_currunix() - T, book.get_crosscode())).collect();
+    let keyed: Vec<(i64, &str)> = books.iter().map(|book| (book.get_transunix() - T, book.get_crosscode())).collect();
     assert_eq!(keyed, [(0, "3:0:ACME"), (MS, "3:0:ACME"), (MS, "3:0:US0378331005")]);
     // The ticker's book takes the entry off by one entry of its delta, reporting no fill.
     assert_eq!(books[1].delta().len(), 1);
@@ -1068,7 +1068,7 @@ An order stated by its ticker alone, then restated a millisecond later once its 
     )
 
     books = list(graph.BookIterator([placed, restated]))
-    assert [(book.currunix - T, book.crosscode) for book in books] == [
+    assert [(book.transunix - T, book.crosscode) for book in books] == [
         (0, "3:0:ACME"),
         (MS, "3:0:ACME"),
         (MS, "3:0:US0378331005"),
@@ -1105,7 +1105,7 @@ An order stated by its ticker alone, then restated a millisecond later once its 
     })
 
     const books = [...new graph.BookIterator([placed, restated])]
-    assert.deepEqual(books.map((book) => [book.currunix - T, book.crosscode]), [
+    assert.deepEqual(books.map((book) => [book.transunix - T, book.crosscode]), [
       [0n, '3:0:ACME'], [MS, '3:0:ACME'], [MS, '3:0:US0378331005'],
     ])
     // The ticker's book takes the entry off by one entry of its delta, reporting no fill.

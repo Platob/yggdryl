@@ -12,7 +12,7 @@ import { AUDIT_SUFFIXES, auditUrl } from './api.js'
 
 /** The columns of an audit table, in order: the key in a row, its heading, how it renders. */
 export const EVENT_COLUMNS = Object.freeze([
-  { key: 'currunix', label: 'Instant', kind: 'instant' },
+  { key: 'transunix', label: 'Instant', kind: 'instant' },
   { key: 'role', label: 'Role', kind: 'text' },
   { key: 'marketdatakind', label: 'Kind', kind: 'text' },
   { key: 'side', label: 'Side', kind: 'text' },
@@ -20,7 +20,7 @@ export const EVENT_COLUMNS = Object.freeze([
   { key: 'quantity', label: 'Quantity', kind: 'decimal' },
   { key: 'state', label: 'State', kind: 'text' },
   { key: 'crosscode', label: 'Cross code', kind: 'text' },
-  { key: 'curruuid', label: 'UUID', kind: 'uuid' },
+  { key: 'uuid', label: 'UUID', kind: 'uuid' },
   { key: 'prevuuid', label: 'Previous', kind: 'uuid' },
 ].map((column) => Object.freeze(column)))
 
@@ -330,7 +330,7 @@ export function renderSummary(node, book, { zone = 'UTC', emptyText = 'Select a 
   }
   const head = make(document, 'div', 'summary-head')
   head.append(make(document, 'span', 'summary-name', [book.ticker ?? book.isincode, book.crosscode].filter(Boolean).join(' · ')))
-  head.append(make(document, 'span', 'summary-when', formatInstant(book.currunix, zone, { fraction: 9 })))
+  head.append(make(document, 'span', 'summary-when', formatInstant(book.transunix, zone, { fraction: 9 })))
   const flags = make(document, 'span', 'summary-flags')
   if (book.iscrossed) flags.append(make(document, 'span', 'chip chip-warn', 'Crossed'))
   else if (book.islocked) flags.append(make(document, 'span', 'chip chip-warn', 'Locked'))

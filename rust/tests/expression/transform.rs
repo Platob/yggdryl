@@ -404,17 +404,17 @@ mod grammar {
     }
 
     /// The partition instant a table root declares: `partunix` derived from
-    /// `currunix` by `time_bucket`, filled where it arrives absent or wholly
+    /// `transunix` by `time_bucket`, filled where it arrives absent or wholly
     /// null and left alone where any row of it was written.
     #[test]
-    fn a_time_bucket_term_fills_the_partition_instant_from_currunix() {
+    fn a_time_bucket_term_fills_the_partition_instant_from_transunix() {
         use yggdryl::{ArrowCastOptions, Serie};
 
         let ns = DataType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::UTC,
         };
-        let term = "time_bucket('15 minutes', currunix)";
+        let term = "time_bucket('15 minutes', transunix)";
         let mut partunix = ns.clone().nullable_field("partunix");
         partunix
             .as_transform_mut()
@@ -424,11 +424,11 @@ mod grammar {
         assert_eq!(partunix.get_metadata("TRANSFORM:expression"), Some(term));
         assert_eq!(partunix.get_metadata("TRANSFORM:function"), None);
         let root = DataType::from(
-            StructType::from_fields([ns.clone().required_field("currunix"), partunix]).unwrap(),
+            StructType::from_fields([ns.clone().required_field("transunix"), partunix]).unwrap(),
         )
         .required_field("row");
         let rows_only = DataType::from(
-            StructType::from_fields([ns.clone().required_field("currunix")]).unwrap(),
+            StructType::from_fields([ns.clone().required_field("transunix")]).unwrap(),
         )
         .required_field("row");
 
@@ -456,7 +456,7 @@ mod grammar {
         };
         let expected: Vec<Scalar> = floored.iter().map(|count| nanos(*count)).collect();
 
-        // Absent: the rows carry `currunix` alone.
+        // Absent: the rows carry `transunix` alone.
         let absent = Serie::from_scalars(
             rows_only.clone(),
             instants
@@ -516,14 +516,14 @@ mod grammar {
         let mut partunix = ns.clone().nullable_field("partunix");
         partunix
             .as_transform_mut()
-            .set_term(&"time_bucket('15 minutes', currunix)".parse().unwrap())
+            .set_term(&"time_bucket('15 minutes', transunix)".parse().unwrap())
             .unwrap();
         let root = DataType::from(
-            StructType::from_fields([ns.clone().required_field("currunix"), partunix]).unwrap(),
+            StructType::from_fields([ns.clone().required_field("transunix"), partunix]).unwrap(),
         )
         .required_field("row");
         let rows_only = DataType::from(
-            StructType::from_fields([ns.clone().required_field("currunix")]).unwrap(),
+            StructType::from_fields([ns.clone().required_field("transunix")]).unwrap(),
         )
         .required_field("row");
         let nanos =
@@ -552,7 +552,7 @@ mod grammar {
                 .iter()
                 .map(|field| field.name().as_str())
                 .collect::<Vec<_>>(),
-            ["currunix", "partunix"]
+            ["transunix", "partunix"]
         );
         let mut read = Vec::new();
         for filled in filled {
@@ -593,6 +593,6 @@ mod grammar {
         let Err(error) = root.as_transform().apply_arrow_reader(reader) else {
             panic!("a stream without the term's column was filled");
         };
-        assert!(error.to_string().contains("currunix"), "{error}");
+        assert!(error.to_string().contains("transunix"), "{error}");
     }
 }

@@ -68,7 +68,7 @@ fn main() -> yggdryl::Result<()> {
     for message in &walked {
         let held = chains.entry(message.get_crosscode()).or_default();
         held.0 += 1;
-        held.1.insert(message.get_curruuid());
+        held.1.insert(message.get_uuid());
         held.2 = held.2.max(message.get_seqnum());
     }
     for (code, (messages, events, seqnum)) in &chains {
@@ -89,15 +89,15 @@ fn main() -> yggdryl::Result<()> {
 fn describe(message: &FixMsg) -> String {
     let header = message.header();
     format!(
-        "{} {} price={:?} quantity={:?} {} | currunix={} state={} | curruuid={} chain={:?} seqnum={} prev={:?} | {}",
+        "{} {} price={:?} quantity={:?} {} | transunix={} state={} | uuid={} chain={:?} seqnum={} prev={:?} | {}",
         header.msgtype(),
         message.get_side().as_str(),
         message.get_price(),
         message.get_quantity(),
         message.get_currency().as_str(),
-        message.get_currunix(),
+        message.get_transunix(),
         message.get_state().as_str(),
-        message.get_curruuid(),
+        message.get_uuid(),
         message.get_crosscode(),
         message.get_seqnum(),
         message.get_prevuuid(),

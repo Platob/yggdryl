@@ -405,7 +405,7 @@ graph_methods!(PyMarketData, "MarketData"; [
     fn __repr__(&self) -> String {
         format!(
             "MarketData({}, kind={:?}, marketdatakind={}, crosscode={:?})",
-            yggdryl::graph::Element::get_curruuid(&self.inner),
+            yggdryl::graph::Element::get_uuid(&self.inner),
             self.inner.kind().as_str(),
             self.inner.marketdatakind(),
             yggdryl::graph::Element::get_crosscode(&self.inner),

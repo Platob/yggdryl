@@ -19,7 +19,7 @@ function orderEvent(facts = {}) {
     crosscode: 'O-100',
     seqnum: 3,
     creaunix: CLOCK - 100_000_000_000n,
-    recdunix: CLOCK - 50_000_000_000n,
+    sendunix: CLOCK - 50_000_000_000n,
     side: 'BUYS',
     price: '101',
     currency: 'USD',
@@ -33,19 +33,19 @@ function orderEvent(facts = {}) {
 
 test('an order event reads every fact back typed', () => {
   const event = orderEvent()
-  assert.match(event.curruuid, /^[0-9a-f-]{36}$/)
+  assert.match(event.uuid, /^[0-9a-f-]{36}$/)
   assert.match(event.crossuuid, /^[0-9a-f-]{36}$/)
   // The stored cross code is the kind, the side, then the base.
   assert.equal(event.crosscode, '10:1:O-100')
-  assert.equal(typeof event.currhashcode, 'bigint')
+  assert.equal(typeof event.hashcode, 'bigint')
   assert.equal(typeof event.crosshashcode, 'bigint')
   assert.deepEqual(event.srcuuids, [])
-  assert.equal(event.currunix, CLOCK)
+  assert.equal(event.transunix, CLOCK)
   assert.equal(event.state, 'UNKNOWN')
   assert.equal(event.seqnum, 3)
   assert.equal(event.creaunix, CLOCK - 100_000_000_000n)
   assert.equal(event.execunix, null)
-  assert.equal(event.recdunix, CLOCK - 50_000_000_000n)
+  assert.equal(event.sendunix, CLOCK - 50_000_000_000n)
   assert.equal(event.exprunix, null)
   assert.equal(event.prevunix, null)
   assert.equal(event.prevuuid, null)
@@ -104,21 +104,21 @@ test('the bid and ask facts and the rates read back as plain values', () => {
 })
 
 test('an undated element states no clock, state or chain', () => {
-  const element = new graph.Order({ crosscode: 'O-1', price: '10', side: 'SELL', curruuid: undefined })
+  const element = new graph.Order({ crosscode: 'O-1', price: '10', side: 'SELL', uuid: undefined })
   assert.equal(element.crosscode, '10:2:O-1')
   assert.equal(element.kind, 'order')
   assert.equal(element.side, 'SELL')
-  for (const name of ['currunix', 'state', 'seqnum', 'prevuuid']) {
+  for (const name of ['transunix', 'state', 'seqnum', 'prevuuid']) {
     assert.throws(() => new graph.Order({ [name]: 1 }), /an undated element has no clock, state or chain/)
   }
-  assert.equal('currunix' in element, false)
+  assert.equal('transunix' in element, false)
 })
 
 test('a derived identity is refused by name', () => {
   // `finalize` derives the four identities, so a stated one would be
   // overwritten: it is refused on the dated and the undated leaf alike.
   const uuid = '00000000-0000-8000-8000-000000000001'
-  for (const [name, value] of [['curruuid', uuid], ['crossuuid', uuid], ['currhashcode', 7n], ['crosshashcode', 7n]]) {
+  for (const [name, value] of [['uuid', uuid], ['crossuuid', uuid], ['hashcode', 7n], ['crosshashcode', 7n]]) {
     assert.throws(
       () => new graph.Order({ [name]: value }),
       new RegExp(`Order states no fact "${name}": an identity is derived`),
@@ -132,9 +132,9 @@ test('a derived identity is refused by name', () => {
   assert.equal(new graph.Order({ crosscode: 'O-1', srcuuids: [] }).crosscode, '10:0:O-1')
 })
 
-test('currunix is stated once, as the first argument', () => {
-  for (const facts of [{ currunix: 5 }, { currunix: 5n }, { CURRUNIX: 5 }]) {
-    assert.throws(() => new graph.OrderEvent(1n, facts), /OrderEvent states currunix once, as its first argument/)
+test('transunix is stated once, as the first argument', () => {
+  for (const facts of [{ transunix: 5 }, { transunix: 5n }, { TRANSUNIX: 5 }]) {
+    assert.throws(() => new graph.OrderEvent(1n, facts), /OrderEvent states transunix once, as its first argument/)
   }
 })
 
@@ -158,7 +158,7 @@ test('at dates an element and intoElement undates it', () => {
   const element = new graph.Quote({ crosscode: 'Q-1', side: 'SELL', price: '102' })
   const event = element.at(CLOCK)
   assert.ok(event instanceof graph.QuoteEvent)
-  assert.equal(event.currunix, CLOCK)
+  assert.equal(event.transunix, CLOCK)
   // A quote holds its two legs and is stored unsided: its side is a tag,
   // and the price it states on the offer is its ask leg.
   assert.equal(event.crosscode, '14:0:Q-1')
@@ -171,13 +171,13 @@ test('at dates an element and intoElement undates it', () => {
   assert.equal(new graph.Execution().at(CLOCK).kind, 'execution')
   assert.equal(new graph.ExecutionEvent(CLOCK).intoElement().kind, 'execution')
   // An instant is a bigint or a whole number of at most 2^53.
-  assert.equal(element.at(7).currunix, 7n)
+  assert.equal(element.at(7).transunix, 7n)
   assert.throws(() => element.at(1.5), /unix/)
 })
 
 test('the kind is the type', () => {
   const same = { crosscode: 'X', price: '1' }
-  assert.notEqual(new graph.OrderEvent(CLOCK, same).curruuid, new graph.QuoteEvent(CLOCK, same).curruuid)
+  assert.notEqual(new graph.OrderEvent(CLOCK, same).uuid, new graph.QuoteEvent(CLOCK, same).uuid)
   assert.equal(new graph.ExecutionEvent(CLOCK).isExecution, true)
   assert.equal(new graph.QuoteEvent(CLOCK).isExecution, false)
   assert.throws(() => new graph.Order(same).equals(new graph.Quote(same)))
@@ -206,8 +206,8 @@ test('an order follows the order it replaces', () => {
   const later = new graph.OrderEvent(CLOCK + 1n, { crosscode: 'O-100', side: 'BUYS', price: '100', quantity: 4 })
   const followed = later.withPrevious(first)
   assert.notEqual(followed, null)
-  assert.equal(followed.prevuuid, first.curruuid)
-  assert.equal(followed.prevunix, first.currunix)
+  assert.equal(followed.prevuuid, first.uuid)
+  assert.equal(followed.prevunix, first.transunix)
   // A later instant keeps its own place.
   assert.equal(followed.seqnum, 0)
   assert.equal(later.prevuuid, null) // immutable: the verb answered a new event
@@ -244,13 +244,13 @@ for (const [name, build] of [
     assert.ok(twin instanceof Class)
     assert.ok(twin.equals(leaf))
     assert.equal(twin.stableHash(), leaf.stableHash())
-    assert.equal(leaf.stableHash(), leaf.currhashcode)
-    assert.equal(twin.curruuid, leaf.curruuid)
+    assert.equal(leaf.stableHash(), leaf.hashcode)
+    assert.equal(twin.uuid, leaf.uuid)
     // `JSON.stringify` writes the same text, so a document carries it.
     assert.ok(Class.fromJSON(JSON.parse(JSON.stringify(leaf))).equals(leaf))
     assert.ok(leaf.clone().equals(leaf))
     assert.notEqual(leaf.clone(), leaf)
-    assert.ok(leaf.toString().startsWith(`${Class.name}(${leaf.curruuid}`))
+    assert.ok(leaf.toString().startsWith(`${Class.name}(${leaf.uuid}`))
   })
 }
 

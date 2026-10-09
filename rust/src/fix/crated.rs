@@ -6,7 +6,7 @@
 //! the event states that *no dictionary publishes*: its identity and the one
 //! it has across its lifecycle and the code that names it there, the names
 //! it goes by, its parents, the lines it was read from, the code its content
-//! digests to, when it happened, was created, executed, recorded and was read
+//! digests to, when it happened, was created, executed, crossed the wire and was read
 //! as a snapshot, the element it follows and its place at its instant. Beside
 //! them stand the facts a capture states
 //! about the line - where it was read from and how many pairs it carried -
@@ -61,7 +61,7 @@
 //!
 //! Their tags sit above every tag FIX publishes and above the user-defined
 //! ranges venues share, so they collide with nothing a dictionary declares
-//! and belong to no dialect: `currunix` is one identity in every dictionary, a
+//! and belong to no dialect: `transunix` is one identity in every dictionary, a
 //! bridge row spelling `SESSIONID` lands on the crate's own column, and a
 //! name every registry carries is never an unknown key. [`is_crate_tag`] is
 //! the whole test. A field is its tag and its name, so each is declared as
@@ -93,7 +93,7 @@
 //!
 //! [`FixRegistry::new`](super::FixRegistry::new) inserts them - the derived
 //! columns excepted - before anything else, so a dictionary loaded from a
-//! store, built from fields or left empty answers `currunix` and
+//! store, built from fields or left empty answers `transunix` and
 //! `msgpluginid` alike. A store writes their definitions
 //! so another consumer sees the whole row, but a read passes those stored
 //! copies over: the crate's own definition is the one that types a row.
@@ -135,9 +135,10 @@ pub const CRATE_TAG_MIN: i32 = 65_000;
 /// to grow without ever reaching the one above it.
 pub const CRATE_TAG_MAX: i32 = 65_100;
 
-/// The tag and name carrying when the message happened: the settled
-/// instant, nanoseconds since the Unix epoch, UTC.
-pub const CURRUNIX_TAG_NAME: (i32, &str) = (65_007, "currunix");
+/// The tag and name carrying when the operation the message states really
+/// happened: the settled transaction instant, nanoseconds since the Unix
+/// epoch, UTC.
+pub const TRANSUNIX_TAG_NAME: (i32, &str) = (65_007, "transunix");
 
 /// The tag and name carrying the message context a bridge handled the
 /// message in.
@@ -158,9 +159,10 @@ pub const MSGPLUGINID_TAG_NAME: (i32, &str) = (65_042, "msgpluginid");
 /// word. The intrinsic `msgpluginsidecodeset` names what each code stands for.
 pub const MSGPLUGINSIDE_TAG_NAME: (i32, &str) = (65_043, "msgpluginside");
 
-/// The tag and name carrying the code the message's content digests to:
-/// the XXH3-64 of what the event states and the named FIX content behind it.
-pub const CURRHASHCODE_TAG_NAME: (i32, &str) = (65_004, "currhashcode");
+/// The tag and name carrying the message's hash code, the code its content
+/// digests to: the XXH3-64 of what the event states and the named FIX
+/// content behind it.
+pub const HASHCODE_TAG_NAME: (i32, &str) = (65_004, "hashcode");
 
 /// The tag and name carrying the cross hash code: the XXH3-64 of the cross
 /// code, zero where the message names none.
@@ -173,7 +175,7 @@ pub const PREVUNIX_TAG_NAME: (i32, &str) = (65_011, "prevunix");
 pub const PREVUUID_TAG_NAME: (i32, &str) = (65_013, "prevuuid");
 
 /// The tag and name carrying when the message was created: what it states,
-/// else when it happened. Once walked, a message stating no
+/// else its `transunix`. Once walked, a message stating no
 /// `SendingTime(52)` that a `TransactTime(60)` stating a clock dates takes a
 /// resend's `OrigSendingTime(122)` earlier than that transaction as its
 /// creation; the parse reads no `OrigSendingTime`.
@@ -208,9 +210,10 @@ pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_052, "sourceurl");
 /// counterparty are two instances.
 pub const MSGSESSIONID_TAG_NAME: (i32, &str) = (65_046, "msgsessionid");
 
-/// The tag and name carrying the message's identity: UUIDv7 ordered by its
-/// millisecond and sequence, with a content payload seeded by its cross hash.
-pub const CURRUUID_TAG_NAME: (i32, &str) = (65_001, "curruuid");
+/// The tag and name carrying the message's own UUID, its identity: UUIDv7
+/// ordered by the millisecond of its `transunix` and its sequence, with a
+/// content payload seeded by its cross hash.
+pub const UUID_TAG_NAME: (i32, &str) = (65_001, "uuid");
 
 /// The tag and name carrying the identity every message of one lifecycle
 /// shares, where the message names one.
@@ -431,14 +434,14 @@ pub const FIGICODE_TAG_NAME: (i32, &str) = (65_051, "figicode");
 /// The tag and name carrying when the message last executed, where one of
 /// its FIX facts states it - a `TransactTime(60)` stating a day alone
 /// states none - else - on a message reporting an execution that states
-/// none and follows nothing - when the message happened; the latest its
+/// none and follows nothing - its `transunix`; the latest its
 /// chain reached once followed.
 pub const EXECUNIX_TAG_NAME: (i32, &str) = (65_024, "execunix");
 
-/// The tag and name carrying when the message was recorded: by its carrier,
-/// where a carrier states one, else by its sender, where it states its
-/// `SendingTime(52)`.
-pub const RECDUNIX_TAG_NAME: (i32, &str) = (65_009, "recdunix");
+/// The tag and name carrying when the message crossed the wire - the
+/// technical clock: its carrier's, where a carrier states one, else its
+/// sender's, where it states its `SendingTime(52)`.
+pub const SENDUNIX_TAG_NAME: (i32, &str) = (65_009, "sendunix");
 
 /// The tag and name carrying the session event a bridge delivered the
 /// message as: its `MsgType(35)`, session instance, message context and
@@ -695,9 +698,9 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 38] = [
     TRADABLE_TAG_NAME.0,
     IDENTIFIERS_TAG_NAME.0,
     PARTYIDS_TAG_NAME.0,
-    CURRUNIX_TAG_NAME.0,
+    TRANSUNIX_TAG_NAME.0,
     EXECUNIX_TAG_NAME.0,
-    RECDUNIX_TAG_NAME.0,
+    SENDUNIX_TAG_NAME.0,
     MSGSESSEVENTID_TAG_NAME.0,
     CREAUNIX_TAG_NAME.0,
     SNAPUNIX_TAG_NAME.0,
@@ -705,9 +708,9 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 38] = [
     EXPRUNIX_TAG_NAME.0,
     STATE_TAG_NAME.0,
     PREVUUID_TAG_NAME.0,
-    CURRHASHCODE_TAG_NAME.0,
+    HASHCODE_TAG_NAME.0,
     CROSSHASHCODE_TAG_NAME.0,
-    CURRUUID_TAG_NAME.0,
+    UUID_TAG_NAME.0,
     CROSSUUID_TAG_NAME.0,
     CROSSCODE_TAG_NAME.0,
     SEQNUM_TAG_NAME.0,
@@ -728,12 +731,12 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 38] = [
 /// The plugin's role is stated on every row too, and the column is
 /// required: `UKNW` is the member a session stating no role reads as.
 const ALWAYS_STATED: [i32; 9] = [
-    CURRUNIX_TAG_NAME.0,
+    TRANSUNIX_TAG_NAME.0,
     CREAUNIX_TAG_NAME.0,
-    CURRHASHCODE_TAG_NAME.0,
+    HASHCODE_TAG_NAME.0,
     CROSSHASHCODE_TAG_NAME.0,
     CROSSCODE_TAG_NAME.0,
-    CURRUUID_TAG_NAME.0,
+    UUID_TAG_NAME.0,
     CROSSUUID_TAG_NAME.0,
     SEQNUM_TAG_NAME.0,
     MSGPLUGINSIDE_TAG_NAME.0,
@@ -977,7 +980,7 @@ fn fix_datatype_of(dtype: &DataType) -> Option<&'static str> {
 /// the fixed row's band order, so this is that order too. A row that only names a tag
 /// and a column is a column this crate adds nothing to but the tag.
 const CRATED: [Crated; 52] = [
-    Crated::element(CURRUUID_TAG_NAME, ElementColumn::CurrUuid),
+    Crated::element(UUID_TAG_NAME, ElementColumn::Uuid),
     Crated::element(CROSSUUID_TAG_NAME, ElementColumn::CrossUuid),
     Crated::element(CROSSCODE_TAG_NAME, ElementColumn::CrossCode).saying(
         "The identifier every message of one lifecycle shares: OrderID, \
@@ -991,7 +994,7 @@ const CRATED: [Crated; 52] = [
          every other kind, a quote among them: 14:0:Q-1, 21:0:T-1; its \
          chain's once followed.",
     ),
-    Crated::element(CURRHASHCODE_TAG_NAME, ElementColumn::CurrHashCode).saying(
+    Crated::element(HASHCODE_TAG_NAME, ElementColumn::HashCode).saying(
         "The XXH3-64 of what the event states and the named FIX content \
          behind it.",
     ),
@@ -1003,20 +1006,20 @@ const CRATED: [Crated; 52] = [
          one parsed from raw bytes. Provenance, never lineage: no walk \
          moves it.",
     ),
-    Crated::event(CURRUNIX_TAG_NAME, EventColumn::CurrUnix),
+    Crated::event(TRANSUNIX_TAG_NAME, EventColumn::TransUnix),
     Crated::event(CREAUNIX_TAG_NAME, EventColumn::CreaUnix)
         .saying(
-            "When the message was created: what it states, else when it \
-             happened; once walked, a message that states no SendingTime \
+            "When the message was created: what it states, else its \
+             transunix; once walked, a message that states no SendingTime \
              and is dated by a TransactTime takes an earlier \
              OrigSendingTime as its creation; the earliest its chain knows \
              once followed.",
         )
         .also_called(&["CreationTime"]),
-    Crated::event(RECDUNIX_TAG_NAME, EventColumn::RecdUnix).saying(
-        "When the message was recorded: by its carrier, where the carrier \
-         states one, else by its sender, where it states a SendingTime; the \
-         earliest its statements know.",
+    Crated::event(SENDUNIX_TAG_NAME, EventColumn::SendUnix).saying(
+        "When the message crossed the wire: its carrier's clock where the \
+         carrier states one, else the sender's SendingTime; the earliest its \
+         statements know.",
     ),
     Crated::event(EXPRUNIX_TAG_NAME, EventColumn::ExprUnix).saying(
         "When the message stops being good: ExpireTime, else \
@@ -1119,7 +1122,7 @@ const CRATED: [Crated; 52] = [
          EventTimestamp or, on a message reporting an execution, a \
          TransactTime stating a clock, the first one stated - a day alone \
          dates no execution; a message reporting an execution that states \
-         none and follows nothing executed at its currunix; the latest its \
+         none and follows nothing executed at its transunix; the latest its \
          chain reached once followed, and the earliest two statements of it \
          know.",
     ),
@@ -1344,11 +1347,11 @@ fn build() -> Result<Vec<Field>> {
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
 /// assert_eq!(held.len(), 52);
-/// assert_eq!(held[0].name(), "curruuid");
-/// assert_eq!(held[0].display(), Some("Current UUID"));
-/// assert_eq!(held[6].name(), "currunix");
+/// assert_eq!(held[0].name(), "uuid");
+/// assert_eq!(held[0].display(), Some("UUID"));
+/// assert_eq!(held[6].name(), "transunix");
 /// // No partition column: how a layout is cut is the target's to decide -
-/// // an Iceberg table takes an `hour` transform over `currunix` - and a
+/// // an Iceberg table takes an `hour` transform over `transunix` - and a
 /// // materialized copy of that instant was a second owner of it.
 /// assert!(held.iter().all(|field| !field.is_partition()));
 /// assert!(held.iter().all(|field| field.name() != "timepartition"));
@@ -1356,7 +1359,7 @@ fn build() -> Result<Vec<Field>> {
 /// // other graph facts remain answers off the FIX fields the message lifted.
 /// // Above every tag FIX or a venue publishes, and its tag and name are
 /// // its identity.
-/// let (tag, name) = yggdryl::CURRUUID_TAG_NAME;
+/// let (tag, name) = yggdryl::UUID_TAG_NAME;
 /// let mine = FixField::new(&held[0]).id()?.expect("an identity");
 /// assert_eq!(mine, yggdryl::FixId::of(tag, name)?);
 /// assert!(yggdryl::is_crate_tag(yggdryl::CROSSCODE_TAG_NAME.0));

@@ -368,7 +368,7 @@ mod text {
                 b"2026-01-02T10:15:31Z second\n2026-01-02T10:15:30Z first\nundated\n2026-01-02T10:15:32Z third\n",
                 &options,
             );
-            let instants: Vec<_> = lines.iter().map(|line| line.get_currunix()).collect();
+            let instants: Vec<_> = lines.iter().map(|line| line.get_transunix()).collect();
             let previous: Vec<_> = lines.iter().map(|line| line.get_prevunix()).collect();
             assert_eq!(previous, [None, Some(instants[0]), Some(instants[1]), None]);
             assert!(lines.iter().all(|line| line.get_prevuuid().is_none()));
@@ -379,8 +379,8 @@ mod text {
             for line in &lines {
                 let mut bare = line.clone();
                 bare.set_prevunix(None);
-                assert_eq!(bare.get_curruuid(), line.get_curruuid());
-                assert_eq!(bare.get_currhashcode(), line.get_currhashcode());
+                assert_eq!(bare.get_uuid(), line.get_uuid());
+                assert_eq!(bare.get_hashcode(), line.get_hashcode());
             }
 
             // A capture stating one stands; an undated read states none.
@@ -394,7 +394,7 @@ mod text {
                 &options,
             );
             assert_eq!(lines[1].get_prevunix(), Some(1_767_225_600_000_000_000));
-            assert_eq!(lines[2].get_prevunix(), Some(lines[1].get_currunix()));
+            assert_eq!(lines[2].get_prevunix(), Some(lines[1].get_transunix()));
             let undated = decode(b"a\nb\n", &TextOptions::new());
             assert!(undated.iter().all(|line| line.get_prevunix().is_none()));
         }
@@ -412,9 +412,9 @@ mod text {
                 b"2026-01-02T10:15:30Z first\n2026-01-02T10:15:31Z second\nundated\n",
                 &options,
             );
-            let first = lines[0].get_currunix();
+            let first = lines[0].get_transunix();
             assert_eq!(first, 1_767_348_930_000_000_000);
-            assert_ne!(lines[1].get_currunix(), first);
+            assert_ne!(lines[1].get_transunix(), first);
             assert!(lines.iter().all(|line| line.get_creaunix() == Some(first)));
             let batch = into_arrow_batch(lines.clone(), &options).expect("a batch");
             let back = from_arrow_batch(&batch, &options).expect("lines read back");
@@ -477,25 +477,25 @@ mod text {
             assert_eq!(places, [1, 2, 3]);
             let lanes: Vec<u128> = lines
                 .iter()
-                .map(|line| (line.get_curruuid().get() >> 64) & 0xfff)
+                .map(|line| (line.get_uuid().get() >> 64) & 0xfff)
                 .collect();
             assert_eq!(lanes, [1, 2, 3]);
             assert!(
                 lines
                     .windows(2)
-                    .all(|pair| pair[0].get_curruuid() < pair[1].get_curruuid())
+                    .all(|pair| pair[0].get_uuid() < pair[1].get_uuid())
             );
             assert!(
                 lines
                     .windows(2)
-                    .all(|pair| pair[0].get_currhashcode() == pair[1].get_currhashcode()),
+                    .all(|pair| pair[0].get_hashcode() == pair[1].get_hashcode()),
                 "the place is outside the code"
             );
         }
 
         #[test]
         fn a_stated_instant_is_the_rows_word_over_the_headers() {
-            // `currunix` states the instant a line read back answers, over
+            // `transunix` states the instant a line read back answers, over
             // whatever its own header would read: the row's word is the fact.
             // With `parse_mtime` on the capture dates the line and has no
             // column beside it - one owner per fact.
@@ -505,14 +505,14 @@ mod text {
             let lines = decode(b"2026-01-02T10:15:30Z body\n", &options);
             let batch = into_arrow_batch(lines.clone(), &options).expect("a batch");
             assert!(batch.schema().index_of("mtime").is_err(), "no mtime column");
-            assert!(batch.schema().index_of("currunix").is_ok());
+            assert!(batch.schema().index_of("transunix").is_ok());
             let back = from_arrow_batch(&batch, &options).expect("lines read back");
             assert_eq!(back[0].mtime().unwrap(), lines[0].mtime().unwrap());
             assert_eq!(back[0].body(), lines[0].body());
             let mut restated = back[0].clone();
-            restated.set_currunix(7);
+            restated.set_transunix(7);
             assert_eq!(restated.mtime().unwrap(), Some(7));
-            assert_eq!(restated.get_currunix(), 7);
+            assert_eq!(restated.get_transunix(), 7);
         }
     }
 

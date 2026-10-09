@@ -434,9 +434,9 @@ def test_a_codec_shares_the_callers_registry_with_every_lifecycle_and_every_pars
     assert filled.isincode == HOLCIM and filled.securityids.is_derived("isin")
     assert filled.securityids.get("ric") == "HOLN.S"
     assert bare.isincode is None
-    assert (filled.curruuid, filled.currhashcode, filled.into_bytes(ord("|"))) == (
-        bare.curruuid,
-        bare.currhashcode,
+    assert (filled.uuid, filled.hashcode, filled.into_bytes(ord("|"))) == (
+        bare.uuid,
+        bare.hashcode,
         bare.into_bytes(ord("|")),
     )
     assert filled.cficode is None, "a parse fills identifiers only"

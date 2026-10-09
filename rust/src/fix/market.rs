@@ -758,7 +758,9 @@ fn lift_identifier(facts: &mut OperationEventFacts, id: Identifier) -> bool {
 
 fn effective_unix(input: &MarketData) -> i64 {
     input.as_event().map_or(0, |event| {
-        event.get_snapunix().unwrap_or_else(|| event.get_currunix())
+        event
+            .get_snapunix()
+            .unwrap_or_else(|| event.get_transunix())
     })
 }
 
@@ -1299,7 +1301,7 @@ impl FixMsg {
                     format!(
                         "{}|Execution={:016x}",
                         base_crosscode(self.get_crosscode()),
-                        self.get_currhashcode()
+                        self.get_hashcode()
                     )
                 });
             let mut execution = self.clone();
@@ -1332,7 +1334,7 @@ fn refile_executed(source: &FixMsg, derived: &mut FixMsg, base: String) {
 /// itself, then what `source` was read from.
 fn provenance(source: &FixMsg) -> Vec<crate::Uuid> {
     let mut sources = Vec::with_capacity(source.get_srcuuids().len() + 1);
-    sources.push(source.get_curruuid());
+    sources.push(source.get_uuid());
     sources.extend_from_slice(source.get_srcuuids());
     sources
 }
@@ -1574,7 +1576,7 @@ fn typed_group<'a>(
 /// message whose group cannot be told apart answers none.
 fn book_entries(message: &FixMsg) -> Vec<BookEntry> {
     let msgtype = message.header().msgtype();
-    let unix = message.get_currunix();
+    let unix = message.get_transunix();
     let mut root = Facts {
         request_id: message.lifted().mdreqid().map(SmolStr::new),
         ..Facts::default()
@@ -1892,7 +1894,7 @@ fn build_book_operation(
     entry: &BookEntry,
     carried: Option<Carried>,
 ) -> Option<MarketData> {
-    let unix = event.get_currunix();
+    let unix = event.get_transunix();
     let place = || {
         format!(
             "$.NoMDEntries(268)[{}] of the {msgtype:?} message at {unix}",
@@ -2030,7 +2032,7 @@ fn build_book_operation(
                 event.set_creaunix(Some(instant));
             }
         } else {
-            event.set_currunix(instant);
+            event.set_transunix(instant);
         }
         if msgtype != "W" && matches!(kind, Direct::Execution) {
             event.set_execunix(Some(instant), true);

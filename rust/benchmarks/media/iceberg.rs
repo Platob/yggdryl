@@ -2169,12 +2169,12 @@ mod s3 {
         assign_field_ids(&mut schema, 1).expect("the schema numbers");
         // There is no `timepartition` column: how a layout is cut is the
         // target's, so the table takes an `hour` transform over the
-        // `currunix` the row already carries rather than a materialized copy
+        // `transunix` the row already carries rather than a materialized copy
         // of that instant.
         let mut spec =
-            PartitionSpec::identity(1, &schema, &["currunix"]).expect("currunix is a column");
+            PartitionSpec::identity(1, &schema, &["transunix"]).expect("transunix is a column");
         spec.fields[0].transform = Transform::Hour;
-        spec.fields[0].name = "currunix_hour".into();
+        spec.fields[0].name = "transunix_hour".into();
         let fix_table = |label: &str| {
             IcebergTable::create(
                 folder(&store, &next(label)),

@@ -590,7 +590,7 @@ pub(super) fn rooted(
 ///
 /// // The shared columns open the row, the capture follows them, and the
 /// // message's own columns follow it.
-/// assert_eq!(held.fields()[0].name(), "curruuid");
+/// assert_eq!(held.fields()[0].name(), "uuid");
 /// let after = read.index_of("partyids").expect("the shared columns") + 1;
 /// assert_eq!(held.fields()[after].name(), "url");
 /// assert_eq!(held.index_of("msgtype"), read.index_of("msgtype").map(|at| at + 3));
@@ -2524,7 +2524,7 @@ impl super::FixMsg {
     ///
     /// // The same facts are reached through the semantic row.
     /// assert_eq!(held.by_tag(55)?, order.by_tag(55)?);
-    /// assert_eq!(held.get_currhashcode(), order.get_currhashcode());
+    /// assert_eq!(held.get_hashcode(), order.get_hashcode());
     /// // And the row it came from is its fixed point.
     /// assert_eq!(held.into_row(&schema)?, row);
     /// # Ok(())
@@ -2746,11 +2746,11 @@ impl super::FixMsg {
             schema.as_metadata().clone(),
         );
         let retains_identity = [
-            super::CURRUNIX_TAG_NAME.0,
+            super::TRANSUNIX_TAG_NAME.0,
             super::CREAUNIX_TAG_NAME.0,
-            super::CURRHASHCODE_TAG_NAME.0,
+            super::HASHCODE_TAG_NAME.0,
             super::CROSSHASHCODE_TAG_NAME.0,
-            super::CURRUUID_TAG_NAME.0,
+            super::UUID_TAG_NAME.0,
             super::CROSSUUID_TAG_NAME.0,
         ]
         .into_iter()

@@ -42,7 +42,7 @@
 //! its `events` cell a list, and a snapshot control where all three are
 //! null. A table may store a null list as an empty one, so a row whose
 //! `alive` holds no entry and whose `delta` and `events` hold none is the
-//! snapshot control where it states the `curruuid` a snapshot control
+//! snapshot control where it states the `uuid` a snapshot control
 //! derives, and a delta book where `delta` or `events` holds one and it
 //! states no snapshot instant - an event-only row, its `delta` empty and
 //! its `events` holding an execution, is a delta book and never a control;
@@ -129,8 +129,8 @@ impl MarketData {
     /// # fn main() -> yggdryl::Result<()> {
     /// let field = MarketData::field()?;
     /// assert_eq!(field.name(), "marketdata");
-    /// assert_eq!(field.fields()[0].name(), "curruuid");
-    /// assert_eq!(field.fields()[6].name(), "currunix");
+    /// assert_eq!(field.fields()[0].name(), "uuid");
+    /// assert_eq!(field.fields()[6].name(), "transunix");
     /// assert!(field.fields()[6].is_nullable());
     /// assert_eq!(field.fields()[15].name(), "marketdatakind");
     /// assert!(!field.fields()[15].is_nullable());
@@ -329,7 +329,7 @@ impl MarketData {
     /// `isincode` fills an absent `isin` security identifier and must be
     /// the one `securityids` states. Every identity a row states must be the one its rebuilt
     /// leaf derives, and an identity column that stands must state one - a
-    /// null `curruuid`, `crossuuid`, `currhashcode` or `crosshashcode` is
+    /// null `uuid`, `crossuuid`, `hashcode` or `crosshashcode` is
     /// refused - while an absent one states nothing; every other fact a
     /// row states must be the one that leaf settles on, and a null cell of
     /// one states nothing. The stream fuses after an error.
@@ -520,7 +520,7 @@ impl Column {
         if matches!(role, Role::Read | Role::ReadOperation)
             && matches!(
                 self,
-                Self::Element(ElementColumn::CurrHashCode | ElementColumn::CrossHashCode)
+                Self::Element(ElementColumn::HashCode | ElementColumn::CrossHashCode)
             )
         {
             field
@@ -542,15 +542,15 @@ impl Column {
     const fn storage(self) -> Storage {
         match self {
             Self::Element(column) => match column {
-                ElementColumn::CurrUuid | ElementColumn::CrossUuid => Storage::Uuid,
+                ElementColumn::Uuid | ElementColumn::CrossUuid => Storage::Uuid,
                 ElementColumn::CrossCode => Storage::Text,
-                ElementColumn::CurrHashCode | ElementColumn::CrossHashCode => Storage::UInt64,
+                ElementColumn::HashCode | ElementColumn::CrossHashCode => Storage::UInt64,
                 ElementColumn::SrcUuids => Storage::Uuids,
             },
             Self::Event(column) => match column {
-                EventColumn::CurrUnix
+                EventColumn::TransUnix
                 | EventColumn::CreaUnix
-                | EventColumn::RecdUnix
+                | EventColumn::SendUnix
                 | EventColumn::ExprUnix
                 | EventColumn::PrevUnix
                 | EventColumn::SnapUnix => Storage::Clock,
@@ -890,9 +890,9 @@ impl<'a> Row<'a> {
             };
         };
         match column {
-            EventColumn::CurrUnix => Some(event.get_currunix()),
+            EventColumn::TransUnix => Some(event.get_transunix()),
             EventColumn::CreaUnix => event.get_creaunix(),
-            EventColumn::RecdUnix => event.get_recdunix(),
+            EventColumn::SendUnix => event.get_sendunix(),
             EventColumn::ExprUnix => event.get_exprunix(),
             EventColumn::PrevUnix => event.get_prevunix(),
             EventColumn::SnapUnix => event.get_snapunix(),
@@ -902,7 +902,7 @@ impl<'a> Row<'a> {
 
     fn uuid(&self, column: Column) -> Option<Uuid> {
         match column {
-            Column::Element(ElementColumn::CurrUuid) => Some(self.element.get_curruuid()),
+            Column::Element(ElementColumn::Uuid) => Some(self.element.get_uuid()),
             Column::Element(ElementColumn::CrossUuid) => Some(self.element.get_crossuuid()),
             Column::Event(EventColumn::PrevUuid) => self.event?.get_prevuuid(),
             _ => None,
@@ -930,7 +930,7 @@ impl<'a> Row<'a> {
 
     fn u64(&self, column: Column) -> Option<u64> {
         match column {
-            Column::Element(ElementColumn::CurrHashCode) => Some(self.element.get_currhashcode()),
+            Column::Element(ElementColumn::HashCode) => Some(self.element.get_hashcode()),
             Column::Element(ElementColumn::CrossHashCode) => Some(self.element.get_crosshashcode()),
             Column::Event(EventColumn::SeqNum) => Some(self.event?.get_seqnum()),
             _ => None,
@@ -1432,7 +1432,7 @@ fn limits_array(column: Column, item: &FieldRef, rows: &[Row<'_>]) -> Result<Arr
         limits
             .iter()
             .flat_map(|limit| limit.entries)
-            .map(|entry| Some(entry.get_curruuid().into_bytes())),
+            .map(|entry| Some(entry.get_uuid().into_bytes())),
         UUID_WIDTH,
     )?;
     let uuids: ArrayRef = Arc::new(ListArray::try_new(
@@ -1817,18 +1817,18 @@ impl<T> Claim<T> {
 /// The identities a row states, each claimed where its column stands.
 #[derive(Clone, Copy)]
 struct IdentityClaims {
-    curruuid: Claim<Uuid>,
+    uuid: Claim<Uuid>,
     crossuuid: Claim<Uuid>,
-    currhashcode: Claim<u64>,
+    hashcode: Claim<u64>,
     crosshashcode: Claim<u64>,
 }
 
 impl Default for IdentityClaims {
     fn default() -> Self {
         Self {
-            curruuid: Claim::Absent,
+            uuid: Claim::Absent,
             crossuuid: Claim::Absent,
-            currhashcode: Claim::Absent,
+            hashcode: Claim::Absent,
             crosshashcode: Claim::Absent,
         }
     }
@@ -1837,9 +1837,9 @@ impl Default for IdentityClaims {
 impl IdentityClaims {
     fn from_element(element: &(impl Element + ?Sized)) -> Self {
         Self {
-            curruuid: Claim::Stated(element.get_curruuid()),
+            uuid: Claim::Stated(element.get_uuid()),
             crossuuid: Claim::Stated(element.get_crossuuid()),
-            currhashcode: Claim::Stated(element.get_currhashcode()),
+            hashcode: Claim::Stated(element.get_hashcode()),
             crosshashcode: Claim::Stated(element.get_crosshashcode()),
         }
     }
@@ -1865,14 +1865,9 @@ impl IdentityClaims {
                 _ => Ok(()),
             }
         }
-        check(self.curruuid, canonical.get_curruuid(), path, "curruuid")?;
+        check(self.uuid, canonical.get_uuid(), path, "uuid")?;
         check(self.crossuuid, canonical.get_crossuuid(), path, "crossuuid")?;
-        check(
-            self.currhashcode,
-            canonical.get_currhashcode(),
-            path,
-            "currhashcode",
-        )?;
+        check(self.hashcode, canonical.get_hashcode(), path, "hashcode")?;
         check(
             self.crosshashcode,
             canonical.get_crosshashcode(),
@@ -1883,9 +1878,9 @@ impl IdentityClaims {
 }
 
 fn normalize_identity<E: Element + ?Sized, C: Element + ?Sized>(value: &mut E, canonical: &C) {
-    value.set_curruuid(canonical.get_curruuid());
+    value.set_uuid(canonical.get_uuid());
     value.set_crossuuid(canonical.get_crossuuid());
-    value.set_currhashcode(canonical.get_currhashcode());
+    value.set_hashcode(canonical.get_hashcode());
     value.set_crosshashcode(canonical.get_crosshashcode());
 }
 
@@ -1901,7 +1896,7 @@ fn validate_market_facts<E: Market + PartialEq>(
     }
     first_market_difference(stated, canonical, path)?;
     Err(invalid(
-        at(path, "currhashcode"),
+        at(path, "hashcode"),
         "value differs from its canonical finalized value",
     ))
 }
@@ -1918,7 +1913,7 @@ fn validate_operation_facts<E: Market + Operation + PartialEq>(
     first_market_difference(stated, canonical, path)?;
     first_operation_difference(stated, canonical, path)?;
     Err(invalid(
-        at(path, "currhashcode"),
+        at(path, "hashcode"),
         "value differs from its canonical finalized value",
     ))
 }
@@ -2479,11 +2474,11 @@ impl Landed {
     }
 
     /// Root row `row` as the leaf its `marketdatakind` and its shape name:
-    /// dated where it states `currunix`, and a dated book a book or a
+    /// dated where it states `transunix`, and a dated book a book or a
     /// snapshot control by the lists it states ([`Self::dated_book`]).
     fn value(&self, row: usize, path: &Path<'_>) -> Result<MarketData> {
         let dated = self
-            .event_leaf(EventColumn::CurrUnix)
+            .event_leaf(EventColumn::TransUnix)
             .and_then(|leaf| leaf.clock(row))
             .is_some();
         match (self.category(row, path)?, dated) {
@@ -2507,12 +2502,12 @@ impl Landed {
                 .map(MarketData::from),
             (MarketDataKind::Trade, false) => Err(invalid(
                 at(path, MarketColumn::MarketDataKind.name()),
-                "expected a dated TRAD row, got currunix null",
+                "expected a dated TRAD row, got transunix null",
             )),
             (MarketDataKind::Trade, true) => self.trade(row, path).map(MarketData::from),
             (MarketDataKind::Book, false) => Err(invalid(
                 at(path, MarketColumn::MarketDataKind.name()),
-                "expected a dated BOOK row, got currunix null",
+                "expected a dated BOOK row, got transunix null",
             )),
             (MarketDataKind::Book, true) => self.dated_book(row, path),
             (other, _) => Err(invalid(
@@ -2603,7 +2598,7 @@ impl Landed {
     /// holds one and it states no snapshot instant, which every complete
     /// book a walk emits states, and a complete book where it states one;
     /// where neither holds any, it is the snapshot control where it states
-    /// the `curruuid` that control derives, which no book shares, and an
+    /// the `uuid` that control derives, which no book shares, and an
     /// empty complete book otherwise. An event-only row - `delta` empty,
     /// `events` holding an execution, no snapshot instant - is therefore a
     /// delta book and never a control. So a complete book holding no live
@@ -2641,8 +2636,8 @@ impl Landed {
             _ => {
                 let (control, claims) = self.snapshot_control(row, path)?;
                 let states_control = matches!(
-                    claims.curruuid,
-                    Claim::Stated(stated) if stated == control.get_curruuid()
+                    claims.uuid,
+                    Claim::Stated(stated) if stated == control.get_uuid()
                 );
                 if entries.is_none() || states_control {
                     return self
@@ -2655,12 +2650,12 @@ impl Landed {
     }
 
     /// The instant a dated leaf requires.
-    fn currunix(&self, row: usize, path: &Path<'_>) -> Result<i64> {
-        self.event_leaf(EventColumn::CurrUnix)
+    fn transunix(&self, row: usize, path: &Path<'_>) -> Result<i64> {
+        self.event_leaf(EventColumn::TransUnix)
             .and_then(|leaf| leaf.clock(row))
             .ok_or_else(|| {
                 invalid(
-                    at(path, EventColumn::CurrUnix.name()),
+                    at(path, EventColumn::TransUnix.name()),
                     "expected the instant a dated leaf happened at, got null",
                 )
             })
@@ -2713,7 +2708,7 @@ impl Landed {
         path: &Path<'_>,
     ) -> Result<IdentityClaims> {
         let mut claims = IdentityClaims::default();
-        target.set_currunix(self.currunix(row, path)?);
+        target.set_transunix(self.transunix(row, path)?);
         self.read_event(row, target, &mut claims);
         self.read_market(row, target, path, Lift::All)?;
         self.read_crosscode(row, target);
@@ -2766,7 +2761,7 @@ impl Landed {
         let mut event = MarketEventFacts::default();
         event.set_marketdatakind(crate::MarketDataKind::Book);
         let mut claims = IdentityClaims::default();
-        event.set_currunix(self.currunix(row, path)?);
+        event.set_transunix(self.transunix(row, path)?);
         self.read_event(row, &mut event, &mut claims);
         self.read_market(row, &mut event, path, Lift::Security)?;
         self.read_crosscode(row, &mut event);
@@ -2799,7 +2794,7 @@ impl Landed {
         let mut event = MarketEventFacts::default();
         event.set_marketdatakind(crate::MarketDataKind::Book);
         let mut claims = IdentityClaims::default();
-        event.set_currunix(self.currunix(row, path)?);
+        event.set_transunix(self.transunix(row, path)?);
         self.read_event(row, &mut event, &mut claims);
         self.read_market(row, &mut event, path, Lift::Security)?;
         self.read_crosscode(row, &mut event);
@@ -3046,12 +3041,12 @@ impl Landed {
                 continue;
             };
             match column {
-                ElementColumn::CurrUuid => {
+                ElementColumn::Uuid => {
                     let uuid = leaf.uuid(row);
                     if let Some(uuid) = uuid {
-                        target.set_curruuid(uuid);
+                        target.set_uuid(uuid);
                     }
-                    claims.curruuid = Claim::of(uuid);
+                    claims.uuid = Claim::of(uuid);
                 }
                 ElementColumn::CrossUuid => {
                     let uuid = leaf.uuid(row);
@@ -3063,12 +3058,12 @@ impl Landed {
                 // Read last, by `read_crosscode`, once its prefix's facts
                 // stand.
                 ElementColumn::CrossCode => {}
-                ElementColumn::CurrHashCode => {
+                ElementColumn::HashCode => {
                     let code = leaf.u64(row);
                     if let Some(code) = code {
-                        target.set_currhashcode(code);
+                        target.set_hashcode(code);
                     }
-                    claims.currhashcode = Claim::of(code);
+                    claims.hashcode = Claim::of(code);
                 }
                 ElementColumn::CrossHashCode => {
                     let code = leaf.u64(row);
@@ -3118,7 +3113,7 @@ impl Landed {
             };
             match column {
                 EventColumn::CreaUnix => target.set_creaunix(leaf.clock(row)),
-                EventColumn::RecdUnix => target.set_recdunix(leaf.clock(row)),
+                EventColumn::SendUnix => target.set_sendunix(leaf.clock(row)),
                 EventColumn::ExprUnix => target.set_exprunix(leaf.clock(row)),
                 EventColumn::PrevUnix => target.set_prevunix(leaf.clock(row)),
                 EventColumn::SnapUnix => target.set_snapunix(leaf.clock(row)),
@@ -3130,7 +3125,7 @@ impl Landed {
                     }
                 }
                 // The instant is the caller's to read first.
-                EventColumn::CurrUnix => {}
+                EventColumn::TransUnix => {}
             }
         }
     }
@@ -3376,9 +3371,9 @@ impl Landed {
                 _ => Ok(()),
             };
             match column {
-                EventColumn::CurrUnix => clock(Some(canonical.get_currunix()))?,
+                EventColumn::TransUnix => clock(Some(canonical.get_transunix()))?,
                 EventColumn::CreaUnix => clock(canonical.get_creaunix())?,
-                EventColumn::RecdUnix => clock(canonical.get_recdunix())?,
+                EventColumn::SendUnix => clock(canonical.get_sendunix())?,
                 EventColumn::ExprUnix => clock(canonical.get_exprunix())?,
                 EventColumn::PrevUnix => clock(canonical.get_prevunix())?,
                 EventColumn::SnapUnix => clock(canonical.get_snapunix())?,

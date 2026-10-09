@@ -183,7 +183,7 @@ test('candles from delta books equal candles from the books rebuilt whole', () =
   assert.ok(deltaBooks.every((book) => !book.isComplete))
   const whole = []
   for (const book of deltaBooks) {
-    const previous = whole.at(-1) ?? graph.BookEvent.keyed(book.currunix, 'ACME')
+    const previous = whole.at(-1) ?? graph.BookEvent.keyed(book.transunix, 'ACME')
     whole.push(book.withPrevious(previous))
   }
   assert.ok(whole.every((book) => book.isComplete))
@@ -312,11 +312,11 @@ test('an unsorted stream is refused at the book and the walk fuses', () => {
   const walk = new graph.CandleIterator(unsorted, '1m')
   assert.throws(
     () => walk.next(),
-    /^Error: invalid record value at \$\.book\.currunix: expected an instant at or after 2000, got 1000$/,
+    /^Error: invalid record value at \$\.book\.transunix: expected an instant at or after 2000, got 1000$/,
   )
   assert.deepEqual(walk.next(), { value: undefined, done: true })
   assert.deepEqual(walk.next(), { value: undefined, done: true })
-  assert.throws(() => graph.candles(unsorted, '1m'), /\$\.book\.currunix/)
+  assert.throws(() => graph.candles(unsorted, '1m'), /\$\.book\.transunix/)
   // An empty stream yields no candle.
   assert.deepEqual(graph.candles([], '1m'), [])
   assert.deepEqual([...new graph.CandleIterator(new Set(), '1h')], [])

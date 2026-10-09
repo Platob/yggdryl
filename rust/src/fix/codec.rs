@@ -540,7 +540,7 @@ pub struct FixCodec {
 /// and none where the line has none - an instant no UUIDv7 holds is the nil
 /// identity, and nil names no element.
 fn source_of(line: &TextLine) -> Option<crate::Uuid> {
-    Some(line.get_curruuid()).filter(|uuid| !uuid.is_nil())
+    Some(line.get_uuid()).filter(|uuid| !uuid.is_nil())
 }
 
 /// One line's bytes as the page its messages are ranges of, or the refusal
@@ -580,7 +580,7 @@ where
 /// A stream of messages, each taking its [place](crate::graph::Event::get_seqnum)
 /// among the messages of its instant in the order the stream hands them
 /// over: what every parse door yields, so a run of messages sharing one
-/// `currunix` counts up from zero across the rows it spans, and a message
+/// `transunix` counts up from zero across the rows it spans, and a message
 /// split off another names it by the identity its place gave it. An error
 /// item passes through and places nothing.
 pub(super) struct Placed<I> {
@@ -665,7 +665,7 @@ impl FixCodec {
     /// caller states none: one minute of event time.
     ///
     /// An identity is an instant to the millisecond and what the message
-    /// states, so the same `curruuid` read again is the same event read
+    /// states, so the same `uuid` read again is the same event read
     /// again - one message a bridge logged at another hop, reaching the walk
     /// after the chain had already moved past it, or a restatement the walk
     /// yields in the place of the one it restates. A capture's hops land
@@ -751,7 +751,7 @@ impl FixCodec {
 
     /// The exact nanosecond/UTC clock used when neither message nor carrier
     /// states SendingTime - a carrier being a row cell reaching tag 52, or
-    /// the `currunix` of the [`TextLine`] the message was read out of.
+    /// the `transunix` of the [`TextLine`] the message was read out of.
     /// `None` reads UTC now lazily at fresh intake.
     #[must_use]
     pub const fn default_sending_time(&self) -> Option<&Scalar> {
@@ -1119,7 +1119,7 @@ impl FixCodec {
 
     /// States whether the messages [`Self::lifecycle`] is handed arrive in
     /// instant order - a table read hour partition by hour partition, sorted
-    /// by `currunix`. Then the walk reads them as they come and holds one
+    /// by `transunix`. Then the walk reads them as they come and holds one
     /// epoch hour of them at a time, merging a delivery's hops and sorting
     /// within the hour exactly as a whole capture is sorted, and walks an
     /// hour once the stream has read a message two hours past it; a message
@@ -1170,9 +1170,9 @@ impl FixCodec {
 
     /// Sets how long, in milliseconds of event time, [`Self::lifecycle`]
     /// remembers the identity of a message it yielded, so a message under
-    /// that `curruuid` is yielded once.
+    /// that `uuid` is yielded once.
     ///
-    /// The window is measured on `currunix`: an identity stays remembered
+    /// The window is measured on `transunix`: an identity stays remembered
     /// until the walk has yielded a message more than this many
     /// milliseconds after it, and a later message under a remembered
     /// identity is dropped - adjacent or not, a restated twin or a hop
@@ -1242,7 +1242,7 @@ impl FixCodec {
         self.pluginside
     }
 
-    /// The deduplication window as the nanosecond span a `currunix` is
+    /// The deduplication window as the nanosecond span a `transunix` is
     /// compared over: zero where there is none, saturating rather than
     /// wrapping.
     pub(super) const fn dedup_window_ns(&self) -> i64 {
@@ -1526,7 +1526,7 @@ impl FixCodec {
     /// assert_eq!(*report.get_state(), State::PartiallyFilled);
     /// assert_eq!(execution.marketdatakind(), MarketDataKind::Execution);
     /// assert_eq!(*execution.get_state(), State::Filled);
-    /// assert!(execution.get_srcuuids().contains(&report.get_curruuid()));
+    /// assert!(execution.get_srcuuids().contains(&report.get_uuid()));
     /// # Ok(())
     /// # }
     /// ```
@@ -1681,12 +1681,12 @@ impl FixCodec {
     /// # The line is the source, and its own fields reach no message
     ///
     /// Every message the line carries states the line's identity -
-    /// [`Element::get_curruuid`](crate::graph::Element::get_curruuid), which
+    /// [`Element::get_uuid`](crate::graph::Element::get_uuid), which
     /// the line derives from its instant and its bytes - as its one source,
     /// [`Element::get_srcuuids`](crate::graph::Element::get_srcuuids): the
     /// same line parsed again states the same source, and a message parsed
-    /// from raw bytes states none. The line's `mtime` - its `currunix` -
-    /// fills the message's `recdunix` as the carrier's recording clock, and
+    /// from raw bytes states none. The line's `mtime` - its `transunix` -
+    /// fills the message's `sendunix` as the carrier's wire clock, and
     /// dates a message stating no `SendingTime(52)` that no capture reaching
     /// tag 52 dated either: it is the sending clock such a message is read
     /// against, ahead of [`Self::default_sending_time`] and of now, and is
@@ -1701,7 +1701,7 @@ impl FixCodec {
     /// [`Self::parse_text_arrow_reader`] does with the columns the batch
     /// already carries.
     ///
-    /// A line whose `mtime` capture does not read states no recording clock,
+    /// A line whose `mtime` capture does not read states no wire clock,
     /// beside a warning naming the capture; a payload that does not parse is
     /// the empty message the line still is, beside a warning naming what
     /// would not parse.
@@ -1740,11 +1740,11 @@ impl FixCodec {
                 value,
             })
             .collect();
-        // The recording clock is the carrier's statement about the line,
+        // The wire clock is the carrier's statement about the line,
         // never the message's: one that does not read is left unstated.
-        let recdunix = line.mtime().unwrap_or_else(|error| {
+        let sendunix = line.mtime().unwrap_or_else(|error| {
             warned!(
-                "FIX recording clock defaulted to none: the line's mtime capture does not read",
+                "FIX wire clock defaulted to none: the line's mtime capture does not read",
                 super::messages::refused(&error),
                 "{error}"
             );
@@ -1756,7 +1756,7 @@ impl FixCodec {
             direction: None,
             direction_pin: None,
             source: source_of(line),
-            recdunix,
+            sendunix,
             originator: None,
             conversation: None,
         };
@@ -1824,8 +1824,8 @@ impl FixCodec {
     ///
     /// The payload is the line: it is read into a [`TextLine`] dated by the
     /// row's own `mtime`, so what the messages state as their source is the
-    /// identity the line door states for the same line, their `recdunix` is
-    /// that recording clock - and the sending clock of a message stating
+    /// identity the line door states for the same line, their `sendunix` is
+    /// that wire clock - and the sending clock of a message stating
     /// none, as the line door reads it - and the text the codec reads is the
     /// text a line is. A row's content can never fail
     /// the batch it arrives in: a payload nobody could read is a row
@@ -1858,7 +1858,7 @@ impl FixCodec {
         // identity its bytes and its instant derive.
         let extras = RowExtras {
             source: extras.source.or_else(|| source_of(&line)),
-            recdunix: mtime,
+            sendunix: mtime,
             ..extras
         };
         FixMessages::from_result(self.parse_page_or_empty(line.body_bytes(), extras))
@@ -2663,12 +2663,12 @@ impl FixCodec {
     /// `(msgtype, msgsessionid, msgctxid, msgseqnum)` - one
     /// [`FixCapture::msgsesseventid`](super::FixCapture::msgsesseventid) -
     /// are fully merged before the walk rather than stated as successive
-    /// events. The observation with the latest `recdunix` is the reference
-    /// message, a stated one leading an unstated one and the later `currunix`
+    /// events. The observation with the latest `sendunix` is the reference
+    /// message, a stated one leading an unstated one and the later `transunix`
     /// closing a tie; it is chosen once over every observation of the event,
-    /// because a merge keeps the earliest recording either side knows and
+    /// because a merge keeps the earliest `sendunix` either side knows and
     /// would rank what it folded by that. The graph merge unions the other
-    /// observations into it, while `execunix` and `recdunix` retain the
+    /// observations into it, while `execunix` and `sendunix` retain the
     /// earliest precise facts, and the reference source leads provenance
     /// order. An incomplete key proves no equivalence.
     ///
@@ -2694,8 +2694,8 @@ impl FixCodec {
     ///
     /// What the walk yields is yielded once within
     /// [`Self::dedup_window_ms`] of event time, one minute unless the codec
-    /// says otherwise: a message whose `curruuid` the walk already yielded,
-    /// no more than the window before the latest `currunix` it yielded, is
+    /// says otherwise: a message whose `uuid` the walk already yielded,
+    /// no more than the window before the latest `transunix` it yielded, is
     /// dropped - a twin restating the live message, a hop logged again after
     /// its chain moved on - while the walk still reads it, so the chain keeps
     /// what it said. A grid view is exempt, and a nil identity never repeats.
@@ -2830,18 +2830,18 @@ impl FixCodec {
             }
         }
         // The carrier clock is a fallback, applied after the row's explicit
-        // cells and after the message itself: either can state `recdunix`
+        // cells and after the message itself: either can state `sendunix`
         // directly, and the builder never overwrites a stated value.
-        if let Some(unix) = extras.recdunix {
+        if let Some(unix) = extras.sendunix {
             let field = self
                 .registry
-                .get_field_by_tag(super::RECDUNIX_TAG_NAME.0)
-                .ok_or_else(|| Error::absent("FIX crate field", super::RECDUNIX_TAG_NAME.0))?;
+                .get_field_by_tag(super::SENDUNIX_TAG_NAME.0)
+                .ok_or_else(|| Error::absent("FIX crate field", super::SENDUNIX_TAG_NAME.0))?;
             let value =
                 Scalar::datetime64(unix, crate::TimeUnit::Nanosecond, crate::Timezone::UTC)?;
             builder.fill(&Fill {
                 field,
-                tag: super::RECDUNIX_TAG_NAME.0,
+                tag: super::SENDUNIX_TAG_NAME.0,
                 value: &value,
             });
         }
@@ -2909,8 +2909,8 @@ impl FixCodec {
             .and_then(|at| built.value.get(at))
             .is_some_and(|value| !value.is_null());
         // A message stating no sending clock is dated by its carrier: a row
-        // cell reaching `SendingTime(52)`, else the line's own `currunix` -
-        // the instant the line was recorded at, which is nearer the send
+        // cell reaching `SendingTime(52)`, else the line's own `transunix` -
+        // the instant the line was written at, which is nearer the send
         // than any pin - and only then by the codec's default or now.
         let carrier = if stated {
             None
@@ -2927,7 +2927,7 @@ impl FixCodec {
             // The epoch is silence here as on the batch door, where a line
             // nothing dated reads as the epoch: an undated carrier dates no
             // message, on either door.
-            match (filled, extras.recdunix.filter(|unix| *unix != 0)) {
+            match (filled, extras.sendunix.filter(|unix| *unix != 0)) {
                 (Some(value), _) => Some(value),
                 (None, Some(unix)) => Some(Scalar::datetime64(
                     unix,
@@ -3818,7 +3818,7 @@ pub mod internals {
     }
 
     /// One codec's lifecycle deduplication window as the nanosecond span a
-    /// `currunix` is compared over.
+    /// `transunix` is compared over.
     #[must_use]
     pub const fn dedup_window_ns(codec: &FixCodec) -> i64 {
         codec.dedup_window_ns()

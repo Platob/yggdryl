@@ -116,14 +116,14 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    `lifecycle_arrow_reader` and `market_data` collect the whole finite
    capture (they sort by event time), so feed them one session or day, not an
    unbounded stream. A source already in instant order - a table read hour
-   partition by hour partition, sorted by `currunix` - pins
+   partition by hour partition, sorted by `transunix` - pins
    `sorted_lifecycle` (`with_sorted_lifecycle(true)`, `sortedLifecycle`):
    `lifecycle` then holds one epoch hour at a time, walking an hour once a
    message two hours past it is read, and answers the same walk. Parse and
    project in the parallel doors; chain once. The walk yields each
-   `curruuid` once within `dedup_window_ms` of event time (one minute by
+   `uuid` once within `dedup_window_ms` of event time (one minute by
    default; `None`/`null`/`0` yields every restated twin too), so a
-   consumer keyed by `curruuid` needs no dedup of its own. Join a chain on
+   consumer keyed by `uuid` needs no dedup of its own. Join a chain on
    `crossuuid`: every message of one chain carries the chain's first
    `crosscode` - a replace under a new `ClOrdID` keeps it - so never re-key by
    an identifier yourself. A message citing two live chains is joined to
@@ -149,7 +149,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    carried side), so hand walked messages, not rows.
 7. Pin `default_sending_time` for reproducible reads. A frame stating no
    `SendingTime(52)` whose line carries no clock is dated by one UTC-now read,
-   and the clock feeds `curruuid`, as does a `SendingTime(52)` naming no
+   and the clock feeds `uuid`, as does a `SendingTime(52)` naming no
    instant; a pinned instant (or a row-header `mtime` capture) makes two reads
    identical.
 8. A column is found by name, never position: `schema.index_of("msgtype")`, or
@@ -159,7 +159,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 9. A capture's own columns (`url`, `rownum`, `loglevel`, a `thread` of your own...) follow the
    element, event, market and operation columns every row opens with; a column named after a FIX field fills that field where the frame
    stated none; `beginstring` and `msgdirection` columns are per-row
-   parameters. An `mtime` capture dates the line - its messages' `recdunix`
+   parameters. An `mtime` capture dates the line - its messages' `sendunix`
    and the sending clock of any stating no `SendingTime(52)` - read under the
    text options' `timezone`; a `timestamp` capture of your own dates nothing.
    `ULBRIDGE_ROWHEADER` captures `mtime`, so it dates every line it matches
@@ -237,7 +237,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     group as null or as at least one occurrence, so a stated zero rides the
     residual `fixentries` record, and `[]` read back where the row held null -
     what a table such as PyIceberg does - states nothing, so a row read back
-    keeps its `currhashcode` and folds with the delivery it was. A miscount
+    keeps its `hashcode` and folds with the delivery it was. A miscount
     (`453=2`, one occurrence) is no anomaly: the group holds what arrived and
     re-emits `453=1`.
 13. The derived fills and the retired-field restatements are native code: a
@@ -259,7 +259,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 ## Pitfalls
 
 - An Iceberg table widens the two `uint64` digests to `decimal(20, 0)` unless
-  the fixed row's `currhashcode` and `crosshashcode` columns state
+  the fixed row's `hashcode` and `crosshashcode` columns state
   `FIELD:representation=bits` before `into_scheme_compat`: then each is a
   `long` holding the digest's bits, written through the value door and read
   back by `messages` as the digest. A row's `int64` digest cell is read as

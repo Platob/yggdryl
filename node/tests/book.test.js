@@ -798,7 +798,7 @@ test('the summary names a book by its ticker else its ISIN, and flags one the se
   const node = new FakeElement(document, 'div')
   document.body.append(node)
   const book = {
-    currunix: '2026-08-14T12:46:59.999999999Z',
+    transunix: '2026-08-14T12:46:59.999999999Z',
     ticker: 'HOLN',
     isincode: 'CH0012214059',
     crosscode: '3:0:CH0012214059',
@@ -921,7 +921,7 @@ test('downloadLink points at the route and states the coding; the route names th
   assert.deepEqual(Object.keys(AUDIT_TYPES), ['.csv', '.csv.gz', '.csv.zst'])
   assert.deepEqual(
     EVENT_COLUMNS.map((column) => column.key),
-    ['currunix', 'role', 'marketdatakind', 'side', 'price', 'quantity', 'state', 'crosscode', 'curruuid', 'prevuuid'],
+    ['transunix', 'role', 'marketdatakind', 'side', 'price', 'quantity', 'state', 'crosscode', 'uuid', 'prevuuid'],
   )
 })
 
@@ -1241,9 +1241,9 @@ const SERVICE = Object.freeze({
   'api/book': (request) => {
     const listed = SERVICE['api/tickers'].find((entry) => entry.key === request.params.ticker)
     const isincode = /^[A-Z]{2}[0-9A-Z]{9}[0-9]$/.test(request.params.ticker) ? request.params.ticker : null
-    return { currunix: request.params.at, ticker: listed?.ticker ?? null, isincode, crosscode: listed?.crosscode ?? null, bestbid: '72.25', bestask: '72.35', complete: true, alive: 2, delta: 1, events: 0, bidlimits: [], asklimits: [] }
+    return { transunix: request.params.at, ticker: listed?.ticker ?? null, isincode, crosscode: listed?.crosscode ?? null, bestbid: '72.25', bestask: '72.35', complete: true, alive: 2, delta: 1, events: 0, bidlimits: [], asklimits: [] }
   },
-  'api/events': (request) => ({ rows: [{ currunix: request.params.from, role: 'alive', side: request.params.side === 'bid' ? 'BUYS' : 'SELL', price: '72.25', crosscode: `${request.params.ticker}-${request.params.side}` }], truncated: false }),
+  'api/events': (request) => ({ rows: [{ transunix: request.params.from, role: 'alive', side: request.params.side === 'bid' ? 'BUYS' : 'SELL', price: '72.25', crosscode: `${request.params.ticker}-${request.params.side}` }], truncated: false }),
 })
 
 /**

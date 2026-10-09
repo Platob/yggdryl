@@ -56,8 +56,8 @@ macro_rules! element_getters {
         graph_methods!($class, $name; [$($rest),*]; { $($body)*
             /// The element's own identity, as the uuid `Scalar` it is.
             #[getter]
-            fn curruuid(&self) -> $crate::scalar::PyScalar {
-                $crate::graph::uuid_scalar(::yggdryl::graph::Element::get_curruuid(&self.inner))
+            fn uuid(&self) -> $crate::scalar::PyScalar {
+                $crate::graph::uuid_scalar(::yggdryl::graph::Element::get_uuid(&self.inner))
             }
 
             /// The identity every statement of one element shares: derived
@@ -81,8 +81,8 @@ macro_rules! element_getters {
 
             /// The XXH3-64 code the element's content digests to.
             #[getter]
-            fn currhashcode(&self) -> u64 {
-                ::yggdryl::graph::Element::get_currhashcode(&self.inner)
+            fn hashcode(&self) -> u64 {
+                ::yggdryl::graph::Element::get_hashcode(&self.inner)
             }
 
             /// The XXH3-64 of the cross code, zero where it names none.
@@ -111,10 +111,11 @@ macro_rules! element_getters {
 macro_rules! event_getters {
     ($class:ident, $name:literal; [$($rest:ident),*]; { $($body:tt)* }) => {
         graph_methods!($class, $name; [$($rest),*]; { $($body)*
-            /// When this happened: nanoseconds since the Unix epoch, UTC.
+            /// When the operation happened - the transaction instant:
+            /// nanoseconds since the Unix epoch, UTC.
             #[getter]
-            fn currunix(&self) -> i64 {
-                ::yggdryl::graph::Event::get_currunix(&self.inner)
+            fn transunix(&self) -> i64 {
+                ::yggdryl::graph::Event::get_transunix(&self.inner)
             }
 
             /// The lifecycle state reached, as the `State` member it is.
@@ -137,10 +138,11 @@ macro_rules! event_getters {
                 ::yggdryl::graph::Event::get_creaunix(&self.inner)
             }
 
-            /// When this was recorded, where stated.
+            /// When the message crossed the wire - the technical clock -
+            /// where stated.
             #[getter]
-            fn recdunix(&self) -> Option<i64> {
-                ::yggdryl::graph::Event::get_recdunix(&self.inner)
+            fn sendunix(&self) -> Option<i64> {
+                ::yggdryl::graph::Event::get_sendunix(&self.inner)
             }
 
             /// When this expires, where it has an expiry.
@@ -543,7 +545,7 @@ macro_rules! common_verbs {
             /// Hashes by the code the content digests to, which equal values
             /// share.
             fn __hash__(&self) -> isize {
-                $crate::python_hash(::yggdryl::graph::Element::get_currhashcode(&self.inner))
+                $crate::python_hash(::yggdryl::graph::Element::get_hashcode(&self.inner))
             }
 
             fn __copy__(&self) -> Self {
@@ -599,7 +601,7 @@ macro_rules! element_repr {
                 format!(
                     "{}({}, crosscode={:?})",
                     $name,
-                    ::yggdryl::graph::Element::get_curruuid(&self.inner),
+                    ::yggdryl::graph::Element::get_uuid(&self.inner),
                     ::yggdryl::graph::Element::get_crosscode(&self.inner),
                 )
             }
@@ -620,10 +622,10 @@ macro_rules! event_verbs {
 
             fn __repr__(&self) -> String {
                 format!(
-                    "{}({}, currunix={}, crosscode={:?})",
+                    "{}({}, transunix={}, crosscode={:?})",
                     $name,
-                    ::yggdryl::graph::Element::get_curruuid(&self.inner),
-                    ::yggdryl::graph::Event::get_currunix(&self.inner),
+                    ::yggdryl::graph::Element::get_uuid(&self.inner),
+                    ::yggdryl::graph::Event::get_transunix(&self.inner),
                     ::yggdryl::graph::Element::get_crosscode(&self.inner),
                 )
             }
@@ -792,7 +794,7 @@ impl Fact {
 
     /// The refusal of a fact the leaf does not take from a caller: an
     /// identity, which `finalize` derives; the category, which the leaf is;
-    /// `currunix` on an event, stated once as the constructor's first
+    /// `transunix` on an event, stated once as the constructor's first
     /// argument; and on an undated element every event fact.
     fn refuse_unstated(
         self,
@@ -813,8 +815,8 @@ impl Fact {
             Self::Event(_) if undated => Err(format!(
                 "{owner} states no fact {name:?}: an undated element has no clock, state or chain"
             )),
-            Self::Event(EventColumn::CurrUnix) => Err(format!(
-                "{owner} states currunix once, as its first argument"
+            Self::Event(EventColumn::TransUnix) => Err(format!(
+                "{owner} states transunix once, as its first argument"
             )),
             Self::Event(_) => Ok(()),
         }
@@ -845,17 +847,17 @@ impl Fact {
     }
 }
 
-/// An operation of kind `K` at `currunix` with every named fact in `facts`
+/// An operation of kind `K` at `transunix` with every named fact in `facts`
 /// stated through its column, not yet finalized. A value given as the
 /// literal `Ellipsis` is skipped and `None` clears; `undated` refuses the
 /// event facts an undated element does not state, naming the fact.
 pub(crate) fn stated_operation<K: CoreOperationKind>(
     owner: &str,
-    currunix: i64,
+    transunix: i64,
     facts: Option<&Bound<'_, PyDict>>,
     undated: bool,
 ) -> PyResult<OperationEvent<K>> {
-    let mut leaf = OperationEvent::<K>::at(currunix);
+    let mut leaf = OperationEvent::<K>::at(transunix);
     let Some(facts) = facts else {
         return Ok(leaf);
     };

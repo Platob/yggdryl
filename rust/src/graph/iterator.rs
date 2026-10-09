@@ -44,7 +44,7 @@ mod sealed {
         event.get_snapunix().is_some()
             || (*event.get_state() == State::Expired
                 && event.get_prevuuid().is_some()
-                && event.get_exprunix() == Some(event.get_currunix()))
+                && event.get_exprunix() == Some(event.get_transunix()))
     }
 
     /// What a walk needs of an element beyond [`Element`]: sealed, so only
@@ -54,13 +54,13 @@ mod sealed {
     /// FIX message, and is not walked otherwise, so any other variant is
     /// yielded as it came and never enters the live map.
     pub trait Walked: Element + Clone {
-        /// [`Event::get_currunix`]; `None` for an element that states no
+        /// [`Event::get_transunix`]; `None` for an element that states no
         /// instant, which the walk yields where it reads it.
-        fn walked_currunix(&self) -> Option<i64>;
+        fn walked_transunix(&self) -> Option<i64>;
         /// The order a walk opened over unsorted elements sorts them by.
         fn walked_order(&self, other: &Self) -> std::cmp::Ordering;
-        /// [`Event::set_currunix`].
-        fn walked_set_currunix(&mut self, unix: i64);
+        /// [`Event::set_transunix`].
+        fn walked_set_transunix(&mut self, unix: i64);
         /// [`Event::get_state`].
         fn walked_state(&self) -> Option<&State>;
         /// [`Event::set_state`].
@@ -73,8 +73,8 @@ mod sealed {
         fn walked_exprunix(&self) -> Option<i64>;
         /// [`Market::set_execunix`](super::super::Market::set_execunix).
         fn walked_set_execunix(&mut self, unix: Option<i64>);
-        /// [`Event::set_recdunix`].
-        fn walked_set_recdunix(&mut self, unix: Option<i64>);
+        /// [`Event::set_sendunix`].
+        fn walked_set_sendunix(&mut self, unix: Option<i64>);
         /// [`Event::get_snapunix`].
         fn walked_snapunix(&self) -> Option<i64>;
         /// [`Event::set_snapunix`].
@@ -148,14 +148,14 @@ mod sealed {
     }
 
     impl<E: Event + Operation + Clone> Walked for E {
-        fn walked_currunix(&self) -> Option<i64> {
-            Some(self.get_currunix())
+        fn walked_transunix(&self) -> Option<i64> {
+            Some(self.get_transunix())
         }
         fn walked_order(&self, other: &Self) -> std::cmp::Ordering {
             super::order(self, other)
         }
-        fn walked_set_currunix(&mut self, unix: i64) {
-            self.set_currunix(unix);
+        fn walked_set_transunix(&mut self, unix: i64) {
+            self.set_transunix(unix);
         }
         fn walked_state(&self) -> Option<&State> {
             Some(self.get_state())
@@ -175,8 +175,8 @@ mod sealed {
         fn walked_set_execunix(&mut self, unix: Option<i64>) {
             self.set_execunix(unix, true);
         }
-        fn walked_set_recdunix(&mut self, unix: Option<i64>) {
-            self.set_recdunix(unix);
+        fn walked_set_sendunix(&mut self, unix: Option<i64>) {
+            self.set_sendunix(unix);
         }
         fn walked_snapunix(&self) -> Option<i64> {
             self.get_snapunix()
@@ -208,7 +208,7 @@ mod sealed {
             self.restating(live)
         }
         fn walked_restamp(&mut self) {
-            let code = self.get_currhashcode();
+            let code = self.get_hashcode();
             self.finalized(code);
         }
         fn walked_fill_execution(&mut self) {
@@ -235,18 +235,18 @@ mod sealed {
     }
 
     impl Walked for MarketData {
-        fn walked_currunix(&self) -> Option<i64> {
-            self.as_event().map(|event| event.get_currunix())
+        fn walked_transunix(&self) -> Option<i64> {
+            self.as_event().map(|event| event.get_transunix())
         }
         /// By instant, an undated value first: a total order, where
         /// [`Element::is_after`] states none between an undated value and
         /// any other.
         fn walked_order(&self, other: &Self) -> std::cmp::Ordering {
-            self.walked_currunix().cmp(&other.walked_currunix())
+            self.walked_transunix().cmp(&other.walked_transunix())
         }
-        fn walked_set_currunix(&mut self, unix: i64) {
+        fn walked_set_transunix(&mut self, unix: i64) {
             if let Some(operation) = self.as_event_operation_mut() {
-                operation.set_currunix(unix);
+                operation.set_transunix(unix);
             }
         }
         fn walked_state(&self) -> Option<&State> {
@@ -276,9 +276,9 @@ mod sealed {
                 operation.set_execunix(unix, true);
             }
         }
-        fn walked_set_recdunix(&mut self, unix: Option<i64>) {
+        fn walked_set_sendunix(&mut self, unix: Option<i64>) {
             if let Some(operation) = self.as_event_operation_mut() {
-                operation.set_recdunix(unix);
+                operation.set_sendunix(unix);
             }
         }
         fn walked_snapunix(&self) -> Option<i64> {
@@ -347,7 +347,7 @@ mod sealed {
         fn walked_restamp(&mut self) {
             match self.as_event_operation_mut() {
                 Some(operation) => {
-                    let code = operation.get_currhashcode();
+                    let code = operation.get_hashcode();
                     operation.finalized(code);
                 }
                 None => self.finalize(),
@@ -495,7 +495,7 @@ enum Source<E, I> {
 /// Given a grid - [`Self::with_snapshot_ns`], a step in nanoseconds aligned
 /// on the epoch - the walk also yields an owned view of every living identity
 /// at each crossed grid instant. A view is the live event as of that
-/// instant: dated at it - [`Event::get_currunix`](super::Event::get_currunix) and
+/// instant: dated at it - [`Event::get_transunix`](super::Event::get_transunix) and
 /// [`Event::get_snapunix`](super::Event::get_snapunix) both - so it has the
 /// identity that instant derives, a row of its own wherever rows are keyed by
 /// identity within a time, while its content, its place and its
@@ -540,18 +540,18 @@ enum Source<E, I> {
 /// // Unsorted, the walk sorts by the elements' own order first.
 /// let mut walk = EventIterator::new(arrived, false);
 /// let first = walk.next().expect("the earliest");
-/// assert_eq!((first.get_currunix(), first.get_seqnum(), first.get_prevuuid()), (10, 0, None));
+/// assert_eq!((first.get_transunix(), first.get_seqnum(), first.get_prevuuid()), (10, 0, None));
 /// let other = walk.next().expect("the other order's");
 /// assert_eq!((other.get_crosscode(), other.get_seqnum()), ("10:0:O-900", 0));
 /// let second = walk.next().expect("the partial fill");
-/// assert_eq!((second.get_seqnum(), second.get_prevuuid()), (0, Some(first.get_curruuid())));
+/// assert_eq!((second.get_seqnum(), second.get_prevuuid()), (0, Some(first.get_uuid())));
 /// let filled = walk.next().expect("the fill");
-/// assert_eq!((filled.get_seqnum(), filled.get_prevuuid()), (0, Some(second.get_curruuid())));
+/// assert_eq!((filled.get_seqnum(), filled.get_prevuuid()), (0, Some(second.get_uuid())));
 /// // A filled order ended its chain: the next event under its identity
 /// // starts one afresh, and is alive beside the other order.
 /// let again = walk.next().expect("the late one");
 /// assert_eq!((again.get_seqnum(), again.get_prevuuid()), (0, None));
-/// let mut alive = walk.alive().map(|held| (held.get_crosscode().to_owned(), held.get_currunix())).collect::<Vec<_>>();
+/// let mut alive = walk.alive().map(|held| (held.get_crosscode().to_owned(), held.get_transunix())).collect::<Vec<_>>();
 /// alive.sort();
 /// assert_eq!(alive, [("10:0:O-100".to_owned(), 40), ("10:0:O-900".to_owned(), 15)]);
 /// assert!(walk.next().is_none());
@@ -565,8 +565,8 @@ enum Source<E, I> {
 /// let first = walk.next().expect("the order");
 /// let second = walk.next().expect("the partial fill");
 /// let twin = walk.next().expect("the partial fill, logged again");
-/// assert_eq!((second.get_seqnum(), second.get_prevuuid()), (0, Some(first.get_curruuid())));
-/// assert_eq!((twin.get_seqnum(), twin.get_prevuuid(), twin.get_curruuid()), (0, second.get_prevuuid(), second.get_curruuid()));
+/// assert_eq!((second.get_seqnum(), second.get_prevuuid()), (0, Some(first.get_uuid())));
+/// assert_eq!((twin.get_seqnum(), twin.get_prevuuid(), twin.get_uuid()), (0, second.get_prevuuid(), second.get_uuid()));
 /// ```
 #[derive(Debug)]
 pub struct EventIterator<E, I> {
@@ -715,8 +715,8 @@ where
     /// Places `element` by content among what the walk handed over at its
     /// instant.
     fn place(&mut self, element: &mut E) {
-        if let Some(unix) = element.walked_currunix() {
-            let seqnum = self.sequence.place(unix, Some(element.get_currhashcode()));
+        if let Some(unix) = element.walked_transunix() {
+            let seqnum = self.sequence.place(unix, Some(element.get_hashcode()));
             element.walked_set_seqnum(seqnum);
         }
     }
@@ -802,9 +802,9 @@ where
             }
             // The statement this one replaces stays the chain's at their
             // shared instant, unless this one is another statement of it.
-            let instant = element.walked_currunix();
+            let instant = element.walked_transunix();
             let passed = match self.alive.remove(&identity) {
-                Some(mut live) if live.element.walked_currunix() == instant => {
+                Some(mut live) if live.element.walked_transunix() == instant => {
                     if live.arrived != arrived {
                         live.passed.push((live.arrived, live.element));
                     }
@@ -826,12 +826,12 @@ where
         } else if let Some(live) = self.retire(identity) {
             // The step that ends the chain, and the statements it moved past
             // at this instant, stay the chain's until the walk passes it.
-            let instant = element.walked_currunix();
+            let instant = element.walked_transunix();
             if self.retired_at != instant {
                 self.retired.clear();
                 self.retired_at = instant;
             }
-            if live.element.walked_currunix() == instant {
+            if live.element.walked_transunix() == instant {
                 self.retired.extend(
                     live.passed
                         .into_iter()
@@ -890,7 +890,7 @@ where
         };
         if let (Some(element), Some(step)) = (&self.lookahead, self.snapshot_ns()) {
             self.next_snapshot = element
-                .walked_currunix()
+                .walked_transunix()
                 .and_then(|unix| grid_at_or_after(unix, step));
         }
     }
@@ -932,8 +932,8 @@ where
                 let cross = snapshot.get_crossuuid();
                 let original = snapshot
                     .walked_snapunix()
-                    .or_else(|| snapshot.walked_currunix());
-                snapshot.walked_set_currunix(unix);
+                    .or_else(|| snapshot.walked_transunix());
+                snapshot.walked_set_transunix(unix);
                 snapshot.walked_set_snapunix(original);
                 snapshot.walked_restamp();
                 snapshot.set_crossuuid(cross);
@@ -959,11 +959,11 @@ where
         let previous = self.retire(identity)?.element;
         self.watermark = Some(self.watermark.map_or(deadline, |held| held.max(deadline)));
         let mut expired = previous.clone();
-        expired.walked_set_currunix(deadline);
+        expired.walked_set_transunix(deadline);
         expired.walked_set_state(State::Expired);
         expired.walked_clear_fill();
         expired.walked_set_execunix(None);
-        expired.walked_set_recdunix(None);
+        expired.walked_set_sendunix(None);
         expired.walked_set_snapunix(None);
         // An expiration is an event of its own deadline, handed over before
         // anything the walk reads at it: it takes the next place the walk
@@ -980,7 +980,7 @@ where
     fn walk_source(&mut self, mut element: E) -> E {
         if self
             .retired_at
-            .is_some_and(|at| element.walked_currunix().is_some_and(|unix| unix > at))
+            .is_some_and(|at| element.walked_transunix().is_some_and(|unix| unix > at))
         {
             self.retired.clear();
             self.retired_at = None;
@@ -988,7 +988,7 @@ where
         if !element.is_walked() {
             return element;
         }
-        let arrived = element.get_curruuid();
+        let arrived = element.get_uuid();
         let (identity, conflict) = self.identity_of(&element);
         if let Some(cited) = conflict {
             // Told on the element before anything restates or finalizes it,
@@ -1231,13 +1231,13 @@ where
             if self
                 .lookahead
                 .as_ref()
-                .is_some_and(|element| element.walked_currunix().is_none())
+                .is_some_and(|element| element.walked_transunix().is_none())
             {
                 let element = self.lookahead.take();
                 self.advance_source();
                 return element;
             }
-            let source_at = self.lookahead.as_ref().and_then(Walked::walked_currunix);
+            let source_at = self.lookahead.as_ref().and_then(Walked::walked_transunix);
             if self.alive.is_empty() {
                 self.next_snapshot = source_at.and_then(|unix| {
                     self.snapshot_ns()
@@ -1279,11 +1279,11 @@ where
 
             let element = self.lookahead.take()?;
             self.advance_source();
-            let Some(unix) = element.walked_currunix() else {
+            let Some(unix) = element.walked_transunix() else {
                 return Some(element);
             };
             self.watermark = Some(self.watermark.map_or(unix, |held| held.max(unix)));
-            if self.lookahead.as_ref().and_then(Walked::walked_currunix) != Some(unix) {
+            if self.lookahead.as_ref().and_then(Walked::walked_transunix) != Some(unix) {
                 self.after_group = Some(unix);
             }
             let mut element = element;
@@ -1426,7 +1426,7 @@ fn created<E: Walked>(element: &mut E, chain: Option<i64>) {
     if element.walked_creaunix().is_some() {
         return;
     }
-    if let Some(unix) = chain.or_else(|| element.walked_currunix()) {
+    if let Some(unix) = chain.or_else(|| element.walked_transunix()) {
         element.walked_set_creaunix(Some(unix));
     }
 }
@@ -1437,7 +1437,7 @@ fn is_alive<E: Walked>(element: &E) -> bool {
     element.walked_state().is_some_and(|state| state.is_live())
         && element.walked_exprunix().is_none_or(|expiration| {
             element
-                .walked_currunix()
+                .walked_transunix()
                 .is_none_or(|unix| expiration > unix)
         })
 }

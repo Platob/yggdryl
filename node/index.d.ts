@@ -238,19 +238,19 @@ export type JsBatchReader = BatchReader
  */
 export declare class BookEvent {
   /**
-   * An empty book of the ticker `symbol` at `currunix` nanoseconds since
+   * An empty book of the ticker `symbol` at `transunix` nanoseconds since
    * the epoch, keyed by that ticker; an empty `symbol` keys the book
    * `XX0000000000`, the ISIN that states none, and states no ticker.
    */
-  constructor(currunix: bigint | number, symbol: string)
+  constructor(transunix: bigint | number, symbol: string)
   /**
-   * An empty book keyed `key` at `currunix` nanoseconds since the epoch:
+   * An empty book keyed `key` at `transunix` nanoseconds since the epoch:
    * `key` is its crosscode - an instrument's ISIN, a ticker, or
    * `XX0000000000` - and the book states neither a ticker nor an ISIN.
    * The empty base a code's first book, a delta book, rebuilds over
    * with `withPrevious`.
    */
-  static keyed(currunix: bigint | number, key: string): BookEvent
+  static keyed(transunix: bigint | number, key: string): BookEvent
   /**
    * Whether the book holds its sides - every entry alive on it - rather
    * than only its `delta` and `events`, a delta book: a book a caller
@@ -323,7 +323,7 @@ export declare class BookEvent {
   /**
    * One limit per price level of the side `side` names - read through
    * the `Side` vocabulary - best first and the one unpriced limit last,
-   * each naming its entries' `curruuid`s in position order; empty for a
+   * each naming its entries' `uuid`s in position order; empty for a
    * side that is neither a bid nor an ask, and on a delta book.
    */
   limits(side: string | number): Array<BookLimit>
@@ -383,7 +383,7 @@ export declare class BookEvent {
    */
   withOperations(operations: Array<MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent>): BookEvent
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -399,7 +399,7 @@ export declare class BookEvent {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -407,8 +407,11 @@ export declare class BookEvent {
    * provenance, never its chain. Empty for one built directly.
    */
   get srcuuids(): Array<string>
-  /** When this happened: nanoseconds since the Unix epoch, UTC. */
-  get currunix(): bigint
+  /**
+   * When the operation happened - the transaction instant:
+   * nanoseconds since the Unix epoch, UTC.
+   */
+  get transunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
   /**
@@ -419,8 +422,11 @@ export declare class BookEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /** When this was recorded, where stated. */
-  get recdunix(): bigint | null
+  /**
+   * When the message crossed the wire - the technical clock -
+   * where stated.
+   */
+  get sendunix(): bigint | null
   /** When this expires, where it has an expiry. */
   get exprunix(): bigint | null
   /**
@@ -605,7 +611,7 @@ export declare class BookEvent {
    * live's predecessor, place and snapshot.
    */
   restating(live: BookEvent): BookEvent
-  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  /** `<Class>(<uuid>, transunix=.., crosscode=..)`. */
   toString(): string
 }
 export type JsBookEvent = BookEvent
@@ -874,7 +880,7 @@ export type JsCandle = Candle
 /**
  * Candles from a sorted stream of books, one per cross code and bucket,
  * pulling the books lazily from the caller's iterable. Yields `Candle`;
- * a regression in the books' instants is refused at `$.book.currunix` and
+ * a regression in the books' instants is refused at `$.book.transunix` and
  * ends the walk.
  */
 export declare class CandleIterator {
@@ -1753,7 +1759,7 @@ export declare class Execution {
    */
   at(unix: bigint | number): ExecutionEvent
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -1769,7 +1775,7 @@ export declare class Execution {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -1968,7 +1974,7 @@ export declare class Execution {
   toJSON(): string
   /** Rebuild a value `toJSON` wrote. */
   static fromJSON(text: string): Execution
-  /** `<Class>(<curruuid>, crosscode=..)`. */
+  /** `<Class>(<uuid>, crosscode=..)`. */
   toString(): string
 }
 export type JsExecution = Execution
@@ -1980,14 +1986,14 @@ export type JsExecution = Execution
  */
 export declare class ExecutionEvent {
   /**
-   * Build the event at `currunix` nanoseconds since the epoch from
+   * Build the event at `transunix` nanoseconds since the epoch from
    * its named facts, one record `Scalar` keyed by column name -
    * the event, market and operation columns - each checked by its
    * column's field and stated through its column, with `book`'s
    * control facts, then finalized. A `null` fact clears; a
-   * derived identity, or `currunix` again, is refused by name.
+   * derived identity, or `transunix` again, is refused by name.
    */
-  constructor(currunix: bigint | number, facts?: JsScalar | undefined | null, book?: JsBookRef | undefined | null)
+  constructor(transunix: bigint | number, facts?: JsScalar | undefined | null, book?: JsBookRef | undefined | null)
   /**
    * Which operation this is: `"order"`, `"quote"` or
    * `"execution"`.
@@ -2009,7 +2015,7 @@ export declare class ExecutionEvent {
    */
   intoElement(): Execution
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -2025,7 +2031,7 @@ export declare class ExecutionEvent {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -2033,8 +2039,11 @@ export declare class ExecutionEvent {
    * provenance, never its chain. Empty for one built directly.
    */
   get srcuuids(): Array<string>
-  /** When this happened: nanoseconds since the Unix epoch, UTC. */
-  get currunix(): bigint
+  /**
+   * When the operation happened - the transaction instant:
+   * nanoseconds since the Unix epoch, UTC.
+   */
+  get transunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
   /**
@@ -2045,8 +2054,11 @@ export declare class ExecutionEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /** When this was recorded, where stated. */
-  get recdunix(): bigint | null
+  /**
+   * When the message crossed the wire - the technical clock -
+   * where stated.
+   */
+  get sendunix(): bigint | null
   /** When this expires, where it has an expiry. */
   get exprunix(): bigint | null
   /**
@@ -2259,7 +2271,7 @@ export declare class ExecutionEvent {
    * live's predecessor, place and snapshot.
    */
   restating(live: ExecutionEvent): ExecutionEvent
-  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  /** `<Class>(<uuid>, transunix=.., crosscode=..)`. */
   toString(): string
 }
 export type JsExecutionEvent = ExecutionEvent
@@ -2968,14 +2980,14 @@ export type JsFilter = Filter
  * fill, and
  * the identity is derived. `SendingTime` is the message's valid tag 52,
  * else a row cell reaching that tag, else the `mtime` of the `TextLine` it
- * was read out of - on `parseTextArrowReader`, the row's `currunix` cell -
+ * was read out of - on `parseTextArrowReader`, the row's `transunix` cell -
  * else `defaultSendingTime`, else UTC now read once for that new message,
  * and it goes back on the wire only when the message stated it: a clock
  * the parse supplied is never the message's own, so the row's `sendingtime`
  * column states none either. The raw-byte doors read no line, so parsing
  * undated bytes there without a default sending time is deliberately not
  * deterministic. A message reporting an execution that states no execution
- * clock executed at its instant: its `execunix` is its `currunix`.
+ * clock executed at its instant: its `execunix` is its `transunix`.
  */
 export declare class FixCodec {
   /**
@@ -3104,7 +3116,7 @@ export declare class FixCodec {
   /**
    * This codec with its lifecycle pinned to messages arriving in instant
    * order - a table read hour partition by hour partition, sorted by
-   * `currunix` - when `sorted`: the walk then holds one epoch hour at a
+   * `transunix` - when `sorted`: the walk then holds one epoch hour at a
    * time, sorts within it exactly as a whole capture is sorted, and walks
    * an hour once a message two hours past it is read; a message dated
    * before an hour already walked is walked where it arrives. `false`
@@ -3174,11 +3186,11 @@ export declare class FixCodec {
    * the rest - the plugin that logged it, the version, and every field a
    * capture's name reaches. A `timestamp` capture is context and stamps
    * nothing; the line's own clock does. Its `mtime` - an `mtime` capture,
-   * else its handle's modification time - is the message's `recdunix`,
+   * else its handle's modification time - is the message's `sendunix`,
    * and the sending clock of a message stating none: `SendingTime` is the
    * message's own, else a capture reaching that field, else the line's
    * `mtime`, else the codec's `defaultSendingTime`, else UTC now, and the
-   * instant `currunix` is read against it - the stated one, else the
+   * instant `transunix` is read against it - the stated one, else the
    * official clock standing within `officialTimeDelayMs` of it, else it.
    * A clock the parse supplied is never the message's own: neither the
    * wire nor the row's `sendingtime` column states it.
@@ -3198,8 +3210,8 @@ export declare class FixCodec {
    *
    * The schema is decided before the first row: the capture's own columns
    * lead and the fixed FIX columns follow. Every row is parsed as the
-   * line door parses one - a row's `currunix` cell is its line's clock,
-   * so it is the messages' `recdunix` and the sending clock of one
+   * line door parses one - a row's `transunix` cell is its line's clock,
+   * so it is the messages' `sendunix` and the sending clock of one
    * stating none - and batches close on the bytes each row lands as
    * against `batchByteSize`. The source is consumed.
    *
@@ -3352,11 +3364,11 @@ export type JsFixMessages = FixMessages
  * Every message carries its identity settled: the cross code, the first
  * stated of tags 37, 11, 41, 117, 131 and 262 stored as
  * `{kind}:{side}:{base}`, the `crosshashcode` over that stored code, the
- * `currhashcode` over everything the message says but the
- * standard header and trailer, the `curruuid` ordered by millisecond and
+ * `hashcode` over everything the message says but the
+ * standard header and trailer, the `uuid` ordered by millisecond and
  * sequence with a content payload seeded by the cross hash, and the
  * `crossuuid` over the cross hash - or
- * the `curruuid` itself when no cross code names a chain. Every write settles
+ * the `uuid` itself when no cross code names a chain. Every write settles
  * it again.
  */
 export declare class FixMsg {
@@ -3461,10 +3473,10 @@ export declare class FixMsg {
    * sequence with a content payload seeded by its cross hash, as
    * hyphenated text.
    */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity of the chain this message belongs to, as its hyphenated
-   * text: `curruuid` when no cross code names a chain.
+   * text: `uuid` when no cross code names a chain.
    */
   get crossuuid(): string
   /**
@@ -3475,11 +3487,14 @@ export declare class FixMsg {
    */
   get crosscode(): string
   /** The XXH3-64 over everything this message says. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the stored cross code, `0n` where there is none. */
   get crosshashcode(): bigint
-  /** When the event happened, nanoseconds since the Unix epoch, UTC. */
-  get currunix(): bigint
+  /**
+   * When the operation the message states happened - its transaction
+   * instant: nanoseconds since the Unix epoch, UTC.
+   */
+  get transunix(): bigint
   /**
    * The order state the message reached, ranked: `UNKNOWN` where it
    * states none.
@@ -3498,8 +3513,11 @@ export declare class FixMsg {
   get creaunix(): bigint | null
   /** The latest execution instant the lifecycle reached, where known. */
   get execunix(): bigint | null
-  /** When the message was recorded, where stated. */
-  get recdunix(): bigint | null
+  /**
+   * When the message crossed the wire - its carrier's clock, else its
+   * stated `SendingTime` - where stated.
+   */
+  get sendunix(): bigint | null
   /** When the order expires, where it has an expiry. */
   get exprunix(): bigint | null
   /** When the message this one follows happened, where it follows one. */
@@ -6066,10 +6084,10 @@ export declare class IsinRegistry {
   get maxInstruments(): number
   /**
    * Learns what a message states about its instrument - keyed by its
-   * stated real ISIN, dated at its `currunix`: its CFI code, its market,
+   * stated real ISIN, dated at its `transunix`: its CFI code, its market,
    * its ticker, its currency, the pair it states and its real
    * equivalents and the origin currency it states, onto the listing its
-   * market names - and moves `firstunix` to its `currunix` where that is
+   * market names - and moves `firstunix` to its `transunix` where that is
    * earlier and `lastunix` where it is later, so meeting a known
    * instrument again moves the registry too. Whether anything moved.
    */
@@ -6355,10 +6373,10 @@ export declare class MarketData {
    * same plan.
    */
   static plan(view: string, lifts?: Array<string | FieldPath> | null, crosscode?: string | null): Plan
-  /** `MarketData(<curruuid>, kind=.., crosscode=..)`. */
+  /** `MarketData(<uuid>, kind=.., crosscode=..)`. */
   toString(): string
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -6374,7 +6392,7 @@ export declare class MarketData {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -7010,7 +7028,7 @@ export declare class Order {
    */
   at(unix: bigint | number): OrderEvent
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -7026,7 +7044,7 @@ export declare class Order {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -7225,7 +7243,7 @@ export declare class Order {
   toJSON(): string
   /** Rebuild a value `toJSON` wrote. */
   static fromJSON(text: string): Order
-  /** `<Class>(<curruuid>, crosscode=..)`. */
+  /** `<Class>(<uuid>, crosscode=..)`. */
   toString(): string
 }
 export type JsOrder = Order
@@ -7237,14 +7255,14 @@ export type JsOrder = Order
  */
 export declare class OrderEvent {
   /**
-   * Build the event at `currunix` nanoseconds since the epoch from
+   * Build the event at `transunix` nanoseconds since the epoch from
    * its named facts, one record `Scalar` keyed by column name -
    * the event, market and operation columns - each checked by its
    * column's field and stated through its column, with `book`'s
    * control facts, then finalized. A `null` fact clears; a
-   * derived identity, or `currunix` again, is refused by name.
+   * derived identity, or `transunix` again, is refused by name.
    */
-  constructor(currunix: bigint | number, facts?: JsScalar | undefined | null, book?: JsBookRef | undefined | null)
+  constructor(transunix: bigint | number, facts?: JsScalar | undefined | null, book?: JsBookRef | undefined | null)
   /**
    * Which operation this is: `"order"`, `"quote"` or
    * `"execution"`.
@@ -7266,7 +7284,7 @@ export declare class OrderEvent {
    */
   intoElement(): Order
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -7282,7 +7300,7 @@ export declare class OrderEvent {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -7290,8 +7308,11 @@ export declare class OrderEvent {
    * provenance, never its chain. Empty for one built directly.
    */
   get srcuuids(): Array<string>
-  /** When this happened: nanoseconds since the Unix epoch, UTC. */
-  get currunix(): bigint
+  /**
+   * When the operation happened - the transaction instant:
+   * nanoseconds since the Unix epoch, UTC.
+   */
+  get transunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
   /**
@@ -7302,8 +7323,11 @@ export declare class OrderEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /** When this was recorded, where stated. */
-  get recdunix(): bigint | null
+  /**
+   * When the message crossed the wire - the technical clock -
+   * where stated.
+   */
+  get sendunix(): bigint | null
   /** When this expires, where it has an expiry. */
   get exprunix(): bigint | null
   /**
@@ -7516,7 +7540,7 @@ export declare class OrderEvent {
    * live's predecessor, place and snapshot.
    */
   restating(live: OrderEvent): OrderEvent
-  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  /** `<Class>(<uuid>, transunix=.., crosscode=..)`. */
   toString(): string
 }
 export type JsOrderEvent = OrderEvent
@@ -8081,7 +8105,7 @@ export declare class Quote {
    */
   at(unix: bigint | number): QuoteEvent
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -8097,7 +8121,7 @@ export declare class Quote {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -8296,7 +8320,7 @@ export declare class Quote {
   toJSON(): string
   /** Rebuild a value `toJSON` wrote. */
   static fromJSON(text: string): Quote
-  /** `<Class>(<curruuid>, crosscode=..)`. */
+  /** `<Class>(<uuid>, crosscode=..)`. */
   toString(): string
 }
 export type JsQuote = Quote
@@ -8308,14 +8332,14 @@ export type JsQuote = Quote
  */
 export declare class QuoteEvent {
   /**
-   * Build the event at `currunix` nanoseconds since the epoch from
+   * Build the event at `transunix` nanoseconds since the epoch from
    * its named facts, one record `Scalar` keyed by column name -
    * the event, market and operation columns - each checked by its
    * column's field and stated through its column, with `book`'s
    * control facts, then finalized. A `null` fact clears; a
-   * derived identity, or `currunix` again, is refused by name.
+   * derived identity, or `transunix` again, is refused by name.
    */
-  constructor(currunix: bigint | number, facts?: JsScalar | undefined | null, book?: JsBookRef | undefined | null)
+  constructor(transunix: bigint | number, facts?: JsScalar | undefined | null, book?: JsBookRef | undefined | null)
   /**
    * Which operation this is: `"order"`, `"quote"` or
    * `"execution"`.
@@ -8337,7 +8361,7 @@ export declare class QuoteEvent {
    */
   intoElement(): Quote
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -8353,7 +8377,7 @@ export declare class QuoteEvent {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -8361,8 +8385,11 @@ export declare class QuoteEvent {
    * provenance, never its chain. Empty for one built directly.
    */
   get srcuuids(): Array<string>
-  /** When this happened: nanoseconds since the Unix epoch, UTC. */
-  get currunix(): bigint
+  /**
+   * When the operation happened - the transaction instant:
+   * nanoseconds since the Unix epoch, UTC.
+   */
+  get transunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
   /**
@@ -8373,8 +8400,11 @@ export declare class QuoteEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /** When this was recorded, where stated. */
-  get recdunix(): bigint | null
+  /**
+   * When the message crossed the wire - the technical clock -
+   * where stated.
+   */
+  get sendunix(): bigint | null
   /** When this expires, where it has an expiry. */
   get exprunix(): bigint | null
   /**
@@ -8587,7 +8617,7 @@ export declare class QuoteEvent {
    * live's predecessor, place and snapshot.
    */
   restating(live: QuoteEvent): QuoteEvent
-  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  /** `<Class>(<uuid>, transunix=.., crosscode=..)`. */
   toString(): string
 }
 export type JsQuoteEvent = QuoteEvent
@@ -9813,7 +9843,7 @@ export declare class SnapshotEvent {
   /** The control's book facts: always a full snapshot, with its scope. */
   get book(): JsBookRef
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -9829,7 +9859,7 @@ export declare class SnapshotEvent {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -9837,8 +9867,11 @@ export declare class SnapshotEvent {
    * provenance, never its chain. Empty for one built directly.
    */
   get srcuuids(): Array<string>
-  /** When this happened: nanoseconds since the Unix epoch, UTC. */
-  get currunix(): bigint
+  /**
+   * When the operation happened - the transaction instant:
+   * nanoseconds since the Unix epoch, UTC.
+   */
+  get transunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
   /**
@@ -9849,8 +9882,11 @@ export declare class SnapshotEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /** When this was recorded, where stated. */
-  get recdunix(): bigint | null
+  /**
+   * When the message crossed the wire - the technical clock -
+   * where stated.
+   */
+  get sendunix(): bigint | null
   /** When this expires, where it has an expiry. */
   get exprunix(): bigint | null
   /**
@@ -10035,7 +10071,7 @@ export declare class SnapshotEvent {
    * live's predecessor, place and snapshot.
    */
   restating(live: SnapshotEvent): SnapshotEvent
-  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  /** `<Class>(<uuid>, transunix=.., crosscode=..)`. */
   toString(): string
 }
 export type JsSnapshotEvent = SnapshotEvent
@@ -10679,7 +10715,7 @@ export declare class TextLine {
    */
   get bodytype(): string
   /**
-   * The line past its row header: what `currhashcode` hashes.
+   * The line past its row header: what `hashcode` hashes.
    *
    * Text, always: what the constructor or the reader decoded.
    */
@@ -10699,7 +10735,7 @@ export declare class TextLine {
    * line is an event of the
    * graph, and a message parsed out of it states this among its `srcuuids`.
    */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every event of one lifecycle shares: derived from the
    * cross code, and the line's own where it names none.
@@ -10711,14 +10747,14 @@ export declare class TextLine {
    */
   get crosscode(): string
   /** The XXH3-64 of `body` and nothing else. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where there is none. */
   get crosshashcode(): bigint
   /**
    * When the line happened, nanoseconds since the Unix epoch, UTC: the
    * stated instant, else `mtime`, else `0n`.
    */
-  get currunix(): bigint
+  get transunix(): bigint
   /**
    * Where the line stands in its source: the row number under
    * `startRownum`, else its zero-based physical `index`.
@@ -11054,7 +11090,7 @@ export declare class TradeEvent {
    */
   get executions(): Array<ExecutionEvent>
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -11070,7 +11106,7 @@ export declare class TradeEvent {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -11078,8 +11114,11 @@ export declare class TradeEvent {
    * provenance, never its chain. Empty for one built directly.
    */
   get srcuuids(): Array<string>
-  /** When this happened: nanoseconds since the Unix epoch, UTC. */
-  get currunix(): bigint
+  /**
+   * When the operation happened - the transaction instant:
+   * nanoseconds since the Unix epoch, UTC.
+   */
+  get transunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
   /**
@@ -11090,8 +11129,11 @@ export declare class TradeEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /** When this was recorded, where stated. */
-  get recdunix(): bigint | null
+  /**
+   * When the message crossed the wire - the technical clock -
+   * where stated.
+   */
+  get sendunix(): bigint | null
   /** When this expires, where it has an expiry. */
   get exprunix(): bigint | null
   /**
@@ -11304,7 +11346,7 @@ export declare class TradeEvent {
    * live's predecessor, place and snapshot.
    */
   restating(live: TradeEvent): TradeEvent
-  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  /** `<Class>(<uuid>, transunix=.., crosscode=..)`. */
   toString(): string
 }
 export type JsTradeEvent = TradeEvent
@@ -11359,7 +11401,7 @@ export declare class TxHash {
    *
    * The digest is the only content this needs, because whatever else an
    * identity rests on is already inside it: a graph event digests what it
-   * states, a text line its body, into `currhashcode` before coupling it
+   * states, a text line its body, into `hashcode` before coupling it
    * here, so rehashing
    * them into the identifier would only spend bits restating them.
    * Throws for a digest that is not 64 bits wide, or an instant outside the
@@ -12220,7 +12262,7 @@ export interface BookLimit {
    * an entry stating none adds nothing.
    */
   quantity: string
-  /** Its entries' `curruuid`s in live order: position, then arrival. */
+  /** Its entries' `uuid`s in live order: position, then arrival. */
   uuids: Array<string>
   /**
    * Whether the level can trade: any of its entries does not state
@@ -12634,9 +12676,9 @@ export interface FixCommitReport {
  * The definitions this crate owns, in tag order, above every tag FIX or a
  * venue publishes.
  *
- * The event's instant `currunix` and the chain's `creaunix`, `execunix`,
- * `recdunix`, `prevunix`, `snapunix` and `exprunix`; the identities
- * `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` and `prevuuid`;
+ * The event's instant `transunix` and the chain's `creaunix`, `execunix`,
+ * `sendunix`, `prevunix`, `snapunix` and `exprunix`; the identities
+ * `hashcode`, `crosshashcode`, `uuid`, `crossuuid` and `prevuuid`;
  * the `srcuuids` list of the lines it was read from; the `crosscode`, the
  * `seqnum` and the `state` reached; the `metadata` Map group; what a
  * bridge's capture states - `msgctxid`, `msgpluginid`,
@@ -12652,7 +12694,7 @@ export interface FixCommitReport {
  * bridge's own identifier keys are no crate field either: they arrive as
  * unmapped entries and are read for the identifier name they end with.
  *
- * `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and
+ * `transunix`, `creaunix`, `hashcode`, `crosshashcode`, `uuid` and
  * `crossuuid` are non-null; `state` is written on every row a message
  * writes and stays nullable, a state having no neutral member. Every
  * registry already holds them, so this is the listing a schema or a
@@ -12818,8 +12860,8 @@ export declare function fixPluginSide(pluginType: string): string
  * unresolved keys at tag 0. Columns are spelled by the dictionary's folded
  * canonical names - `msgtype`, never `35` - so a row reads the way a
  * message reads; the tag stays each column's identity, on its `FIX:tag`,
- * and is what fills it. `beginstring` and the settled identity - `currunix`,
- * `creaunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` - are
+ * and is what fills it. `beginstring` and the settled identity - `transunix`,
+ * `creaunix`, `hashcode`, `crosshashcode`, `uuid`, `crossuuid` - are
  * required; every other column is nullable, because a message that carried
  * nothing there must answer null rather than shift its neighbours.
  */

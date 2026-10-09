@@ -193,12 +193,12 @@ void pluginside
 const text: string | null = message.text
 const metadata: Record<string, string> = message.metadata
 // The graph facts a message answers directly.
-const curruuid: string = message.curruuid
+const uuid: string = message.uuid
 const crossuuid: string = message.crossuuid
 const crosscode: string = message.crosscode
-const currhashcode: bigint = message.currhashcode
+const hashcode: bigint = message.hashcode
 const crosshashcode: bigint = message.crosshashcode
-const currunix: bigint = message.currunix
+const transunix: bigint = message.transunix
 const state: string = message.state
 const seqnum: number = message.seqnum
 const prevuuid: string | null = message.prevuuid
@@ -227,15 +227,15 @@ message.msgcat
 // The instants the message states, as the leaf does.
 const messageCreated: bigint | null = message.creaunix
 const messageExecuted: bigint | null = message.execunix
-const messageRecorded: bigint | null = message.recdunix
+const messageRecorded: bigint | null = message.sendunix
 const messagePrevUnix: bigint | null = message.prevunix
 const messageSnap: bigint | null = message.snapunix
 const messageExpiry: bigint | null = message.exprunix
 // And the same facts on an operation leaf, with the instants and the lanes.
-const eventCurrunix: bigint = event.currunix
+const eventTransunix: bigint = event.transunix
 const eventCreated: bigint | null = event.creaunix
 const eventExecuted: bigint | null = event.execunix
-const eventRecorded: bigint | null = event.recdunix
+const eventRecorded: bigint | null = event.sendunix
 const eventPrevUnix: bigint | null = event.prevunix
 const eventSnap: bigint | null = event.snapunix
 const eventExpiry: bigint | null = event.exprunix
@@ -287,12 +287,12 @@ void entryValue
 void walked
 void text
 void metadata
-void curruuid
+void uuid
 void crossuuid
 void crosscode
-void currhashcode
+void hashcode
 void crosshashcode
-void currunix
+void transunix
 void state
 void seqnum
 void prevuuid
@@ -315,7 +315,7 @@ void bidpx
 void askccy
 void messageCategory
 void strikepx
-void eventCurrunix
+void eventTransunix
 void eventCreated
 void eventExecuted
 void eventRecorded
@@ -369,7 +369,7 @@ void msgsessionid
 void msgsesseventid
 
 // @ts-expect-error a graph fact is read, never assigned
-message.curruuid = 'other'
+message.uuid = 'other'
 // @ts-expect-error the entries are derived from the row
 message.entries = []
 // @ts-expect-error a merge keeps no clock of the reference it chose

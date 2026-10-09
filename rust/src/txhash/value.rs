@@ -290,7 +290,7 @@ impl TxHash {
     ///
     /// The digest is the only content this needs, because whatever else an
     /// identity rests on is already inside it - a graph [`Event`] digests what
-    /// it states, a text line its body, into `currhashcode` before coupling it
+    /// it states, a text line its body, into `hashcode` before coupling it
     /// here, so rehashing them into the identifier would only spend bits
     /// restating them.
     ///

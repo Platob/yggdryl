@@ -236,9 +236,9 @@ mod table {
             [
                 "creaunix",
                 "crosscode",
-                "currhashcode",
                 "exprunix",
-                "recdunix",
+                "hashcode",
+                "sendunix",
                 "seqnum",
                 "srcuuids",
                 "state",

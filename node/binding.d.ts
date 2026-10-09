@@ -973,7 +973,7 @@ declare module './index' {
     /**
      * The sorted door: a capture collected, what `bookArrowReader` admits
      * expanded into market data, stably sorted by `snapunix`, else
-     * `currunix`. Source errors and expansion refusals come first, in
+     * `transunix`. Source errors and expansion refusals come first, in
      * source order, each thrown by its own `next`; a failure of the
      * iterable itself is thrown once, in place of the end.
      */
@@ -3849,13 +3849,13 @@ export declare const enums: {
   readonly mdUpdateActions: readonly string[]
   /**
    * The six element column names every generated schema opens with, in
-   * schema order: `curruuid`, `crossuuid`, `crosscode`, `currhashcode`,
+   * schema order: `uuid`, `crossuuid`, `crosscode`, `hashcode`,
    * `crosshashcode`, `srcuuids`.
    */
   readonly elementColumns: readonly string[]
   /**
    * The nine event column names that follow them, in schema order:
-   * `currunix`, `creaunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix`,
+   * `transunix`, `creaunix`, `sendunix`, `exprunix`, `prevunix`, `snapunix`,
    * `prevuuid`, `seqnum`, `state`.
    */
   readonly eventColumns: readonly string[]
@@ -5263,7 +5263,7 @@ export interface Fix {
    * The row header a ULBridge log writes in front of every line, as a
    * `rowheader` for a text read. Its clock is `mtime`, so the header dates
    * each line it matches: the capture is consumed into the line's
-   * `currunix` - the `recdunix` of its messages and the sending clock of one
+   * `transunix` - the `sendunix` of its messages and the sending clock of one
    * stating no `SendingTime(52)` - read at nanoseconds UTC under the text
    * options' `timezone`, never the file's modification time. Four of the
    * other six captures are named for the fields they fill - `msgsessionid`,
@@ -5369,8 +5369,8 @@ export type MarketItem =
  * The named facts an operation leaf is built from: the native record, or a
  * plain object keyed by column name - the market and operation columns and
  * `crosscode`/`srcuuids`, plus on an event every other event column but
- * `currunix` - case-folded. A derived identity (`curruuid`, `crossuuid`,
- * `currhashcode`, `crosshashcode`) is refused by name. A fact given as
+ * `transunix` - case-folded. A derived identity (`uuid`, `crossuuid`,
+ * `hashcode`, `crosshashcode`) is refused by name. A fact given as
  * `undefined` is not given; `null` clears it; `fxrates` takes a plain
  * object keyed by target currency, and any graph value is refused naming its
  * key.
@@ -5397,12 +5397,12 @@ export interface OperationElementConstructor<T> {
 
 /**
  * The public constructor of a dated operation leaf - `OrderEvent`,
- * `QuoteEvent`, `ExecutionEvent` - at `currunix` nanoseconds since the
+ * `QuoteEvent`, `ExecutionEvent` - at `transunix` nanoseconds since the
  * epoch, its named facts widened the same way and its `book` lifted out.
  */
 export interface OperationEventConstructor<T> {
-  /** Build the event at `currunix` from its named facts. */
-  new (currunix: bigint | number, facts?: OperationEventFactsInput | null): T
+  /** Build the event at `transunix` from its named facts. */
+  new (transunix: bigint | number, facts?: OperationEventFactsInput | null): T
   /** Rebuild a value `toJSON` wrote. */
   fromJSON(text: string): T
   readonly prototype: T

@@ -27,8 +27,8 @@ const {
 } = require('yggdryl')
 
 const EVENT_COLUMNS = [
-  'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode', 'srcuuids',
-  'currunix', 'creaunix', 'recdunix',
+  'uuid', 'crossuuid', 'crosscode', 'hashcode', 'crosshashcode', 'srcuuids',
+  'transunix', 'creaunix', 'sendunix',
   'exprunix', 'prevunix', 'snapunix',
   'prevuuid', 'seqnum', 'state',
 ]

@@ -355,7 +355,7 @@ fn the_events_field_is_the_flat_marketdata_row_behind_its_stamp() {
     assert_eq!(field.name(), "event");
     assert!(!field.is_nullable());
     let names: Vec<&str> = field.fields().iter().map(|child| child.name()).collect();
-    assert_eq!(&names[..3], ["bookunix", "role", "curruuid"]);
+    assert_eq!(&names[..3], ["bookunix", "role", "uuid"]);
     // The stamp, the six element, nine event, thirty-six market and five
     // operation columns, then the book controls `bookscope`, `bookaction`
     // and `bookposition`.
@@ -472,7 +472,7 @@ fn the_readings_answer_over_a_store_that_kept_no_enum_identity() {
         .book("books", "ACME", T0 + 100 * SECOND)
         .unwrap()
         .unwrap();
-    assert_eq!(book.get_currunix(), T0 + 70 * SECOND);
+    assert_eq!(book.get_transunix(), T0 + 70 * SECOND);
 }
 
 #[test]
@@ -504,7 +504,7 @@ fn the_readings_answer_without_http() {
         .book("books", "ACME", T0 + 100 * SECOND)
         .unwrap()
         .unwrap();
-    assert_eq!(book.get_currunix(), T0 + 70 * SECOND);
+    assert_eq!(book.get_transunix(), T0 + 70 * SECOND);
     assert_eq!(book.best_price(Side::Buy), Some("100.5".parse().unwrap()));
     assert!(service.book("books", "ACME", T0).unwrap().is_none());
     assert!(
@@ -652,7 +652,7 @@ fn a_book_under_the_grid_opens_the_partitions_of_its_window_alone() {
         .unwrap()
         .into_scheme_compat(&Scheme::ICEBERG)
         .unwrap()
-        .with_partition_by(["time_bucket('1 minute', currunix) as partunix"
+        .with_partition_by(["time_bucket('1 minute', transunix) as partunix"
             .parse()
             .unwrap()])
         .unwrap();
@@ -696,7 +696,7 @@ fn a_book_under_the_grid_opens_the_partitions_of_its_window_alone() {
         .book("books", "ACME", at)
         .unwrap()
         .expect("the book at the last instant");
-    assert_eq!(book.get_currunix(), at);
+    assert_eq!(book.get_transunix(), at);
     assert!(book.is_complete(), "rebuilt over the tick before it");
     assert_eq!(book.alive().count(), 4, "every ACME quote rests");
     let whole = BookService::new(BookServiceOptions::new())
@@ -1331,7 +1331,7 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
         ],
     ));
     assert_eq!(
-        text(&book, "currunix"),
+        text(&book, "transunix"),
         "2026-01-05T10:01:10Z",
         "the execution at 10:01:10 folded a book of its own, the last at or before"
     );
@@ -1369,7 +1369,7 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
     assert_eq!(
         keys,
         BTreeSet::from([
-            "currunix",
+            "transunix",
             "ticker",
             "isincode",
             "crosscode",
@@ -1413,7 +1413,7 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
         ],
     ));
     assert_eq!(
-        text(&zoned, "currunix"),
+        text(&zoned, "transunix"),
         "2026-01-05T11:00:05+01:00[Europe/Zurich]"
     );
     assert_eq!(member(&zoned, "alive"), &Scalar::from(2_u64));
@@ -1497,13 +1497,13 @@ fn events_list_every_entry_delta_and_event_of_the_books_in_range() {
         .keys()
         .map(SmolStr::as_str)
         .collect();
-    assert!(names.contains("curruuid") && names.contains("prevuuid") && names.contains("state"));
+    assert!(names.contains("uuid") && names.contains("prevuuid") && names.contains("state"));
     assert!(!names.contains("alive") && !names.contains("bidlimits"));
     // The origin currency, `origccy`, adds one market fact to the previous
     // 60-column event schema, as StrikePx added one to the 59 before it.
     assert_eq!(names.len(), 61);
     // A UUID is its canonical text.
-    assert_eq!(text(&rows[0], "curruuid").len(), 36);
+    assert_eq!(text(&rows[0], "uuid").len(), 36);
 
     let mut bids = range().to_vec();
     bids.push(("side", "bid"));
@@ -1525,7 +1525,7 @@ fn events_list_every_entry_delta_and_event_of_the_books_in_range() {
         "2026-01-05T11:00:05+01:00[Europe/Zurich]"
     );
     assert_eq!(
-        text(&zoned[0], "currunix"),
+        text(&zoned[0], "transunix"),
         "2026-01-05T11:00:05+01:00[Europe/Zurich]"
     );
 }
@@ -1633,7 +1633,7 @@ fn the_audit_downloads_as_csv_in_each_coding_and_reads_back() {
             .unwrap()
             .to_owned();
         assert!(
-            header.starts_with("bookunix,role,curruuid,crossuuid,"),
+            header.starts_with("bookunix,role,uuid,crossuuid,"),
             "{suffix}: {header}"
         );
 
@@ -1652,7 +1652,7 @@ fn the_audit_downloads_as_csv_in_each_coding_and_reads_back() {
         assert_eq!(rows, expected, "{suffix}");
         let field = readback.read_arrow_field(&options).unwrap();
         let names: Vec<&str> = field.fields().iter().map(|child| child.name()).collect();
-        assert_eq!(&names[..3], ["bookunix", "role", "curruuid"]);
+        assert_eq!(&names[..3], ["bookunix", "role", "uuid"]);
         // The origin currency, `origccy`, adds one market fact to the
         // previous 60-column audit schema, as StrikePx added one to the 59
         // before it.
@@ -1962,14 +1962,11 @@ fn the_book_at_an_instant_is_rebuilt_from_the_origin_before_it() {
         .unwrap()
         .unwrap();
     assert!(book.is_complete());
-    assert_eq!(book.get_currunix(), T0 + 125 * SECOND);
-    assert_eq!(book.get_curruuid(), acme[3].get_curruuid());
+    assert_eq!(book.get_transunix(), T0 + 125 * SECOND);
+    assert_eq!(book.get_uuid(), acme[3].get_uuid());
     assert_eq!(
-        book.alive().map(Element::get_curruuid).collect::<Vec<_>>(),
-        expected
-            .alive()
-            .map(Element::get_curruuid)
-            .collect::<Vec<_>>()
+        book.alive().map(Element::get_uuid).collect::<Vec<_>>(),
+        expected.alive().map(Element::get_uuid).collect::<Vec<_>>()
     );
     for side in [Side::Buy, Side::Sell] {
         assert_eq!(
@@ -2005,7 +2002,7 @@ fn a_book_following_no_book_is_rebuilt_over_the_empty_book_and_complete() {
         .unwrap()
         .unwrap();
     assert!(book.is_complete());
-    assert_eq!(book.get_curruuid(), acme[0].get_curruuid());
+    assert_eq!(book.get_uuid(), acme[0].get_uuid());
     assert_eq!(book.alive().count(), 2);
     assert_eq!(book.best_price(Side::Buy), Some("100".parse().unwrap()));
 }
@@ -2022,7 +2019,7 @@ fn a_book_naming_a_book_the_rows_do_not_hold_answers_incomplete() {
         .unwrap()
         .unwrap();
     assert!(!book.is_complete());
-    assert_eq!(book.get_curruuid(), acme[3].get_curruuid());
+    assert_eq!(book.get_uuid(), acme[3].get_uuid());
     assert_eq!(book.alive().count(), 0);
     assert_eq!(book.best_price(Side::Sell), acme[3].best_price(Side::Sell));
 

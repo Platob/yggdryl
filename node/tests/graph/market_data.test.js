@@ -63,7 +63,7 @@ test('every leaf wraps and names its kind', () => {
     assert.ok(data.intoLeaf().equals(leaf))
     assert.ok(new graph.MarketData(data).equals(data))
     // The element and market facts delegate to the leaf.
-    for (const name of ['curruuid', 'crosscode', 'price', 'side', 'currhashcode', 'marketdatakind', 'isincode']) {
+    for (const name of ['uuid', 'crosscode', 'price', 'side', 'hashcode', 'marketdatakind', 'isincode']) {
       assert.equal(data[name], leaf[name], name)
     }
   })
@@ -98,12 +98,12 @@ test('following crosses operation kinds and merging no variant', () => {
   const later = new graph.MarketData(new graph.OrderEvent(CLOCK + 1n, { crosscode: 'O-1', price: '2' }))
   const followed = later.withPrevious(first)
   assert.equal(followed.kind, 'order_event')
-  assert.equal(followed.asOrderEvent().prevuuid, first.curruuid)
+  assert.equal(followed.asOrderEvent().prevuuid, first.uuid)
   // An execution follows the order it fills across kinds, keeping its own.
   const execution = new graph.MarketData(new graph.ExecutionEvent(CLOCK + 1_000_000n, { crosscode: 'O-1' }))
   const fill = execution.withPrevious(first)
   assert.equal(fill.kind, 'execution_event')
-  assert.equal(fill.asExecutionEvent().prevuuid, first.curruuid)
+  assert.equal(fill.asExecutionEvent().prevuuid, first.uuid)
   // A book follows no other variant, and a merge never crosses one.
   assert.equal(new graph.MarketData(new graph.BookEvent(CLOCK + 2n, 'X')).withPrevious(first), null)
   assert.equal(first.mergeWith(execution), null)
@@ -123,7 +123,7 @@ test('equals, stableHash, toString, clone and toJSON round trip every kind', () 
     assert.ok(data.clone().equals(data))
     assert.equal(
       data.toString(),
-      `MarketData(${data.curruuid}, kind="${data.kind}", crosscode="${data.crosscode}")`,
+      `MarketData(${data.uuid}, kind="${data.kind}", crosscode="${data.crosscode}")`,
     )
     // A leaf and its `MarketData` write the same one-row stream.
     assert.equal(leaf.toJSON(), data.toJSON())
@@ -139,12 +139,12 @@ test('the field is the lifted marketdata struct', () => {
   const names = Array.from({ length: field.fieldLen }, (_, at) => field.fieldAt(at).name)
   // The six identity columns lead, then the nine event columns, then the
   // market columns opening with the kind and its type.
-  assert.equal(names[0], 'curruuid')
+  assert.equal(names[0], 'uuid')
   assert.equal(names[15], 'marketdatakind')
   assert.equal(field.fieldAt(15).dtype.id, 'marketdatakind')
   assert.equal(names[16], 'marketdatatype')
   assert.equal(field.fieldAt(16).dtype.id, 'marketdatatype')
-  for (const name of ['currunix', 'price', 'isincode', 'fxrates', 'bidpx', 'askccy', 'identifiers', 'bookscope']) {
+  for (const name of ['transunix', 'price', 'isincode', 'fxrates', 'bidpx', 'askccy', 'identifiers', 'bookscope']) {
     assert.ok(names.includes(name), name)
   }
   // A1/A10: six identity, nine event, thirty-six market and five
@@ -232,7 +232,7 @@ test('a lifecycle-shaped batch reads into events', () => {
     // A row states its stored cross code: kind, side, then the base.
     CrossCode: arrow.vectorFromArray(['10:1:O-1', '8:1:O-1'], new arrow.Utf8()),
     MarketDataKind: arrow.vectorFromArray(['ORDR', 'EXEC'], new arrow.Utf8()),
-    currunix: arrow.vectorFromArray([CLOCK, CLOCK + 1n], new arrow.Int64()),
+    transunix: arrow.vectorFromArray([CLOCK, CLOCK + 1n], new arrow.Int64()),
     side: arrow.vectorFromArray(['BUYS', 'BUYS'], new arrow.Utf8()),
     price: arrow.vectorFromArray(['101', null], new arrow.Utf8()),
     lastqty: arrow.vectorFromArray([null, '5'], new arrow.Utf8()),
@@ -241,14 +241,14 @@ test('a lifecycle-shaped batch reads into events', () => {
     .map((data) => data.intoLeaf())
   assert.ok(order instanceof graph.OrderEvent)
   assert.ok(execution instanceof graph.ExecutionEvent)
-  assert.equal(order.currunix, CLOCK)
+  assert.equal(order.transunix, CLOCK)
   assert.equal(order.crosscode, '10:1:O-1')
   assert.equal(order.side, 'BUYS')
   assert.equal(order.price, '101')
   assert.equal(order.identifiers.length, 0)
   assert.equal(execution.crosscode, '8:1:O-1')
   assert.equal(execution.lastqty, '5')
-  assert.equal(execution.currunix, CLOCK + 1n)
+  assert.equal(execution.transunix, CLOCK + 1n)
 })
 
 test('an identifier column built in Arrow JS is a map of keys to values and lands as the leaf\'s identifiers', () => {
@@ -263,7 +263,7 @@ test('an identifier column built in Arrow JS is a map of keys to values and land
   )
   const table = new arrow.Table({
     marketdatakind: arrow.vectorFromArray(['ORDR', 'ORDR'], new arrow.Utf8()),
-    currunix: arrow.vectorFromArray([CLOCK, CLOCK + 1n], new arrow.Int64()),
+    transunix: arrow.vectorFromArray([CLOCK, CLOCK + 1n], new arrow.Int64()),
     identifiers: arrow.vectorFromArray([new Map([['ullink:orderid', 'O-1']]), null], identifiers),
   })
   const [first, second] = drain(graph.MarketData.fromArrowReader(BatchReader.from(table)))
@@ -277,7 +277,7 @@ test('an identifier column built in Arrow JS is a map of keys to values and land
 test('fromArrowReader refuses by name and fuses', () => {
   const read = (columns) => drain(graph.MarketData.fromArrowReader(BatchReader.from(new arrow.Table(columns))))
   assert.throws(
-    () => read({ currunix: arrow.vectorFromArray([CLOCK], new arrow.Int64()) }),
+    () => read({ transunix: arrow.vectorFromArray([CLOCK], new arrow.Int64()) }),
     /\$\[0\]\.marketdatakind: expected ORDR, QUOT, EXEC, TRAD or BOOK, got null/,
   )
   assert.throws(
@@ -287,7 +287,7 @@ test('fromArrowReader refuses by name and fuses', () => {
   // A book row needs its instant (A2).
   const rows = graph.MarketData.fromArrowReader(BatchReader.from(new arrow.Table({
     marketdatakind: arrow.vectorFromArray(['ORDR', 'BOOK'], new arrow.Utf8()),
-    currunix: arrow.vectorFromArray([CLOCK, null], new arrow.Int64()),
+    transunix: arrow.vectorFromArray([CLOCK, null], new arrow.Int64()),
   })))
   assert.equal(rows.next().value.kind, 'order_event')
   assert.throws(() => rows.next(), /\$\[1\]/)
@@ -331,9 +331,9 @@ test('a book row states no sources while its delta and events rows do', () => {
   const [read] = drain(graph.MarketData.fromArrowReader(graph.MarketData.arrowReader([book])))
   const held = read.asBookEvent()
   assert.ok(held)
-  assert.deepEqual(held.curruuid, book.curruuid)
+  assert.deepEqual(held.uuid, book.uuid)
   assert.deepEqual(held.srcuuids, [])
-  assert.deepEqual(held.alive().map((entry) => entry.curruuid), book.alive().map((entry) => entry.curruuid))
+  assert.deepEqual(held.alive().map((entry) => entry.uuid), book.alive().map((entry) => entry.uuid))
   assert.deepEqual(held.alive().map((entry) => entry.srcuuids), [[], []])
 
   // The delta and the events laid out of the book rows carry every source.
@@ -405,7 +405,7 @@ test('every view is one plan whose text reads back', () => {
   )
   assert.equal(
     graph.MarketData.plan('lifecycle', [], 'C-1').toString(),
-    `select * exclude (${nested}) where crosscode = 'C-1' order by currunix`,
+    `select * exclude (${nested}) where crosscode = 'C-1' order by transunix`,
   )
   for (const view of enums.marketViews) {
     const crosscode = view === 'lifecycle' ? 'C-1' : undefined
@@ -529,5 +529,5 @@ test('a FixMsg is held whole and reports the leaves it expands to', () => {
   const folded = [...new graph.BookIterator([order], 0)]
   const direct = [...new graph.BookIterator(leaves, 0)]
   assert.equal(folded.length, direct.length)
-  folded.forEach((one, at) => assert.equal(one.currhashcode, direct[at].currhashcode))
+  folded.forEach((one, at) => assert.equal(one.hashcode, direct[at].hashcode))
 })

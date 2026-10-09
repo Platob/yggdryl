@@ -179,7 +179,7 @@ assert.equal(message.crosscode, '10:1:A1')
 // The names it goes by are identifiers: a source, a type and a value.
 assert.equal(message.identifiers.toString(), '[clordid=A1]')
 // Instants are bigint nanoseconds since the epoch, UTC.
-assert.equal(message.currunix, 1_767_348_930_000_000_000n)
+assert.equal(message.transunix, 1_767_348_930_000_000_000n)
 // The entries are the content row as a tree of { tag, name, value, entries }.
 assert.deepEqual(message.entries().map((entry) => entry.name), ['symbol', 'side', 'strikeprice', 'timeinforce'])
 ```
@@ -206,10 +206,10 @@ const message = new fix.FixMsg(root, { MsgType: 'D', ClOrdID: 'A1', Symbol: 'AAP
 assert.equal(message.header().msgtype, 'D')
 assert.equal(message.crosscode, '10:0:A1')
 
-const before = message.currhashcode
+const before = message.hashcode
 message.set('Symbol', 'MSFT')
 assert.equal(message.byTag(55).asJs(), 'MSFT')
-assert.notEqual(message.currhashcode, before, 'a write settles the identity again')
+assert.notEqual(message.hashcode, before, 'a write settles the identity again')
 assert.equal(message.remove(55).asJs(), 'MSFT')
 assert.equal(message.getByTag(55), null)
 ```
@@ -268,7 +268,7 @@ const codec = new fix.FixCodec(registry, { threads: 4, batchRowSize: 10_000 })
 const read = codec.parseTextArrowReader(BatchReader.from(capture))
 // The schema is decided before a row is read: the shared columns lead, the capture follows them, `fixentries` closes.
 const columns = Array.from({ length: read.field.fieldLen }, (_, index) => read.field.fieldAt(index).name)
-assert.equal(columns[0], 'curruuid')
+assert.equal(columns[0], 'uuid')
 const at = columns.indexOf('url')
 assert.deepEqual(columns.slice(at - 1, at + 3), ['partyids', 'url', 'rownum', 'body'])
 assert.equal(read.field.fieldAt(read.field.fieldLen - 1).name, 'fixentries')
@@ -320,7 +320,7 @@ assert.equal(lines.length, 3)
 assert.deepEqual(options.captureNames, ['mtime', 'level'])
 const codec = new fix.FixCodec(registry, { captureNames: options.captureNames })
 const messages = [...codec.parseTextLines(lines)]
-assert.deepEqual(messages.map((message) => message.recdunix), [1_767_348_930_250_000_000n, 1_767_348_930_500_000_000n])
+assert.deepEqual(messages.map((message) => message.sendunix), [1_767_348_930_250_000_000n, 1_767_348_930_500_000_000n])
 
 fs.rmSync(directory, { recursive: true, force: true })
 ```
@@ -369,7 +369,7 @@ const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
 const stored = new IOBase(path.join(directory, 'capture.parquet'))
 stored.overwriteArrowReader(codec.arrowReader(schema, parsed))
 const again = [...codec.messages(stored.readArrowReader())]
-assert.deepEqual(again.map((message) => message.currhashcode), parsed.map((message) => message.currhashcode))
+assert.deepEqual(again.map((message) => message.hashcode), parsed.map((message) => message.hashcode))
 
 // And out to the wire, one line per row.
 const chunks = []
@@ -393,10 +393,10 @@ a `FixAnomaly` under `crosscode` naming both, warned once per kind. A fill's
 execution, split off at the parse, is a chain of its own and never restates,
 follows or ends its order. A codec pinned `{ sortedLifecycle: true }` reads a source already in
 instant order as it comes, one epoch hour at a time, and answers the same walk. The walk yields
-each `curruuid` once within `dedupWindowMs` of event time, one minute unless
+each `uuid` once within `dedupWindowMs` of event time, one minute unless
 the codec says otherwise; `{ dedupWindowMs: null }` yields every restated twin too.
 A snapshot grid's view is the live message as of its tick: dated at it, so its
-`curruuid` is that instant's, with the live message's content and place.
+`uuid` is that instant's, with the live message's content and place.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -422,14 +422,14 @@ const [order, ack, fill, execution] = codec.lifecycle(parsed)
 // Sorted by event time, joined by the identifiers each message went by; each
 // follows one of an earlier instant, so each keeps its own place.
 assert.deepEqual([order.seqnum, ack.seqnum, fill.seqnum], [0, 0, 0])
-assert.equal(ack.prevuuid, order.curruuid)
-assert.equal(fill.prevuuid, ack.curruuid)
+assert.equal(ack.prevuuid, order.uuid)
+assert.equal(fill.prevuuid, ack.uuid)
 assert.ok([ack, fill].every((held) => held.crossuuid === order.crossuuid))
 // The reports stated no side: they joined the buy alive under A1 and O1.
 assert.ok([ack, fill].every((held) => held.side === 'BUYS' && held.crosscode === '10:1:A1'))
 assert.deepEqual([fill.marketdatakind, fill.state], ['ORDR', 'FILLED'])
 // Every walked message states when its chain began.
-assert.ok([ack, fill].every((held) => held.creaunix === order.currunix))
+assert.ok([ack, fill].every((held) => held.creaunix === order.transunix))
 assert.deepEqual([execution.marketdatakind, execution.state], ['EXEC', 'FILLED'])
 assert.deepEqual([execution.seqnum, execution.prevuuid], [1, null])
 
@@ -545,7 +545,7 @@ const fill = '8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=
 const [report, execution] = codec.parseLine(Buffer.from(fill))
 assert.deepEqual([report.marketdatakind, report.state], ['ORDR', 'PARTIALLY_FILLED'])
 assert.deepEqual([execution.marketdatakind, execution.state], ['EXEC', 'FILLED'])
-assert.ok(execution.srcuuids.includes(report.curruuid))
+assert.ok(execution.srcuuids.includes(report.uuid))
 // An order or an execution message stores its cross code under its side; the fill is a chain of its own.
 assert.deepEqual([report.crosscode, execution.crosscode], ['10:1:O-9', '8:1:E-1'])
 

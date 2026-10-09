@@ -79,8 +79,8 @@ def test_every_leaf_wraps_and_names_its_kind() -> None:
         assert data.into_leaf() == leaf
         assert graph.MarketData(data) == data
         # The element and market facts delegate to the leaf.
-        assert (data.curruuid, data.crosscode, data.price, data.side) == (
-            leaf.curruuid,
+        assert (data.uuid, data.crosscode, data.price, data.side) == (
+            leaf.uuid,
             leaf.crosscode,
             leaf.price,
             leaf.side,
@@ -152,13 +152,13 @@ def test_following_crosses_operation_kinds_and_merging_no_variant() -> None:
     followed = later.with_previous(first)
     assert followed is not None and followed.kind == "order_event"
     followed_leaf = followed.as_order_event()
-    assert followed_leaf is not None and followed_leaf.prevuuid == first.curruuid
+    assert followed_leaf is not None and followed_leaf.prevuuid == first.uuid
     # An execution follows the order it fills across kinds, keeping its own.
     execution = graph.MarketData(graph.ExecutionEvent(CLOCK + 1_000_000, crosscode="O-1"))
     fill = execution.with_previous(first)
     assert fill is not None and fill.kind == "execution_event"
     fill_leaf = fill.as_execution_event()
-    assert fill_leaf is not None and fill_leaf.prevuuid == first.curruuid
+    assert fill_leaf is not None and fill_leaf.prevuuid == first.uuid
     # A book follows no operation, and a merge never crosses a variant.
     assert graph.MarketData(graph.BookEvent(CLOCK + 2, "O-1")).with_previous(first) is None
     assert first.merge_with(execution) is None
@@ -176,7 +176,7 @@ def test_equality_hash_repr_copy_pickle(index: int) -> None:
     assert twin == data and hash(twin) == hash(data) == hash(leaf)
     assert copy.copy(data) == data and copy.deepcopy(data) == data
     assert repr(data) == (
-        f'MarketData({data.curruuid.as_py()}, kind="{data.kind}", '
+        f'MarketData({data.uuid.as_py()}, kind="{data.kind}", '
         f'marketdatakind={data.marketdatakind}, crosscode="{data.crosscode}")'
     )
     # Every leaf pickles through the same one-row stream.
@@ -190,13 +190,13 @@ def test_the_field_is_the_lifted_marketdata_struct() -> None:
     assert field.name == "marketdata" and not field.nullable
     names = [child.name for child in field]
     assert names[:7] == [
-        "curruuid",
+        "uuid",
         "crossuuid",
         "crosscode",
-        "currhashcode",
+        "hashcode",
         "crosshashcode",
         "srcuuids",
-        "currunix",
+        "transunix",
     ]
     assert names.index("marketdatakind") == 15
     assert names[16] == "marketdatatype"
@@ -206,7 +206,7 @@ def test_the_field_is_the_lifted_marketdata_struct() -> None:
     assert names[50] == "metadata"
     assert str(field["strikepx"].dtype) == "decimal"
     for name in (
-        "currunix",
+        "transunix",
         "price",
         "side",
         "isincode",
@@ -292,7 +292,7 @@ def test_a_lifecycle_shaped_batch_reads_into_events() -> None:
             # A row states the stored cross code: its kind, its side, its base.
             "CrossCode": ["10:1:O-1", "8:1:O-1"],
             "MarketDataKind": pa.array([10, 8], pa.int32()),
-            "currunix": pa.array([CLOCK, CLOCK + 1], pa.int64()),
+            "transunix": pa.array([CLOCK, CLOCK + 1], pa.int64()),
             "side": pa.array([1, 1], pa.int32()),
             "price": ["101", None],
             "lastqty": [None, "5"],
@@ -304,26 +304,26 @@ def test_a_lifecycle_shaped_batch_reads_into_events() -> None:
     )
     order, execution = (data.into_leaf() for data in graph.MarketData.from_arrow_reader(batch))
     assert isinstance(order, graph.OrderEvent) and isinstance(execution, graph.ExecutionEvent)
-    assert (order.currunix, order.crosscode, order.side) == (CLOCK, "10:1:O-1", Side.BUYS)
+    assert (order.transunix, order.crosscode, order.side) == (CLOCK, "10:1:O-1", Side.BUYS)
     assert order.price is not None and order.price.as_py() == D("101")
     assert order.identifiers.get_from("orderid") == "O-1"
     assert [(i.key, i.src, i.type, i.value) for i in order.identifiers] == [
         ("orderid", "base", "orderid", "O-1")
     ]
     assert execution.lastqty is not None and execution.lastqty.as_py() == 5
-    assert execution.currunix == CLOCK + 1
+    assert execution.transunix == CLOCK + 1
 
 
 def test_from_arrow_reader_refuses_by_name_and_fuses() -> None:
     with pytest.raises(ValueError, match=r"\$\[0\]\.marketdatakind: expected ORDR, QUOT.*got null"):
-        list(graph.MarketData.from_arrow_reader(pa.table({"currunix": [CLOCK]})))
+        list(graph.MarketData.from_arrow_reader(pa.table({"transunix": [CLOCK]})))
     with pytest.raises(ValueError, match=r"\$\[0\]\.marketdatakind: .*got ACCT"):
         list(graph.MarketData.from_arrow_reader(pa.table({"marketdatakind": pa.array([1], pa.int32())})))
     rows = graph.MarketData.from_arrow_reader(
         pa.table(
             {
                 "marketdatakind": pa.array([10, 21], pa.int32()),
-                "currunix": pa.array([CLOCK, None], pa.int64()),
+                "transunix": pa.array([CLOCK, None], pa.int64()),
             }
         )
     )
@@ -427,7 +427,7 @@ def test_a_lifecycle_is_one_chain_ordered_and_needs_its_crosscode() -> None:
     source = graph.MarketData.arrow_reader([*chain, other])
     table = graph.MarketData.apply_view("lifecycle", source, crosscode="10:0:C-1").read_all()
     assert table.schema.names == _flat()
-    assert table.column("currunix").cast(pa.int64()).to_pylist() == [CLOCK + 10, CLOCK + 20, CLOCK + 30]
+    assert table.column("transunix").cast(pa.int64()).to_pylist() == [CLOCK + 10, CLOCK + 20, CLOCK + 30]
     # The view filters on the exact stored code: the base alone names no chain.
     bare = graph.MarketData.apply_view("lifecycle", graph.MarketData.arrow_reader([*chain, other]), crosscode="C-1")
     assert bare.read_all().num_rows == 0
@@ -568,8 +568,8 @@ def test_a_book_row_states_no_sources_while_its_delta_and_events_rows_do() -> No
     # its alive entries.
     (read,) = graph.MarketData.from_arrow_reader(rows)
     held = read.as_book_event()
-    assert held is not None and held.curruuid == book.curruuid and held.srcuuids == []
-    assert [entry.curruuid for entry in held.alive] == [entry.curruuid for entry in book.alive]
+    assert held is not None and held.uuid == book.uuid and held.srcuuids == []
+    assert [entry.uuid for entry in held.alive] == [entry.uuid for entry in book.alive]
     assert [entry.srcuuids for entry in held.alive] == [[], []]
 
     # The delta and the events laid out of the book rows carry every source.
@@ -600,7 +600,7 @@ def test_a_row_stating_a_key_no_identifier_reads_is_refused() -> None:
     table = pa.table(
         {
             "marketdatakind": pa.array([10], pa.int32()),
-            "currunix": pa.array([CLOCK], pa.int64()),
+            "transunix": pa.array([CLOCK], pa.int64()),
             "identifiers": pa.array([[("fix:", "O-1")]], IDENTIFIERS_MAP),
         }
     )
@@ -612,7 +612,7 @@ def test_a_row_naming_its_keys_in_any_spelling_reads_them_closed() -> None:
     table = pa.table(
         {
             "marketdatakind": pa.array([10], pa.int32()),
-            "currunix": pa.array([CLOCK], pa.int64()),
+            "transunix": pa.array([CLOCK], pa.int64()),
             "identifiers": pa.array([[("ullink:clordid", "C-1")]], IDENTIFIERS_MAP),
         }
     )

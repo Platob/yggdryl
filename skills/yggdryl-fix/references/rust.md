@@ -197,7 +197,7 @@ assert_eq!(message.by_name("symbol")?, Scalar::from("AAPL"));
 // The first stated OrderID, ClOrdID, ... names the order's chain, stored under its side.
 assert_eq!(message.get_crosscode(), "10:1:A1");
 // Instants are i64 nanoseconds since the epoch, UTC.
-assert_eq!(message.get_currunix(), 1_767_348_930_000_000_000);
+assert_eq!(message.get_transunix(), 1_767_348_930_000_000_000);
 // The entries are the content row as a tree; the lifted 11, 38 and 44 are not in it.
 let names: Vec<&str> = message.entries().iter().map(yggdryl::FixEntry::name).collect();
 assert_eq!(names, ["symbol", "side", "strikeprice", "timeinforce"]);
@@ -233,10 +233,10 @@ let mut message = FixMsg::with_registry(Arc::clone(&registry), root, value)?;
 assert_eq!(message.header().msgtype(), "D");
 assert_eq!(message.get_crosscode(), "10:0:A1");
 
-let before = message.get_currhashcode();
+let before = message.get_hashcode();
 message.set("Symbol", Scalar::from("MSFT"))?;
 assert_eq!(message.by_tag(55)?, Scalar::from("MSFT"));
-assert_ne!(message.get_currhashcode(), before, "a write settles the identity again");
+assert_ne!(message.get_hashcode(), before, "a write settles the identity again");
 assert_eq!(message.remove(55)?, Some(Scalar::from("MSFT")));
 assert!(message.get_by_tag(55).is_none());
 ```
@@ -303,7 +303,7 @@ let read = FixCodec::new(registry)
     .parse_text_arrow_reader(source)?;
 // The schema is decided before a row is read: the shared columns lead, the capture follows them, `fixentries` closes.
 let schema = read.schema();
-assert_eq!(schema.field(0).name(), "curruuid");
+assert_eq!(schema.field(0).name(), "uuid");
 let at = schema.index_of("url")?;
 assert_eq!(schema.field(at - 1).name(), "partyids");
 assert_eq!(schema.field(at + 2).name(), "body");
@@ -352,14 +352,14 @@ let batch = &batches[0];
 assert_eq!(batch.num_rows(), 2, "the heartbeat is refused by default");
 assert!(batch.schema().index_of("level").is_ok(), "an unnamed capture is a column of the row");
 // The line's clock became each message's instant; no SendingTime was invented.
-assert_eq!(batch.column_by_name("currunix").expect("currunix").null_count(), 0);
+assert_eq!(batch.column_by_name("transunix").expect("transunix").null_count(), 0);
 assert_eq!(batch.column_by_name("sendingtime").expect("sendingtime").null_count(), 2);
 
 // Line by line: tell the codec what the captures are called, once.
 let codec = FixCodec::new(registry).with_capture_names(["mtime", "level"]);
 let messages: Vec<FixMsg> = codec.parse_text_lines(handle.read_text_lines()?).collect::<yggdryl::Result<_>>()?;
-let recorded: Vec<Option<i64>> = messages.iter().map(Event::get_recdunix).collect();
-assert_eq!(recorded, [Some(1_767_348_930_250_000_000), Some(1_767_348_930_500_000_000)]);
+let sent: Vec<Option<i64>> = messages.iter().map(Event::get_sendunix).collect();
+assert_eq!(sent, [Some(1_767_348_930_250_000_000), Some(1_767_348_930_500_000_000)]);
 ```
 
 ## Land messages in the fixed row and back
@@ -432,10 +432,10 @@ a `FixAnomaly` under `crosscode` naming both, warned once per kind. A fill's
 execution, split off at the parse, is a chain of its own and never restates,
 follows or ends its order. A codec pinned `with_sorted_lifecycle(true)` reads a source already in
 instant order as it comes, one epoch hour at a time, and answers the same walk. The walk yields
-each `curruuid` once within `dedup_window_ms` of event time, one minute unless
+each `uuid` once within `dedup_window_ms` of event time, one minute unless
 the codec says otherwise; `with_dedup_window_ms(0)` yields every restated twin too.
 A snapshot grid's view is the live message as of its tick: dated at it, so its
-`curruuid` is that instant's, with the live message's content and place.
+`uuid` is that instant's, with the live message's content and place.
 
 ```rust
 use std::sync::Arc;
@@ -466,14 +466,14 @@ let [order, ack, fill, execution] = codec.lifecycle(parsed).collect::<yggdryl::R
 // Sorted by event time, joined by the identifiers each message went by; each
 // follows one of an earlier instant, so each keeps its own place.
 assert_eq!((order.get_seqnum(), ack.get_seqnum(), fill.get_seqnum()), (0, 0, 0));
-assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
-assert_eq!(fill.get_prevuuid(), Some(ack.get_curruuid()));
+assert_eq!(ack.get_prevuuid(), Some(order.get_uuid()));
+assert_eq!(fill.get_prevuuid(), Some(ack.get_uuid()));
 assert!([&ack, &fill].iter().all(|held| held.get_crossuuid() == order.get_crossuuid()));
 // The reports stated no side: they joined the buy alive under A1 and O1.
 assert!([&ack, &fill].iter().all(|held| held.get_side() == Side::Buy && held.get_crosscode() == "10:1:A1"));
 assert_eq!((fill.marketdatakind(), *fill.get_state()), (MarketDataKind::Order, State::Filled));
 // Every walked message states when its chain began.
-assert!([&ack, &fill].iter().all(|held| held.get_creaunix() == Some(order.get_currunix())));
+assert!([&ack, &fill].iter().all(|held| held.get_creaunix() == Some(order.get_transunix())));
 assert_eq!((execution.marketdatakind(), *execution.get_state()), (MarketDataKind::Execution, State::Filled));
 assert_eq!((execution.get_seqnum(), execution.get_prevuuid()), (1, None));
 
@@ -614,7 +614,7 @@ let fill = b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=F
 let [report, execution]: [FixMsg; 2] = codec.parse_line(fill)?.collect::<yggdryl::Result<Vec<_>>>()?.try_into().expect("two");
 assert_eq!((report.marketdatakind(), *report.get_state()), (MarketDataKind::Order, State::PartiallyFilled));
 assert_eq!((execution.marketdatakind(), *execution.get_state()), (MarketDataKind::Execution, State::Filled));
-assert!(execution.get_srcuuids().contains(&report.get_curruuid()));
+assert!(execution.get_srcuuids().contains(&report.get_uuid()));
 // An order or an execution message stores its cross code under its side; the fill is a chain of its own.
 assert_eq!((report.get_crosscode(), execution.get_crosscode()), ("10:1:O-9", "8:1:E-1"));
 
@@ -804,7 +804,7 @@ std::fs::remove_dir_all(&path)?;
   source alone. Install a `log` backend (`env_logger`, say, or the core's own
   `yggdryl::logging::basic_config(BasicConfig::new())`, the terminal line on
   standard error) to see the warnings.
-- The graph getters (`get_crosscode`, `get_side`, `get_currunix`) are trait
+- The graph getters (`get_crosscode`, `get_side`, `get_transunix`) are trait
   methods: import `yggdryl::graph::{Element, Event, Market}`.
 - `with_exclude_msgtypes([])` needs its types spelled:
   `with_exclude_msgtypes::<[&str; 0], &str>([])`.

@@ -64,19 +64,19 @@ pub fn is_null_like(text: &str) -> bool {
 
 /// `graph::element::right_is_reference`, for the market and FIX crates:
 /// whether the right of two statements of one event is the reference, by
-/// their recording clocks, then their instants.
+/// their `sendunix`, then their `transunix`.
 #[inline]
 pub fn right_is_reference(
-    left_recdunix: Option<i64>,
-    left_currunix: i64,
-    right_recdunix: Option<i64>,
-    right_currunix: i64,
+    left_sendunix: Option<i64>,
+    left_transunix: i64,
+    right_sendunix: Option<i64>,
+    right_transunix: i64,
 ) -> bool {
     crate::graph::element::right_is_reference(
-        left_recdunix,
-        left_currunix,
-        right_recdunix,
-        right_currunix,
+        left_sendunix,
+        left_transunix,
+        right_sendunix,
+        right_transunix,
     )
 }
 
@@ -151,7 +151,7 @@ const SPILLED_PLACES: usize = 1 << 16;
 /// states, held once per stream by every door that places what it yields -
 /// the market crate's walk and the FIX crate's parse doors.
 ///
-/// A run is the events a stream hands over at one `currunix`, one after
+/// A run is the events a stream hands over at one `transunix`, one after
 /// another, and the next instant starts a run of its own at zero. A door
 /// places either by order - every event the next place of its run, which is
 /// what a parse hands over - or by content - the first content of a run
@@ -198,7 +198,7 @@ impl InstantSequence {
     /// placing of this run moved by the identity it moved to: a message a
     /// parse split off another follows it at its instant, and names it.
     pub fn place_naming_sources<E: Event + ?Sized>(&mut self, event: &mut E) {
-        let unix = event.get_currunix();
+        let unix = event.get_transunix();
         let moved = &self.moved[..self.moves];
         if self.unix == Some(unix) && !moved.is_empty() {
             let named = event.get_srcuuids();
@@ -223,10 +223,10 @@ impl InstantSequence {
             }
         }
         let seqnum = self.find(unix, None);
-        let before = event.get_curruuid();
+        let before = event.get_uuid();
         restate(event, seqnum);
         self.record(unix, None, seqnum);
-        let after = event.get_curruuid();
+        let after = event.get_uuid();
         if after != before {
             if self.moves == INLINE_PLACES {
                 self.moved.copy_within(1.., 0);
@@ -411,7 +411,7 @@ pub fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
 }
 
 /// `graph::element::fold_event_instants`, for the market crate: the earliest
-/// recording two statements of one event know; whether it moved.
+/// `sendunix` two statements of one event know; whether it moved.
 #[inline]
 pub fn fold_event_instants<E: Event + ?Sized>(this: &mut E, other: &E) -> bool {
     crate::graph::element::fold_event_instants(this, other)

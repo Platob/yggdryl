@@ -2913,8 +2913,8 @@ mod committed {
         }
         assert_eq!(times, 57, "zone-less times of day");
         assert_eq!(naive, 369, "local values, stating no zone");
-        // Sixty-eight shipped fields, plus the crate's seven clocks: `currunix`,
-        // `creaunix`, `prevunix`, `snapunix`, `execunix`, `recdunix` and
+        // Sixty-eight shipped fields, plus the crate's seven clocks: `transunix`,
+        // `creaunix`, `prevunix`, `snapunix`, `execunix`, `sendunix` and
         // `exprunix`.
         let crated = registry
             .iter()
@@ -3473,10 +3473,15 @@ mod committed {
     /// three stood - so the crate's field shard and that code set were
     /// written again; the code-record census of `rust/tests/fix/mod_.rs`
     /// moved from 7,938 to 7,954 and no count of the census below moved.
+    /// It last moved when `curruuid`, `currhashcode`, `currunix` and
+    /// `recdunix` became `uuid`, `hashcode`, `transunix` and `sendunix`:
+    /// 65001, 65004, 65007 and 65009 re-spelled with their descriptions, so
+    /// the crate's field shard and the fixed row component were written
+    /// again. No count of the census below moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 14_542_711_836_201_211_247);
+        assert_eq!(registry.stable_hash(), 12_613_356_107_921_639_431);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| FixField::new(component).msgtype().is_some())
             .count();

@@ -108,18 +108,18 @@ fn the_readings_are_the_leafs_own() {
     for value in one_of_every_leaf() {
         let (uuid, code, price) = match &value {
             MarketData::OrderEvent(leaf) => (
-                leaf.get_curruuid(),
+                leaf.get_uuid(),
                 leaf.get_crosscode().to_owned(),
                 leaf.get_price(),
             ),
             MarketData::TradeEvent(leaf) => (
-                leaf.get_curruuid(),
+                leaf.get_uuid(),
                 leaf.get_crosscode().to_owned(),
                 leaf.get_price(),
             ),
             _ => continue,
         };
-        assert_eq!(value.get_curruuid(), uuid);
+        assert_eq!(value.get_uuid(), uuid);
         assert_eq!(value.get_crosscode(), code);
         assert_eq!(value.get_price(), price);
     }
@@ -129,7 +129,7 @@ fn the_readings_are_the_leafs_own() {
     value.finalize();
     let leaf = value.as_order_event().unwrap();
     assert_eq!(leaf.get_price(), Some(Decimal::from_int(7)));
-    assert_eq!(value.get_curruuid(), leaf.get_curruuid());
+    assert_eq!(value.get_uuid(), leaf.get_uuid());
 }
 
 #[test]
@@ -169,7 +169,7 @@ fn only_two_dated_values_order_and_only_one_variant_merges() {
         .with_previous(&first)
         .expect("a later order follows");
     let leaf = followed.as_order_event().unwrap();
-    assert_eq!(leaf.get_prevuuid(), Some(first.get_curruuid()));
+    assert_eq!(leaf.get_prevuuid(), Some(first.get_uuid()));
     assert_eq!(
         followed,
         MarketData::from(
@@ -397,11 +397,11 @@ fn a_book_row_writes_no_sources_of_its_own_nor_of_its_alive_entries() {
             .map(|entry| entry.get_srcuuids().to_vec())
             .collect::<Vec<_>>()
     };
-    let curruuids = |book: &BookEvent| book.alive().map(Element::get_curruuid).collect::<Vec<_>>();
+    let uuids = |book: &BookEvent| book.alive().map(Element::get_uuid).collect::<Vec<_>>();
     let check = |read: &BookEvent| {
         assert!(read.get_srcuuids().is_empty());
-        assert_eq!(read.get_curruuid(), book.get_curruuid());
-        assert_eq!(curruuids(read), curruuids(&book));
+        assert_eq!(read.get_uuid(), book.get_uuid());
+        assert_eq!(uuids(read), uuids(&book));
         assert!(read.alive().all(|entry| entry.get_srcuuids().is_empty()));
         assert_eq!(sources_of(read.delta().collect()), [source(70), source(71)]);
         assert_eq!(sources_of(read.events().collect()), [source(72)]);
@@ -474,16 +474,12 @@ fn an_operation_event_follows_one_of_another_kind_through_their_facts() {
         .with_previous(&first)
         .expect("an execution follows the order it fills");
     let leaf = followed.as_execution_event().expect("the kind is kept");
-    assert_eq!(leaf.get_prevuuid(), Some(first.get_curruuid()));
+    assert_eq!(leaf.get_prevuuid(), Some(first.get_uuid()));
     // A later instant keeps its own place.
     assert_eq!(leaf.get_seqnum(), 0);
     assert_eq!(leaf.get_prevpx(), first.get_price());
     assert!(leaf.is_execution());
-    assert_ne!(
-        leaf.get_curruuid(),
-        fill.get_curruuid(),
-        "finalized once more"
-    );
+    assert_ne!(leaf.get_uuid(), fill.get_uuid(), "finalized once more");
 
     let trade = MarketData::from(
         TradeEvent::from_parts(&order(3_000_000, "T-3"), vec![execution(3_000_000, "E-3")])
@@ -529,7 +525,7 @@ mod fix {
         assert_eq!(held.kind(), MarketKind::Fix);
         assert!(held.is_event());
         assert_eq!(held.marketdatakind(), MarketDataKind::Order);
-        assert_eq!(held.get_curruuid(), message.get_curruuid());
+        assert_eq!(held.get_uuid(), message.get_uuid());
         assert_eq!(held.get_side(), Side::Buy);
         assert_eq!(held.get_price(), message.get_price());
         assert_eq!(held.as_message::<FixMsg>(), Some(&message));
@@ -552,7 +548,7 @@ mod fix {
         assert_eq!(leaf.get_side(), message.get_side());
         assert_eq!(leaf.get_ordqty(), message.get_ordqty());
         assert_eq!(leaf.get_timeinforce(), message.get_timeinforce());
-        assert_eq!(leaf.get_currunix(), message.get_currunix());
+        assert_eq!(leaf.get_transunix(), message.get_transunix());
     }
 
     /// The variant holds the message as a trait object, two words wide, so

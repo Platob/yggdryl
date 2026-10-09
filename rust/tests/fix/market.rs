@@ -58,8 +58,8 @@ fn event_of(value: &MarketData) -> &dyn Event {
 }
 
 /// The instant a value happened at.
-fn currunix(value: &MarketData) -> i64 {
-    event_of(value).get_currunix()
+fn transunix(value: &MarketData) -> i64 {
+    event_of(value).get_transunix()
 }
 
 /// The book scope a value states.
@@ -106,7 +106,7 @@ fn books_of(reader: yggdryl::arrow::BatchReader) -> Vec<BookEvent> {
             let book = if book.is_complete() {
                 book
             } else {
-                let origin = BookEvent::new(book.get_currunix(), book.get_crosscode());
+                let origin = BookEvent::new(book.get_transunix(), book.get_crosscode());
                 let previous = last.get(book.get_crosscode()).unwrap_or(&origin);
                 book.with_previous(previous)
                     .expect("a delta book rebuilds over the book before it")
@@ -129,7 +129,7 @@ fn folded(leaves: Vec<MarketData>) -> Vec<BookEvent> {
             let whole = if book.is_complete() {
                 book
             } else {
-                let origin = BookEvent::new(book.get_currunix(), book.get_crosscode());
+                let origin = BookEvent::new(book.get_transunix(), book.get_crosscode());
                 let previous = last.get(book.get_crosscode()).unwrap_or(&origin);
                 book.with_previous(previous)
                     .expect("a delta book rebuilds over the book before it")
@@ -166,7 +166,7 @@ fn execution_of(message: FixMsg) -> ExecutionEvent {
 /// Whether `split` names `source` and what `source` was read from as its
 /// sources.
 fn names_its_source(split: &FixMsg, source: &FixMsg) -> bool {
-    split.get_srcuuids().contains(&source.get_curruuid())
+    split.get_srcuuids().contains(&source.get_uuid())
         && source
             .get_srcuuids()
             .iter()
@@ -241,7 +241,7 @@ fn an_order_execution_splits_off_one_filled_execution_message() {
     assert_eq!(*execution.get_state(), State::Filled);
     assert!(execution.is_execution());
     assert!(names_its_source(execution, report));
-    assert_ne!(execution.get_curruuid(), report.get_curruuid());
+    assert_ne!(execution.get_uuid(), report.get_uuid());
     assert_ne!(execution.get_crossuuid(), report.get_crossuuid());
     // Its chain is its own, keyed by the fill, and stored under its kind
     // and its side.
@@ -263,7 +263,7 @@ fn an_order_execution_splits_off_one_filled_execution_message() {
         let back = FixMsg::from_row(committed_registry(), &schema, &row).unwrap();
         assert_eq!(back.marketdatakind(), held.marketdatakind());
         assert_eq!(back.get_state(), held.get_state());
-        assert_eq!(back.get_curruuid(), held.get_curruuid());
+        assert_eq!(back.get_uuid(), held.get_uuid());
         assert_eq!(back.get_srcuuids(), held.get_srcuuids());
     }
 
@@ -436,8 +436,8 @@ fn a_fill_and_its_report_are_what_a_whole_settle_answers() {
                 String::from_utf8_lossy(line)
             );
             assert_eq!(settled.anomalies(), held.anomalies());
-            assert_eq!(settled.get_currhashcode(), held.get_currhashcode());
-            assert_eq!(settled.get_curruuid(), held.get_curruuid());
+            assert_eq!(settled.get_hashcode(), held.get_hashcode());
+            assert_eq!(settled.get_uuid(), held.get_uuid());
         }
     }
     // Every numeric fill and the bridge's own: a fixture that stopped
@@ -492,7 +492,7 @@ fn a_trade_splits_off_one_sided_execution_message_per_side() {
         sell.get_identifiers().get(&IdType::ClOrdId),
         Some("SELL-CLIENT")
     );
-    assert_ne!(buy.get_curruuid(), sell.get_curruuid());
+    assert_ne!(buy.get_uuid(), sell.get_uuid());
     assert_ne!(buy.get_crossuuid(), sell.get_crossuuid());
     assert!(
         buy.get_crosscode().starts_with("8:1:"),
@@ -638,7 +638,7 @@ fn a_mass_cancel_report_entry_ends_the_order_it_names_in_the_lifecycle() {
             held.header().msgtype() == "r" && held.marketdatakind() == MarketDataKind::Order
         })
         .expect("the entry");
-    assert_eq!(entry.get_prevuuid(), Some(ack.get_curruuid()));
+    assert_eq!(entry.get_prevuuid(), Some(ack.get_uuid()));
     assert_eq!(entry.get_crosscode(), "10:1:C1");
     assert_eq!(entry.get_crossuuid(), ack.get_crossuuid());
     assert_eq!(entry.get_side(), Side::Buy);
@@ -718,7 +718,7 @@ fn only_initial_trade_capture_reports_split_without_requiring_exec_type() {
         b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|487=0|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=1|1427=BUY-EXEC|1009=10|54=2|1427=SELL-EXEC|1009=10|10=0|",
     );
     assert_eq!(messages.len(), 3);
-    let executed = messages[0].get_currunix();
+    let executed = messages[0].get_transunix();
     for side in &messages[1..] {
         assert_eq!(side.get_execunix(), Some(executed));
     }
@@ -745,7 +745,7 @@ fn stable_trade_side_ids_make_group_order_irrelevant_to_identity() {
     let identities = |line: &[u8]| {
         let mut sides: Vec<_> = split(line)[1..]
             .iter()
-            .map(|side| (side.get_curruuid(), side.get_crosscode().to_owned()))
+            .map(|side| (side.get_uuid(), side.get_crosscode().to_owned()))
             .collect();
         sides.sort();
         sides
@@ -765,7 +765,7 @@ fn anonymous_trade_sides_are_order_independent_and_stable_id_tags_do_not_collide
     let codes = |line: &[u8]| {
         let mut sides: Vec<_> = split(line)[1..]
             .iter()
-            .map(|side| (side.get_curruuid(), side.get_crosscode().to_owned()))
+            .map(|side| (side.get_uuid(), side.get_crosscode().to_owned()))
             .collect();
         sides.sort();
         sides
@@ -1158,22 +1158,22 @@ fn msgtype_edits_resettle_derived_operation_ids_and_leave_stated_ids_alone() {
 
     let mut stated = message(b"8=FIX.4.4|35=D|65016=8|11=C1|55=AAPL|54=1|44=100|38=5|10=0|");
     assert_eq!(stated.marketdatakind(), MarketDataKind::Execution);
-    let execution_hash = stated.get_currhashcode();
-    let execution_uuid = stated.get_curruuid();
+    let execution_hash = stated.get_hashcode();
+    let execution_uuid = stated.get_uuid();
     stated.set(35, Scalar::from("S")).unwrap();
     assert_eq!(
         stated.marketdatakind(),
         MarketDataKind::Execution,
         "an explicit MsgCat row value owns the category"
     );
-    assert_ne!(stated.get_currhashcode(), execution_hash);
-    assert_ne!(stated.get_curruuid(), execution_uuid);
-    let explicit_hash = stated.get_currhashcode();
+    assert_ne!(stated.get_hashcode(), execution_hash);
+    assert_ne!(stated.get_uuid(), execution_uuid);
+    let explicit_hash = stated.get_hashcode();
     stated
         .set(yggdryl::MARKETDATAKIND_TAG_NAME.0, Scalar::from(14_i32))
         .unwrap();
     assert_eq!(stated.marketdatakind(), MarketDataKind::Quotation);
-    assert_ne!(stated.get_currhashcode(), explicit_hash);
+    assert_ne!(stated.get_hashcode(), explicit_hash);
     assert_eq!(
         stated.remove(yggdryl::MARKETDATAKIND_TAG_NAME.0).unwrap(),
         Some(Scalar::from(MarketDataKind::Quotation))
@@ -1408,10 +1408,10 @@ fn codec_book_admission_skips_noncontributing_records_between_market_events() {
     // instant emits a delta book whose delta is empty and whose events
     // state the execution alone.
     assert_eq!(expected.len(), 5);
-    let filled = admitted[2].get_currunix();
+    let filled = admitted[2].get_transunix();
     let fill = expected
         .iter()
-        .find(|book| book.get_currunix() == filled)
+        .find(|book| book.get_transunix() == filled)
         .expect("the fill's book");
     assert_eq!(fill.delta().len(), 0, "the fill moved no entry");
     assert_eq!(
@@ -1670,8 +1670,8 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
     }
     for pair in versions.windows(2) {
         let (before, after) = (operation_of(pair[0]), operation_of(pair[1]));
-        assert_eq!(after.get_prevuuid(), Some(before.get_curruuid()));
-        assert_eq!(after.get_prevunix(), Some(before.get_currunix()));
+        assert_eq!(after.get_prevuuid(), Some(before.get_uuid()));
+        assert_eq!(after.get_prevunix(), Some(before.get_transunix()));
         assert_eq!(after.get_prevpx(), before.get_price());
         assert_eq!(after.get_prevqty(), before.get_quantity());
     }
@@ -1733,8 +1733,8 @@ fn fix_delete_without_order_id_keeps_terminal_order_delta_through_book_arrow() {
     assert_eq!(deleted.get_ticker(), Some("AAPL"));
     assert_eq!(deleted.get_identifiers().get(&ENTRY_ID), Some("B1"));
     assert_eq!(deleted.get_identifiers().get(&IdType::OrderId), Some("O1"));
-    assert_eq!(deleted.get_prevuuid(), Some(previous.get_curruuid()));
-    assert_eq!(deleted.get_prevunix(), Some(previous.get_currunix()));
+    assert_eq!(deleted.get_prevuuid(), Some(previous.get_uuid()));
+    assert_eq!(deleted.get_prevunix(), Some(previous.get_transunix()));
     // The delete arrives a second after the order, a later instant of its
     // own, so following the order leaves its place alone.
     assert_eq!(deleted.get_seqnum(), 0);
@@ -1758,7 +1758,7 @@ fn lifecycled_order_versions_inherit_symbol_before_book_partitioning() {
         .unwrap();
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[1].get_ticker(), Some("AAPL"));
-    assert_eq!(messages[1].get_prevuuid(), Some(messages[0].get_curruuid()));
+    assert_eq!(messages[1].get_prevuuid(), Some(messages[0].get_uuid()));
 
     let reader = codec.book_arrow_reader(messages, 0, None).unwrap();
     let books = books_of(reader);
@@ -1847,7 +1847,7 @@ fn lifted_request_id_keeps_full_snapshot_partitions_distinct() {
     .into_market_data()
     .unwrap();
     assert!(scope_of(&initial[0]).contains("MDReqID=REQ-1"));
-    let mut book = BookEvent::new(currunix(&initial[0]), "AAPL");
+    let mut book = BookEvent::new(transunix(&initial[0]), "AAPL");
     book.add_operations(initial).unwrap();
 
     let empty_other_request =
@@ -1991,8 +1991,8 @@ fn market_entry_clock_dates_each_operation_and_precisely_dates_an_execution() {
     .expect("entry clocks");
 
     assert_eq!(operations.len(), 2);
-    assert_eq!(currunix(&operations[0]), 1_789_896_600_123_456_789);
-    assert_eq!(currunix(&operations[1]), 1_789_896_600_223_456_789);
+    assert_eq!(transunix(&operations[0]), 1_789_896_600_123_456_789);
+    assert_eq!(transunix(&operations[1]), 1_789_896_600_223_456_789);
     assert_eq!(
         operations[1].get_execunix(),
         Some(1_789_896_600_223_456_789)
@@ -2002,7 +2002,7 @@ fn market_entry_clock_dates_each_operation_and_precisely_dates_an_execution() {
         b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=1|269=0|278=B1|270=100|271=10|272=20260920|273=09:30:00.123456789|10=0|",
     ))
     .expect("one full-snapshot entry");
-    assert_eq!(currunix(&snapshot), 1_789_984_800_000_000_000);
+    assert_eq!(transunix(&snapshot), 1_789_984_800_000_000_000);
     assert_eq!(
         event_of(&snapshot).get_creaunix(),
         Some(1_789_896_600_123_456_789)
@@ -2032,7 +2032,7 @@ fn borrowed_and_owned_book_expansion_share_stable_effective_time_order() {
         assert!(
             operations
                 .windows(2)
-                .all(|pair| { currunix(&pair[0]) <= currunix(&pair[1]) })
+                .all(|pair| { transunix(&pair[0]) <= transunix(&pair[1]) })
         );
     }
 }
@@ -2042,7 +2042,7 @@ fn incremental_changes_inherit_price_or_size_the_fix_entry_did_not_restate() {
     let snapshot = message(b"8=FIX.4.4|35=W|55=AAPL|268=1|269=0|278=B1|270=100|271=10|10=0|")
         .into_market_data()
         .unwrap();
-    let mut book = BookEvent::new(currunix(&snapshot[0]), "AAPL");
+    let mut book = BookEvent::new(transunix(&snapshot[0]), "AAPL");
     book.add_operations(snapshot).unwrap();
 
     let size_only = message(b"8=FIX.4.4|35=X|55=AAPL|268=1|279=1|269=0|278=B1|271=11|10=0|")
@@ -2070,7 +2070,7 @@ fn anonymous_incremental_changes_use_stable_position_identity_or_exclude_ambigui
     .into_market_data()
     .unwrap();
     let identity = snapshot[0].get_crosscode().to_owned();
-    let mut book = BookEvent::new(currunix(&snapshot[0]), "AAPL");
+    let mut book = BookEvent::new(transunix(&snapshot[0]), "AAPL");
     book.add_operations(snapshot).unwrap();
 
     let change = message(
@@ -2107,7 +2107,7 @@ fn an_empty_full_refresh_clears_its_scope() {
     )
     .into_market_data()
     .unwrap();
-    let mut book = BookEvent::new(currunix(&initial[0]), "AAPL");
+    let mut book = BookEvent::new(transunix(&initial[0]), "AAPL");
     book.add_operations(initial).unwrap();
     assert_eq!(alive(&book, true).len(), 1);
 
@@ -2547,10 +2547,7 @@ fn a_bid_and_an_offer_sharing_an_entry_id_stay_two_entries() {
         offer.get_crosscode(),
         "14:0:Symbol=AAPL|MDEntryType=1|MDEntryID=E1"
     );
-    assert_eq!(
-        operation_of(changed).get_prevuuid(),
-        Some(offer.get_curruuid())
-    );
+    assert_eq!(operation_of(changed).get_prevuuid(), Some(offer.get_uuid()));
     assert_eq!(changed.get_crosscode(), offer.get_crosscode());
 
     // The book holds both, each on its side, and the change moves the offer
@@ -2680,7 +2677,9 @@ fn drained(
 /// else its own.
 fn effective(value: &MarketData) -> i64 {
     let event = event_of(value);
-    event.get_snapunix().unwrap_or_else(|| event.get_currunix())
+    event
+        .get_snapunix()
+        .unwrap_or_else(|| event.get_transunix())
 }
 
 /// Messages of one codec, in the order given.
@@ -2706,7 +2705,7 @@ fn the_codec_sorts_a_capture_before_projecting_it() {
         ],
     );
     let mut sorted = unsorted.clone();
-    sorted.sort_by_key(Event::get_currunix);
+    sorted.sort_by_key(Event::get_transunix);
     let expected = drained(yggdryl::fix::FixMarketIterator::new(sorted.into_iter()))
         .expect("the strict projection over the sorted capture");
     assert_eq!(expected.len(), 3);
@@ -2725,8 +2724,11 @@ fn the_codec_sorts_a_capture_before_projecting_it() {
     ))
     .expect("nothing fails");
     assert_eq!(
-        lazy.iter().map(currunix).collect::<Vec<_>>(),
-        unsorted.iter().map(Event::get_currunix).collect::<Vec<_>>()
+        lazy.iter().map(transunix).collect::<Vec<_>>(),
+        unsorted
+            .iter()
+            .map(Event::get_transunix)
+            .collect::<Vec<_>>()
     );
 
     // The sorted operations fold through the stateful book, one per leaf.
@@ -2752,7 +2754,7 @@ fn sorted_operations_never_regress_when_an_entry_clock_precedes_a_message() {
     assert!(
         capture
             .windows(2)
-            .all(|pair| pair[0].get_currunix() <= pair[1].get_currunix()),
+            .all(|pair| pair[0].get_transunix() <= pair[1].get_transunix()),
         "the messages are sorted"
     );
     // Sorted messages are not sorted operations: the lazy projection yields
@@ -2901,7 +2903,7 @@ fn a_book_message_counting_no_entries_reads_back_out_of_the_fixed_row_as_it_pars
             FixMsg::from_row(Arc::clone(parsed.registry()), &schema, &row).expect("the row reads");
         let rewritten = String::from_utf8(read_back.into_bytes(b'|')).unwrap();
         assert!(rewritten.contains("|268=0|"), "{rewritten}");
-        assert_eq!(read_back.get_currhashcode(), parsed.get_currhashcode());
+        assert_eq!(read_back.get_hashcode(), parsed.get_hashcode());
         let market = parsed.into_market_data().unwrap();
         assert_eq!(market.len(), leaves, "{wire}");
         assert_eq!(read_back.into_market_data().unwrap(), market, "{wire}");
@@ -3482,7 +3484,7 @@ fn a_trade_side_keeps_its_own_members_bare_and_the_order_independence_pins_hold(
         b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|487=0|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=2|1427=SELL-EXEC|1009=6|528=P|54=1|1427=BUY-EXEC|1009=4|528=A|10=0|",
     );
     let identities =
-        |sides: &[ExecutionEvent]| sides.iter().map(Element::get_curruuid).collect::<Vec<_>>();
+        |sides: &[ExecutionEvent]| sides.iter().map(Element::get_uuid).collect::<Vec<_>>();
     assert_eq!(
         identities(&first),
         identities(&second),
@@ -3543,11 +3545,11 @@ fn the_option_turns_the_fill_off_and_the_identity_says_so() {
         "the switch fills nothing"
     );
     assert_ne!(
-        filled[0].get_curruuid(),
-        bare[0].get_curruuid(),
+        filled[0].get_uuid(),
+        bare[0].get_uuid(),
         "the map is part of what a leaf digests"
     );
-    assert_ne!(filled[0].get_currhashcode(), bare[0].get_currhashcode());
+    assert_ne!(filled[0].get_hashcode(), bare[0].get_hashcode());
     assert_eq!(
         filled[0].get_crosscode(),
         bare[0].get_crosscode(),
@@ -3598,7 +3600,7 @@ fn book_arrow_reader_honours_the_switch() {
             Some("ACC1")
         );
     }
-    assert_ne!(filled.get_curruuid(), bare.get_curruuid());
+    assert_ne!(filled.get_uuid(), bare.get_uuid());
 }
 
 #[test]
@@ -3673,7 +3675,7 @@ fn leaf_metadata_round_trips_through_arrow() {
     assert_eq!(actual.len(), expected.len());
     for (index, (read, stated)) in actual.iter().zip(&expected).enumerate() {
         assert_eq!(read.get_metadata(), stated.get_metadata(), "{index}");
-        assert_eq!(read.get_curruuid(), stated.get_curruuid(), "{index}");
+        assert_eq!(read.get_uuid(), stated.get_uuid(), "{index}");
         let (read, stated) = (operation_of(read), operation_of(stated));
         assert_eq!(read.get_partyids(), stated.get_partyids(), "{index}");
         assert_eq!(read.get_identifiers(), stated.get_identifiers(), "{index}");
@@ -3706,7 +3708,10 @@ fn a_book_folds_one_instants_steps_of_a_chain_in_the_chains_order() {
         .collect::<yggdryl::Result<_>>()
         .expect("the walk");
     let (cancel, reject) = (walked.len() - 2, walked.len() - 1);
-    assert_eq!(walked[cancel].get_currunix(), walked[reject].get_currunix());
+    assert_eq!(
+        walked[cancel].get_transunix(),
+        walked[reject].get_transunix()
+    );
     assert!(walked[cancel].get_seqnum() < walked[reject].get_seqnum());
     let fold = |messages: Vec<FixMsg>| {
         books_of(

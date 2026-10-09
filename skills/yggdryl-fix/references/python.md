@@ -184,7 +184,7 @@ assert message.crosscode == "10:1:A1"
 # The names it goes by are identifiers: a source, a type and a value.
 assert str(message.identifiers) == "[clordid=A1]"
 # Instants are int nanoseconds since the epoch, UTC.
-assert message.currunix == 1_767_348_930_000_000_000
+assert message.transunix == 1_767_348_930_000_000_000
 # The entries are the content row as (tag, name, value, children) tuples.
 assert [name for _, name, _, _ in message.entries()] == ["symbol", "side", "strikeprice", "timeinforce"]
 ```
@@ -213,10 +213,10 @@ message = FixMsg(root, {"MsgType": "D", "ClOrdID": "A1", "Symbol": "AAPL"}, regi
 assert message.header().msgtype == "D"
 assert message.crosscode == "10:0:A1"
 
-before = message.currhashcode
+before = message.hashcode
 message.set("Symbol", "MSFT")
 assert message.by_tag(55).as_py() == "MSFT"
-assert message.currhashcode != before, "a write settles the identity again"
+assert message.hashcode != before, "a write settles the identity again"
 assert message.remove(55).as_py() == "MSFT"
 assert message.get_by_tag(55) is None
 with pytest.raises(KeyError):
@@ -280,7 +280,7 @@ capture = pa.table(
 codec = FixCodec(registry, threads=4, batch_row_size=10_000)
 read = codec.parse_text_arrow_reader(capture)
 # The schema is decided before a row is read: the shared columns lead, the capture follows them, `fixentries` closes.
-assert read.schema.names[0] == "curruuid"
+assert read.schema.names[0] == "uuid"
 at = read.schema.names.index("url")
 assert read.schema.names[at - 1 : at + 3] == ["partyids", "url", "rownum", "body"]
 assert read.schema.names[-1] == "fixentries"
@@ -330,7 +330,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert len(lines) == 3
     codec = FixCodec(registry, capture_names=list(options.capture_names))
     messages = list(codec.parse_text_lines(lines))
-    assert [message.recdunix for message in messages] == [1_767_348_930_250_000_000, 1_767_348_930_500_000_000]
+    assert [message.sendunix for message in messages] == [1_767_348_930_250_000_000, 1_767_348_930_500_000_000]
 ```
 
 ## Land messages in the fixed row and back
@@ -377,7 +377,7 @@ with tempfile.TemporaryDirectory() as directory:
     stored = IOBase(pathlib.Path(directory) / "capture.parquet")
     stored.overwrite_arrow_reader(codec.arrow_reader(schema, parsed))
     again = list(codec.messages(stored.read_arrow_reader()))
-    assert [message.currhashcode for message in again] == [message.currhashcode for message in parsed]
+    assert [message.hashcode for message in again] == [message.hashcode for message in parsed]
 
     # And out to the wire, one line per row.
     sink = io.BytesIO()
@@ -400,10 +400,10 @@ a `FixAnomaly` under `crosscode` naming both, warned once per kind. A fill's
 execution, split off at the parse, is a chain of its own and never restates,
 follows or ends its order. A codec pinned `sorted_lifecycle=True` reads a source already in
 instant order as it comes, one epoch hour at a time, and answers the same walk. The walk yields
-each `curruuid` once within `dedup_window_ms` of event time, one minute unless
+each `uuid` once within `dedup_window_ms` of event time, one minute unless
 the codec says otherwise; `dedup_window_ms=None` yields every restated twin too.
 A snapshot grid's view is the live message as of its tick: dated at it, so its
-`curruuid` is that instant's, with the live message's content and place.
+`uuid` is that instant's, with the live message's content and place.
 
 ```python
 from pathlib import Path
@@ -430,13 +430,13 @@ order, ack, fill, execution = codec.lifecycle(parsed)
 # Sorted by event time, joined by the identifiers each message went by; each
 # follows one of an earlier instant, so each keeps its own place.
 assert (order.seqnum, ack.seqnum, fill.seqnum) == (0, 0, 0)
-assert ack.prevuuid == order.curruuid and fill.prevuuid == ack.curruuid
+assert ack.prevuuid == order.uuid and fill.prevuuid == ack.uuid
 assert ack.crossuuid == fill.crossuuid == order.crossuuid
 # The reports stated no side: they joined the buy alive under A1 and O1.
 assert all(held.side is Side.BUYS and held.crosscode == "10:1:A1" for held in (ack, fill))
 assert (fill.marketdatakind, fill.state) == (MarketDataKind.ORDR, State.FILLED)
 # Every walked message states when its chain began.
-assert ack.creaunix == fill.creaunix == order.currunix
+assert ack.creaunix == fill.creaunix == order.transunix
 assert (execution.marketdatakind, execution.state) == (MarketDataKind.EXEC, State.FILLED)
 assert (execution.seqnum, execution.prevuuid) == (1, None)
 
@@ -566,7 +566,7 @@ fill = b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=F|55=
 report, execution = codec.parse_line(fill)
 assert (report.marketdatakind, report.state) == (MarketDataKind.ORDR, State.PARTIALLY_FILLED)
 assert (execution.marketdatakind, execution.state) == (MarketDataKind.EXEC, State.FILLED)
-assert report.curruuid in execution.srcuuids
+assert report.uuid in execution.srcuuids
 # An order or an execution message stores its cross code under its side; the fill is a chain of its own.
 assert (report.crosscode, execution.crosscode) == ("10:1:O-9", "8:1:E-1")
 

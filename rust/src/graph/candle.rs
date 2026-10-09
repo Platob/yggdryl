@@ -65,7 +65,7 @@ const NAMES: [&str; 23] = [
 ];
 
 /// The path a refusal of the stream's order or range is located at.
-const BOOK_UNIX: &str = "$.book.currunix";
+const BOOK_UNIX: &str = "$.book.transunix";
 
 /// One reading's open, high, low and close over a bucket.
 ///
@@ -710,8 +710,8 @@ impl Fold {
 /// delta book both state, so a walk's books fold as they are emitted, none
 /// rebuilt.
 ///
-/// Books must arrive sorted by [`Event::get_currunix`]; a regression is
-/// refused at `$.book.currunix`. The candles of a bucket are emitted, in
+/// Books must arrive sorted by [`Event::get_transunix`]; a regression is
+/// refused at `$.book.transunix`. The candles of a bucket are emitted, in
 /// cross-code order, when the stream moves past the bucket and at its end;
 /// an empty bucket yields no candle. The open bucket holds one fold per
 /// cross code until the bucket closes. An error - the source's, a
@@ -808,7 +808,7 @@ where
 
     /// Folds one book into its bucket, closing the bucket before it.
     fn fold(&mut self, book: &BookEvent) -> Result<()> {
-        let unix = book.get_currunix();
+        let unix = book.get_transunix();
         if let Some(previous) = self.last_unix.filter(|previous| unix < *previous) {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static(BOOK_UNIX),

@@ -85256,10 +85256,10 @@
           "FIX:datatype": "String",
           "FIX:tag": "65001",
           "FIX:transient": "false",
-          "description": "The element's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash.",
-          "display": "Current UUID"
+          "description": "The element's own UUID: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash.",
+          "display": "UUID"
         },
-        "name": "curruuid",
+        "name": "uuid",
         "nullable": false
       },
       {
@@ -85299,9 +85299,9 @@
           "FIX:tag": "65004",
           "FIX:transient": "false",
           "description": "The XXH3-64 of what the event states and the named FIX content behind it.",
-          "display": "Current Hash Code"
+          "display": "Hash Code"
         },
-        "name": "currhashcode",
+        "name": "hashcode",
         "nullable": false
       },
       {
@@ -85349,10 +85349,10 @@
           "FIX:datatype": "UTCTimestamp",
           "FIX:tag": "65007",
           "FIX:transient": "false",
-          "description": "When the event happened: the settled instant, UTC.",
-          "display": "Current Time"
+          "description": "When the operation happened: the settled transaction instant, UTC.",
+          "display": "Transaction Time"
         },
-        "name": "currunix",
+        "name": "transunix",
         "nullable": false
       },
       {
@@ -85368,7 +85368,7 @@
           ],
           "FIX:tag": "65008",
           "FIX:transient": "false",
-          "description": "When the message was created: what it states, else when it happened; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed.",
+          "description": "When the message was created: what it states, else its transunix; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed.",
           "display": "Creation Time"
         },
         "name": "creaunix",
@@ -85384,10 +85384,10 @@
           "FIX:datatype": "UTCTimestamp",
           "FIX:tag": "65009",
           "FIX:transient": "false",
-          "description": "When the message was recorded: by its carrier, where the carrier states one, else by its sender, where it states a SendingTime; the earliest its statements know.",
-          "display": "Recording Time"
+          "description": "When the message crossed the wire: its carrier's clock where the carrier states one, else the sender's SendingTime; the earliest its statements know.",
+          "display": "Sending Time"
         },
-        "name": "recdunix",
+        "name": "sendunix",
         "nullable": true
       },
       {
@@ -85562,7 +85562,7 @@
           "FIX:datatype": "UTCTimestamp",
           "FIX:tag": "65024",
           "FIX:transient": "false",
-          "description": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know.",
+          "description": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its transunix; the latest its chain reached once followed, and the earliest two statements of it know.",
           "display": "Execution Time"
         },
         "name": "execunix",
@@ -284900,11 +284900,11 @@
   "row": {
     "columns": [
       {
-        "c": "curruuid",
+        "c": "uuid",
         "t": 65001,
-        "n": "Current UUID",
+        "n": "UUID",
         "y": "uuid",
-        "x": "The element's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash."
+        "x": "The element's own UUID: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash."
       },
       {
         "c": "crossuuid",
@@ -284921,9 +284921,9 @@
         "x": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and of the side an order or an execution takes, 10:1:ORD-1, side 0 on one of side UKNW and on every other kind, a quote among them: 14:0:Q-1, 21:0:T-1; its chain's once followed."
       },
       {
-        "c": "currhashcode",
+        "c": "hashcode",
         "t": 65004,
-        "n": "Current Hash Code",
+        "n": "Hash Code",
         "y": "uint64",
         "x": "The XXH3-64 of what the event states and the named FIX content behind it."
       },
@@ -284942,25 +284942,25 @@
         "x": "The identities of the elements this message was read from: the text line it was parsed out of, and for a message the parse split off another that message's identity beside its sources; none for one parsed from raw bytes. Provenance, never lineage: no walk moves it."
       },
       {
-        "c": "currunix",
+        "c": "transunix",
         "t": 65007,
-        "n": "Current Time",
+        "n": "Transaction Time",
         "y": "datetime64(ns,\"UTC\")",
-        "x": "When the event happened: the settled instant, UTC."
+        "x": "When the operation happened: the settled transaction instant, UTC."
       },
       {
         "c": "creaunix",
         "t": 65008,
         "n": "Creation Time",
         "y": "datetime64(ns,\"UTC\")",
-        "x": "When the message was created: what it states, else when it happened; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed."
+        "x": "When the message was created: what it states, else its transunix; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed."
       },
       {
-        "c": "recdunix",
+        "c": "sendunix",
         "t": 65009,
-        "n": "Recording Time",
+        "n": "Sending Time",
         "y": "datetime64(ns,\"UTC\")",
-        "x": "When the message was recorded: by its carrier, where the carrier states one, else by its sender, where it states a SendingTime; the earliest its statements know."
+        "x": "When the message crossed the wire: its carrier's clock where the carrier states one, else the sender's SendingTime; the earliest its statements know."
       },
       {
         "c": "exprunix",
@@ -285114,7 +285114,7 @@
         "t": 65024,
         "n": "Execution Time",
         "y": "datetime64(ns,\"UTC\")",
-        "x": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know."
+        "x": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its transunix; the latest its chain reached once followed, and the earliest two statements of it know."
       },
       {
         "c": "lastpx",
@@ -286161,9 +286161,9 @@
         }
       ],
       "event": {
-        "currunix": "1706790896123000000",
+        "transunix": "1706790896123000000",
         "creaunix": "1706790896123000000",
-        "recdunix": "1706790896000000000",
+        "sendunix": "1706790896000000000",
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -286500,9 +286500,9 @@
         }
       ],
       "event": {
-        "currunix": "1706790897900000000",
+        "transunix": "1706790897900000000",
         "creaunix": "1706790897900000000",
-        "recdunix": "1706790897880000000",
+        "sendunix": "1706790897880000000",
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -286925,9 +286925,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -290025,9 +290025,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -290337,9 +290337,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -290581,9 +290581,9 @@
         }
       ],
       "event": {
-        "currunix": "1706788800000000000",
+        "transunix": "1706788800000000000",
         "creaunix": "1706788800000000000",
-        "recdunix": "1706788800000000000",
+        "sendunix": "1706788800000000000",
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -290754,9 +290754,9 @@
         }
       ],
       "event": {
-        "currunix": "1706790901000000000",
+        "transunix": "1706790901000000000",
         "creaunix": "1706790901000000000",
-        "recdunix": "1706790901000000000",
+        "sendunix": "1706790901000000000",
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -290961,9 +290961,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -291233,9 +291233,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -291549,9 +291549,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -291849,9 +291849,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -292250,9 +292250,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -292570,9 +292570,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -292801,9 +292801,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -293021,9 +293021,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -293232,9 +293232,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -293454,9 +293454,9 @@
       "size": 4,
       "columns": [],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -293691,9 +293691,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,

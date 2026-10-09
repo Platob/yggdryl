@@ -297,11 +297,11 @@ fn narrow_root(columns: &[&str]) -> yggdryl::Field {
         [
             "beginstring",
             "msgtype",
-            "currunix",
+            "transunix",
             "creaunix",
-            "currhashcode",
+            "hashcode",
             "crosshashcode",
-            "curruuid",
+            "uuid",
             "crossuuid",
         ]
         .iter()

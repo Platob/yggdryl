@@ -56,22 +56,22 @@ impl PyBookEvent {
 graph_methods!(PyBookEvent, "BookEvent"; [
     element_getters, event_getters, market_getters, kind_getters, common_verbs, event_verbs
 ]; {
-    /// An empty book of the ticker `symbol` at `currunix` nanoseconds since
+    /// An empty book of the ticker `symbol` at `transunix` nanoseconds since
     /// the epoch, keyed by that ticker; an empty `symbol` keys the book
     /// `XX0000000000`, the ISIN that states none, and states no ticker.
     #[new]
-    fn new(currunix: i64, symbol: &str) -> Self {
-        Self::from_core(CoreBookEvent::new(currunix, symbol))
+    fn new(transunix: i64, symbol: &str) -> Self {
+        Self::from_core(CoreBookEvent::new(transunix, symbol))
     }
 
-    /// An empty book keyed `key` at `currunix` nanoseconds since the epoch:
+    /// An empty book keyed `key` at `transunix` nanoseconds since the epoch:
     /// `key` is its crosscode - an instrument's ISIN, a ticker, or
     /// `XX0000000000` - and the book states neither a ticker nor an ISIN.
     /// The empty base a code's first book, a delta book, rebuilds over with
     /// `with_previous`.
     #[staticmethod]
-    fn keyed(currunix: i64, key: &str) -> Self {
-        Self::from_core(CoreBookEvent::keyed(currunix, key))
+    fn keyed(transunix: i64, key: &str) -> Self {
+        Self::from_core(CoreBookEvent::keyed(transunix, key))
     }
 
     /// Whether the book is a complete book, holding its sides - every entry

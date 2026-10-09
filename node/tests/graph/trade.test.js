@@ -22,7 +22,7 @@ test('fromParts of two executions', () => {
   const made = trade()
   // A trade is no sided kind: its stored cross code is `21:0:{base}`.
   assert.equal(made.crosscode, '21:0:T-1')
-  assert.equal(made.currunix, CLOCK)
+  assert.equal(made.transunix, CLOCK)
   assert.equal(made.ticker, 'ACME')
   assert.equal(made.lastqty, '10')
   const { executions } = made
@@ -49,7 +49,7 @@ test('refusals name what was wrong', () => {
   )
   assert.throws(
     () => graph.TradeEvent.fromParts(new graph.ExecutionEvent(CLOCK + 1n), [fill('B', 'BUYS', 1)]),
-    /executions\[0\]\.currunix: expected the trade timestamp/,
+    /executions\[0\]\.transunix: expected the trade timestamp/,
   )
   assert.throws(() => graph.TradeEvent.fromParts(new graph.ExecutionEvent(CLOCK), []), /at least one execution/)
   assert.throws(() => graph.TradeEvent.fromParts(new graph.ExecutionEvent(CLOCK), [new graph.OrderEvent(CLOCK)]))
@@ -63,7 +63,7 @@ test('the verbs answer new trades', () => {
     [fill('BUY-1', 'BUYS', 4, CLOCK + 1n)],
   )
   const followed = later.withPrevious(first)
-  assert.equal(followed.prevuuid, first.curruuid)
+  assert.equal(followed.prevuuid, first.uuid)
   assert.equal(later.prevuuid, null)
   assert.ok(later.isAfter(first) && first.isBefore(later))
   // A trade folds another statement of itself into the same trade.
@@ -79,5 +79,5 @@ test('equals, stableHash, toString, clone and toJSON round trip', () => {
   assert.equal(twin.stableHash(), made.stableHash())
   assert.ok(twin.executions.every((execution, at) => execution.equals(made.executions[at])))
   assert.ok(made.clone().equals(made))
-  assert.equal(made.toString(), `TradeEvent(${made.curruuid}, currunix=${CLOCK}, crosscode="21:0:T-1")`)
+  assert.equal(made.toString(), `TradeEvent(${made.uuid}, transunix=${CLOCK}, crosscode="21:0:T-1")`)
 })

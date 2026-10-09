@@ -302,7 +302,7 @@ A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy`
 | --- | --- |
 | `following_market` | [`Event::following`](event.md#following); `prevpx`/`prevqty`, currency, `origccy`, unit, a sided element's side (this element's where it states one, the chain's where it states `UKNW` - never a `BOTH` the chain held, which tags no one side) - any other element's side is its own tag, and a quote takes the [legs](#a-quotes-two-legs) it states nothing of - ticker, each security id it lacks and the strike price - neither where it names another instrument, below -, classification, market, and every metadata key it lacks - all from the predecessor where this event says nothing, this element's own values standing; always leads, even with the timed link unchanged |
 | A FIX message | follows the metadata too, as a [`FixMsg`](../fix/message.md) in the [lifecycle](../fix/lifecycle.md): its metadata is the bridge's namespaced keys its row's `metadata` column holds, so a followed message's row carries the chain's keys |
-| Identity | a follower's `currhashcode` and `curruuid` digest what it takes ([`digest_market`](#contract) feeds the metadata), so they move where it took a key |
+| Identity | a follower's `hashcode` and `uuid` digest what it takes ([`digest_market`](#contract) feeds the metadata), so they move where it took a key |
 | Two instruments | two stated real ISINs that differ - each closing under a listed prefix - name two instruments: no identifier and no strike price is taken from the predecessor, and a merge keeps the leading statement's identifiers whole. A number that is not real - a `ZZ`, a masked one, a typo - names no country's instrument, so it is never the other one: it yields to the higher-ranked ISIN, which replaces it and everything derived under it, whichever statement leads |
 | Execution clock | a market event whose state reports an execution ([`is_execution`](event.md#contract)) and states no `execunix` is dated from its own instant first - before it names a predecessor, so an inherited state is never read as its own execution; following then keeps the later of its own clock and its predecessor's, so a delayed report cannot regress it, and a non-execution carries the chain's latest |
 | Restating | a market event's [`restating`](event.md#restating) also takes the market's place: `prevpx`/`prevqty`, what the chain is about where this reading said nothing - the metadata keys included, as in following - and the execution clock - the earliest of the two statements' |
@@ -782,11 +782,11 @@ An amendment to an Apple order, and one naming Microsoft's ISIN instead.
     assert_eq!(keys(&other), ["cusip=594918104", "derived:cusip=594918104", "isin=US5949181045"]);
 
     // Two statements naming different ISINs never mix: the leading
-    // statement - here the later recording - keeps its identifiers whole.
+    // statement - here the one sent later - keeps its identifiers whole.
     let mut restated = placed.clone();
-    restated.set_recdunix(Some(T + 5));
+    restated.set_sendunix(Some(T + 5));
     restated.set_securityids(other.get_securityids().clone(), true)?;
-    let merged = placed.clone().merge_with(&restated).expect("the later recording leads");
+    let merged = placed.clone().merge_with(&restated).expect("the statement sent later leads");
     assert_eq!(keys(&merged), ["cusip=594918104", "derived:cusip=594918104", "isin=US5949181045"]);
     ```
 

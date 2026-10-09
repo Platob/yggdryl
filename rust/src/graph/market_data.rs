@@ -167,11 +167,11 @@ macro_rules! delegate_by_variant {
 }
 
 impl Element for MarketData {
-    fn get_curruuid(&self) -> crate::Uuid {
-        delegate_by_variant!(self, get_curruuid)
+    fn get_uuid(&self) -> crate::Uuid {
+        delegate_by_variant!(self, get_uuid)
     }
-    fn set_curruuid(&mut self, curruuid: crate::Uuid) {
-        delegate_by_variant!(self, set_curruuid, curruuid);
+    fn set_uuid(&mut self, uuid: crate::Uuid) {
+        delegate_by_variant!(self, set_uuid, uuid);
     }
     fn get_crossuuid(&self) -> crate::Uuid {
         delegate_by_variant!(self, get_crossuuid)
@@ -185,11 +185,11 @@ impl Element for MarketData {
     fn set_crosscode(&mut self, crosscode: String) {
         delegate_by_variant!(self, set_crosscode, crosscode);
     }
-    fn get_currhashcode(&self) -> u64 {
-        delegate_by_variant!(self, get_currhashcode)
+    fn get_hashcode(&self) -> u64 {
+        delegate_by_variant!(self, get_hashcode)
     }
-    fn set_currhashcode(&mut self, hashcode: u64) {
-        delegate_by_variant!(self, set_currhashcode, hashcode);
+    fn set_hashcode(&mut self, hashcode: u64) {
+        delegate_by_variant!(self, set_hashcode, hashcode);
     }
     fn get_crosshashcode(&self) -> u64 {
         delegate_by_variant!(self, get_crosshashcode)
@@ -208,7 +208,7 @@ impl Element for MarketData {
     /// dated and undated, states no order.
     fn is_after(&self, other: &Self) -> bool {
         match (self.as_event(), other.as_event()) {
-            (Some(this), Some(other)) => this.get_currunix() > other.get_currunix(),
+            (Some(this), Some(other)) => this.get_transunix() > other.get_transunix(),
             _ => false,
         }
     }

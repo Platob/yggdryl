@@ -19,24 +19,25 @@ pub(crate) const BASE_COLUMNS: [&str; 2] = ["body", "dropped_byte_size"];
 /// column that states the fact is the event's rather than a capture column
 /// beside it. `mtime` feeds the instant the same way, under its own rule.
 pub(crate) const EVENT_CAPTURES: [&str; 7] = [
-    "state", "creaunix", "recdunix", "exprunix", "prevunix", "snapunix", "prevuuid",
+    "state", "creaunix", "sendunix", "exprunix", "prevunix", "snapunix", "prevuuid",
 ];
 
 /// The event columns no capture can feed, because the line derives them -
 /// its identity, the chain's, the codes, the names it goes by - or a walk
 /// states them: a capture spelled as one is refused.
 pub(crate) const DERIVED_EVENT_COLUMNS: [&str; 8] = [
-    "currunix",
-    "curruuid",
+    "transunix",
+    "uuid",
     "crosscode",
     "crossuuid",
-    "currhashcode",
+    "hashcode",
     "crosshashcode",
     "srcuuids",
     "seqnum",
 ];
 
-/// The row-header capture that dates a line, feeding `currunix`.
+/// The row-header capture that dates a line, feeding its transaction
+/// instant, `transunix`.
 ///
 /// Not a reserved name: with `parse_mtime` off the capture is an ordinary
 /// one with a column of its own, so the flag alone decides whether the name
@@ -177,16 +178,16 @@ pub struct TextOptions {
     ///
     /// There is no column of its own: the row number is the line's place,
     /// and `seqnum` is where an event states its place - so it reaches the
-    /// line's `curruuid`, ordering the lines of one millisecond by row.
+    /// line's `uuid`, ordering the lines of one millisecond by row.
     pub start_rownum: Option<i64>,
     /// Whether the row header's `mtime` capture dates the line.
     ///
     /// On by default, because a captured line's own timestamp is the fact a
     /// reader of a capture reaches for first. With it on the capture feeds
-    /// `currunix` and has no column beside it, and the handle's own
+    /// `transunix` and has no column beside it, and the handle's own
     /// modification time answers for a line the header did not date; with it
     /// off the capture is an ordinary one, read at its own syntax into its
-    /// own column, and the handle's time answers `currunix` alone.
+    /// own column, and the handle's time answers `transunix` alone.
     pub parse_mtime: bool,
     /// Whether to classify each line and emit a `mimetype` column.
     pub parse_mimetype: bool,
@@ -364,7 +365,7 @@ impl TextOptions {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$.rowheader"),
                     reason: format_smolstr!(
-                        "expected named captures distinct from body, dropped_byte_size and the event columns the line derives - currunix, curruuid, crosscode, crossuuid, currhashcode, crosshashcode, srcuuids, identifiers, seqnum - got {:?}",
+                        "expected named captures distinct from body, dropped_byte_size and the event columns the line derives - transunix, uuid, crosscode, crossuuid, hashcode, crosshashcode, srcuuids, identifiers, seqnum - got {:?}",
                         capture.name()
                     ),
                 });

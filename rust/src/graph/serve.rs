@@ -344,15 +344,15 @@ impl BookQuery {
     /// The rows of the book key `key` whose instant lies in `[from, to)`
     /// and, where `last` states one, at or before `last`.
     fn window(&self, key: &str, last: Option<i64>) -> Result<Filter> {
-        let currunix = || Term::column(EventColumn::CurrUnix.name());
+        let transunix = || Term::column(EventColumn::TransUnix.name());
         let mut terms = vec![
             category(),
             of_key(key),
-            currunix().ge(literal_instant(self.from)?),
-            currunix().lt(literal_instant(self.to)?),
+            transunix().ge(literal_instant(self.from)?),
+            transunix().lt(literal_instant(self.to)?),
         ];
         if let Some(last) = last {
-            terms.push(currunix().le(literal_instant(last)?));
+            terms.push(transunix().le(literal_instant(last)?));
         }
         Ok(Filter::all(terms.into_iter().map(Filter::from)))
     }
@@ -372,7 +372,7 @@ impl BookQuery {
 /// | `timezones` | | `["UTC", ..]`: `UTC`, then every zone this build has rules for ([`Timezone::registered`]), by name - the zones `tz` reads |
 /// | `tickers` | `table` | `[{"key","ticker","crosscode","from","to","books"}]`, one per book key ([`Market::book_crosscode`]: the instrument's ISIN, else the ticker, else `XX0000000000`), ordered by key, `ticker` the first the key's books state or null, `from` the first book's second and `to` the second after the last, so `[from, to)` holds every book |
 /// | `candles` | `table`, `ticker`, `from`, `to`, `tz`, `interval` | `{"table","ticker","timezone","interval","from","to","candles":[..]}`, each candle `{start,end,bid,ask,mid,spread,bidqty,askqty,books}` with each reading `{open,high,low,close}` or null |
-/// | `book` | `table`, `ticker`, `at`, `tz` | the book at `at`, rebuilt from the last complete book, or the first book following none, at or before it ([`Self::book`]): `{currunix,ticker,isincode,crosscode,bestbid,bestask,bidqty,askqty,spread,midpoint,imbalance,islocked,iscrossed,complete,alive,delta,events,bidlimits,asklimits}`, whether it is whole, the counts of its alive entries, its delta and its events, and each side's `[{price,quantity,uuids,tradable}]` - none where `complete` is false |
+/// | `book` | `table`, `ticker`, `at`, `tz` | the book at `at`, rebuilt from the last complete book, or the first book following none, at or before it ([`Self::book`]): `{transunix,ticker,isincode,crosscode,bestbid,bestask,bidqty,askqty,spread,midpoint,imbalance,islocked,iscrossed,complete,alive,delta,events,bidlimits,asklimits}`, whether it is whole, the counts of its alive entries, its delta and its events, and each side's `[{price,quantity,uuids,tradable}]` - none where `complete` is false |
 /// | `events` | `table`, `ticker`, `from`, `to`, `tz`, `side`, `limit` | `{"rows":[..],"truncated":bool}`, one row per alive entry, delta and event of every book in range, at most `limit` (default and cap [`BookServiceOptions::max_event_rows`]) |
 /// | `audit.csv`, `audit.csv.gz`, `audit.csv.zst` | `table`, `ticker`, `from`, `to`, `tz`, `side` | the same rows unbounded, written by the CSV medium under the suffix's coding, `Content-Disposition: attachment` named after the book key and the range |
 ///
@@ -547,7 +547,7 @@ impl BookService {
     /// and `books` how many. Every book is listed; an empty or absent table
     /// lists none.
     ///
-    /// One projected scan: `select ticker, crosscode, currunix where
+    /// One projected scan: `select ticker, crosscode, transunix where
     /// marketdatakind = 'BOOK'`.
     ///
     /// # Errors
@@ -693,10 +693,14 @@ impl BookService {
         at: i64,
         lower: Option<i64>,
     ) -> Result<(Option<BookEvent>, bool)> {
-        let currunix = || Term::column(EventColumn::CurrUnix.name());
-        let mut terms = vec![category(), of_key(key), currunix().le(literal_instant(at)?)];
+        let transunix = || Term::column(EventColumn::TransUnix.name());
+        let mut terms = vec![
+            category(),
+            of_key(key),
+            transunix().le(literal_instant(at)?),
+        ];
         if let Some(lower) = lower {
-            terms.push(currunix().ge(literal_instant(lower)?));
+            terms.push(transunix().ge(literal_instant(lower)?));
         }
         let filter = Filter::all(terms.into_iter().map(Filter::from));
         // The last origin - a complete book, or one following no book - and
@@ -706,17 +710,20 @@ impl BookService {
         let mut tail: Vec<BookEvent> = Vec::new();
         for book in Self::stream(table, &filter)? {
             let book = book?;
-            let unix = book.get_currunix();
+            let unix = book.get_transunix();
             if origin(&book) {
-                if base.as_ref().is_none_or(|held| held.get_currunix() <= unix) {
-                    tail.retain(|follower| follower.get_currunix() > unix);
+                if base
+                    .as_ref()
+                    .is_none_or(|held| held.get_transunix() <= unix)
+                {
+                    tail.retain(|follower| follower.get_transunix() > unix);
                     base = Some(book);
                 }
-            } else if base.as_ref().is_none_or(|held| held.get_currunix() < unix) {
+            } else if base.as_ref().is_none_or(|held| held.get_transunix() < unix) {
                 tail.push(book);
             }
         }
-        tail.sort_by_key(Event::get_currunix);
+        tail.sort_by_key(Event::get_transunix);
         let found = base.is_some();
         let mut latest = match base {
             Some(origin) if !origin.is_complete() => {
@@ -729,7 +736,7 @@ impl BookService {
             latest = Some(match latest {
                 Some(previous)
                     if previous.is_complete()
-                        && follower.get_prevuuid() == Some(previous.get_curruuid()) =>
+                        && follower.get_prevuuid() == Some(previous.get_uuid()) =>
                 {
                     let stated = follower.clone();
                     follower.rebuilt(previous).unwrap_or(stated)
@@ -838,7 +845,7 @@ impl BookService {
     /// stored order.
     fn books(table: &BookTable, filter: &Filter) -> Result<Vec<BookEvent>> {
         let mut books = Self::stream(table, filter)?.collect::<Result<Vec<_>>>()?;
-        books.sort_by_key(Event::get_currunix);
+        books.sort_by_key(Event::get_transunix);
         Ok(books)
     }
 
@@ -876,17 +883,18 @@ impl BookService {
     fn spans(table: &BookTable) -> Result<BTreeMap<SmolStr, Span>> {
         let ticker = MarketColumn::Ticker.name();
         let crosscode = ElementColumn::CrossCode.name();
-        let currunix = EventColumn::CurrUnix.name();
+        let transunix = EventColumn::TransUnix.name();
         let reader = Self::projected(
             table,
             &Filter::from(category()),
             vec![
                 DataType::utf8().nullable_field(ticker),
                 DataType::utf8().nullable_field(crosscode),
-                DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?.nullable_field(currunix),
+                DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?
+                    .nullable_field(transunix),
             ],
         )?;
-        let shape = || unshaped("the ticker, crosscode and currunix columns of a marketdata row");
+        let shape = || unshaped("the ticker, crosscode and transunix columns of a marketdata row");
         let mut spans = BTreeMap::new();
         for rows in reader.into_chunks() {
             let rows = rows?;
@@ -899,7 +907,7 @@ impl BookService {
                 .and_then(Serie::as_utf8)
                 .ok_or_else(shape)?;
             let instants = rows
-                .child(currunix)
+                .child(transunix)
                 .and_then(Serie::as_datetime_nanosecond)
                 .ok_or_else(shape)?;
             for index in 0..rows.len() {
@@ -1024,14 +1032,15 @@ impl BookService {
 
     /// How many books `filter` keeps of `table`, and the instant the
     /// `want`-th earliest of them stands at - `None` when it keeps fewer:
-    /// one projected scan of `currunix`, holding at most `want` instants.
+    /// one projected scan of `transunix`, holding at most `want` instants.
     fn cut(table: &BookTable, filter: &Filter, want: usize) -> Result<(usize, Option<i64>)> {
-        let currunix = EventColumn::CurrUnix.name();
+        let transunix = EventColumn::TransUnix.name();
         let reader = Self::projected(
             table,
             filter,
             vec![
-                DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?.nullable_field(currunix),
+                DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?
+                    .nullable_field(transunix),
             ],
         )?;
         let mut earliest = BinaryHeap::new();
@@ -1039,9 +1048,9 @@ impl BookService {
         for rows in reader.into_chunks() {
             let rows = rows?;
             let instants = rows
-                .child(currunix)
+                .child(transunix)
                 .and_then(Serie::as_datetime_nanosecond)
-                .ok_or_else(|| unshaped("the currunix column of a marketdata row"))?;
+                .ok_or_else(|| unshaped("the transunix column of a marketdata row"))?;
             for unix in (0..rows.len()).filter_map(|index| instants.value(index)) {
                 total += 1;
                 earliest.push(unix);
@@ -1119,7 +1128,7 @@ impl BookService {
             let book = book?;
             read += 1;
             let stated = audit_rows(&book, side).count();
-            let key = (book.get_currunix(), ordinal);
+            let key = (book.get_transunix(), ordinal);
             let past = rows > limit && held.last_key_value().is_some_and(|(last, _)| key > *last);
             if stated == 0 || past {
                 continue;
@@ -1404,7 +1413,7 @@ fn audit_reader(books: Vec<BookEvent>, side: Option<Side>, limit: usize) -> Resu
     };
     let stamps = (0..books.len())
         .flat_map(move |index| {
-            let unix = books[index].get_currunix();
+            let unix = books[index].get_transunix();
             audit_rows(&books[index], side)
                 .map(|(role, _)| (unix, role))
                 .collect::<Vec<_>>()
@@ -1543,7 +1552,7 @@ fn of_ticker(ticker: &str) -> Term {
     Term::column(MarketColumn::Ticker.name()).eq(Term::literal(ticker))
 }
 
-/// The instant `unix` as the `datetime64(ns, UTC)` literal a `currunix`
+/// The instant `unix` as the `datetime64(ns, UTC)` literal a `transunix`
 /// column compares to.
 fn literal_instant(unix: i64) -> Result<Term> {
     Ok(Term::literal(zoned(unix, Timezone::UTC)?))
@@ -1801,7 +1810,7 @@ fn book_json(book: &BookEvent, zone: Timezone) -> Result<Scalar> {
         |side: Side| Scalar::from_sequence(book.limits(side).map(|limit| limit.into_scalar()));
     let count = |count: usize| Scalar::from(u64::try_from(count).unwrap_or(u64::MAX));
     Ok(object([
-        ("currunix", zoned(book.get_currunix(), zone)?),
+        ("transunix", zoned(book.get_transunix(), zone)?),
         (
             "ticker",
             book.get_ticker().map_or(Scalar::Null, Scalar::from),

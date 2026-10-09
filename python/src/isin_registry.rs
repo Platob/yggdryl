@@ -557,7 +557,7 @@ impl PyIsinRegistry {
 
     /// Learns what a message states about its instrument - keyed by its
     /// stated real ISIN, its market naming the listing row its listing
-    /// facts land on, dated at its `currunix`: its CFI code, its ticker, its
+    /// facts land on, dated at its `transunix`: its CFI code, its ticker, its
     /// currency, the pair it states and its real equivalents, and its
     /// `lastunix` on every learn, so a message teaching nothing else still
     /// records when the instrument was last met. Whether anything moved.

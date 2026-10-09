@@ -41,15 +41,15 @@ mod columns {
     /// out of it contains the same fifteen under the same names and
     /// datatypes.
     const EVENT_COLUMNS: [&str; 15] = [
-        "curruuid",
+        "uuid",
         "crossuuid",
         "crosscode",
-        "currhashcode",
+        "hashcode",
         "crosshashcode",
         "srcuuids",
-        "currunix",
+        "transunix",
         "creaunix",
-        "recdunix",
+        "sendunix",
         "exprunix",
         "prevunix",
         "snapunix",
@@ -605,7 +605,7 @@ mod columns {
     }
 
     #[test]
-    fn the_currunix_column_prefers_the_header_capture_over_the_handles_own_time() {
+    fn the_transunix_column_prefers_the_header_capture_over_the_handles_own_time() {
         use arrow_array::TimestampNanosecondArray;
 
         // The expression dates the line, so the instant is the line's own
@@ -622,7 +622,7 @@ mod columns {
             .map(|field| field.name().as_str())
             .collect();
         // No column of its own: when the record was written is the event's
-        // `currunix`, and the `mtime` capture is consumed filling it.
+        // `transunix`, and the `mtime` capture is consumed filling it.
         assert_eq!(names, with_event(&["body", "id"]));
         assert_eq!(
             batch.schema().field(6).data_type(),
@@ -685,17 +685,17 @@ mod columns {
     fn a_handle_with_no_modification_time_dates_its_lines_at_the_epoch() {
         use arrow_array::{Array as _, TimestampNanosecondArray};
 
-        // An event happens when it happens, so `currunix` holds no null. A
+        // An event happens when it happens, so `transunix` holds no null. A
         // buffer records no modification time and no header dates these lines,
         // and what is left is the instant the count starts from.
         let batch = collect(&named("plain.log", b"first\nsecond\n"), TextOptions::new())
             .pop()
             .unwrap();
-        let currunix = batch.column_by_name("currunix").unwrap();
-        assert_eq!(currunix.len(), 2);
-        assert_eq!(currunix.null_count(), 0);
+        let transunix = batch.column_by_name("transunix").unwrap();
+        assert_eq!(transunix.len(), 2);
+        assert_eq!(transunix.null_count(), 0);
         assert_eq!(
-            currunix
+            transunix
                 .as_any()
                 .downcast_ref::<TimestampNanosecondArray>()
                 .unwrap()
@@ -705,7 +705,7 @@ mod columns {
     }
 
     #[test]
-    fn the_currunix_column_falls_back_to_the_handles_own_modification_time() {
+    fn the_transunix_column_falls_back_to_the_handles_own_modification_time() {
         use arrow_array::TimestampNanosecondArray;
         use yggdryl::local::LocalFile;
 
@@ -718,7 +718,7 @@ mod columns {
 
         let batch = collect(&handle, TextOptions::new()).pop().unwrap();
         let values = batch
-            .column_by_name("currunix")
+            .column_by_name("transunix")
             .unwrap()
             .as_any()
             .downcast_ref::<TimestampNanosecondArray>()

@@ -597,7 +597,7 @@ pub trait Market {
     where
         Self: Element + Sized,
     {
-        if other.get_curruuid() != self.get_curruuid() {
+        if other.get_uuid() != self.get_uuid() {
             return None;
         }
         let changed = merge_element(&mut self, other);
@@ -625,8 +625,7 @@ pub trait Market {
     where
         Self: Event + Sized,
     {
-        if previous.get_curruuid() == self.get_curruuid()
-            || previous.get_currunix() > self.get_currunix()
+        if previous.get_uuid() == self.get_uuid() || previous.get_transunix() > self.get_transunix()
         {
             return None;
         }
@@ -642,20 +641,20 @@ pub trait Market {
     }
 
     /// This event merged with another statement of itself, the reference
-    /// chosen by its recording clock; `None` where they differ or nothing
+    /// chosen by its wire clock; `None` where they differ or nothing
     /// moved.
     fn merging_market_event(mut self, other: &Self) -> Option<Self>
     where
         Self: Event + Sized,
     {
-        if other.get_curruuid() != self.get_curruuid() {
+        if other.get_uuid() != self.get_uuid() {
             return None;
         }
         let other_is_reference = right_is_reference(
-            self.get_recdunix(),
-            self.get_currunix(),
-            other.get_recdunix(),
-            other.get_currunix(),
+            self.get_sendunix(),
+            self.get_transunix(),
+            other.get_sendunix(),
+            other.get_transunix(),
         );
         if !merge_market_event(&mut self, other, other_is_reference) {
             return None;
@@ -920,7 +919,7 @@ pub trait Operation: Market {
     where
         Self: Element + Sized,
     {
-        if other.get_curruuid() != self.get_curruuid() {
+        if other.get_uuid() != self.get_uuid() {
             return None;
         }
         let mut changed = merge_element(&mut self, other);
@@ -951,8 +950,7 @@ pub trait Operation: Market {
     where
         Self: Event + Sized,
     {
-        if previous.get_curruuid() == self.get_curruuid()
-            || previous.get_currunix() > self.get_currunix()
+        if previous.get_uuid() == self.get_uuid() || previous.get_transunix() > self.get_transunix()
         {
             return None;
         }
@@ -967,20 +965,20 @@ pub trait Operation: Market {
     }
 
     /// This operation merged with another statement of itself, the
-    /// reference chosen by its recording clock; `None` where they differ or
+    /// reference chosen by its wire clock; `None` where they differ or
     /// nothing moved.
     fn merging_operation_event(mut self, other: &Self) -> Option<Self>
     where
         Self: Event + Sized,
     {
-        if other.get_curruuid() != self.get_curruuid() {
+        if other.get_uuid() != self.get_uuid() {
             return None;
         }
         let other_is_reference = right_is_reference(
-            self.get_recdunix(),
-            self.get_currunix(),
-            other.get_recdunix(),
-            other.get_currunix(),
+            self.get_sendunix(),
+            self.get_transunix(),
+            other.get_sendunix(),
+            other.get_transunix(),
         );
         if !merge_operation_event(&mut self, other, other_is_reference) {
             return None;
@@ -1053,7 +1051,7 @@ fn merge_market_event<E: Event + Market>(
 /// execution report.
 fn execution_unix<E: Event + Market + ?Sized>(event: &E) -> Option<i64> {
     event.get_execunix().or_else(|| {
-        (event.get_prevuuid().is_none() && event.is_execution()).then_some(event.get_currunix())
+        (event.get_prevuuid().is_none() && event.is_execution()).then_some(event.get_transunix())
     })
 }
 

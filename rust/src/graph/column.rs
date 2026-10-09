@@ -6,7 +6,7 @@
 //! datatype each - a [text line](crate::text::TextLine) read into a batch, a
 //! FIX message parsed out of it, a message the lifecycle chained, a
 //! `marketdata` row - so the rows join on them without a mapping: a chained
-//! message's `prevuuid` is the `curruuid` of the message before it. The
+//! message's `prevuuid` is the `uuid` of the message before it. The
 //! names are the trait's own: what [`Event`] reads and writes under
 //! `get_`/`set_` is what a column is called.
 
@@ -17,7 +17,7 @@ use super::Event;
 /// One column of the nine every graph event adds to its element's.
 ///
 /// [`Self::ALL`] is the canonical order [`Self::fields`] and every
-/// generated schema use: **when** it happened - the instant, then the
+/// generated schema use: **when** it happened - the transaction instant, then the
 /// instants it is read against - then what it **follows** and where it
 /// stands among the events of its instant, and last the **state** it
 /// reached.
@@ -28,19 +28,19 @@ use super::Event;
 /// # fn main() -> yggdryl::Result<()> {
 /// let fields = EventColumn::fields()?;
 /// assert_eq!(fields.len(), 9);
-/// assert_eq!(fields[0].name(), "currunix");
+/// assert_eq!(fields[0].name(), "transunix");
 /// assert_eq!(fields[6].name(), "prevuuid");
 /// assert_eq!(fields[8].name(), "state");
 /// // An identity is an element's fact, and when a market event executed a
 /// // market fact: neither is an event's.
-/// assert_eq!(EventColumn::of_name("curruuid"), None);
+/// assert_eq!(EventColumn::of_name("uuid"), None);
 /// assert_eq!(EventColumn::of_name("execunix"), None);
 /// // What an event states under a column, and the same fact stated back.
 /// let event = OrderEvent::at(1_700_000_000_000_000_000);
-/// let instant = EventColumn::CurrUnix.fact(&event).expect("an instant");
+/// let instant = EventColumn::TransUnix.fact(&event).expect("an instant");
 /// let mut again = OrderEvent::default();
-/// EventColumn::CurrUnix.record(&mut again, &instant);
-/// assert_eq!(again.get_currunix(), 1_700_000_000_000_000_000);
+/// EventColumn::TransUnix.record(&mut again, &instant);
+/// assert_eq!(again.get_transunix(), 1_700_000_000_000_000_000);
 /// // Nothing stated is a null: no predecessor, no earlier instant.
 /// assert_eq!(EventColumn::PrevUuid.fact(&event), None);
 /// assert_eq!(EventColumn::PrevUnix.fact(&event), None);
@@ -50,12 +50,14 @@ use super::Event;
 /// ```
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum EventColumn {
-    /// When the event happened, a nanosecond UTC clock; never absent.
-    CurrUnix,
+    /// When the operation happened - the transaction instant, a nanosecond
+    /// UTC clock; never absent.
+    TransUnix,
     /// When it was created, where that is known.
     CreaUnix,
-    /// When it was recorded, where that is known.
-    RecdUnix,
+    /// When the message crossed the wire - the technical clock - where that
+    /// is known.
+    SendUnix,
     /// When it stops being good, where it does.
     ExprUnix,
     /// When the event it follows happened, where it follows one.
@@ -78,9 +80,9 @@ pub enum EventColumn {
 impl EventColumn {
     /// Every column, in canonical event order.
     pub const ALL: [Self; 9] = [
-        Self::CurrUnix,
+        Self::TransUnix,
         Self::CreaUnix,
-        Self::RecdUnix,
+        Self::SendUnix,
         Self::ExprUnix,
         Self::PrevUnix,
         Self::SnapUnix,
@@ -93,9 +95,9 @@ impl EventColumn {
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
-            Self::CurrUnix => "currunix",
+            Self::TransUnix => "transunix",
             Self::CreaUnix => "creaunix",
-            Self::RecdUnix => "recdunix",
+            Self::SendUnix => "sendunix",
             Self::ExprUnix => "exprunix",
             Self::PrevUnix => "prevunix",
             Self::SnapUnix => "snapunix",
@@ -109,9 +111,9 @@ impl EventColumn {
     #[must_use]
     pub const fn display(self) -> &'static str {
         match self {
-            Self::CurrUnix => "Current Time",
+            Self::TransUnix => "Transaction Time",
             Self::CreaUnix => "Creation Time",
-            Self::RecdUnix => "Recording Time",
+            Self::SendUnix => "Sending Time",
             Self::ExprUnix => "Expiry Time",
             Self::PrevUnix => "Previous Time",
             Self::SnapUnix => "Snapshot Time",
@@ -125,12 +127,12 @@ impl EventColumn {
     #[must_use]
     pub const fn description(self) -> &'static str {
         match self {
-            Self::CurrUnix => "When the event happened: the settled instant, UTC.",
+            Self::TransUnix => "When the operation happened: the settled transaction instant, UTC.",
             Self::CreaUnix => {
                 "When the event was created, where that is known; the earliest its chain knows once followed."
             }
-            Self::RecdUnix => {
-                "When this event was recorded, where that is known; the earliest its statements know."
+            Self::SendUnix => {
+                "When the message crossed the wire, where that is known; the earliest its statements know."
             }
             Self::ExprUnix => {
                 "When the event stops being good, where it does; the latest its chain knows once followed."
@@ -156,9 +158,9 @@ impl EventColumn {
     #[must_use]
     pub fn datatype(self) -> DataType {
         match self {
-            Self::CurrUnix
+            Self::TransUnix
             | Self::CreaUnix
-            | Self::RecdUnix
+            | Self::SendUnix
             | Self::ExprUnix
             | Self::PrevUnix
             | Self::SnapUnix => DataType::DateTime64 {
@@ -179,7 +181,7 @@ impl EventColumn {
     /// first place being zero.
     #[must_use]
     pub const fn nullable(self) -> bool {
-        !matches!(self, Self::CurrUnix | Self::SeqNum)
+        !matches!(self, Self::TransUnix | Self::SeqNum)
     }
 
     /// The column as a field: its name, datatype and nullability, with
@@ -219,9 +221,9 @@ impl EventColumn {
         let instant =
             |unix: i64| Scalar::datetime64(unix, TimeUnit::Nanosecond, Timezone::UTC).ok();
         match self {
-            Self::CurrUnix => instant(event.get_currunix()),
+            Self::TransUnix => instant(event.get_transunix()),
             Self::CreaUnix => event.get_creaunix().and_then(instant),
-            Self::RecdUnix => event.get_recdunix().and_then(instant),
+            Self::SendUnix => event.get_sendunix().and_then(instant),
             Self::ExprUnix => event.get_exprunix().and_then(instant),
             Self::PrevUnix => event.get_prevunix().and_then(instant),
             Self::SnapUnix => event.get_snapunix().and_then(instant),
@@ -237,13 +239,13 @@ impl EventColumn {
     pub fn record<E: Event + ?Sized>(self, event: &mut E, value: &Scalar) {
         let instant = || value.temporal_count_at(TimeUnit::Nanosecond);
         match self {
-            Self::CurrUnix => {
+            Self::TransUnix => {
                 if let Some(unix) = instant() {
-                    event.set_currunix(unix);
+                    event.set_transunix(unix);
                 }
             }
             Self::CreaUnix => event.set_creaunix(instant()),
-            Self::RecdUnix => event.set_recdunix(instant()),
+            Self::SendUnix => event.set_sendunix(instant()),
             Self::ExprUnix => event.set_exprunix(instant()),
             Self::PrevUnix => event.set_prevunix(instant()),
             Self::SnapUnix => event.set_snapunix(instant()),

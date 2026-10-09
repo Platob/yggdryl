@@ -903,8 +903,8 @@ mod captured_rows {
         let cells = row.as_sequence().expect("a row");
         let at = |name: &str| schema.index_of(name).expect(name);
         assert_eq!(
-            cells[at("currhashcode")].as_u128(),
-            Some(u128::from(message.get_currhashcode()))
+            cells[at("hashcode")].as_u128(),
+            Some(u128::from(message.get_hashcode()))
         );
         let residual = cells[at("fixentries")].as_mapping().expect("the residual");
         assert!(
@@ -915,14 +915,14 @@ mod captured_rows {
         );
         let again = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row)
             .expect("the row read back");
-        assert_eq!(again.get_currhashcode(), message.get_currhashcode());
-        assert_eq!(again.get_curruuid(), message.get_curruuid());
+        assert_eq!(again.get_hashcode(), message.get_hashcode());
+        assert_eq!(again.get_uuid(), message.get_uuid());
 
         let narrow = StructType::from_fields(
             schema
                 .fields()
                 .iter()
-                .filter(|column| !matches!(column.name(), "curruuid" | "currhashcode"))
+                .filter(|column| !matches!(column.name(), "uuid" | "hashcode"))
                 .cloned(),
         )
         .map(DataType::from)
@@ -931,8 +931,8 @@ mod captured_rows {
         let unidentified = message.into_row(&narrow).expect("a narrower row");
         let settled = yggdryl::FixMsg::from_row(Arc::clone(&registry), &narrow, &unidentified)
             .expect("a narrower row settles");
-        assert_eq!(settled.get_currhashcode(), message.get_currhashcode());
-        assert_eq!(settled.get_curruuid(), message.get_curruuid());
+        assert_eq!(settled.get_hashcode(), message.get_hashcode());
+        assert_eq!(settled.get_uuid(), message.get_uuid());
     }
 }
 

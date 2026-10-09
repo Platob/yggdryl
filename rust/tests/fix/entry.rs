@@ -125,19 +125,19 @@ mod residual {
         assert_eq!(restored.get_price(), original.get_price());
         assert_eq!(
             (
-                restored.get_currunix(),
+                restored.get_transunix(),
                 restored.get_creaunix(),
-                restored.get_currhashcode(),
+                restored.get_hashcode(),
                 restored.get_crosshashcode(),
-                restored.get_curruuid(),
+                restored.get_uuid(),
                 restored.get_crossuuid(),
             ),
             (
-                original.get_currunix(),
+                original.get_transunix(),
                 original.get_creaunix(),
-                original.get_currhashcode(),
+                original.get_hashcode(),
                 original.get_crosshashcode(),
-                original.get_curruuid(),
+                original.get_uuid(),
                 original.get_crossuuid(),
             )
         );
@@ -167,8 +167,8 @@ mod residual {
             .expect("one lifecycle message")
             .expect("the rebuilt message walks");
 
-        assert_eq!(rebuilt.get_currhashcode(), direct.get_currhashcode());
-        assert_eq!(rebuilt.get_curruuid(), direct.get_curruuid());
+        assert_eq!(rebuilt.get_hashcode(), direct.get_hashcode());
+        assert_eq!(rebuilt.get_uuid(), direct.get_uuid());
         assert_eq!(
             rebuilt.into_row(&schema).expect("the fixed point"),
             direct.into_row(&schema).expect("the direct row")
@@ -184,7 +184,7 @@ mod residual {
         let reordered = codec
             .sole_line(b"8=FIX.4.4|35=D|52=20240102-10:15:30.000|54=1|55=AAPL|10=0|")
             .expect("the same order");
-        assert_eq!(forward.get_currhashcode(), reordered.get_currhashcode());
+        assert_eq!(forward.get_hashcode(), reordered.get_hashcode());
 
         let split_left = codec
             .sole_line(b"8=FIX.4.4|35=D|52=20240102-10:15:30.000|house_a=bc|10=0|")
@@ -192,10 +192,7 @@ mod residual {
         let split_right = codec
             .sole_line(b"8=FIX.4.4|35=D|52=20240102-10:15:30.000|house_ab=c|10=0|")
             .expect("a distinct unknown entry");
-        assert_ne!(
-            split_left.get_currhashcode(),
-            split_right.get_currhashcode()
-        );
+        assert_ne!(split_left.get_hashcode(), split_right.get_hashcode());
 
         let parties = codec
             .sole_line(b"8=FIX.4.4|35=D|52=20240102-10:15:30.000|453=2|448=A|447=D|452=1|448=B|447=D|452=3|10=0|")
@@ -203,7 +200,7 @@ mod residual {
         let reversed = codec
             .sole_line(b"8=FIX.4.4|35=D|52=20240102-10:15:30.000|453=2|448=B|447=D|452=3|448=A|447=D|452=1|10=0|")
             .expect("the reversed parties");
-        assert_ne!(parties.get_currhashcode(), reversed.get_currhashcode());
+        assert_ne!(parties.get_hashcode(), reversed.get_hashcode());
     }
 
     #[test]
@@ -214,11 +211,11 @@ mod residual {
             &[
                 "beginstring",
                 "msgtype",
-                "currunix",
+                "transunix",
                 "creaunix",
-                "currhashcode",
+                "hashcode",
                 "crosshashcode",
-                "curruuid",
+                "uuid",
                 "crossuuid",
                 "crosscode",
                 "snapunix",
@@ -343,7 +340,7 @@ mod residual {
                 Some(0)
             );
             assert_eq!(restored.entries(), message.entries());
-            assert_eq!(restored.get_currhashcode(), message.get_currhashcode());
+            assert_eq!(restored.get_hashcode(), message.get_hashcode());
             assert_eq!(restored.into_row(root).expect("the fixed point"), row);
         }
     }
@@ -375,7 +372,7 @@ mod residual {
         let row = message.into_row(&projected).expect("the row");
         assert_eq!(residual_keys(&row, &projected), ["453:parties"]);
         let restored = FixMsg::from_row(registry, &projected, &row).expect("the row reads");
-        assert_eq!(restored.get_currhashcode(), message.get_currhashcode());
+        assert_eq!(restored.get_hashcode(), message.get_hashcode());
         assert!(
             String::from_utf8(restored.into_bytes(b'|'))
                 .unwrap()
@@ -392,11 +389,11 @@ mod residual {
             &[
                 "beginstring",
                 "msgtype",
-                "currunix",
+                "transunix",
                 "creaunix",
-                "currhashcode",
+                "hashcode",
                 "crosshashcode",
-                "curruuid",
+                "uuid",
                 "crossuuid",
                 "crosscode",
                 "snapunix",
@@ -500,11 +497,11 @@ mod residual {
                 "fixentries",
                 "beginstring",
                 "msgtype",
-                "currunix",
+                "transunix",
                 "creaunix",
-                "currhashcode",
+                "hashcode",
                 "crosshashcode",
-                "curruuid",
+                "uuid",
                 "crossuuid",
                 "crosscode",
                 "snapunix",
@@ -1008,6 +1005,6 @@ mod unresolved {
         assert_eq!(read("8").header().msgseqnum(), Some(8));
         assert!(!read("7").entries().iter().any(|entry| entry.tag() == 34));
         assert_eq!(read("7").into_bytes(b'|'), b"8=FIX.4.4|34=7|11=A|");
-        assert_eq!(read("7").get_currhashcode(), read("8").get_currhashcode());
+        assert_eq!(read("7").get_hashcode(), read("8").get_hashcode());
     }
 }

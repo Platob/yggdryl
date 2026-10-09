@@ -242,12 +242,12 @@ impl<K: OperationKind> OperationElement<K> {
 }
 
 impl<K: OperationKind> Element for OperationElement<K> {
-    fn get_curruuid(&self) -> Uuid {
-        self.data.get_curruuid()
+    fn get_uuid(&self) -> Uuid {
+        self.data.get_uuid()
     }
 
-    fn set_curruuid(&mut self, curruuid: Uuid) {
-        self.data.set_curruuid(curruuid);
+    fn set_uuid(&mut self, uuid: Uuid) {
+        self.data.set_uuid(uuid);
     }
 
     fn get_crossuuid(&self) -> Uuid {
@@ -266,12 +266,12 @@ impl<K: OperationKind> Element for OperationElement<K> {
         self.data.set_crosscode(crosscode);
     }
 
-    fn get_currhashcode(&self) -> u64 {
-        self.data.get_currhashcode()
+    fn get_hashcode(&self) -> u64 {
+        self.data.get_hashcode()
     }
 
-    fn set_currhashcode(&mut self, hashcode: u64) {
-        self.data.set_currhashcode(hashcode);
+    fn set_hashcode(&mut self, hashcode: u64) {
+        self.data.set_hashcode(hashcode);
     }
 
     fn get_crosshashcode(&self) -> u64 {
@@ -309,8 +309,8 @@ impl<K: OperationKind> Element for OperationElement<K> {
             );
         }
         let hashcode = digest.as_u64();
-        self.data.set_currhashcode(hashcode);
-        self.data.set_curruuid(Uuid::from_v8(u128::from(hashcode)));
+        self.data.set_hashcode(hashcode);
+        self.data.set_uuid(Uuid::from_v8(u128::from(hashcode)));
         let crossuuid = self.data.cross_uuid();
         self.data.set_crossuuid(crossuuid);
     }
@@ -729,12 +729,12 @@ impl<K: OperationKind> OperationEvent<K> {
 }
 
 impl<K: OperationKind> Element for OperationEvent<K> {
-    fn get_curruuid(&self) -> Uuid {
-        self.data.get_curruuid()
+    fn get_uuid(&self) -> Uuid {
+        self.data.get_uuid()
     }
 
-    fn set_curruuid(&mut self, curruuid: Uuid) {
-        self.data.set_curruuid(curruuid);
+    fn set_uuid(&mut self, uuid: Uuid) {
+        self.data.set_uuid(uuid);
     }
 
     fn get_crossuuid(&self) -> Uuid {
@@ -753,12 +753,12 @@ impl<K: OperationKind> Element for OperationEvent<K> {
         self.data.set_crosscode(crosscode);
     }
 
-    fn get_currhashcode(&self) -> u64 {
-        self.data.get_currhashcode()
+    fn get_hashcode(&self) -> u64 {
+        self.data.get_hashcode()
     }
 
-    fn set_currhashcode(&mut self, hashcode: u64) {
-        self.data.set_currhashcode(hashcode);
+    fn set_hashcode(&mut self, hashcode: u64) {
+        self.data.set_hashcode(hashcode);
     }
 
     fn get_crosshashcode(&self) -> u64 {
@@ -822,11 +822,11 @@ impl<K: OperationKind> Element for OperationEvent<K> {
 }
 
 impl<K: OperationKind> Event for OperationEvent<K> {
-    fn get_currunix(&self) -> i64 {
-        self.data.get_currunix()
+    fn get_transunix(&self) -> i64 {
+        self.data.get_transunix()
     }
-    fn set_currunix(&mut self, unix: i64) {
-        self.data.set_currunix(unix);
+    fn set_transunix(&mut self, unix: i64) {
+        self.data.set_transunix(unix);
     }
     fn get_state(&self) -> &crate::State {
         self.data.get_state()
@@ -853,11 +853,11 @@ impl<K: OperationKind> Event for OperationEvent<K> {
     fn set_creaunix(&mut self, unix: Option<i64>) {
         self.data.set_creaunix(unix);
     }
-    fn get_recdunix(&self) -> Option<i64> {
-        self.data.get_recdunix()
+    fn get_sendunix(&self) -> Option<i64> {
+        self.data.get_sendunix()
     }
-    fn set_recdunix(&mut self, unix: Option<i64>) {
-        self.data.set_recdunix(unix);
+    fn set_sendunix(&mut self, unix: Option<i64>) {
+        self.data.set_sendunix(unix);
     }
     fn get_exprunix(&self) -> Option<i64> {
         self.data.get_exprunix()

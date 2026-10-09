@@ -53,7 +53,7 @@ pub struct Limit {
     pub price: Option<Decimal>,
     /// The exact sum of the quantities the entries state; an entry stating none adds nothing.
     pub quantity: Decimal,
-    /// The entries' `curruuid`s in live order (best position first).
+    /// The entries' `uuid`s in live order (best position first).
     pub uuids: Vec<Uuid>,
     /// Whether any entry at the level does not state `tradable = false`:
     /// an entry stating nothing trades, and only a level every entry of

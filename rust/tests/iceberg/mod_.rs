@@ -9161,7 +9161,7 @@ mod line_projection {
             &yggdryl::DataType::Int64
         );
         assert_eq!(
-            schema.get_field_by_path("currhashcode").unwrap().dtype(),
+            schema.get_field_by_path("hashcode").unwrap().dtype(),
             &yggdryl::DataType::decimal128(20, 0).unwrap()
         );
         schema.assign_parquet_field_ids(1).unwrap();

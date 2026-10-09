@@ -167,21 +167,21 @@ medium does the work before a byte is decoded.
     a batch, 3 ms as records, on the docs' reference machine). Keep rows for
     small or hand-built data, batches for everything else.
 14. **Plain text has a fixed shape.** A text read answers the fifteen element
-    and event columns (`curruuid` first, `state` last), then `body`, then one
+    and event columns (`uuid` first, `state` last), then `body`, then one
     column per named `rowheader` capture that feeds no event fact - a capture
-    named `state`, `creaunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix`
+    named `state`, `creaunix`, `sendunix`, `exprunix`, `prevunix`, `snapunix`
     or `prevuuid` fills that event column instead, and `mtime` fills
-    `currunix` - and the row header is the only thing that lifts a column out
+    `transunix` - and the row header is the only thing that lifts a column out
     of a line. `autotype` settles each capture's datatype from the
     regex before a byte is read. An object's lines are one chain: a line whose
-    own `creaunix` capture states none takes the earliest `currunix` the read
+    own `creaunix` capture states none takes the earliest `transunix` the read
     has dated a line of its object by so far; a `creaunix` capture stands. Each
-    line also states, as `prevunix`, the `currunix` the read dated the line
+    line also states, as `prevunix`, the `transunix` the read dated the line
     before it by - none for an object's first line or after an undated one, a
     `prevunix` capture standing, each object of a folder or glob starting
-    again - and never a `prevuuid`. A line's `currhashcode` is the XXH3-64
+    again - and never a `prevuuid`. A line's `hashcode` is the XXH3-64
     of its `body` alone, so byte-identical bodies share it; the instant, the
-    row number and the cross code tell them apart through `curruuid`. A
+    row number and the cross code tell them apart through `uuid`. A
     folder, a
     path ending in `/` or a glob reads leaf by leaf through
     `read_text_lines`, `row_size` and the record reads alike: every text leaf,

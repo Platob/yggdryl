@@ -87,7 +87,7 @@ fn following_carries_the_market_and_only_the_operation_reading_carries_the_opera
         .following_market(&previous)
         .expect("a later event follows");
     assert_eq!(market.get_ticker(), Some("BRN"));
-    assert_eq!(market.get_prevuuid(), Some(previous.get_curruuid()));
+    assert_eq!(market.get_prevuuid(), Some(previous.get_uuid()));
     assert_eq!(
         market.get_timeinforce(),
         None,
@@ -152,9 +152,9 @@ fn merging_takes_the_price_either_statement_states() {
     let mut sized = OrderEvent::at(1);
     sized.set_crosscode("ORD-1".to_owned());
     sized.set_quantity(Some(dec("5")), true);
-    sized.set_recdunix(Some(2));
+    sized.set_sendunix(Some(2));
     sized.finalize();
-    sized.set_curruuid(priced.get_curruuid());
+    sized.set_uuid(priced.get_uuid());
     for (this, other) in [(priced.clone(), &sized), (sized.clone(), &priced)] {
         let merged = this.merge_with(other).expect("one event stated twice");
         assert_eq!(merged.get_price(), Some(dec("100")));
@@ -164,7 +164,7 @@ fn merging_takes_the_price_either_statement_states() {
 
     let mut repriced = sized.clone();
     repriced.set_price(Some(dec("101")), true);
-    repriced.set_curruuid(priced.get_curruuid());
+    repriced.set_uuid(priced.get_uuid());
     for (this, other) in [(priced.clone(), &repriced), (repriced.clone(), &priced)] {
         let merged = this.merge_with(other).expect("one event stated twice");
         assert_eq!(
@@ -270,9 +270,9 @@ fn the_strike_follows_its_instrument_merges_and_digests_only_where_stated() {
     sized.finalize();
     let mut struck = plain.clone();
     struck.set_strikepx(Some(dec("4600.5")), true);
-    struck.set_recdunix(Some(2));
+    struck.set_sendunix(Some(2));
     struck.finalize();
-    struck.set_curruuid(sized.get_curruuid());
+    struck.set_uuid(sized.get_uuid());
     for (this, other) in [(sized.clone(), &struck), (struck.clone(), &sized)] {
         let merged = this.merge_with(other).expect("one event stated twice");
         assert_eq!(merged.get_strikepx(), Some(dec("4600.5")));
@@ -368,9 +368,9 @@ fn the_origin_currency_is_held_only_where_stated_and_read_as_the_currency_else()
     sized.finalize();
     let mut issued = plain.clone();
     issued.set_origccy(ccy("USD"), true);
-    issued.set_recdunix(Some(2));
+    issued.set_sendunix(Some(2));
     issued.finalize();
-    issued.set_curruuid(sized.get_curruuid());
+    issued.set_uuid(sized.get_uuid());
     for (this, other) in [(sized.clone(), &issued), (issued.clone(), &sized)] {
         let merged = this.merge_with(other).expect("one event stated twice");
         assert_eq!(merged.get_origccy(), &ccy("USD"));
@@ -509,14 +509,14 @@ fn merging_statements_naming_different_isins_keeps_the_leading_identifiers() {
         .unwrap();
     first.finalize();
     let mut recorded = first.clone();
-    recorded.set_recdunix(Some(5));
+    recorded.set_sendunix(Some(5));
     recorded
         .set_securityids(securityids(&[("ISIN", "GB0002634946")]), true)
         .unwrap();
     let merged = first
         .clone()
         .merging_market_event(&recorded)
-        .expect("the later recording leads");
+        .expect("the statement sent later leads");
     assert_eq!(
         ids(&merged),
         [
@@ -612,7 +612,7 @@ fn fxrates_are_never_followed_and_merge_per_target() {
     let mut empty = order(3);
     empty.set_fxrates(FxRates::new(), true);
     empty.finalize();
-    assert_eq!(empty.get_curruuid(), order(3).get_curruuid());
+    assert_eq!(empty.get_uuid(), order(3).get_uuid());
 }
 
 /// A `ZZ` ISIN names no country's instrument: it yields to a real one on
@@ -1527,13 +1527,13 @@ fn two_statements_of_a_quote_tagging_two_sides_merge_leg_by_leg() {
         quote.set_side(side, true);
         quote.set_price(Some(dec(price)), true);
         quote.set_quantity(Some(dec(quantity)), true);
-        quote.set_recdunix(Some(recorded));
+        quote.set_sendunix(Some(recorded));
         quote.finalize();
         quote
     };
     let bid = statement(Side::Buy, "99", "10", 1);
     let mut ask = statement(Side::Sell, "101", "5", 2);
-    ask.set_curruuid(bid.get_curruuid());
+    ask.set_uuid(bid.get_uuid());
     for merged in [
         bid.clone().merge_with(&ask).expect("a merge"),
         ask.clone().merge_with(&bid).expect("a merge"),

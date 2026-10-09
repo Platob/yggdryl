@@ -31,11 +31,11 @@ order.insert_identifier(Identifier::new(IdKey::base(IdType::OrderId), "O-1001")?
 order.finalize();
 
 // A dated identity is a UUIDv7: its millisecond leads.
-assert_eq!(order.get_curruuid(), order.time_uuid()?);
-assert!(order.get_curruuid().to_string().starts_with("018bcfe5-6800-7"));
+assert_eq!(order.get_uuid(), order.time_uuid()?);
+assert!(order.get_uuid().to_string().starts_with("018bcfe5-6800-7"));
 // A cross code is stored as `{kind}:{side}:{base}`: one chain per side.
 assert_eq!(order.get_crosscode(), "10:1:O-1001");
-assert_ne!(order.get_crossuuid(), order.get_curruuid(), "the cross code names a chain");
+assert_ne!(order.get_crossuuid(), order.get_uuid(), "the cross code names a chain");
 // Derived on finalize: the CUSIP inside the ISIN; the ISIN itself reads as `isincode`.
 assert_eq!(order.get_securityids().to_string(), "[cusip=037833100, derived:cusip=037833100, isin=US0378331005]");
 assert_eq!(order.get_isincode(), Some("US0378331005"));
@@ -75,7 +75,7 @@ order.set_side(Side::Buy, true);
 order.set_price(Some("189.50".parse()?), true);
 order.finalize();
 assert_eq!(order.kind(), MarketKind::Order);
-assert_eq!(order.get_curruuid(), Uuid::from_v8(u128::from(order.get_currhashcode())));
+assert_eq!(order.get_uuid(), Uuid::from_v8(u128::from(order.get_hashcode())));
 let event: OrderEvent = order.at(T);
 assert!(!event.is_after(&event));
 
@@ -114,13 +114,13 @@ let mut entry = offer.clone().with_book(BookRef {
 entry.finalize();
 assert_eq!(entry.action().map(MdUpdateAction::as_str), Some("0"));
 assert_eq!(entry.scope(), "L2");
-assert_ne!(entry.get_curruuid(), offer.get_curruuid(), "the scope digests");
+assert_ne!(entry.get_uuid(), offer.get_uuid(), "the scope digests");
 ```
 
 ## Chain two events and merge two statements of one
 
 `with_previous` states an event as the one after its predecessor; `merge_with`
-folds another statement of the same event (the later recording leads, sources
+folds another statement of the same event (the later `sendunix` leads, sources
 union).
 
 ```rust
@@ -141,7 +141,7 @@ let event = |unix: i64, state: &str| -> yggdryl::Result<OrderEvent> {
 let placed = event(T, "New")?;
 let filled = event(T + 1_000_000_000, "PartiallyFilled")?.with_previous(&placed).expect("a later event follows");
 // A later instant keeps its own place: the first there.
-assert_eq!((filled.get_prevuuid(), filled.get_prevunix(), filled.get_seqnum()), (Some(placed.get_curruuid()), Some(T), 0));
+assert_eq!((filled.get_prevuuid(), filled.get_prevunix(), filled.get_seqnum()), (Some(placed.get_uuid()), Some(T), 0));
 assert_eq!(filled.get_crossuuid(), placed.get_crossuuid(), "one chain");
 assert_eq!(filled.get_prevpx(), Some("189.50".parse()?));
 // Never itself, never one that happened after it.
@@ -155,18 +155,18 @@ option.finalize();
 let next = event(T + 1_000_000_000, "PartiallyFilled")?.with_previous(&option).expect("a later event follows");
 assert_eq!(next.get_strikepx(), Some(Decimal::from_int(190)));
 
-// One report recorded by two hops: recording clocks and sources are not content.
-let hop = |recorded: i64, line: u128| -> yggdryl::Result<OrderEvent> {
+// One report sent through two hops: wire clocks and sources are not content.
+let hop = |sent: i64, line: u128| -> yggdryl::Result<OrderEvent> {
     let mut report = event(T + 1_000_000_000, "PartiallyFilled")?;
-    report.set_recdunix(Some(recorded));
+    report.set_sendunix(Some(sent));
     report.set_srcuuids(vec![Uuid::from_v8(line)]);
     report.finalize();
     Ok(report)
 };
 let (gateway, oms) = (hop(T + 1_002_000_000, 1)?, hop(T + 1_005_000_000, 2)?);
-assert_eq!(gateway.get_curruuid(), oms.get_curruuid());
+assert_eq!(gateway.get_uuid(), oms.get_uuid());
 let merged = oms.merge_with(&gateway).expect("another statement");
-assert_eq!(merged.get_recdunix(), Some(T + 1_002_000_000));
+assert_eq!(merged.get_sendunix(), Some(T + 1_002_000_000));
 assert_eq!(merged.get_srcuuids(), [Uuid::from_v8(1), Uuid::from_v8(2)]);
 ```
 
@@ -208,8 +208,8 @@ let chained: Vec<OrderEvent> = EventIterator::new(arrived, false).collect();
 // chain is in `prevuuid`.
 let places: Vec<u64> = chained.iter().map(Event::get_seqnum).collect();
 assert_eq!(places, [0, 0, 0, 0, 0]);
-assert_eq!(chained[3].get_prevuuid(), Some(chained[1].get_curruuid()));
-assert_eq!(chained[1].get_curruuid(), chained[2].get_curruuid(), "a twin, not a successor");
+assert_eq!(chained[3].get_prevuuid(), Some(chained[1].get_uuid()));
+assert_eq!(chained[1].get_uuid(), chained[2].get_uuid(), "a twin, not a successor");
 assert_eq!(chained[4].get_prevuuid(), None, "the fill ended the chain");
 // A chain's creation instant is its first element's, carried along it.
 assert!(chained[..4].iter().all(|held| held.get_creaunix() == Some(T)));
@@ -226,14 +226,14 @@ let walked: Vec<OrderEvent> = EventIterator::new(
 )
 .collect();
 assert_eq!((walked[1].get_crosscode(), walked[1].get_seqnum()), ("10:2:O-2002", 0));
-assert_eq!(walked[2].get_prevuuid(), Some(walked[0].get_curruuid()));
+assert_eq!(walked[2].get_prevuuid(), Some(walked[0].get_uuid()));
 assert_eq!(*walked[2].get_state(), State::Updated);
 let joined: Vec<OrderEvent> = EventIterator::new(
     vec![event(0, "O-3003", Side::Buy, "New"), event(1, "O-3003", Side::Unknown, "Canceled")],
     true,
 )
 .collect();
-assert_eq!(joined[1].get_prevuuid(), Some(joined[0].get_curruuid()));
+assert_eq!(joined[1].get_prevuuid(), Some(joined[0].get_uuid()));
 assert_eq!((joined[1].get_side(), joined[1].get_crosscode()), (Side::Buy, "10:1:O-3003"));
 
 // A 10 ms grid: a view of the living order per tick, then its deadline.
@@ -245,15 +245,15 @@ expiring.finalize();
 let timed: Vec<OrderEvent> = EventIterator::new([expiring], true).with_snapshot_ns(10 * MS).collect();
 let view = timed
     .iter()
-    .find(|held| held.get_snapunix().is_some() && held.get_currunix() == T + 60 * MS)
+    .find(|held| held.get_snapunix().is_some() && held.get_transunix() == T + 60 * MS)
     .expect("a view");
 // Dated at its tick: the identity is the tick's, the content the order's,
 // and its snapshot instant the one the order was stated at.
 assert_eq!(view.get_snapunix(), Some(T + 50 * MS));
-assert_eq!((view.get_currunix(), view.get_seqnum()), (T + 60 * MS, 0));
-assert_eq!(view.get_currhashcode(), timed[0].get_currhashcode());
+assert_eq!((view.get_transunix(), view.get_seqnum()), (T + 60 * MS, 0));
+assert_eq!(view.get_hashcode(), timed[0].get_hashcode());
 let expired = timed.last().expect("the deadline event");
-assert_eq!((expired.get_currunix(), *expired.get_state()), (T + 70 * MS, State::Expired));
+assert_eq!((expired.get_transunix(), *expired.get_state()), (T + 70 * MS, State::Expired));
 ```
 
 ## Build a composite trade
@@ -284,11 +284,11 @@ let codes: Vec<&str> = trade.executions().iter().map(Element::get_crosscode).col
 assert_eq!(codes, ["8:1:E-BUYS", "8:2:E-SELL"]);
 assert!(trade.is_execution());
 let again = TradeEvent::from_parts(&root, vec![fill("E-BUYS", Side::Buy)?, fill("E-SELL", Side::Sell)?])?;
-assert_eq!(again.get_curruuid(), trade.get_curruuid());
+assert_eq!(again.get_uuid(), trade.get_uuid());
 // Each execution at the trade's instant; none at all is refused.
 let mut late = fill("E-LATE", Side::Buy)?;
-late.set_currunix(T + 1);
-assert!(TradeEvent::from_parts(&root, vec![late]).unwrap_err().to_string().contains("$.executions[0].currunix"));
+late.set_transunix(T + 1);
+assert!(TradeEvent::from_parts(&root, vec![late]).unwrap_err().to_string().contains("$.executions[0].transunix"));
 assert!(TradeEvent::from_parts(&root, Vec::new()).is_err());
 ```
 
@@ -328,7 +328,7 @@ assert_eq!(OrderEvent::try_from(value)?, order);
 
 `MarketData::arrow_reader` streams values into bounded batches of the lifted
 row; `from_arrow_reader` reads any batch stream back, tolerant of a subset of
-columns in any order. `marketdatakind` and, for a dated leaf, `currunix` are
+columns in any order. `marketdatakind` and, for a dated leaf, `transunix` are
 the minimum.
 
 ```rust
@@ -364,7 +364,7 @@ assert_eq!(read, values);
 // A foreign table: three columns, one the row does not name.
 let schema = Arc::new(Schema::new(vec![
     Field::new("marketdatakind", DataType::Int32, false),
-    Field::new("currunix", DataType::Int64, false),
+    Field::new("transunix", DataType::Int64, false),
     Field::new("crosscode", DataType::Utf8, true),
     Field::new("msgtype", DataType::Utf8, true),
 ]));
@@ -377,7 +377,7 @@ let foreign = RecordBatch::try_new(Arc::clone(&schema), vec![
 ])?;
 let lifted: Vec<MarketData> = MarketData::from_arrow_reader(batch_reader(schema, [foreign]))?.collect::<yggdryl::Result<_>>()?;
 let event = lifted[0].as_order_event().expect("a dated ORDR row is an order event");
-assert_eq!((event.get_crosscode(), event.get_currunix()), ("10:0:O-1001", 1_700_000_000_000_000_000));
+assert_eq!((event.get_crosscode(), event.get_transunix()), ("10:0:O-1001", 1_700_000_000_000_000_000));
 ```
 
 ## Persist a marketdata stream and read it back
@@ -450,7 +450,7 @@ assert_eq!(books.len(), 2, "one book per instant that moved it; the execution is
 // delta, the execution in its events - and its top of book.
 let last = &books[1];
 assert!(!last.is_complete());
-assert_eq!((last.get_currunix(), last.delta().len(), last.events().len(), last.alive().count()), (T + SECOND, 1, 1, 0));
+assert_eq!((last.get_transunix(), last.delta().len(), last.events().len(), last.alive().count()), (T + SECOND, 1, 1, 0));
 assert_eq!(last.executions().count(), 1);
 assert_eq!(last.best_price(Side::Buy), Some("189.49".parse()?));
 // Rebuilt whole: the first over the empty book its key starts from, the next over it.
@@ -458,7 +458,7 @@ assert_eq!(books[0].get_prevuuid(), None);
 let first = books[0].clone().with_previous(&BookEvent::keyed(T, "AAPL")).expect("a rebuild");
 let whole = last.clone().with_previous(&first).expect("a rebuild");
 assert!(whole.is_complete());
-assert_eq!((whole.alive().count(), whole.get_curruuid()), (2, last.get_curruuid()), "depth persists");
+assert_eq!((whole.alive().count(), whole.get_uuid()), (2, last.get_uuid()), "depth persists");
 
 // A 500 ms grid states the whole living book at each crossed tick.
 let gridded = BookIterator::new(stream.clone().into_iter(), 500)?.collect::<yggdryl::Result<Vec<_>>>()?;
@@ -796,7 +796,7 @@ assert_eq!(candles.len(), 2);
 assert_eq!(candles[0].bid.map(|bid| bid.close), Some(Decimal::from_int(100)));
 assert_eq!(candles[1].ask.map(|ask| ask.open), Some(Decimal::from_int(102)));
 let book = service.book("books", "ACME", T0 + 90 * SECOND)?.expect("the last book at or before 10:01:30");
-assert_eq!(book.get_currunix(), T0 + 65 * SECOND);
+assert_eq!(book.get_transunix(), T0 + 65 * SECOND);
 // Stored as a delta book, answered whole: rebuilt over the books before it.
 assert!(book.is_complete());
 assert_eq!(book.alive().count(), 2);

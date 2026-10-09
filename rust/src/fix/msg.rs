@@ -33,7 +33,7 @@ const NANOS_PER_DAY: i64 = 86_400 * 1_000_000_000;
 /// The row or a caller stated when the message executed, so a settle of the
 /// clock alone leaves it.
 const ROW_STATED_EXECUTION: u64 = 1 << 8;
-const ROW_STATED_RECORDING: u64 = 1 << 9;
+const ROW_STATED_SENDUNIX: u64 = 1 << 9;
 
 /// The crated views of the security identifiers - `isincode`,
 /// `bloombergcode`, `figicode`, `forexcode` - each column's tag beside the
@@ -791,8 +791,8 @@ const OFFERSIZE_TAG: i32 = 135;
 fn row_stated_bit(tag: i32) -> Option<u64> {
     if tag == super::EXECUNIX_TAG_NAME.0 {
         Some(ROW_STATED_EXECUTION)
-    } else if tag == super::RECDUNIX_TAG_NAME.0 {
-        Some(ROW_STATED_RECORDING)
+    } else if tag == super::SENDUNIX_TAG_NAME.0 {
+        Some(ROW_STATED_SENDUNIX)
     } else {
         None
     }
@@ -840,7 +840,7 @@ fn derived_marketdatakind(
 /// than reading as nothing: read back as zero, a stored message folds into
 /// another delivery of its instant.
 const WHOLE_TAGS: [i32; 3] = [
-    super::CURRHASHCODE_TAG_NAME.0,
+    super::HASHCODE_TAG_NAME.0,
     super::CROSSHASHCODE_TAG_NAME.0,
     super::SEQNUM_TAG_NAME.0,
 ];
@@ -864,7 +864,7 @@ const SETTLED_LAST: [i32; 4] = [
     super::CROSSCODE_TAG_NAME.0,
     super::CROSSHASHCODE_TAG_NAME.0,
     super::CROSSUUID_TAG_NAME.0,
-    super::CURRUUID_TAG_NAME.0,
+    super::UUID_TAG_NAME.0,
 ];
 
 /// The category one `marketdatakind` cell states: the member, its code or any
@@ -949,9 +949,9 @@ fn marketdatakind_of(value: &Scalar) -> Option<MarketDataKind> {
 /// assert_eq!(msg.by_name("ticker")?, Scalar::from("AAPL"));
 /// assert_eq!(msg.by_tag(9999)?, Scalar::from("custom"), "an unknown tag is kept");
 /// // The identity is settled from what the message states.
-/// assert_ne!(msg.get_currhashcode(), 0);
-/// assert_eq!(msg.get_curruuid(), msg.time_uuid()?);
-/// assert_eq!(msg.get_currunix(), msg.header().sendingtime());
+/// assert_ne!(msg.get_hashcode(), 0);
+/// assert_eq!(msg.get_uuid(), msg.time_uuid()?);
+/// assert_eq!(msg.get_transunix(), msg.header().sendingtime());
 ///
 /// // The row serializes through the paths every field and value share.
 /// let root = msg.as_field();
@@ -1244,7 +1244,7 @@ const TRANSACT_RANK: u8 = 0;
 /// The `TrdRegTimestampType(770)` codes that stamp the event this message
 /// reports - when it executed, when it entered the book, when it took its
 /// priority, when it was submitted, cancelled or modified. These are the
-/// venue's own answer to the question `currunix` asks.
+/// venue's own answer to the question `transunix` asks.
 const EVENT_TRDREG_TYPES: [i64; 9] = [
     1,  // ExecutionTime
     5,  // BrokerExecution
@@ -1495,10 +1495,10 @@ impl FixMsg {
         let mut stated_sending = false;
         let mut stated_unix = false;
         let mut stated_creation = false;
-        // Whether the row has a place for the recording at all: a row that
+        // Whether the row has a place for the wire clock at all: a row that
         // does states it, a null included, and one that does not leaves it
         // to the sender's clock.
-        let mut carries_recording = false;
+        let mut carries_sendunix = false;
         let mut row_stated = 0_u64;
         // The views of the security identifiers, kept as the row stated
         // them and resolved once the whole message is read.
@@ -1514,7 +1514,7 @@ impl FixMsg {
         for ((child, column), value) in field.fields().iter().zip(plan.iter()).zip(held) {
             match column.tag {
                 Some(tag) if identity::is_typed_tag(tag) && !column.shared => {
-                    carries_recording |= tag == super::RECDUNIX_TAG_NAME.0;
+                    carries_sendunix |= tag == super::SENDUNIX_TAG_NAME.0;
                     if value.is_null() {
                         continue;
                     }
@@ -1555,7 +1555,7 @@ impl FixMsg {
                     }
                     stated |= fact_of_crate_tag(tag);
                     stated_sending |= tag == 52;
-                    stated_unix |= tag == super::CURRUNIX_TAG_NAME.0;
+                    stated_unix |= tag == super::TRANSUNIX_TAG_NAME.0;
                     stated_creation |= tag == super::CREAUNIX_TAG_NAME.0;
                     if let Some(bit) = row_stated_bit(tag) {
                         row_stated |= bit;
@@ -1591,7 +1591,7 @@ impl FixMsg {
             // instant is its sending clock again: only an intake stating no
             // clock at all reads the wall clock, so a replay is a fixed point.
             let stated = if stated_unix {
-                Some(event.get_currunix())
+                Some(event.get_transunix())
             } else if stated_creation {
                 event.get_creaunix()
             } else {
@@ -1682,12 +1682,12 @@ impl FixMsg {
         if !stated_unix {
             message
                 .event
-                .set_currunix(message.official_unix(official_time_delay_ns));
+                .set_transunix(message.official_unix(official_time_delay_ns));
         }
         if !stated_creation {
-            message.event.set_creaunix(Some(message.get_currunix()));
+            message.event.set_creaunix(Some(message.get_transunix()));
         }
-        if !carries_recording {
+        if !carries_sendunix {
             message.record_at_sending();
         }
         // What the message implies about its market, read off the FIX
@@ -1696,8 +1696,9 @@ impl FixMsg {
         Ok((message, viewed))
     }
 
-    /// The instant this message happened: the best official clock standing
-    /// within `delay` of the sending clock, else the sending clock itself.
+    /// When the operation this message states happened - its `transunix`:
+    /// the best official clock standing within `delay` of the sending clock,
+    /// else the sending clock itself.
     ///
     /// The sending clock is the reference because every message carries one
     /// and no message carries two. An official clock is the more exact
@@ -2059,8 +2060,8 @@ impl FixMsg {
     /// place, the cross hash and that code derive, stamped over what the
     /// message states: the second half of [`Self::settle`].
     pub(super) fn stamp_identity(&mut self) {
-        let currhashcode = self.currhashcode();
-        self.event.finalized(currhashcode);
+        let hashcode = self.hashcode();
+        self.event.finalized(hashcode);
     }
 
     /// Derives the complete FIX session event onto the capture: the four
@@ -2133,8 +2134,8 @@ impl FixMsg {
     /// but remains a later lifecycle event and must follow instead of merge.
     fn is_synthetic_expiry(&self) -> bool {
         *self.get_state() == State::Expired
-            && self.get_recdunix().is_none()
-            && self.get_exprunix() == Some(self.get_currunix())
+            && self.get_sendunix().is_none()
+            && self.get_exprunix() == Some(self.get_transunix())
     }
 
     /// Whether `with_previous` must treat the two values as observations of
@@ -2144,14 +2145,14 @@ impl FixMsg {
     }
 
     /// Fully merge another observation of this session event, retaining the
-    /// latest recording as the reference row and the earliest precise facts.
+    /// one sent last as the reference row and the earliest precise facts.
     pub(super) fn merge_session_event(self, other: &Self) -> Result<Self> {
         debug_assert!(self.is_same_session_event(other));
         let other_leads = crate::implementer::right_is_reference(
-            self.get_recdunix(),
-            self.get_currunix(),
-            other.get_recdunix(),
-            other.get_currunix(),
+            self.get_sendunix(),
+            self.get_transunix(),
+            other.get_sendunix(),
+            other.get_transunix(),
         );
         if other_leads {
             return other.clone().fold_session_event(&self);
@@ -2160,10 +2161,10 @@ impl FixMsg {
     }
 
     /// Fully merge another observation of this session event into this one,
-    /// which stays the reference whatever the two recording clocks say: for
+    /// which stays the reference whatever the two wire clocks say: for
     /// a caller that already chose it, as a run of observations sorted
-    /// latest recording first does, where re-deciding at every pair would
-    /// let a later one lead against the earliest recording a fold keeps.
+    /// latest `sendunix` first does, where re-deciding at every pair would
+    /// let a later one lead against the earliest `sendunix` a fold keeps.
     pub(super) fn fold_session_event(self, other: &Self) -> Result<Self> {
         let mut folded = self.fold_session_event_unstamped(other)?;
         folded.stamp_identity();
@@ -2204,10 +2205,10 @@ impl FixMsg {
     /// the merged message, as a refusal the parse recorded is.
     fn fold_provenance(&mut self, other: &Self) {
         let other_earlier = crate::implementer::right_is_reference(
-            other.get_recdunix(),
-            other.get_currunix(),
-            self.get_recdunix(),
-            self.get_currunix(),
+            other.get_sendunix(),
+            other.get_transunix(),
+            self.get_sendunix(),
+            self.get_transunix(),
         );
         for (tag, name) in [
             super::MSGORIGINATOR_TAG_NAME,
@@ -2352,7 +2353,7 @@ impl FixMsg {
     /// The execution clock is the one the message's own fields state, and a
     /// raw observation reporting an execution - [`Event::is_execution`] as
     /// this message reads it - that states none executed when it happened,
-    /// so its `execunix` is its own `currunix` from intake on rather than
+    /// so its `execunix` is its own `transunix` from intake on rather than
     /// from the first walk. A message following another that states none
     /// keeps the execution its chain reached: that is the walk's to state,
     /// and its state may be one it inherited rather than one it reported.
@@ -3146,7 +3147,7 @@ impl FixMsg {
             if self.event.get_prevuuid().is_some() {
                 self.event.get_execunix()
             } else {
-                self.reports_execution().then(|| self.event.get_currunix())
+                self.reports_execution().then(|| self.event.get_transunix())
             }
         })
     }
@@ -3161,7 +3162,7 @@ impl FixMsg {
         if self.row_stated & ROW_STATED_EXECUTION == 0 {
             self.state_market(fact::EXECUTION);
         }
-        let code = self.event.get_currhashcode();
+        let code = self.event.get_hashcode();
         self.event.finalized(code);
     }
 
@@ -3181,7 +3182,7 @@ impl FixMsg {
         self.event.set_quantity(self.lifted.quantity(), over);
         self.event.settle_orders();
         self.event.sync_cross();
-        let code = self.currhashcode();
+        let code = self.hashcode();
         self.event.finalized(code);
     }
 
@@ -3800,7 +3801,7 @@ impl FixMsg {
     /// `marketdatakind` is also a generic fact callers may state or mutate directly.
     /// Feeding that ID once makes the derived and serialized readings agree
     /// and makes a category mutation move the generic event identity.
-    fn currhashcode(&self) -> u64 {
+    fn hashcode(&self) -> u64 {
         let mut state = crate::xxhash::Xxh3::new();
         crate::implementer::feed_event_facts(&mut state, &*self.event);
         // Inline: text, msgtype, marketdatakind and the lifted facts are 26 cells,
@@ -3849,14 +3850,15 @@ impl FixMsg {
         state.as_u64()
     }
 
-    /// Records the message as recorded when it was sent, where its carrier
-    /// stated no recording and the message states its `SendingTime(52)`:
-    /// the one recording the message itself states is its sender's. Read
-    /// once, where the message is built from a row with no `recdunix`
-    /// column - a row that has one states its own, a null included.
+    /// Records the message as crossing the wire when it was sent, where its
+    /// carrier stated no wire clock and the message states its
+    /// `SendingTime(52)`: the one wire clock the message itself states is
+    /// its sender's. Read once, where the message is built from a row with
+    /// no `sendunix` column - a row that has one states its own, a null
+    /// included.
     fn record_at_sending(&mut self) {
-        if self.event.get_recdunix().is_none() && self.header.stated_sendingtime() {
-            self.event.set_recdunix(Some(self.header.sendingtime()));
+        if self.event.get_sendunix().is_none() && self.header.stated_sendingtime() {
+            self.event.set_sendunix(Some(self.header.sendingtime()));
         }
     }
 
@@ -4103,9 +4105,9 @@ impl FixMsg {
         let Some(unix) = self.transact_unix() else {
             return false;
         };
-        let current = self.get_currunix();
+        let current = self.get_transunix();
         let created = self.get_creaunix();
-        self.event.set_currunix(unix);
+        self.event.set_transunix(unix);
         // The stand-in sending clock follows: it was never a fact of the
         // message, and a row read back states the instant as the clock.
         self.header.set_sendingtime(unix);
@@ -6304,19 +6306,19 @@ impl Hash for FixMsg {
     /// registry is part of equality but not of the hash, which keeps equal
     /// messages hashing alike.
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.event.get_currhashcode().hash(state);
+        self.event.get_hashcode().hash(state);
         self.field.hash(state);
         self.value.hash(state);
     }
 }
 
 impl Element for FixMsg {
-    fn get_curruuid(&self) -> Uuid {
-        self.event.get_curruuid()
+    fn get_uuid(&self) -> Uuid {
+        self.event.get_uuid()
     }
 
-    fn set_curruuid(&mut self, curruuid: Uuid) {
-        self.event.set_curruuid(curruuid);
+    fn set_uuid(&mut self, uuid: Uuid) {
+        self.event.set_uuid(uuid);
     }
 
     fn get_crossuuid(&self) -> Uuid {
@@ -6335,12 +6337,12 @@ impl Element for FixMsg {
         self.event.set_crosscode(crosscode);
     }
 
-    fn get_currhashcode(&self) -> u64 {
-        self.event.get_currhashcode()
+    fn get_hashcode(&self) -> u64 {
+        self.event.get_hashcode()
     }
 
-    fn set_currhashcode(&mut self, hashcode: u64) {
-        self.event.set_currhashcode(hashcode);
+    fn set_hashcode(&mut self, hashcode: u64) {
+        self.event.set_hashcode(hashcode);
     }
 
     fn get_crosshashcode(&self) -> u64 {
@@ -6405,12 +6407,12 @@ impl Event for FixMsg {
         crate::graph::market::restating_operation(self, live)
     }
 
-    fn get_currunix(&self) -> i64 {
-        self.event.get_currunix()
+    fn get_transunix(&self) -> i64 {
+        self.event.get_transunix()
     }
 
-    fn set_currunix(&mut self, unix: i64) {
-        self.event.set_currunix(unix);
+    fn set_transunix(&mut self, unix: i64) {
+        self.event.set_transunix(unix);
     }
 
     fn get_state(&self) -> &State {
@@ -6438,17 +6440,17 @@ impl Event for FixMsg {
         self.event.set_creaunix(unix);
     }
 
-    fn get_recdunix(&self) -> Option<i64> {
-        self.event.get_recdunix()
+    fn get_sendunix(&self) -> Option<i64> {
+        self.event.get_sendunix()
     }
 
-    fn set_recdunix(&mut self, unix: Option<i64>) {
+    fn set_sendunix(&mut self, unix: Option<i64>) {
         if unix.is_some() {
-            self.row_stated |= ROW_STATED_RECORDING;
+            self.row_stated |= ROW_STATED_SENDUNIX;
         } else {
-            self.row_stated &= !ROW_STATED_RECORDING;
+            self.row_stated &= !ROW_STATED_SENDUNIX;
         }
-        self.event.set_recdunix(unix);
+        self.event.set_sendunix(unix);
     }
 
     fn get_exprunix(&self) -> Option<i64> {

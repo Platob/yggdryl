@@ -31,7 +31,7 @@ test('BookEvent: limits fold the live entries one level a price', () => {
     order(CLOCK, '101', 'O-2'),
     order(CLOCK, '100', 'O-3'),
   ])
-  const [first, second, third] = book.alive().map((entry) => entry.curruuid)
+  const [first, second, third] = book.alive().map((entry) => entry.uuid)
   assert.deepEqual(book.limits('BUYS'), [
     { price: '101', quantity: '20', uuids: [first, second], tradable: true },
     { price: '100', quantity: '10', uuids: [third], tradable: true },
@@ -51,7 +51,7 @@ test('BookEvent: limits fold the live entries one level a price', () => {
   // priced limit's.
   const market = new graph.OrderEvent(CLOCK, { crosscode: 'M-1', side: 'BUYS', quantity: 7, ticker: 'IBM' })
   const priced = empty.withOperations([order(), market])
-  const uuids = priced.alive().map((entry) => entry.curruuid)
+  const uuids = priced.alive().map((entry) => entry.uuid)
   assert.deepEqual(priced.limits('BUYS'), [
     { price: '101', quantity: '10', uuids: [uuids[0]], tradable: true },
     { price: null, quantity: '7', uuids: [uuids[1]], tradable: true },
@@ -126,7 +126,7 @@ test('BookEvent: locked, spread and imbalance read the two bests', () => {
 
 test('BookEvent: an empty book', () => {
   const book = new graph.BookEvent(CLOCK, 'IBM')
-  assert.equal(book.currunix, CLOCK)
+  assert.equal(book.transunix, CLOCK)
   assert.equal(book.crosscode, '3:0:IBM')
   assert.equal(book.marketdatakind, 'BOOK')
   // A book holds both sides.
@@ -180,7 +180,7 @@ test('BookEvent: MarketData folds, read from any iterable, and an execution is r
     crosscode: 'E-1', side: 'BUYS', price: '101', quantity: 10, lastpx: '101', lastqty: 1, ticker: 'IBM',
   })
   const recorded = book.withOperations([execution])
-  assert.equal(recorded.currunix, CLOCK + 10n)
+  assert.equal(recorded.transunix, CLOCK + 10n)
   assert.deepEqual(recorded.delta(), [])
   assert.deepEqual(recorded.events().map((held) => held.crosscode), ['8:1:E-1'])
   assert.deepEqual(recorded.alive().map((held) => held.crosscode), ['10:1:O-1'])
@@ -193,7 +193,7 @@ test('BookEvent: MarketData folds, read from any iterable, and an execution is r
     execution,
     new graph.OrderEvent(CLOCK + 10n, { crosscode: 'O-2', side: 'SELL', price: '102', quantity: 3, ticker: 'IBM' }),
   ])
-  assert.equal(later.currunix, CLOCK + 10n)
+  assert.equal(later.transunix, CLOCK + 10n)
   assert.deepEqual(later.delta().map((held) => held.crosscode), ['10:2:O-2'])
   assert.deepEqual(later.events().map((held) => held.crosscode), ['8:1:E-1'])
   assert.deepEqual(later.orddelta().map((held) => held.crosscode), ['10:2:O-2'])
@@ -265,8 +265,8 @@ test('BookEvent: keyed is the empty base a delta book rebuilds over', () => {
   assert.equal(base.isincode, null)
   assert.equal(base.isComplete, true)
   assert.deepEqual(base.alive(), [])
-  assert.equal(graph.BookEvent.keyed(1, 'IBM').currunix, 1n)
-  assert.throws(() => graph.BookEvent.keyed(1.5, 'IBM'), /currunix/)
+  assert.equal(graph.BookEvent.keyed(1, 'IBM').transunix, 1n)
+  assert.throws(() => graph.BookEvent.keyed(1.5, 'IBM'), /transunix/)
 
   // With no grid, a walk emits every book as a delta book, beside the top
   // of book it settled on; the first follows no book.
@@ -287,7 +287,7 @@ test('BookEvent: keyed is the empty base a delta book rebuilds over', () => {
   const rebuilt = books[1].withPrevious(first)
   assert.ok(first.isComplete && rebuilt.isComplete)
   assert.equal(rebuilt.alive().length, 2)
-  assert.equal(rebuilt.curruuid, books[1].curruuid)
+  assert.equal(rebuilt.uuid, books[1].uuid)
   assert.deepEqual(rebuilt.limits('BUYS').map((limit) => limit.price), ['100', '99'])
 })
 
@@ -312,7 +312,7 @@ test('BookEvent: equals, stableHash, toString, clone and toJSON round trip', () 
   assert.ok(twin.alive().every((entry, at) => entry.equals(book.alive()[at])))
   assert.deepEqual(twin.limits('SELL'), book.limits('SELL'))
   assert.ok(book.clone().equals(book))
-  assert.equal(book.toString(), `BookEvent(${book.curruuid}, currunix=${CLOCK}, crosscode="3:0:IBM")`)
+  assert.equal(book.toString(), `BookEvent(${book.uuid}, transunix=${CLOCK}, crosscode="3:0:IBM")`)
   const later = new graph.BookEvent(CLOCK + 1n, 'IBM')
   assert.ok(later.isAfter(book) && book.isBefore(later))
 })
@@ -320,7 +320,7 @@ test('BookEvent: equals, stableHash, toString, clone and toJSON round trip', () 
 test('SnapshotEvent: snapshot copies a dated leaf', () => {
   const source = order()
   const snapshot = graph.SnapshotEvent.snapshot(source, 'S')
-  assert.equal(snapshot.currunix, source.currunix)
+  assert.equal(snapshot.transunix, source.transunix)
   assert.equal(snapshot.ticker, 'IBM')
   assert.equal(snapshot.marketdatakind, 'BOOK')
   assert.equal(snapshot.book.action, 'snapshot')
@@ -337,7 +337,7 @@ test('SnapshotEvent: equals, stableHash, toString, clone and toJSON round trip',
   assert.equal(twin.stableHash(), snapshot.stableHash())
   assert.ok(twin.book.equals(snapshot.book))
   assert.ok(snapshot.clone().equals(snapshot))
-  assert.ok(snapshot.toString().startsWith(`SnapshotEvent(${snapshot.curruuid}, currunix=${CLOCK}`))
+  assert.ok(snapshot.toString().startsWith(`SnapshotEvent(${snapshot.uuid}, transunix=${CLOCK}`))
 })
 
 test('BookIterator: books over three items in order', () => {
@@ -351,7 +351,7 @@ test('BookIterator: books over three items in order', () => {
   // The walk records the execution where it pulls it, so the instant only
   // it reached emits an event-only book; with no grid every book is a
   // delta book.
-  assert.deepEqual(books.map((book) => book.currunix), [CLOCK, CLOCK + 1n])
+  assert.deepEqual(books.map((book) => book.transunix), [CLOCK, CLOCK + 1n])
   assert.ok(books.every((book) => !book.isComplete))
   assert.deepEqual(books[0].delta().map((held) => held.crosscode), ['10:1:O-1', '14:0:Q-1'])
   assert.equal(books[0].bestPrice('BUYS'), '101')
@@ -396,7 +396,7 @@ test('BookIterator: an instant recording only an execution emits an event-only b
     crosscode: 'E-1', side: 'BUYS', price: '100', lastpx: '100', lastqty: 1, ticker: 'IBM', state: 'FILLED',
   })
   const books = [...new graph.BookIterator([stating('B-1', 'BUYS', '100', 2), stating('A-1', 'SELL', '102', 3), fill])]
-  assert.deepEqual(books.map((book) => book.currunix), [CLOCK, CLOCK + 1n], "the execution's instant emits a book")
+  assert.deepEqual(books.map((book) => book.transunix), [CLOCK, CLOCK + 1n], "the execution's instant emits a book")
   // A delta book whose delta is empty and whose events hold the execution:
   // no control, no snapshot instant.
   const eventOnly = books[1]
@@ -406,7 +406,7 @@ test('BookIterator: an instant recording only an execution emits an event-only b
   assert.deepEqual(eventOnly.events().map((held) => held.crosscode), ['8:1:E-1'])
   assert.deepEqual(eventOnly.executions().map((held) => held.crosscode), ['8:1:E-1'])
   assert.deepEqual(eventOnly.controls(), [])
-  assert.equal(eventOnly.prevuuid, books[0].curruuid)
+  assert.equal(eventOnly.prevuuid, books[0].uuid)
   // Its top of book is the one the execution left standing.
   assert.deepEqual([eventOnly.bidpx, eventOnly.askpx], ['100', '102'])
   // Rebuilt over the complete book before it, nothing is replayed: the
@@ -414,7 +414,7 @@ test('BookIterator: an instant recording only an execution emits an event-only b
   const previous = books[0].withPrevious(graph.BookEvent.keyed(CLOCK, 'IBM'))
   const rebuilt = eventOnly.withPrevious(previous)
   assert.equal(rebuilt.isComplete, true)
-  assert.equal(rebuilt.curruuid, eventOnly.curruuid)
+  assert.equal(rebuilt.uuid, eventOnly.uuid)
   assert.deepEqual(rebuilt.alive().map((held) => held.crosscode), previous.alive().map((held) => held.crosscode))
   assert.deepEqual(rebuilt.limits('BUYS'), previous.limits('BUYS'))
   assert.deepEqual(rebuilt.limits('SELL'), previous.limits('SELL'))
@@ -437,14 +437,14 @@ test('BookIterator: an empty snapshot on an empty book emits an empty complete b
   assert.equal(books.length, 1)
   const [book] = books
   assert.equal(book.isComplete, true)
-  assert.equal(book.currunix, CLOCK)
+  assert.equal(book.transunix, CLOCK)
   assert.equal(book.snapunix, CLOCK)
   assert.equal(book.ticker, 'IBM')
   assert.deepEqual([book.alive(), book.delta(), book.executions()], [[], [], []])
   assert.equal(book.events().length, 1)
   const controls = book.controls()
   assert.ok(controls[0] instanceof graph.SnapshotEvent)
-  assert.deepEqual(controls.map((held) => held.curruuid), [control.curruuid])
+  assert.deepEqual(controls.map((held) => held.uuid), [control.uuid])
   assert.equal(controls[0].book.action, 'snapshot')
   assert.deepEqual([book.limits('BUYS'), book.limits('SELL')], [[], []])
 })
@@ -512,7 +512,7 @@ test('BookIterator: a JavaScript failure ends the walk where it happened', () =>
     exprunix: CLOCK + 10n,
   })
   assert.deepEqual(
-    [...new graph.BookIterator([resting])].map((book) => book.currunix),
+    [...new graph.BookIterator([resting])].map((book) => book.transunix),
     [CLOCK, CLOCK + 10n],
   )
   // ... but a source that failed did not end: as Python's walk and the
@@ -523,7 +523,7 @@ test('BookIterator: a JavaScript failure ends the walk where it happened', () =>
     throw new RangeError('the source gave up')
   }
   const walk = new graph.BookIterator(items())
-  assert.equal(walk.next().value.currunix, CLOCK)
+  assert.equal(walk.next().value.transunix, CLOCK)
   assert.throws(() => walk.next(), { name: 'RangeError', message: 'the source gave up' })
   assert.deepEqual(walk.next(), { value: undefined, done: true })
 })

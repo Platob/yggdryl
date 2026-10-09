@@ -49,7 +49,7 @@ fn a_followers_derived_real_isin_stands_over_its_chains_masked_statement() {
     assert_eq!(chained.len(), 3);
     assert_eq!(chained[0].get_isincode(), Some("XX0000000001"));
     let last = &chained[2];
-    assert_eq!(last.get_prevuuid(), Some(chained[0].get_curruuid()));
+    assert_eq!(last.get_prevuuid(), Some(chained[0].get_uuid()));
     assert_eq!(last.get_isincode(), Some("US0378331005"));
     assert_eq!(last.book_crosscode(), "US0378331005");
     assert!(last.get_securityids().is_derived(&IdType::Isin));
@@ -110,7 +110,7 @@ const SILENT: [usize; 5] = [7, 8, 11, 12, 13];
 /// says it sent it - a `SendingTime(52)` it states, never the hop clocks
 /// and never a stand-in - and a clock it states itself stands over both.
 #[test]
-fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
+fn carrier_mtime_records_the_message_unless_the_message_states_sendunix() {
     const DIRECT: i64 = 1_704_190_530_100_000_000;
     const REFERENCE: i64 = 1_704_190_530_200_000_000;
     const CARRIER: i64 = 1_704_190_530_900_000_000;
@@ -122,16 +122,16 @@ fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
         )
         .expect("a raw message");
     assert_eq!(
-        raw.get_recdunix(),
+        raw.get_sendunix(),
         Some(DIRECT),
-        "a message no carrier recorded was recorded when it was sent"
+        "a message no carrier dated crossed the wire when it was sent"
     );
     // A message stating no sending clock is dated by a stand-in, which
-    // records nothing.
+    // states no wire clock.
     let unsent = reader
         .sole_line(b"8=FIX.4.4|35=8|122=20240102-10:15:30.200|10=0|")
         .expect("a raw message");
-    assert_eq!(unsent.get_recdunix(), None);
+    assert_eq!(unsent.get_sendunix(), None);
 
     // A carrier's clock outranks the sender's.
     let options = Arc::new(yggdryl::text::TextOptions::new());
@@ -148,7 +148,7 @@ fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
         .next()
         .expect("one message")
         .unwrap();
-    assert_eq!(message.get_recdunix(), Some(CARRIER));
+    assert_eq!(message.get_sendunix(), Some(CARRIER));
 
     let carried = TextLine::from_bytes(
         0,
@@ -163,7 +163,7 @@ fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
         .next()
         .expect("one message")
         .unwrap();
-    assert_eq!(message.get_recdunix(), Some(CARRIER));
+    assert_eq!(message.get_sendunix(), Some(CARRIER));
 
     let direct = TextLine::from_bytes(
         0,
@@ -181,13 +181,13 @@ fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
         .next()
         .expect("one message")
         .unwrap();
-    assert_eq!(message.get_recdunix(), Some(DIRECT));
+    assert_eq!(message.get_sendunix(), Some(DIRECT));
     // 65064 once carried the merge reference's recording clock; the slot is
-    // retired now that the reference is the latest `recdunix` alone, so a
+    // retired now that the reference is the latest `sendunix` alone, so a
     // frame still spelling it states no clock at all - not the recording,
     // which stays the stated 65009, and no value, entry or wire byte either,
     // as any crate tag with no definition behind it.
-    assert_ne!(message.get_recdunix(), Some(REFERENCE));
+    assert_ne!(message.get_sendunix(), Some(REFERENCE));
     assert!(message.by_tag(65_064).is_err());
     assert!(message.entries().iter().all(|entry| entry.tag() != 65_064));
     let wire = message.into_bytes(b'|');
@@ -199,11 +199,11 @@ fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
 }
 
 /// A message stating no `SendingTime(52)` is dated by the line it was read
-/// out of - the line's `currunix`, from its `mtime` capture or its handle -
+/// out of - the line's `transunix`, from its `mtime` capture or its handle -
 /// ahead of the codec's pinned default and of now, and the clock stays a
 /// stand-in: nothing of it reaches the wire.
 #[test]
-fn an_undated_message_is_sent_at_its_lines_currunix() {
+fn an_undated_message_is_sent_at_its_lines_transunix() {
     const CARRIER: i64 = 1_704_190_530_900_000_000;
     const STATED: i64 = 1_704_190_530_100_000_000;
     const TRANSACT: i64 = 1_704_190_530_850_000_000;
@@ -233,12 +233,12 @@ fn an_undated_message_is_sent_at_its_lines_currunix() {
     let undated = line(b"8=FIX.4.4|35=8|10=0|", Some(CARRIER));
     for codec in [&bare, &pinned] {
         let message = sole(codec, &undated);
-        assert_eq!(undated.get_currunix(), CARRIER);
+        assert_eq!(undated.get_transunix(), CARRIER);
         assert_eq!(message.header().sendingtime(), CARRIER);
         assert!(!message.header().stated_sendingtime());
-        assert_eq!(message.get_currunix(), CARRIER);
+        assert_eq!(message.get_transunix(), CARRIER);
         assert_eq!(message.get_creaunix(), Some(CARRIER));
-        assert_eq!(message.get_recdunix(), Some(CARRIER));
+        assert_eq!(message.get_sendunix(), Some(CARRIER));
         // A stand-in is no fact of the message: the wire states no tag 52.
         let wire = message.into_bytes(b'|');
         assert!(
@@ -258,7 +258,7 @@ fn an_undated_message_is_sent_at_its_lines_currunix() {
     );
     assert_eq!(stated.header().sendingtime(), STATED);
     assert!(stated.header().stated_sendingtime());
-    assert_eq!(stated.get_currunix(), STATED);
+    assert_eq!(stated.get_transunix(), STATED);
 
     // The line's clock is a reference like any sending clock: a transaction
     // standing within the official delay of it dates the message.
@@ -270,12 +270,12 @@ fn an_undated_message_is_sent_at_its_lines_currunix() {
         ),
     );
     assert_eq!(transacted.header().sendingtime(), CARRIER);
-    assert_eq!(transacted.get_currunix(), TRANSACT);
+    assert_eq!(transacted.get_transunix(), TRANSACT);
 
     // A line with no clock at all leaves the codec's pin to date it.
     let clockless = sole(&pinned, &line(b"8=FIX.4.4|35=8|10=0|", None));
     assert_eq!(clockless.header().sendingtime(), PINNED);
-    assert_eq!(clockless.get_recdunix(), None);
+    assert_eq!(clockless.get_sendunix(), None);
     // Nor does one dated at the epoch, which is what a line nothing dated
     // reads as on the batch door: both doors date its message by the pin.
     let epoch = sole(&pinned, &line(b"8=FIX.4.4|35=8|10=0|", Some(0)));
@@ -315,9 +315,9 @@ fn an_undated_message_is_sent_at_its_lines_currunix() {
     .unwrap();
     let message = sole(&bare, &headed);
     assert_eq!(message.header().sendingtime(), CARRIER);
-    assert_eq!(message.get_currunix(), CARRIER);
+    assert_eq!(message.get_transunix(), CARRIER);
 
-    // The batch door reads the same clock off the batch's `currunix`
+    // The batch door reads the same clock off the batch's `transunix`
     // column, and dates the same message the same way.
     let batch = yggdryl::text::into_arrow_batch(vec![undated.clone()], &options).unwrap();
     for codec in [&bare, &pinned] {
@@ -334,11 +334,11 @@ fn an_undated_message_is_sent_at_its_lines_currunix() {
             .collect::<yggdryl::Result<Vec<_>>>()
             .unwrap();
         assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].get_currunix(), CARRIER);
+        assert_eq!(messages[0].get_transunix(), CARRIER);
         assert_eq!(messages[0].get_creaunix(), Some(CARRIER));
         assert_eq!(
-            messages[0].get_curruuid(),
-            sole(codec, &undated).get_curruuid(),
+            messages[0].get_uuid(),
+            sole(codec, &undated).get_uuid(),
             "both doors settle the one identity"
         );
     }
@@ -2467,7 +2467,7 @@ fn clock_intake_keeps_the_declared_datatypes_contract_and_refuses_wrong_layouts(
     let dateless = reader
         .parse_fix_line(b"8=FIX.4.4|35=D|60=07:39:12.123+05:30|10=0|")
         .unwrap();
-    assert_eq!(dateless.get_currunix(), 1_704_190_530_000_000_000);
+    assert_eq!(dateless.get_transunix(), 1_704_190_530_000_000_000);
     assert_eq!(
         dateless
             .by_tag(60)
@@ -2482,7 +2482,7 @@ fn clock_intake_keeps_the_declared_datatypes_contract_and_refuses_wrong_layouts(
     let dated = reader
         .parse_fix_line(b"8=FIX.4.4|35=D|60=20240102-10:15:30.000|10=0|")
         .unwrap();
-    assert_eq!(dated.get_currunix(), 1_704_190_530_000_000_000);
+    assert_eq!(dated.get_transunix(), 1_704_190_530_000_000_000);
 
     let mut narrow = FixRegistry::new();
     let mut clock = DataType::utf8().nullable_field("transacttime");
@@ -2760,7 +2760,7 @@ fn the_regulatory_group_dates_a_message_by_type_before_nearness() {
         reader()
             .parse_fix_line(line.as_bytes())
             .expect("the line parses")
-            .get_currunix()
+            .get_transunix()
     };
     // A publicly-reported stamp ten milliseconds off never dates a message,
     // so the execution half a second off is the one that does: what the
@@ -2828,7 +2828,7 @@ fn the_transaction_outranks_the_group_and_a_far_one_falls_through_to_it() {
         reader()
             .parse_fix_line(line.as_bytes())
             .expect("the line parses")
-            .get_currunix()
+            .get_transunix()
     };
     // A stated transaction inside the delay is the message's own statement
     // of when its event happened; a nearer regulatory stamp does not displace
@@ -2871,7 +2871,7 @@ fn a_dictionary_declaring_no_group_reads_no_regulatory_clock() {
             b"8=FIX.4.4|35=AE|52=20260102-10:15:30|768=1|769=20260102-10:15:29.990|770=1|10=0|",
         )
         .expect("the line parses");
-    assert_eq!(message.get_currunix(), 1_767_348_930_000_000_000);
+    assert_eq!(message.get_transunix(), 1_767_348_930_000_000_000);
 }
 
 /// The delay is the codec's own and bounds which official clock may date a
@@ -2904,8 +2904,8 @@ fn the_official_time_delay_is_the_codecs_own_and_bounds_the_transaction() {
             .with_official_time_delay_ms(delay)
             .parse_fix_line(line)
             .expect("the line parses");
-        assert_eq!(dated.get_currunix(), expected, "a {delay} ms delay");
-        assert_eq!(dated.get_creaunix(), Some(dated.get_currunix()));
+        assert_eq!(dated.get_transunix(), expected, "a {delay} ms delay");
+        assert_eq!(dated.get_creaunix(), Some(dated.get_transunix()));
     }
 }
 
@@ -2933,7 +2933,7 @@ fn a_day_only_transaction_dates_nothing() {
         .with_official_time_delay_ms(i64::MAX)
         .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-00:00:00.100|60=20260102|10=0|")
         .expect("the line parses");
-    assert_eq!(message.get_currunix(), 1_767_312_000_100_000_000);
+    assert_eq!(message.get_transunix(), 1_767_312_000_100_000_000);
 }
 
 // ---------------------------------------------------------------------------
@@ -3117,17 +3117,17 @@ mod clock_intake_tests {
                 .temporal_count_at(TimeUnit::Nanosecond),
             Some(1_767_348_931_000_000_000)
         );
-        assert_eq!(message.get_currunix(), 1_767_348_931_000_000_000);
-        assert_eq!(message.get_creaunix(), Some(message.get_currunix()));
+        assert_eq!(message.get_transunix(), 1_767_348_931_000_000_000);
+        assert_eq!(message.get_creaunix(), Some(message.get_transunix()));
         assert_eq!(message.get_snapunix(), None);
         // One nanosecond further and they are two events: the sending clock
         // is the one every message carries, so it keeps the message.
         let apart = codec
             .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|60=20260102-10:15:31.000000001|")
             .unwrap();
-        assert_eq!(apart.get_currunix(), 1_767_348_930_000_000_000);
+        assert_eq!(apart.get_transunix(), 1_767_348_930_000_000_000);
         assert_eq!(
-            Some(apart.get_currunix()),
+            Some(apart.get_transunix()),
             apart
                 .by_tag(52)
                 .unwrap()
@@ -3136,7 +3136,7 @@ mod clock_intake_tests {
         let absent = codec.parse_fix_line(b"8=FIX.4.4|35=D|").unwrap();
         assert_eq!(absent.by_tag(52).unwrap(), clock(17));
         assert!(absent.get_by_tag(60).is_none());
-        assert_eq!(absent.get_currunix(), 17);
+        assert_eq!(absent.get_transunix(), 17);
     }
 
     /// The delay crosses into the dating as nanoseconds, through a
@@ -4037,11 +4037,11 @@ mod equivalence {
     /// it; where it was not, it is a defect.
     ///
     /// It last moved when the digest's category label `msgcat` became
-    /// `marketdatakind`: every message's `currhashcode` and `curruuid`, a
-    /// `crossuuid` that is its own `curruuid`, the `srcuuids` and `prevuuid`
+    /// `marketdatakind`: every message's `hashcode` and `uuid`, a
+    /// `crossuuid` that is its own `uuid`, the `srcuuids` and `prevuuid`
     /// naming a moved message, and the `crosscode`, `crosshashcode` and
     /// `crossuuid` of an execution split off a report naming no `ExecID` or
-    /// `TradeID` - its cross code derives from the report's `currhashcode` -
+    /// `TradeID` - its cross code derives from the report's `hashcode` -
     /// changed; no wire, entry or `seqnum` did.
     /// It last moved when the lifecycle came to name a chain by its chain
     /// identities alone and FIX's trade lineage became identifiers: the
@@ -4234,7 +4234,7 @@ mod lifecycle_identifiers {
             };
             let previous = walk
                 .iter()
-                .find(|held| held.get_curruuid() == previous)
+                .find(|held| held.get_uuid() == previous)
                 .expect("a predecessor the walk yielded");
             assert_eq!(message.get_crosscode(), previous.get_crosscode());
             assert_eq!(message.get_crossuuid(), previous.get_crossuuid());
@@ -4264,7 +4264,7 @@ mod lifecycle_identifiers {
         };
         let (cancel, reject) = (of_type("F"), of_type("9"));
         assert_eq!(cancel.get_crosscode(), "10:2:931070583-1940-30712_192");
-        assert_eq!(reject.get_prevuuid(), Some(cancel.get_curruuid()));
+        assert_eq!(reject.get_prevuuid(), Some(cancel.get_uuid()));
         assert_eq!(reject.get_crosscode(), cancel.get_crosscode());
         assert_eq!(reject.get_crossuuid(), cancel.get_crossuuid());
         assert_eq!(reject.get_side(), Side::Sell);
@@ -4311,7 +4311,7 @@ mod lifecycle_identifiers {
             report(&followed, "00064703467GBYZ0"),
             report(&followed, "00064703468GBYZ0"),
         );
-        assert_eq!(third.get_prevuuid(), Some(second.get_curruuid()));
+        assert_eq!(third.get_prevuuid(), Some(second.get_uuid()));
         assert_eq!(third.get_crosscode(), "10:1:00079132557GLXC0");
         assert_eq!(third.get_crosscode(), second.get_crosscode());
         assert_eq!(
@@ -4397,7 +4397,7 @@ mod lifecycle_identifiers {
             panic!("four trade captures, not {}", walk.len())
         };
         assert_eq!(first.get_crosscode(), "21:0:T1");
-        assert_eq!(replaced.get_prevuuid(), Some(first.get_curruuid()));
+        assert_eq!(replaced.get_prevuuid(), Some(first.get_uuid()));
         assert_eq!(replaced.get_crosscode(), "21:0:T1", "the chain's");
         assert_eq!(replaced.get_crossuuid(), first.get_crossuuid());
         assert_eq!(base(replaced, &IdType::TradeId).as_deref(), Some("T2"));
@@ -4411,7 +4411,7 @@ mod lifecycle_identifiers {
         );
         assert_eq!(report.get_crosscode(), "21:0:TR5");
         assert_eq!(report.get_prevuuid(), None, "another trade");
-        assert_eq!(corrected.get_prevuuid(), Some(report.get_curruuid()));
+        assert_eq!(corrected.get_prevuuid(), Some(report.get_uuid()));
         assert_eq!(corrected.get_crosscode(), "21:0:TR5");
         assert_eq!(
             base(corrected, &IdType::TradeReportRefId).as_deref(),
@@ -4490,8 +4490,8 @@ mod threads {
             held.as_ref()
                 .map(|message| {
                     (
-                        message.get_curruuid(),
-                        message.get_currunix(),
+                        message.get_uuid(),
+                        message.get_transunix(),
                         message.into_bytes(b'|'),
                     )
                 })
@@ -5079,7 +5079,7 @@ mod threads {
 
     /// The table leaves a message's identity alone: with and without a
     /// registry every message of the capture, read as bytes, as lines and
-    /// as rows, has the same `curruuid`, `currhashcode`, `crosscode`,
+    /// as rows, has the same `uuid`, `hashcode`, `crosscode`,
     /// `seqnum` and entries, and only its derived identifiers differ; and a
     /// parse-filled message is learned back as nothing, in memory and
     /// through a row round trip.
@@ -5095,8 +5095,8 @@ mod threads {
         let composed = |codec: &FixCodec| codec.clone().with_capture_names(options.capture_names());
         let identity = |message: &FixMsg| {
             (
-                message.get_curruuid(),
-                message.get_currhashcode(),
+                message.get_uuid(),
+                message.get_hashcode(),
                 message.get_crosscode().to_owned(),
                 message.get_seqnum(),
                 message.entries().to_vec(),
@@ -5136,13 +5136,7 @@ mod threads {
                 without.as_ref().expect("a batch"),
                 with.as_ref().expect("a batch"),
             );
-            for column in [
-                "curruuid",
-                "currhashcode",
-                "crosscode",
-                "seqnum",
-                "fixentries",
-            ] {
+            for column in ["uuid", "hashcode", "crosscode", "seqnum", "fixentries"] {
                 let at = without.schema().index_of(column).expect(column);
                 assert_eq!(without.column(at), with.column(at), "{column}");
             }
@@ -5180,9 +5174,9 @@ mod threads {
             assert!(
                 bare_learns.iter().eq(filled_learns.iter()),
                 "{}",
-                with.get_curruuid()
+                with.get_uuid()
             );
-            assert!(!held.learn(with), "{}", with.get_curruuid());
+            assert!(!held.learn(with), "{}", with.get_uuid());
             let row = with.into_row(&target).expect("a row");
             let back = FixMsg::from_row(Arc::clone(&registry), &target, &row).expect("a message");
             assert_eq!(back.get_securityids(), with.get_securityids());
@@ -5217,7 +5211,7 @@ fn a_message_split_off_another_names_the_identity_its_place_gave_it() {
             assert_eq!(parsed.len(), 3);
             let places: Vec<u64> = parsed.iter().map(Event::get_seqnum).collect();
             assert_eq!(places, [0, 1, 2]);
-            assert_eq!(parsed[2].get_srcuuids(), [parsed[1].get_curruuid()]);
+            assert_eq!(parsed[2].get_srcuuids(), [parsed[1].get_uuid()]);
         }
     }
 }
@@ -5247,7 +5241,7 @@ fn a_message_split_off_one_of_three_twins_names_its_own_report() {
             assert_eq!(parsed.len(), 6);
             let places: Vec<u64> = parsed.iter().map(Event::get_seqnum).collect();
             assert_eq!(places, [0, 1, 2, 3, 4, 5]);
-            let reports = [0, 2, 4].map(|at| parsed[at].get_curruuid());
+            let reports = [0, 2, 4].map(|at| parsed[at].get_uuid());
             assert_eq!(
                 reports
                     .iter()
@@ -5259,7 +5253,7 @@ fn a_message_split_off_one_of_three_twins_names_its_own_report() {
             for (report, split) in [(0, 1), (2, 3), (4, 5)] {
                 assert_eq!(
                     parsed[split].get_srcuuids(),
-                    [parsed[report].get_curruuid()],
+                    [parsed[report].get_uuid()],
                     "the execution at place {split} names the report at place {report}"
                 );
             }
@@ -5345,8 +5339,8 @@ fn a_codec_reading_under_a_source_stamps_its_plugins_role_on_every_message() {
         .expect("a message");
     assert_eq!(stamped.msgpluginside(), Side::Buy);
     assert_eq!(bare.msgpluginside(), Side::Unknown);
-    assert_eq!(stamped.get_currhashcode(), bare.get_currhashcode());
-    assert_eq!(stamped.get_curruuid(), bare.get_curruuid());
+    assert_eq!(stamped.get_hashcode(), bare.get_hashcode());
+    assert_eq!(stamped.get_uuid(), bare.get_uuid());
     assert_eq!(stamped.stable_hash(), bare.stable_hash());
     assert_eq!(stamped.into_bytes(b'|'), bare.into_bytes(b'|'));
 

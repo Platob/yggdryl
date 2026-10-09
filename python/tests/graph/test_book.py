@@ -46,7 +46,7 @@ class TestBookEvent:
     def test_an_empty_book(self) -> None:
         book = graph.BookEvent(CLOCK, "IBM")
         # A book states side 0 whatever side it takes: kind 3, side 0, its ticker.
-        assert book.currunix == CLOCK and book.crosscode == "3:0:IBM"
+        assert book.transunix == CLOCK and book.crosscode == "3:0:IBM"
         assert book.marketdatakind is MarketDataKind.BOOK
         # A book holds both sides.
         assert book.side is Side.BOTH
@@ -92,12 +92,12 @@ class TestBookEvent:
         # an entry stating nothing about trading trades.
         best = limits[0].as_py()
         assert best["quantity"] == D("20")
-        assert best["uuids"] == [first.curruuid.as_py(), second.curruuid.as_py()]
+        assert best["uuids"] == [first.uuid.as_py(), second.uuid.as_py()]
         assert best["tradable"] is True
         assert limits[1].as_py() == {
             "price": D("100"),
             "quantity": D("10"),
-            "uuids": [lower.curruuid.as_py()],
+            "uuids": [lower.uuid.as_py()],
             "tradable": True,
         }
         # The depth walks the limits in that order.
@@ -129,7 +129,7 @@ class TestBookEvent:
         assert last.as_py() == {
             "price": None,
             "quantity": D("4"),
-            "uuids": [unpriced.curruuid.as_py()],
+            "uuids": [unpriced.uuid.as_py()],
             "tradable": True,
         }
         assert decimal_of(book.depth(Side.BUYS, 2)) == D("14")
@@ -323,7 +323,7 @@ class TestBookEvent:
         whole = first.with_previous(base)
         assert whole is not None and whole.is_complete
         assert [entry.crosscode for entry in whole.alive] == ["10:1:B-1"]
-        assert whole.curruuid == first.curruuid
+        assert whole.uuid == first.uuid
         # An empty symbol keys the book by the number that states none.
         assert graph.BookEvent(CLOCK, "").crosscode == "3:0:XX0000000000"
         assert graph.BookEvent.keyed(CLOCK, "XX0000000000") == graph.BookEvent(CLOCK, "")
@@ -386,7 +386,7 @@ class TestBookEvent:
         assert twin.alive == book.alive
         assert twin.limits(Side.BUYS) == book.limits(Side.BUYS)
         assert copy.copy(book) == book and copy.deepcopy(book) == book
-        assert repr(book) == f'BookEvent({book.curruuid.as_py()}, currunix={CLOCK}, crosscode="3:0:IBM")'
+        assert repr(book) == f'BookEvent({book.uuid.as_py()}, transunix={CLOCK}, crosscode="3:0:IBM")'
         later = graph.BookEvent(CLOCK + 1, "IBM")
         assert later.is_after(book) and book.is_before(later)
 
@@ -395,7 +395,7 @@ class TestSnapshotEvent:
     def test_snapshot_copies_a_dated_leaf(self) -> None:
         source = order()
         snapshot = graph.SnapshotEvent.snapshot(source, "S")
-        assert snapshot.currunix == source.currunix and snapshot.ticker == "IBM"
+        assert snapshot.transunix == source.transunix and snapshot.ticker == "IBM"
         assert snapshot.marketdatakind is MarketDataKind.BOOK
         assert snapshot.book.action == "snapshot" and snapshot.book.scope == "S"
         assert graph.SnapshotEvent.snapshot(graph.MarketData(source)).book.scope is None
@@ -412,7 +412,7 @@ class TestSnapshotEvent:
         assert twin == snapshot and hash(twin) == hash(snapshot)
         assert twin.book == snapshot.book
         assert copy.copy(snapshot) == snapshot and copy.deepcopy(snapshot) == snapshot
-        assert repr(snapshot).startswith(f"SnapshotEvent({snapshot.curruuid.as_py()}, currunix={CLOCK}")
+        assert repr(snapshot).startswith(f"SnapshotEvent({snapshot.uuid.as_py()}, transunix={CLOCK}")
 
 
 class TestBookIterator:
@@ -425,7 +425,7 @@ class TestBookIterator:
         walk = graph.BookIterator([order(), graph.MarketData(quote()), execution])
         books = list(walk)
         assert [type(book) for book in books] == [graph.BookEvent, graph.BookEvent]
-        assert [book.currunix for book in books] == [CLOCK, CLOCK + 1]
+        assert [book.transunix for book in books] == [CLOCK, CLOCK + 1]
         assert decimal_of(books[0].best_price(Side.BUYS)) == D("101")
         assert decimal_of(books[0].best_price(Side.SELL)) == D("102")
         assert [delta.marketdatakind for delta in books[0].delta] == [MarketDataKind.ORDR, MarketDataKind.QUOT]
@@ -446,10 +446,10 @@ class TestBookIterator:
             ]
 
         def instants(filter: Any = None) -> list[int]:
-            return [book.currunix for book in graph.BookIterator(inputs(), filter=filter)]
+            return [book.transunix for book in graph.BookIterator(inputs(), filter=filter)]
 
         buys = list(graph.BookIterator(inputs(), 0, "side = 'BUYS'"))
-        assert [book.currunix for book in buys] == [1, 3, 4]
+        assert [book.transunix for book in buys] == [1, 3, 4]
         assert buys[1].delta == [] and [event.crosscode for event in buys[1].events] == ["8:1:E-1"]
         assert [delta.crosscode for delta in buys[2].delta] == ["14:0:B-2"]
         # A filter is any filter the expression layer reads: text, a Filter

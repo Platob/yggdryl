@@ -271,7 +271,7 @@ class TestCandleIterator:
         assert not any(book.is_complete for book in delta_books)
         whole: list[graph.BookEvent] = []
         for book in delta_books:
-            previous = whole[-1] if whole else graph.BookEvent.keyed(book.currunix, "ACME")
+            previous = whole[-1] if whole else graph.BookEvent.keyed(book.transunix, "ACME")
             rebuilt = book.with_previous(previous)
             assert rebuilt is not None
             whole.append(rebuilt)
@@ -379,7 +379,7 @@ class TestCandleIterator:
         )
         with pytest.raises(
             ValueError,
-            match=r"^invalid record value at \$\.book\.currunix: "
+            match=r"^invalid record value at \$\.book\.transunix: "
             r"expected an instant at or after 2000, got 1000$",
         ):
             next(walk)

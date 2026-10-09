@@ -19,12 +19,13 @@
 /// field of any message the line carries.
 ///
 /// The clock is `mtime`, so the header dates the lines it matches: a text
-/// read consumes the capture into the line's `currunix` rather than
+/// read consumes the capture into the line's `transunix` rather than
 /// carrying it beside it, and reads it at `datetime64(ns, UTC)` - the
 /// text options' `timezone` stating the zone a bridge's local clock is in -
 /// so every line it matches is dated by what the bridge wrote in front of
 /// it, never by the file's modification time. The line's instant is its messages'
-/// `recdunix` and the sending clock of any that states no
+/// `sendunix` - the clock their carrier saw them cross the wire by - and the
+/// sending clock of any that states no
 /// `SendingTime(52)`; a message stating one keeps its own. The fraction is
 /// what bridges write: a point or a comma, three digits, and the grouped
 /// microseconds a bridge spells `23:59:46.524_315`, or no fraction at all.
@@ -92,7 +93,7 @@
 ///     .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)?;
 /// let captures = options.source_field()?;
 /// let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
-/// // The clock is consumed into each line's `currunix`, so it leads no
+/// // The clock is consumed into each line's `transunix`, so it leads no
 /// // column; the thread and the level are the line's own columns.
 /// assert!(names.ends_with(&["msgthreadid", "msgsessionid", "msgctxid", "msgseqnum", "msgpluginid", "loglevel"]));
 /// assert!(!names.contains(&"mtime"));

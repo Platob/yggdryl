@@ -2292,7 +2292,7 @@ impl IsinTable {
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut stated = OrderEvent::default();
-/// stated.set_currunix(1);
+/// stated.set_transunix(1);
 /// stated.insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "CH0012214059")?)?;
 /// stated.insert_securityid(Identifier::new(IdKey::base(IdType::Ric), "HOLN.S")?)?;
 /// stated.set_ticker(Some("HOLN".into()), true);
@@ -2316,7 +2316,7 @@ impl IsinTable {
 ///
 /// // The instrument stated on another market is a second listing of it.
 /// let mut london = OrderEvent::default();
-/// london.set_currunix(2);
+/// london.set_transunix(2);
 /// london.insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "CH0012214059")?)?;
 /// london.insert_securityid(Identifier::new(IdKey::base(IdType::Ric), "HOLN.L")?)?;
 /// london.set_miccode(Some(Mic::new("XLON")?), true);
@@ -2875,7 +2875,7 @@ impl IsinRegistry {
     /// Learns what `event` states about its instrument: keyed by its stated
     /// ISIN (a real one, closing under a listed prefix, never a derivation),
     /// its market but `XXXX` naming the listing row its listing facts land
-    /// on ([`Self::merge`]), and dated at its `currunix` - its `firstunix`
+    /// on ([`Self::merge`]), and dated at its `transunix` - its `firstunix`
     /// and its `lastunix` on every learn, the earlier and the later kept, so
     /// an event that teaches nothing else still records when the instrument
     /// was first and last met; reading its detailed CFI code, its
@@ -2933,9 +2933,9 @@ impl IsinRegistry {
         let pair = ids.contains_kind(&IdType::Forex);
         let statement = Statement {
             isin: crate::implementer::isin_from_proven(isin),
-            updunix: Some(event.get_currunix()),
-            firstunix: Some(event.get_currunix()),
-            lastunix: Some(event.get_currunix()),
+            updunix: Some(event.get_transunix()),
+            firstunix: Some(event.get_transunix()),
+            lastunix: Some(event.get_transunix()),
             cficode: event
                 .get_cficode()
                 .filter(|code| Cfi::is_detailed(code.as_str())),

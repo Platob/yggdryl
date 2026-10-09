@@ -36,7 +36,7 @@ const NESTED: [&str; 6] = [ALIVE, DELTA, EVENTS, EXECUTIONS, BIDLIMITS, ASKLIMIT
 /// | `orders`, `quotes`, `executions` | the undated and dated leaves of that operation kind | every flat root column |
 /// | `trades` | one per execution of a trade | the trade's flat columns, then `execution.<column>` per execution column |
 /// | `books` | one per book | every root column but a trade's `executions` |
-/// | `lifecycle` | every leaf of one `crosscode`, ordered by `currunix`, tied instants in arrival order | every flat root column |
+/// | `lifecycle` | every leaf of one `crosscode`, ordered by `transunix`, tied instants in arrival order | every flat root column |
 ///
 /// Lifts are appended after the view's own columns in every view.
 ///
@@ -68,7 +68,7 @@ pub enum MarketView {
     /// alive entries and levels - kept nested.
     Books,
     /// Every leaf of one element's chain, in the order it happened: ordered
-    /// by `currunix`, the leaves that share an instant kept in the order the
+    /// by `transunix`, the leaves that share an instant kept in the order the
     /// stream states them, because the ordering is stable.
     ///
     /// The ordering collects the stream it is applied to: the bound on what
@@ -222,7 +222,7 @@ impl MarketData {
         let plan = Plan::new().select(selector)?.filter(filter)?;
         Ok(match view {
             MarketView::Lifecycle { .. } => {
-                plan.order_by([Ordering::asc(Term::column(EventColumn::CurrUnix.name()))])
+                plan.order_by([Ordering::asc(Term::column(EventColumn::TransUnix.name()))])
             }
             _ => plan,
         })

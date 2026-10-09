@@ -1,6 +1,6 @@
 ---
 name: yggdryl-market-data
-description: Models and streams market data with yggdryl's graph layer in Rust, Python and Node.js - orders, quotes, executions and trades as dated events (OrderEvent, QuoteEvent, ExecutionEvent, TradeEvent), identities and side-keyed chains (curruuid, crossuuid, with_previous / withPrevious, EventIterator), order books keyed by ISIN or ticker (BookIterator and its filter, BookEvent, delta books rebuilt with with_previous, is_complete, alive_on, limits, best_price / bestPrice, spread, depth, SnapshotEvent), OHLC candles of the best bid and ask per zone-aligned bucket (CandleIterator, CandleOptions, graph.candles, Candle.field), the book display served over a marketdata table (yggdryl market serve, BookService, node/book.js), the Side and MarketDataKind enums and the lifted marketdata Arrow row (MarketData.arrow_reader / arrowReader, from_arrow_reader / fromArrowReader, apply_view / applyView). Use when building market events, folding them into books or candles, persisting or querying marketdata batches, or serving a table of books as a display.
+description: Models and streams market data with yggdryl's graph layer in Rust, Python and Node.js - orders, quotes, executions and trades as dated events (OrderEvent, QuoteEvent, ExecutionEvent, TradeEvent), identities and side-keyed chains (uuid, crossuuid, with_previous / withPrevious, EventIterator), order books keyed by ISIN or ticker (BookIterator and its filter, BookEvent, delta books rebuilt with with_previous, is_complete, alive_on, limits, best_price / bestPrice, spread, depth, SnapshotEvent), OHLC candles of the best bid and ask per zone-aligned bucket (CandleIterator, CandleOptions, graph.candles, Candle.field), the book display served over a marketdata table (yggdryl market serve, BookService, node/book.js), the Side and MarketDataKind enums and the lifted marketdata Arrow row (MarketData.arrow_reader / arrowReader, from_arrow_reader / fromArrowReader, apply_view / applyView). Use when building market events, folding them into books or candles, persisting or querying marketdata batches, or serving a table of books as a display.
 ---
 
 # yggdryl market data
@@ -26,12 +26,12 @@ them crosses a boundary.
 
 Hold these facts:
 
-- **Instants are `i64` nanoseconds since the Unix epoch, UTC** - `currunix`,
-  `creaunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix`, and the market's
+- **Instants are `i64` nanoseconds since the Unix epoch, UTC** - `transunix`,
+  `creaunix`, `sendunix`, `exprunix`, `prevunix`, `snapunix`, and the market's
   `execunix`, which an undated element states too.
   Python ints, JavaScript `bigint`s, Arrow `datetime64(ns, UTC)`.
 - **Identity is derived, not assigned.** A leaf is finalized on construction:
-  `currhashcode` is the XXH3-64 of its content, `curruuid` a UUIDv7 of
+  `hashcode` is the XXH3-64 of its content, `uuid` a UUIDv7 of
   millisecond + place for a dated leaf (UUIDv8 of content otherwise),
   `crossuuid` the chain every incarnation shares, from the cross code.
 - **A side is never null; it keys an order's and an execution's chain.**
@@ -76,9 +76,9 @@ Hold these facts:
   within one `marketdatakind` (an order and an execution under one cross code
   are two chains, so a fill never restates, follows or ends its order),
   folds twins, emits expiries, and leaves every element stating `creaunix`. A grid view is the live element
-  as of its tick: dated at it (`currunix` = the tick), its `snapunix` the
+  as of its tick: dated at it (`transunix` = the tick), its `snapunix` the
   instant the element it copies was stated at (never the tick, never a
-  predecessor's, and in no digest), so its `curruuid` is the tick's own
+  predecessor's, and in no digest), so its `uuid` is the tick's own
   while content, `seqnum`, `prevuuid` and `crossuuid` are the live
   element's; it advances nothing. `srcuuids` is provenance only - the line a
   message was read from and the message a parse split it off - and travels
@@ -221,7 +221,7 @@ Hold these facts:
 2. `from_arrow_reader` is tolerant of shape: any subset of columns, any order,
    any case, extra columns ignored, castable columns cast by one plan compiled
    before the first batch. A `marketdatakind` column and, for a dated leaf,
-   `currunix` are the minimum: an undated `ORDR`, `QUOT` or `EXEC` row is an
+   `transunix` are the minimum: an undated `ORDR`, `QUOT` or `EXEC` row is an
    order, a quote or an execution, a dated one the event; `TRAD` and `BOOK`
    must be dated, and a `BOOK` row is a complete book where its `alive` cell
    is a list (even an empty one), a delta book where `alive` is null and
@@ -236,7 +236,7 @@ Hold these facts:
    against the reader's schema and streams; `plan()` shows the text. Add a
    nested fact as a column with a lift (`identifiers['clordid'] as clordid`,
    a map read by its `src:type` key) instead of post-processing rows. The `lifecycle` view collects (it orders).
-4. Feed `BookIterator` a **sorted** stream (by `snapunix`, else `currunix`); it
+4. Feed `BookIterator` a **sorted** stream (by `snapunix`, else `transunix`); it
    leaves an operation dated before its book out with a warning, so an unsorted
    stream loses operations without an error. `FixCodec.market_data` is the
    sorted door for a FIX capture; `EventIterator(sorted=false)` sorts a finite
@@ -285,8 +285,8 @@ Hold these facts:
    `restating`, `with_book`, `with_operations` answer a new value; only
    `with_previous` and `merge_with` answer `None`/`null` when nothing moved.
    Build with named facts: a fact given as `...`/`undefined` is skipped,
-   `None`/`null` clears it; a derived identity (`curruuid`, `crossuuid`,
-   `currhashcode`, `crosshashcode`) is refused.
+   `None`/`null` clears it; a derived identity (`uuid`, `crossuuid`,
+   `hashcode`, `crosshashcode`) is refused.
 9. Sources are provenance: `srcuuids` never changes identity, never travels
    along a chain, and merges as a sorted union - use it to point back at the
    lines an event was read from. A book states none (`srcuuids` empty,
@@ -304,8 +304,8 @@ Hold these facts:
     `Timezone`, UTC by default, so a daily candle opens at local midnight and
     hourly candles follow a saving-time change: the hour a spring-forward skips
     yields no candle, the hour a fall-back repeats is one two-hour candle, the
-    day is 23 or 25 hours. Feed `CandleIterator` books sorted by `currunix`
-    (a `BookIterator`'s are); a regression is refused at `$.book.currunix`.
+    day is 23 or 25 hours. Feed `CandleIterator` books sorted by `transunix`
+    (a `BookIterator`'s are); a regression is refused at `$.book.transunix`.
     One candle per book cross code and bucket, 23 cells (`Candle.field()`):
     `crosscode`, `ticker`, `start`, `end`, then `bid`, `ask`, `mid` and
     `spread` each `{open, high, low, close}` over the books that stated one,
@@ -315,7 +315,7 @@ Hold these facts:
 
 ## Pitfalls
 
-- `currhashcode` and `crosshashcode` read back from any layout a table stored
+- `hashcode` and `crosshashcode` read back from any layout a table stored
   them in: a whole `decimal(20, 0)` as the number, an `int64` cell as its
   bits - the `long` an Iceberg column stating `FIELD:representation=bits`
   holds - at the root and in `alive`, `delta`, `events` and `executions`, every
@@ -443,7 +443,7 @@ Hold these facts:
   does not read: hand a candle's `start`/`end` back as the next question's
   `from`, `to` or `at` - percent-encoded, as `URLSearchParams` does - rather
   than re-parsing them. A naive `from`/`to` is a wall clock in `tz`, and `to`
-  is exclusive. An `events` row's `currhashcode`/`crosshashcode` are JSON
+  is exclusive. An `events` row's `hashcode`/`crosshashcode` are JSON
   integers up to 2^64: `JSON.parse` rounds them past 2^53, the CSV audit
   does not.
 - A route's `tz` reads only the zones this build has rules for, and a zone

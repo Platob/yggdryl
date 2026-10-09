@@ -184,7 +184,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .expect("a walk")
             .collect::<yggdryl::Result<Vec<_>>>()
             .expect("the walk's books");
-        let origin = BookEvent::new(books[0].get_currunix(), books[0].get_crosscode());
+        let origin = BookEvent::new(books[0].get_transunix(), books[0].get_crosscode());
         let first = books[0]
             .clone()
             .with_previous(&origin)

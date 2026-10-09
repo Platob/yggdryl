@@ -1371,7 +1371,7 @@ fn walked(
         .map(|message| {
             let message = message.expect("a walked message");
             (
-                message.get_curruuid(),
+                message.get_uuid(),
                 message.get_seqnum(),
                 message.get_prevuuid(),
             )
@@ -1491,13 +1491,13 @@ fn a_twin_of_an_acknowledgement_that_took_its_chains_side_is_one_identity() {
     assert_eq!(text(&every[1], 54).as_deref(), Some("BUYS"));
     assert_eq!(text(&every[2], 54).as_deref(), Some("BUYS"));
     assert_eq!(
-        every[2].get_curruuid(),
-        every[1].get_curruuid(),
+        every[2].get_uuid(),
+        every[1].get_uuid(),
         "a twin finalizes to the live one's identity"
     );
     let once = walked(&codec, parsed);
     assert_eq!(once.len(), 2, "the window yields that identity once");
-    assert_eq!(once[1].0, every[1].get_curruuid());
+    assert_eq!(once[1].0, every[1].get_uuid());
 }
 
 /// An acknowledgement delivered again after the fill that moved its chain
@@ -1534,9 +1534,9 @@ fn an_acknowledgement_delivered_again_after_its_fill_adds_no_step() {
     let [order, ack, fill, again] = every.as_slice() else {
         panic!("four order messages, not {}", every.len())
     };
-    assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
-    assert_eq!(fill.get_prevuuid(), Some(ack.get_curruuid()));
-    assert_eq!(again.get_curruuid(), ack.get_curruuid());
+    assert_eq!(ack.get_prevuuid(), Some(order.get_uuid()));
+    assert_eq!(fill.get_prevuuid(), Some(ack.get_uuid()));
+    assert_eq!(again.get_uuid(), ack.get_uuid());
     assert_eq!(*again.get_state(), State::New);
     let once = orders(&codec);
     assert_eq!(
@@ -1586,17 +1586,17 @@ fn an_acknowledgement_delivered_again_after_the_fill_that_ended_its_chain_adds_n
     let [order, ack, fill, again, filled_again] = every.as_slice() else {
         panic!("five order messages, not {}", every.len())
     };
-    assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
-    assert_eq!(fill.get_prevuuid(), Some(ack.get_curruuid()));
+    assert_eq!(ack.get_prevuuid(), Some(order.get_uuid()));
+    assert_eq!(fill.get_prevuuid(), Some(ack.get_uuid()));
     assert_eq!(*fill.get_state(), State::Filled);
-    assert_eq!(again.get_curruuid(), ack.get_curruuid());
-    assert_eq!(again.get_prevuuid(), Some(order.get_curruuid()));
-    assert_eq!(filled_again.get_curruuid(), fill.get_curruuid());
-    assert_eq!(filled_again.get_prevuuid(), Some(ack.get_curruuid()));
+    assert_eq!(again.get_uuid(), ack.get_uuid());
+    assert_eq!(again.get_prevuuid(), Some(order.get_uuid()));
+    assert_eq!(filled_again.get_uuid(), fill.get_uuid());
+    assert_eq!(filled_again.get_prevuuid(), Some(ack.get_uuid()));
     let once = orders(&codec);
     assert_eq!(
-        once.iter().map(Element::get_curruuid).collect::<Vec<_>>(),
-        [order, ack, fill].map(Element::get_curruuid),
+        once.iter().map(Element::get_uuid).collect::<Vec<_>>(),
+        [order, ack, fill].map(Element::get_uuid),
         "the order, its acknowledgement and its fill's report"
     );
 }
@@ -1616,8 +1616,8 @@ fn a_grid_view_is_never_a_repeat_of_what_it_views() {
         .collect::<yggdryl::Result<_>>()
         .expect("the walk");
     assert_eq!(walked.len(), 2, "the order and its view at its own tick");
-    assert_eq!(walked[1].get_snapunix(), Some(walked[0].get_currunix()));
-    assert_eq!(walked[1].get_curruuid(), walked[0].get_curruuid());
+    assert_eq!(walked[1].get_snapunix(), Some(walked[0].get_transunix()));
+    assert_eq!(walked[1].get_uuid(), walked[0].get_uuid());
     // The view is stamped again over the live code rather than settled: it
     // is what settling a copy of it answers, under its chain's cross
     // element.
@@ -1691,7 +1691,7 @@ fn a_quote_follower_inherits_no_side() {
         .collect::<yggdryl::Result<_>>()
         .expect("the walk");
     let status = &chained[1];
-    assert_eq!(status.get_prevuuid(), Some(chained[0].get_curruuid()));
+    assert_eq!(status.get_prevuuid(), Some(chained[0].get_uuid()));
     assert_eq!(status.get_crosscode(), chained[0].get_crosscode());
     assert_eq!(status.get_side(), Side::Unknown);
     assert_eq!(text(status, 54), None);
@@ -1723,7 +1723,7 @@ fn the_side_an_acknowledgement_takes_from_its_order_is_written_to_its_wire() {
         .collect::<yggdryl::Result<_>>()
         .expect("the walk");
     let ack = &chained[1];
-    assert_eq!(ack.get_prevuuid(), Some(chained[0].get_curruuid()));
+    assert_eq!(ack.get_prevuuid(), Some(chained[0].get_uuid()));
     assert_eq!(ack.get_side(), Side::Buy);
     let wire = ack.into_text('|').expect("a text wire");
     assert!(wire.contains("|54=1|"), "{wire}");
@@ -1780,9 +1780,9 @@ mod internal {
                 let settled = message.clone().dated_by_transaction();
                 let whole = dated_by_transaction_whole(message.clone());
                 assert_eq!(settled, whole, "{}", message.header().msgtype());
-                assert_eq!(settled.get_curruuid(), whole.get_curruuid());
+                assert_eq!(settled.get_uuid(), whole.get_uuid());
                 assert_eq!(settled.get_execunix(), whole.get_execunix());
-                moved += usize::from(settled.get_currunix() != message.get_currunix());
+                moved += usize::from(settled.get_transunix() != message.get_transunix());
             }
             assert!(moved > 100, "{moved} moved");
         }
@@ -1836,7 +1836,7 @@ fn a_repeat_the_walk_drops_takes_no_place_and_a_walked_stream_answers_itself() {
         .expect("the walk");
     let deadline = chained
         .iter()
-        .filter(|message| message.get_currunix() == chained[2].get_currunix())
+        .filter(|message| message.get_transunix() == chained[2].get_transunix())
         .map(|message| (*message.get_state(), message.get_seqnum()))
         .collect::<Vec<_>>();
     assert_eq!(
@@ -1854,11 +1854,11 @@ fn a_repeat_the_walk_drops_takes_no_place_and_a_walked_stream_answers_itself() {
     assert_eq!(
         again
             .iter()
-            .map(|held| (held.get_curruuid(), held.get_seqnum()))
+            .map(|held| (held.get_uuid(), held.get_seqnum()))
             .collect::<Vec<_>>(),
         chained
             .iter()
-            .map(|held| (held.get_curruuid(), held.get_seqnum()))
+            .map(|held| (held.get_uuid(), held.get_seqnum()))
             .collect::<Vec<_>>(),
     );
 }
@@ -1885,7 +1885,7 @@ fn a_following_message_takes_the_metadata_keys_of_its_chain_it_does_not_state() 
     };
     assert_eq!(
         second.get_prevuuid(),
-        Some(yggdryl::graph::Element::get_curruuid(first))
+        Some(yggdryl::graph::Element::get_uuid(first))
     );
     let metadata: Vec<_> = second
         .get_metadata()
@@ -1932,7 +1932,7 @@ fn a_follower_stating_no_security_takes_its_chains_identifiers_and_another_isin_
         Some("BBG000B9XRY4")
     );
     assert_eq!(ids.get(&IdType::Cusip), Some("037833100"));
-    assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
+    assert_eq!(ack.get_prevuuid(), Some(order.get_uuid()));
     assert_eq!(ack.get_securityids(), ids, "the chain's, whole");
     for tag in [48, 22, 454] {
         assert!(
@@ -1940,7 +1940,7 @@ fn a_follower_stating_no_security_takes_its_chains_identifiers_and_another_isin_
             "tag {tag}: carried, never written"
         );
     }
-    assert_eq!(other.get_prevuuid(), Some(ack.get_curruuid()));
+    assert_eq!(other.get_prevuuid(), Some(ack.get_uuid()));
     assert_eq!(other.get_isincode(), Some("US5949181045"));
     assert_eq!(
         other.get_securityids().get(&IdType::Cusip),
@@ -1981,7 +1981,7 @@ fn a_follower_naming_no_party_takes_its_chains_parties_and_writes_none() {
         Some("T-1")
     );
     assert_eq!(order.get_partyids().get(&IdType::Account), Some("ACC-9"));
-    assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
+    assert_eq!(ack.get_prevuuid(), Some(order.get_uuid()));
     assert_eq!(ack.get_crosscode(), "10:1:C1");
     assert_eq!(
         ack.get_partyids(),
@@ -2151,7 +2151,7 @@ mod parentage {
         assert!(
             chain
                 .windows(2)
-                .all(|pair| pair[1].get_prevuuid() == Some(pair[0].get_curruuid())),
+                .all(|pair| pair[1].get_prevuuid() == Some(pair[0].get_uuid())),
             "one chain"
         );
         let lineage = |message: &FixMsg| {
@@ -2258,7 +2258,7 @@ mod parentage {
         };
         let (order, ack, stray) = (of_type("D"), of_type("8"), of_type("9"));
         assert_eq!(chain.len(), 4);
-        assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
+        assert_eq!(ack.get_prevuuid(), Some(order.get_uuid()));
         let parsed = codec.sole_line(late).expect("the late line");
         assert_eq!(parsed.get_side(), Side::Unknown);
         assert_eq!(parsed.get_crosscode(), "10:0:O-1", "its own code, no side");
@@ -2275,14 +2275,11 @@ mod parentage {
             yggdryl::Uuid::from_v8(u128::from(stray.get_crosshashcode()))
         );
         assert_ne!(
-            stray.get_currhashcode(),
-            parsed.get_currhashcode(),
+            stray.get_hashcode(),
+            parsed.get_hashcode(),
             "the side it was lent is content"
         );
-        assert_eq!(
-            stray.get_curruuid(),
-            stray.time_uuid().expect("an identity")
-        );
+        assert_eq!(stray.get_uuid(), stray.time_uuid().expect("an identity"));
         let wire = String::from_utf8(stray.into_bytes(b'|')).expect("a text wire");
         assert!(wire.contains("|54=2|"), "{wire}");
         // The live statement moved not at all.
@@ -2317,7 +2314,7 @@ mod parentage {
         assert_eq!(order.get_crosscode(), "10:1:C1");
         assert_eq!(venue.get_crosscode(), "10:1:O1");
         assert_eq!(venue.get_prevuuid(), None, "two chains");
-        assert_eq!(report.get_prevuuid(), Some(venue.get_curruuid()), "its own");
+        assert_eq!(report.get_prevuuid(), Some(venue.get_uuid()), "its own");
         assert_eq!(report.get_crosscode(), venue.get_crosscode());
         let conflicts: Vec<&yggdryl::FixAnomaly> = report
             .anomalies()
@@ -2330,7 +2327,7 @@ mod parentage {
         for named in ["10:1:O1", "10:1:C1", "clordid=C1"] {
             assert!(conflict.reason().contains(named), "{named} in {conflict}");
         }
-        assert_eq!(twin.get_curruuid(), report.get_curruuid());
+        assert_eq!(twin.get_uuid(), report.get_uuid());
         assert_eq!(twin.anomalies(), report.anomalies());
         assert_eq!(twin.get_crosscode(), report.get_crosscode());
         // A message citing one chain only states no conflict.
@@ -2922,8 +2919,8 @@ fn a_walk_learns_the_country_and_the_currency_and_fills_them_unsettled() {
     assert_eq!(filled.get_isincode(), Some("CH0012214059"));
     assert!(filled.get_securityids().is_derived(&IdType::Isin));
     assert_eq!(filled.get_currency().as_str(), "CHF");
-    assert_eq!(filled.get_curruuid(), parsed.get_curruuid());
-    assert_eq!(filled.get_currhashcode(), parsed.get_currhashcode());
+    assert_eq!(filled.get_uuid(), parsed.get_uuid());
+    assert_eq!(filled.get_hashcode(), parsed.get_hashcode());
     assert_eq!(filled.into_bytes(b'|'), parsed.into_bytes(b'|'));
     assert!(!filled.into_bytes(b'|').windows(3).any(|w| w == b"15="));
     assert_eq!(filled.get_by_tag(15), None, "no field was written");
@@ -2990,13 +2987,13 @@ mod lake {
         let mut schema = unnumbered(row)
             .into_scheme_compat(&Scheme::ICEBERG)
             .expect("the row as Iceberg states it")
-            .with_partition_by(["time_bucket('15 minutes', currunix) as partunix"
+            .with_partition_by(["time_bucket('15 minutes', transunix) as partunix"
                 .parse::<Projection>()
                 .unwrap()])
             .expect("partitioned by the quarter hour");
         for name in [
-            "currunix",
-            "currhashcode",
+            "transunix",
+            "hashcode",
             "seqnum",
             "crosscode",
             "crosshashcode",
@@ -3008,7 +3005,7 @@ mod lake {
         schema
             .as_sort_mut()
             .set_by(
-                ["partunix", "currunix", "seqnum", "currhashcode"]
+                ["partunix", "transunix", "seqnum", "hashcode"]
                     .map(|key| key.parse::<Ordering>().unwrap()),
             )
             .unwrap();
@@ -3041,7 +3038,9 @@ mod lake {
             .unwrap()
             .with_select("* exclude (partunix)")
             .unwrap()
-            .with_filter("currunix >= '2026-08-14T00:00:00Z' and currunix < '2026-08-15T00:00:00Z'")
+            .with_filter(
+                "transunix >= '2026-08-14T00:00:00Z' and transunix < '2026-08-15T00:00:00Z'",
+            )
             .unwrap()
     }
 }
@@ -3136,8 +3135,8 @@ fn an_execution_split_off_a_fill_survives_a_lake_round_trip_into_the_lifecycle()
     assert_eq!(kinds(&stored), expected, "the table holds the fill");
     for (held, back) in parsed.iter().zip(&stored) {
         assert_eq!(
-            held.get_curruuid(),
-            back.get_curruuid(),
+            held.get_uuid(),
+            back.get_uuid(),
             "{}: the identity crosses",
             held.marketdatakind()
         );
@@ -3145,12 +3144,12 @@ fn an_execution_split_off_a_fill_survives_a_lake_round_trip_into_the_lifecycle()
         // and each reads back as the `uint64` it was: a zero here is what
         // folded the execution into its report's delivery.
         assert_eq!(
-            held.get_currhashcode(),
-            back.get_currhashcode(),
+            held.get_hashcode(),
+            back.get_hashcode(),
             "{}: the content digest crosses",
             held.marketdatakind()
         );
-        assert_ne!(back.get_currhashcode(), 0);
+        assert_ne!(back.get_hashcode(), 0);
         assert_eq!(held.get_crosshashcode(), back.get_crosshashcode());
         assert_eq!(
             held.get_seqnum(),
@@ -3240,10 +3239,10 @@ fn the_capture_read_back_from_a_lake_walks_to_the_identities_it_walks_to_in_memo
         held.iter()
             .map(|held| {
                 (
-                    held.get_currunix(),
+                    held.get_transunix(),
                     held.get_seqnum(),
-                    held.get_curruuid(),
-                    held.get_currhashcode(),
+                    held.get_uuid(),
+                    held.get_hashcode(),
                 )
             })
             .collect()
@@ -3259,8 +3258,8 @@ fn the_capture_read_back_from_a_lake_walks_to_the_identities_it_walks_to_in_memo
     let twins = |held: &[FixMsg]| -> BTreeSet<Uuid> {
         let mut seen = BTreeSet::new();
         held.iter()
-            .filter(|held| !seen.insert(held.get_curruuid()))
-            .map(Element::get_curruuid)
+            .filter(|held| !seen.insert(held.get_uuid()))
+            .map(Element::get_uuid)
             .collect()
     };
 
@@ -3272,13 +3271,7 @@ fn the_capture_read_back_from_a_lake_walks_to_the_identities_it_walks_to_in_memo
     // answers.
     let mut parsed = messages(parse());
     assert_eq!(parsed.len(), 94 + 57, "the corpus");
-    parsed.sort_by_key(|held| {
-        (
-            held.get_currunix(),
-            held.get_seqnum(),
-            held.get_currhashcode(),
-        )
-    });
+    parsed.sort_by_key(|held| (held.get_transunix(), held.get_seqnum(), held.get_hashcode()));
     let walked = walk(&parsed, FixCodec::DEFAULT_DEDUP_WINDOW_MS);
     let every = walk(&parsed, 0);
     assert_eq!(
@@ -3312,7 +3305,7 @@ fn the_capture_read_back_from_a_lake_walks_to_the_identities_it_walks_to_in_memo
     let held = &parsed[0];
     let mut back = stored
         .iter()
-        .find(|back| back.get_curruuid() == held.get_curruuid())
+        .find(|back| back.get_uuid() == held.get_uuid())
         .expect("the first parsed message is stored")
         .clone();
     let fields = |held: &FixMsg| {
@@ -3362,11 +3355,11 @@ fn the_capture_read_back_from_a_lake_walks_to_the_identities_it_walks_to_in_memo
         .filter(|line| !parsed_feed.contains(line))
         .collect();
     assert_eq!(
-        back.get_currhashcode(),
-        settled.get_currhashcode(),
+        back.get_hashcode(),
+        settled.get_hashcode(),
         "a row settles to the code the parse settles to; only the parse feeds {only_parsed:#?}, only the row {only_back:#?}"
     );
-    assert_eq!(settled.get_currhashcode(), held.get_currhashcode());
+    assert_eq!(settled.get_hashcode(), held.get_hashcode());
     let lake_walked = walk(&stored, FixCodec::DEFAULT_DEDUP_WINDOW_MS);
     let lake_every = walk(&stored, 0);
     assert_eq!(

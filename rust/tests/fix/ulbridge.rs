@@ -135,10 +135,10 @@ mod dataset {
         assert_eq!(lines.len(), LINES);
         // `2026-08-14 14:46:39.769` in front of the first line, Zurich's
         // local time: `12:46:39.769` UTC.
-        assert_eq!(lines[0].get_currunix(), 1_786_711_599_769_000_000);
+        assert_eq!(lines[0].get_transunix(), 1_786_711_599_769_000_000);
         assert_eq!(
             lines[0].mtime().expect("a clock"),
-            Some(lines[0].get_currunix())
+            Some(lines[0].get_transunix())
         );
         // One instant per clock the bridge wrote, and none of them the
         // file's.
@@ -154,11 +154,11 @@ mod dataset {
             })
             .collect();
         let dated: std::collections::BTreeSet<i64> =
-            lines.iter().map(|line| line.get_currunix()).collect();
+            lines.iter().map(|line| line.get_transunix()).collect();
         assert_eq!(clocks.len(), 40);
         assert_eq!(dated.len(), clocks.len());
         assert!(!dated.contains(&handle.expect("the file's time")));
-        // The clock is consumed into `currunix`, so no column carries it; the
+        // The clock is consumed into `transunix`, so no column carries it; the
         // thread and the level name no field, so each is a column of the
         // line's own, typed from the pattern.
         let names = header_captures();
@@ -230,7 +230,7 @@ mod dataset {
         .expect("a line reader")
         .map(|line| line.expect("a line"))
         .collect();
-        let dated: Vec<i64> = lines.iter().map(|line| line.get_currunix()).collect();
+        let dated: Vec<i64> = lines.iter().map(|line| line.get_transunix()).collect();
         assert_eq!(
             dated,
             [
@@ -272,7 +272,7 @@ mod dataset {
         let lines = text_lines();
         let bodies: std::collections::HashMap<yggdryl::Uuid, &str> = lines
             .iter()
-            .map(|line| (line.get_curruuid(), line.body()))
+            .map(|line| (line.get_uuid(), line.body()))
             .collect();
         let messages = line_messages(&codec);
         assert_eq!(messages.len(), ROWS);
@@ -449,7 +449,7 @@ mod dataset {
             let mut settled = view.clone();
             settled.finalize();
             settled.set_crossuuid(view.get_crossuuid());
-            assert!(*view == settled, "{}", view.get_curruuid());
+            assert!(*view == settled, "{}", view.get_uuid());
             assert_eq!(view.anomalies(), settled.anomalies());
         }
     }
@@ -463,14 +463,14 @@ mod dataset {
     fn the_capture_walks_alike_sorted_one_hour_at_a_time() {
         let codec = codec().with_exclude_msgtypes::<[&str; 0], &str>([]);
         let mut messages = line_messages(&codec);
-        messages.sort_by_key(Event::get_currunix);
+        messages.sort_by_key(Event::get_transunix);
         let walk = |codec: &FixCodec| {
             codec
                 .lifecycle(messages.clone())
                 .map(|message| {
                     let message = message.expect("a walked message");
                     (
-                        message.get_curruuid(),
+                        message.get_uuid(),
                         message.get_seqnum(),
                         message.get_prevuuid(),
                     )
@@ -502,18 +502,14 @@ mod dataset {
         use std::collections::{HashMap, HashSet};
 
         let codec = codec().with_exclude_msgtypes::<[&str; 0], &str>([]);
-        let lines: HashSet<yggdryl::Uuid> =
-            text_lines().iter().map(TextLine::get_curruuid).collect();
+        let lines: HashSet<yggdryl::Uuid> = text_lines().iter().map(TextLine::get_uuid).collect();
         let messages = line_messages(&codec);
         // Every message a line's parse made, by the line.
         let mut split: HashMap<yggdryl::Uuid, HashSet<yggdryl::Uuid>> = HashMap::new();
         for message in &messages {
             for source in message.get_srcuuids() {
                 if lines.contains(source) {
-                    split
-                        .entry(*source)
-                        .or_default()
-                        .insert(message.get_curruuid());
+                    split.entry(*source).or_default().insert(message.get_uuid());
                 }
             }
         }
@@ -603,13 +599,9 @@ mod dataset {
             .unwrap();
         assert_eq!(arrow.len(), direct.len(), "the same distinct deliveries");
         for (index, (before, after)) in direct.iter().zip(&arrow).enumerate() {
-            assert_eq!(after.get_curruuid(), before.get_curruuid(), "row {index}");
-            assert_eq!(
-                after.get_currhashcode(),
-                before.get_currhashcode(),
-                "row {index}"
-            );
-            assert_eq!(after.get_currunix(), before.get_currunix(), "row {index}");
+            assert_eq!(after.get_uuid(), before.get_uuid(), "row {index}");
+            assert_eq!(after.get_hashcode(), before.get_hashcode(), "row {index}");
+            assert_eq!(after.get_transunix(), before.get_transunix(), "row {index}");
             assert_eq!(after.get_prevuuid(), before.get_prevuuid(), "row {index}");
             assert_eq!(after.get_srcuuids(), before.get_srcuuids(), "row {index}");
             assert_eq!(after.get_seqnum(), before.get_seqnum(), "row {index}");
@@ -684,7 +676,7 @@ mod dataset {
         let again: std::collections::HashMap<yggdryl::Uuid, yggdryl::Uuid> = first
             .iter()
             .zip(&second)
-            .map(|(first, second)| (first.get_curruuid(), second.get_curruuid()))
+            .map(|(first, second)| (first.get_uuid(), second.get_uuid()))
             .inspect(|(first, second)| assert_ne!(first, second, "a line of its own"))
             .collect();
         let parsed = |lines: Vec<TextLine>| {
@@ -1507,7 +1499,7 @@ mod dataset {
         let mut seen = std::collections::HashSet::new();
         let once: Vec<&MarketData> = every
             .iter()
-            .filter(|operation| seen.insert(operation.get_curruuid()))
+            .filter(|operation| seen.insert(operation.get_uuid()))
             .collect();
         assert_eq!(once, operations.iter().collect::<Vec<_>>());
         let mut census: BTreeMap<&str, usize> = BTreeMap::new();
@@ -1524,7 +1516,9 @@ mod dataset {
                 MarketData::ExecutionEvent(event) => event,
                 other => panic!("an order or a fill, got {}", other.kind().as_str()),
             };
-            event.get_snapunix().unwrap_or_else(|| event.get_currunix())
+            event
+                .get_snapunix()
+                .unwrap_or_else(|| event.get_transunix())
         };
         assert!(
             operations
@@ -1557,7 +1551,7 @@ mod dataset {
         let key = |operation: &MarketData| (operation.book_crosscode().to_owned(), at(operation));
         let stood: BTreeSet<(String, i64)> = books
             .iter()
-            .map(|book| (book.book_crosscode().to_owned(), book.get_currunix()))
+            .map(|book| (book.book_crosscode().to_owned(), book.get_transunix()))
             .collect();
         assert_eq!(stood.len(), books.len(), "one book per book and instant");
         let booked: BTreeSet<(String, i64)> = operations
@@ -1583,7 +1577,7 @@ mod dataset {
                     && books
                         .iter()
                         .find(|book| {
-                            (book.book_crosscode().to_owned(), book.get_currunix())
+                            (book.book_crosscode().to_owned(), book.get_transunix())
                                 == key(operation)
                         })
                         .is_some_and(|book| book.orddelta().count() == 1)
@@ -1604,7 +1598,7 @@ mod dataset {
             );
             let book = books
                 .iter()
-                .find(|book| (book.book_crosscode().to_owned(), book.get_currunix()) == key(order))
+                .find(|book| (book.book_crosscode().to_owned(), book.get_transunix()) == key(order))
                 .expect("the book of its instant");
             let delta = book
                 .delta()
@@ -1773,7 +1767,7 @@ mod dataset {
         // snapshot controls - and came to digest the events after the
         // delta: this book holds no event, so it feeds the empty list's
         // count beside its two delta entries.
-        assert_eq!(last.get_currhashcode(), 10_745_751_629_392_559_435);
+        assert_eq!(last.get_hashcode(), 10_745_751_629_392_559_435);
 
         // No leaf keys a typed fact, save the one the NOVN delivery's hops
         // disagree on: its rows state two `OMSDEALERORDERID` values, the
@@ -1865,7 +1859,7 @@ mod dataset {
                 .iter()
                 .find(|line| line.get_seqnum() == seqnum)
                 .expect("a line of the capture")
-                .get_curruuid()
+                .get_uuid()
         };
         // The fill line 105 carries is one of them: its `TECH.CLIENTID` is a
         // party of the source `tech`, and no key of its metadata.
@@ -1958,12 +1952,8 @@ mod dataset {
         assert_eq!(twin.len(), direct.len());
         for (index, (twin, direct)) in twin.iter().zip(&direct).enumerate() {
             assert_eq!(twin.kind(), direct.kind(), "leaf {index}");
-            assert_eq!(twin.get_curruuid(), direct.get_curruuid(), "leaf {index}");
-            assert_eq!(
-                twin.get_currhashcode(),
-                direct.get_currhashcode(),
-                "leaf {index}"
-            );
+            assert_eq!(twin.get_uuid(), direct.get_uuid(), "leaf {index}");
+            assert_eq!(twin.get_hashcode(), direct.get_hashcode(), "leaf {index}");
         }
         assert_eq!(twin, direct);
     }
@@ -2227,17 +2217,17 @@ mod pipeline {
         // for the header to carry is what no column is spelled for - the
         // thread that wrote the line and its level, carried in front and
         // filling nothing - and the clock the bridge printed dates the
-        // line, so it is the line's `currunix` and leads no column of its
+        // line, so it is the line's `transunix` and leads no column of its
         // own. Where the
         // line came out of, which line it was and when it was written are
-        // `crosscode`, `seqnum` and `currunix`, the columns both halves open
+        // `crosscode`, `seqnum` and `transunix`, the columns both halves open
         // with.
         let shared = names
             .iter()
             .position(|held| *held == "partyids")
             .expect("the shared columns")
             + 1;
-        assert_eq!(names[0], "curruuid", "{names:?}");
+        assert_eq!(names[0], "uuid", "{names:?}");
         assert_eq!(
             &names[shared..shared + 5],
             ["mimetype", "body", "msgthreadid", "loglevel", "sendingtime"],
@@ -2250,7 +2240,7 @@ mod pipeline {
                 .unwrap_or_else(|| panic!("a {name} column in {names:?}"))
         };
         for pair in [
-            "currunix",
+            "transunix",
             "creaunix",
             "prevunix",
             "body",
@@ -2275,7 +2265,7 @@ mod pipeline {
             "msgtype",
             "crosscode",
             "seqnum",
-            "currunix",
+            "transunix",
             "body",
             "msgthreadid",
             "loglevel",
@@ -2295,7 +2285,7 @@ mod pipeline {
         assert!(!names.contains(&"direction"), "{names:?}");
         assert_eq!(names.last(), Some(&"fixentries"));
 
-        // The header's clock is consumed into each line's `currunix`, an
+        // The header's clock is consumed into each line's `transunix`, an
         // exact nanosecond UTC instant, so neither the stage nor the rows
         // carry it under a name of its own; every row is settled on an
         // instant of the same type.
@@ -2304,7 +2294,7 @@ mod pipeline {
         assert!(captured.field_with_name("mtime").is_err());
         assert!(captured.field_with_name("timestamp").is_err());
         let clock = captured
-            .field_with_name("currunix")
+            .field_with_name("transunix")
             .expect("the line's clock");
         assert!(
             matches!(
@@ -2314,7 +2304,7 @@ mod pipeline {
             "{clock:?}"
         );
         let stamp = schema
-            .field_with_name("currunix")
+            .field_with_name("transunix")
             .expect("the clock column");
         assert!(
             matches!(
@@ -2405,9 +2395,9 @@ mod pipeline {
             ],
             "a first place is zero, never absent"
         );
-        let lines = column(&stage, "curruuid");
+        let lines = column(&stage, "uuid");
         let sources = column(&read, "srcuuids");
-        let identities = column(&read, "curruuid");
+        let identities = column(&read, "uuid");
         assert_eq!(sources.len(), MESSAGES);
         for (row, line) in CARRYING.iter().enumerate() {
             let sources = sources[row]
@@ -2572,7 +2562,7 @@ mod pipeline {
         // the event's own instant rather than in the header's column.
         assert!(sent[RESPONSE_ROW].is_null(), "{:?}", sent[RESPONSE_ROW]);
         assert_eq!(
-            tag_column(&read, yggdryl::CURRUNIX_TAG_NAME.0)[RESPONSE_ROW]
+            tag_column(&read, yggdryl::TRANSUNIX_TAG_NAME.0)[RESPONSE_ROW]
                 .temporal_count_at(TimeUnit::Nanosecond),
             Some(1_786_689_982_255_000_000),
             "an unstated sending time stands in as the event's instant"
@@ -2615,12 +2605,12 @@ mod pipeline {
         // Every projected row carries the code it settled on its content.
         // Distinct real messages remain distinct, independently of the separate
         // arrival digest.
-        let identities = tag_column(&read, yggdryl::CURRHASHCODE_TAG_NAME.0);
+        let identities = tag_column(&read, yggdryl::HASHCODE_TAG_NAME.0);
         for (row, held) in identities.iter().enumerate() {
             assert!(held.as_u64().is_some(), "row {row} states a content code");
         }
         assert_ne!(identities[FILL_ROW], identities[ROUTED_ROW]);
-        let stamp = tag_column(&read, yggdryl::CURRUNIX_TAG_NAME.0);
+        let stamp = tag_column(&read, yggdryl::TRANSUNIX_TAG_NAME.0);
         assert!(stamp[FILL_ROW].is_temporal());
         assert!(stamp[ROUTED_ROW].is_temporal());
     }
@@ -2634,9 +2624,9 @@ mod pipeline {
         // line carries, and the instant of a message stating no `SendingTime`
         // - the document, and the routed fill, keyed by name. A message
         // stating one keeps its own clock whenever the bridge logged it.
-        let clock = column(&stage, "currunix");
-        let recorded = tag_column(&read, yggdryl::RECDUNIX_TAG_NAME.0);
-        let stamp = tag_column(&read, yggdryl::CURRUNIX_TAG_NAME.0);
+        let clock = column(&stage, "transunix");
+        let recorded = tag_column(&read, yggdryl::SENDUNIX_TAG_NAME.0);
+        let stamp = tag_column(&read, yggdryl::TRANSUNIX_TAG_NAME.0);
         let snapshot = tag_column(&read, yggdryl::SNAPUNIX_TAG_NAME.0);
         let created = tag_column(&read, yggdryl::CREAUNIX_TAG_NAME.0);
         assert_eq!(stamp.len(), MESSAGES);
@@ -2740,9 +2730,9 @@ mod pipeline {
             entries[RESPONSE_ROW]
         );
         assert_eq!(
-            tag_column(&read, yggdryl::RECDUNIX_TAG_NAME.0)[RESPONSE_ROW],
-            column(&stage, "currunix")[CARRYING[RESPONSE_ROW]],
-            "the document was recorded when its line says"
+            tag_column(&read, yggdryl::SENDUNIX_TAG_NAME.0)[RESPONSE_ROW],
+            column(&stage, "transunix")[CARRYING[RESPONSE_ROW]],
+            "the document crossed the wire when its line says"
         );
         assert_eq!(
             tag_text(&read, yggdryl::MSGPLUGINID_TAG_NAME.0)[RESPONSE_ROW].as_deref(),
@@ -2843,7 +2833,7 @@ mod pipeline {
             34,
             yggdryl::MSGCTXID_TAG_NAME.0,
             yggdryl::MSGPLUGINID_TAG_NAME.0,
-            yggdryl::CURRUNIX_TAG_NAME.0,
+            yggdryl::TRANSUNIX_TAG_NAME.0,
         ] {
             assert!(
                 !recorded.contains(&i64::from(filled)),
@@ -2932,7 +2922,7 @@ mod pipeline {
         // both say which line by naming its identity rather than its number:
         // `seqnum` on a fixed row is the message's own place, and each of
         // these two frames is the first at its own instant.
-        let first = column(&stage, "curruuid")[0].clone();
+        let first = column(&stage, "uuid")[0].clone();
         let sources = column(&read, "srcuuids");
         assert_eq!(sources.len(), 2);
         for named in &sources {
@@ -2965,10 +2955,10 @@ mod pipeline {
 
         // The line's clock is shared - both frames were recorded when it
         // says - while each frame keeps its own event clock.
-        let stamp = tag_column(&read, yggdryl::CURRUNIX_TAG_NAME.0);
+        let stamp = tag_column(&read, yggdryl::TRANSUNIX_TAG_NAME.0);
         assert_ne!(stamp[0], stamp[1]);
         assert_eq!(stamp, tag_column(&read, 52));
-        let recorded = tag_column(&read, yggdryl::RECDUNIX_TAG_NAME.0);
+        let recorded = tag_column(&read, yggdryl::SENDUNIX_TAG_NAME.0);
         assert_eq!(recorded[0], recorded[1]);
         assert_eq!(
             recorded[0].temporal_count_at(TimeUnit::Millisecond),
@@ -3127,8 +3117,8 @@ mod provenance {
         assert_eq!(named.capture().msgoriginator(), Some("PLUGIN_A"));
         assert_eq!(named.capture().conversationid(), Some("c-1"));
         assert_eq!(named.into_bytes(b'|'), bare.into_bytes(b'|'));
-        assert_eq!(named.get_currhashcode(), bare.get_currhashcode());
-        assert_eq!(named.get_curruuid(), bare.get_curruuid());
+        assert_eq!(named.get_hashcode(), bare.get_hashcode());
+        assert_eq!(named.get_uuid(), bare.get_uuid());
     }
 
     #[test]

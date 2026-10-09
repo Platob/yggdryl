@@ -36,15 +36,15 @@ from yggdryl.media import Parquet
 
 
 EVENT_COLUMNS = [
-    "curruuid",
+    "uuid",
     "crossuuid",
     "crosscode",
-    "currhashcode",
+    "hashcode",
     "crosshashcode",
     "srcuuids",
-    "currunix",
+    "transunix",
     "creaunix",
-    "recdunix",
+    "sendunix",
     "exprunix",
     "prevunix",
     "snapunix",

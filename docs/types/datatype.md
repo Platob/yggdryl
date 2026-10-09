@@ -799,7 +799,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
 On a [Field](field.md) the call keeps name, nullability, and metadata, and rebuilds the Arrow projection cache only when something changed.
 [Iceberg](../media/iceberg.md) is a closed primitive vocabulary, not an engine.
 
-What either layout wrote reads back as what it was. An integer column's value door takes a decimal with no fraction, so a `uint64` digest or count stored as `decimal(20,0)` returns as the number it was wherever a row is read back into its facts - a FIX message's `currhashcode` and `seqnum`, a market row's - and a column stating `bits` takes the `long` of its width by its bits, so a digest stored that way returns as the digest it was. The two digest columns of a FIX or market row read an `int64` cell as its bits whatever the schema states, since a negative cell is no other `u64`; `seqnum` is a count and is read by value. A FIX row whose digest or place cell cannot be read so is refused by its column rather than read as zero ([integer edges](numeric/integer.md#edges)).
+What either layout wrote reads back as what it was. An integer column's value door takes a decimal with no fraction, so a `uint64` digest or count stored as `decimal(20,0)` returns as the number it was wherever a row is read back into its facts - a FIX message's `hashcode` and `seqnum`, a market row's - and a column stating `bits` takes the `long` of its width by its bits, so a digest stored that way returns as the digest it was. The two digest columns of a FIX or market row read an `int64` cell as its bits whatever the schema states, since a negative cell is no other `u64`; `seqnum` is a count and is read by value. A FIX row whose digest or place cell cannot be read so is refused by its column rather than read as zero ([integer edges](numeric/integer.md#edges)).
 
 ### A column stating its bits
 
@@ -818,7 +818,7 @@ struct's children state their own.
     ```rust
     use yggdryl::{DataType, Representation, Scheme, StructType};
 
-    let mut digest = DataType::UInt64.required_field("currhashcode");
+    let mut digest = DataType::UInt64.required_field("hashcode");
     digest.as_field_properties_mut().set_representation(Representation::Bits)?;
     let row = DataType::from(StructType::from_fields([
         digest,
@@ -843,7 +843,7 @@ struct's children state their own.
     ```python
     from yggdryl import DataType, Field
 
-    digest = Field("currhashcode", "uint64", nullable=False)
+    digest = Field("hashcode", "uint64", nullable=False)
     digest.field_properties.representation = "bits"
     row = Field(
         "row",
@@ -852,8 +852,8 @@ struct's children state their own.
     )
 
     iceberg = row.into_scheme_compat("iceberg")
-    assert iceberg.dtype["currhashcode"].dtype == DataType("int64")
-    assert iceberg.dtype["currhashcode"].field_properties.representation == "bits"
+    assert iceberg.dtype["hashcode"].dtype == DataType("int64")
+    assert iceberg.dtype["hashcode"].field_properties.representation == "bits"
     assert iceberg.dtype["count"].dtype == DataType.decimal(20, 0)
     ```
 
@@ -863,15 +863,15 @@ struct's children state their own.
     const assert = require('node:assert/strict')
     const { fields } = require('yggdryl')
 
-    const digest = fields.uint64('currhashcode', { nullable: false })
+    const digest = fields.uint64('hashcode', { nullable: false })
     digest.fieldProperties.representation = 'bits'
     const row = fields.struct('row', [digest, fields.uint64('count', { nullable: false })], {
       nullable: false,
     })
 
     const iceberg = row.intoSchemeCompat('iceberg')
-    assert.equal(iceberg.dtype.getField('currhashcode').dtype.toString(), 'int64')
-    assert.equal(iceberg.dtype.getField('currhashcode').fieldProperties.representation, 'bits')
+    assert.equal(iceberg.dtype.getField('hashcode').dtype.toString(), 'int64')
+    assert.equal(iceberg.dtype.getField('hashcode').fieldProperties.representation, 'bits')
     assert.equal(iceberg.dtype.getField('count').dtype.toString(), 'decimal128(20,0)')
     ```
 

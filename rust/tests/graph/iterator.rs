@@ -94,7 +94,7 @@ fn anonymous(ms: i64, names: &[(IdType, &str)]) -> OrderEvent {
 fn places(walk: impl Iterator<Item = OrderEvent>) -> Vec<(i64, u64, Option<i64>)> {
     walk.map(|event| {
         (
-            ms(event.get_currunix()),
+            ms(event.get_transunix()),
             event.get_seqnum(),
             event.get_prevunix().map(ms),
         )
@@ -107,7 +107,7 @@ fn places(walk: impl Iterator<Item = OrderEvent>) -> Vec<(i64, u64, Option<i64>)
 fn alive(walk: &EventIterator<OrderEvent, std::vec::IntoIter<OrderEvent>>) -> Vec<(String, i64)> {
     let mut alive = walk
         .alive()
-        .map(|held| (held.get_crosscode().to_owned(), ms(held.get_currunix())))
+        .map(|held| (held.get_crosscode().to_owned(), ms(held.get_transunix())))
         .collect::<Vec<_>>();
     alive.sort_unstable();
     alive
@@ -136,7 +136,7 @@ fn a_sorted_walk_chains_each_element_to_the_live_one_under_its_identity() {
     assert_eq!((other.get_seqnum(), other.get_prevuuid()), (0, None));
     assert_eq!(other.get_crosscode(), "10:0:O-900");
     let second = walk.next().expect("the second incarnation");
-    assert_eq!(second.get_prevuuid(), Some(first.get_curruuid()));
+    assert_eq!(second.get_prevuuid(), Some(first.get_uuid()));
     assert_eq!(second.get_prevunix(), Some(at(10)));
     assert_eq!(second.get_seqnum(), 0);
     assert_eq!(second.get_crossuuid(), first.get_crossuuid());
@@ -145,12 +145,9 @@ fn a_sorted_walk_chains_each_element_to_the_live_one_under_its_identity() {
     // around them.
     assert_eq!(second.get_creaunix(), Some(at(5)));
     assert_eq!(second.get_identifiers().get(&ORDER_ID), Some("O-100"));
-    assert_eq!(
-        second.get_curruuid(),
-        second.time_uuid().expect("an identity")
-    );
+    assert_eq!(second.get_uuid(), second.time_uuid().expect("an identity"));
     let third = walk.next().expect("the third incarnation");
-    assert_eq!(third.get_prevuuid(), Some(second.get_curruuid()));
+    assert_eq!(third.get_prevuuid(), Some(second.get_uuid()));
     assert_eq!(third.get_seqnum(), 0);
     assert_eq!(third.get_creaunix(), Some(at(5)));
     // A walk over the walked answers the same chain.
@@ -190,7 +187,7 @@ fn an_unsorted_walk_sorts_by_the_elements_own_order_first_and_stably() {
     );
     assert_eq!(walked[3].get_identifiers().get(&EXEC_ID), Some("E-5"));
     assert_eq!(walked[4].get_identifiers().get(&EXEC_ID), Some("E-4"));
-    assert_eq!(walked[4].get_prevuuid(), Some(walked[3].get_curruuid()));
+    assert_eq!(walked[4].get_prevuuid(), Some(walked[3].get_uuid()));
 }
 
 #[test]
@@ -258,7 +255,7 @@ fn the_walk_dates_each_execution_and_keeps_an_explicit_clock() {
     let execution = executed("E-1", 10);
     let mut explicit = executed("E-1", 20);
     explicit.set_execunix(Some(at(15)), true);
-    explicit.set_recdunix(Some(at(16)));
+    explicit.set_sendunix(Some(at(16)));
     explicit.finalize();
     let later_execution = executed("E-1", 30);
 
@@ -269,7 +266,7 @@ fn the_walk_dates_each_execution_and_keeps_an_explicit_clock() {
         "the first event is filled"
     );
     assert_eq!(
-        walked[0].get_recdunix(),
+        walked[0].get_sendunix(),
         None,
         "recording is never inferred"
     );
@@ -278,16 +275,16 @@ fn the_walk_dates_each_execution_and_keeps_an_explicit_clock() {
         Some(at(15)),
         "an explicit instant is kept"
     );
-    assert_eq!(walked[1].get_recdunix(), Some(at(16)));
+    assert_eq!(walked[1].get_sendunix(), Some(at(16)));
     assert_eq!(
         walked[2].get_execunix(),
         Some(at(30)),
         "a later execution replaces the carried clock"
     );
     assert_eq!(
-        walked[2].get_recdunix(),
+        walked[2].get_sendunix(),
         None,
-        "following does not inherit the predecessor's recording clock"
+        "following does not inherit the predecessor's wire clock"
     );
 }
 
@@ -302,7 +299,7 @@ fn replay_keeps_each_execution_clock_and_the_chain() {
     let replayed: Vec<_> = EventIterator::new(first, true).collect();
     assert_eq!(replayed[1].get_execunix(), Some(at(20)));
     assert_eq!(replayed[1].get_seqnum(), 0);
-    assert_eq!(replayed[1].get_prevuuid(), Some(replayed[0].get_curruuid()));
+    assert_eq!(replayed[1].get_prevuuid(), Some(replayed[0].get_uuid()));
 }
 
 #[test]
@@ -311,7 +308,7 @@ fn an_element_with_no_cross_identity_stands_under_its_own() {
     // own identity, and nothing arrives under it but a restatement.
     let mut first = OrderEvent::at(at(10));
     first.finalize();
-    assert_eq!(first.get_crossuuid(), first.get_curruuid());
+    assert_eq!(first.get_crossuuid(), first.get_uuid());
     let mut second = OrderEvent::at(at(20));
     second.finalize();
     // A restatement of the first: the same event, said again.
@@ -326,13 +323,13 @@ fn an_element_with_no_cross_identity_stands_under_its_own() {
     let restated = walk.next().expect("the restatement");
     assert_eq!(
         (
-            restated.get_currunix(),
+            restated.get_transunix(),
             restated.get_seqnum(),
             restated.get_prevuuid()
         ),
         (at(10), 0, None)
     );
-    assert_eq!(restated.get_curruuid(), first.get_curruuid());
+    assert_eq!(restated.get_uuid(), first.get_uuid());
     // The walk states the creation the first left unstated: its own instant.
     first.set_creaunix(Some(at(10)));
     assert_eq!(restated, first);
@@ -361,7 +358,7 @@ fn the_walk_states_each_lifecycles_creation_and_never_replaces_a_stated_one() {
     // The instant is no part of what an event digests: stating it moved no
     // identity, and the chain keeps one cross element.
     let first = incarnation("O-1", 10);
-    assert_eq!(chain[0].get_curruuid(), first.get_curruuid());
+    assert_eq!(chain[0].get_uuid(), first.get_uuid());
     assert!(
         chain
             .iter()
@@ -393,10 +390,10 @@ fn a_chain_with_no_cross_code_is_one_cross_element() {
     let order = anonymous(10, &[(CL_ORD_ID, "C-7")]);
     let report = anonymous(20, &[(CL_ORD_ID, "C-7"), (EXEC_ID, "E-7")]);
     let walked: Vec<OrderEvent> = EventIterator::new(vec![order, report], true).collect();
-    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
-    assert_eq!(walked[0].get_crossuuid(), walked[0].get_curruuid());
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_uuid()));
+    assert_eq!(walked[0].get_crossuuid(), walked[0].get_uuid());
     assert_eq!(walked[1].get_crossuuid(), walked[0].get_crossuuid());
-    assert_ne!(walked[1].get_crossuuid(), walked[1].get_curruuid());
+    assert_ne!(walked[1].get_crossuuid(), walked[1].get_uuid());
 }
 
 #[test]
@@ -428,8 +425,8 @@ fn a_chain_with_no_cross_code_keeps_one_cross_element_through_an_update_an_expir
         true,
     )
     .collect();
-    assert_eq!(walked[0].get_crossuuid(), walked[0].get_curruuid());
-    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[0].get_crossuuid(), walked[0].get_uuid());
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_uuid()));
     assert_eq!(*walked[1].get_state(), State::Updated);
     assert_eq!(
         walked[1].get_crossuuid(),
@@ -442,7 +439,7 @@ fn a_chain_with_no_cross_code_keeps_one_cross_element_through_an_update_an_expir
         EventIterator::new(vec![event(10, None, State::New, Some(at(30)))], true).collect();
     assert_eq!(walked.len(), 2);
     assert_eq!(*walked[1].get_state(), State::Expired);
-    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_uuid()));
     assert_eq!(
         walked[1].get_crossuuid(),
         walked[0].get_crossuuid(),
@@ -468,7 +465,7 @@ fn a_chain_with_no_cross_code_keeps_one_cross_element_through_an_update_an_expir
         true,
     )
     .collect();
-    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_uuid()));
     assert_eq!(
         walked[1].get_crossuuid(),
         walked[0].get_crossuuid(),
@@ -492,18 +489,18 @@ fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
     let second = walk.next().expect("the fill");
     assert_eq!(
         (second.get_seqnum(), second.get_prevuuid()),
-        (0, Some(first.get_curruuid()))
+        (0, Some(first.get_uuid()))
     );
     let twin = walk.next().expect("the fill, logged again");
     assert_eq!(twin.get_seqnum(), 0, "the chain grows by nothing");
     assert_eq!(twin.get_prevuuid(), second.get_prevuuid());
-    assert_eq!(twin.get_curruuid(), second.get_curruuid());
+    assert_eq!(twin.get_uuid(), second.get_uuid());
     assert_eq!(twin, second);
     // The next one follows the twin, which is to say the fill.
     let third = walk.next().expect("the third");
     assert_eq!(
         (third.get_seqnum(), third.get_prevuuid()),
-        (0, Some(second.get_curruuid()))
+        (0, Some(second.get_uuid()))
     );
     assert_eq!(walk.alive().count(), 1);
 
@@ -522,7 +519,7 @@ fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
     assert_eq!(twin.get_prevuuid(), second.get_prevuuid());
     assert_eq!(twin.get_seqnum(), second.get_seqnum());
     assert_eq!(twin.get_creaunix(), Some(at(5)));
-    assert_eq!(twin.get_curruuid(), second.get_curruuid());
+    assert_eq!(twin.get_uuid(), second.get_uuid());
     assert_eq!(
         walk.alive().next().map(Event::get_creaunix),
         Some(Some(at(5))),
@@ -538,14 +535,14 @@ fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
     walk.next().expect("the order");
     let second = walk.next().expect("the fill");
     let successor = walk.next().expect("the fill, named");
-    assert_eq!(successor.get_prevuuid(), Some(second.get_curruuid()));
+    assert_eq!(successor.get_prevuuid(), Some(second.get_uuid()));
     // The named statement arrives at the fill's own instant, so it takes
     // the place after it rather than keeping its own.
     assert_eq!(successor.get_seqnum(), 1);
     assert_eq!(successor.get_identifiers().get(&EXEC_ID), Some("E-2"));
     assert_eq!(
-        walk.alive().next().map(Element::get_curruuid),
-        Some(successor.get_curruuid())
+        walk.alive().next().map(Element::get_uuid),
+        Some(successor.get_uuid())
     );
 
     // On a grid, source statements stay source statements. The owned views
@@ -594,10 +591,10 @@ fn a_statement_logged_again_after_its_chain_moved_on_at_its_instant_restates_it(
     let [_, ack, fill, again, next] = walked.as_slice() else {
         panic!("five statements, not {}", walked.len())
     };
-    assert_eq!(fill.get_prevuuid(), Some(ack.get_curruuid()));
+    assert_eq!(fill.get_prevuuid(), Some(ack.get_uuid()));
     assert_eq!(again, ack, "the acknowledgement's own identity and place");
     // The chain stays where the fill moved it.
-    assert_eq!(next.get_prevuuid(), Some(fill.get_curruuid()));
+    assert_eq!(next.get_prevuuid(), Some(fill.get_uuid()));
 }
 
 #[test]
@@ -623,7 +620,7 @@ fn a_statement_logged_again_after_the_step_that_ended_its_chain_at_its_instant_r
     let [_, first, fill, again, filled_again, next] = walked.as_slice() else {
         panic!("six statements, not {}", walked.len())
     };
-    assert_eq!(fill.get_prevuuid(), Some(first.get_curruuid()));
+    assert_eq!(fill.get_prevuuid(), Some(first.get_uuid()));
     assert_eq!(again, first, "the acknowledgement's own identity and place");
     assert_eq!(filled_again, fill, "the fill's own identity and place");
     // The chain stays ended: the next statement starts one afresh.
@@ -644,7 +641,7 @@ fn a_statement_logged_again_after_the_step_that_ended_its_chain_at_its_instant_r
     let first = walk.nth(1).expect("the acknowledgement");
     let late = walk.nth(2).expect("the acknowledgement, read late");
     assert_eq!(late.get_prevuuid(), None);
-    assert_ne!(late.get_curruuid(), first.get_curruuid());
+    assert_ne!(late.get_uuid(), first.get_uuid());
 }
 
 /// A FIX message held as market data walks as itself: a twin of the live
@@ -686,10 +683,10 @@ fn a_market_data_walk_restates_a_fix_twin_and_a_fix_statement_logged_again() {
     let [order_walked, first, again] = twin.as_slice() else {
         panic!("three order messages, not {}", twin.len())
     };
-    assert_eq!(first.get_prevuuid(), Some(order_walked.get_curruuid()));
+    assert_eq!(first.get_prevuuid(), Some(order_walked.get_uuid()));
     assert_eq!(
-        (again.get_curruuid(), again.get_prevuuid()),
-        (first.get_curruuid(), first.get_prevuuid()),
+        (again.get_uuid(), again.get_prevuuid()),
+        (first.get_uuid(), first.get_prevuuid()),
         "the twin is the acknowledgement again"
     );
 
@@ -698,10 +695,10 @@ fn a_market_data_walk_restates_a_fix_twin_and_a_fix_statement_logged_again() {
     let [_, first, fill, again] = passed.as_slice() else {
         panic!("four order messages, not {}", passed.len())
     };
-    assert_eq!(fill.get_prevuuid(), Some(first.get_curruuid()));
+    assert_eq!(fill.get_prevuuid(), Some(first.get_uuid()));
     assert_eq!(
-        (again.get_curruuid(), again.get_prevuuid()),
-        (first.get_curruuid(), first.get_prevuuid()),
+        (again.get_uuid(), again.get_prevuuid()),
+        (first.get_uuid(), first.get_prevuuid()),
         "the acknowledgement again, not a step after the fill"
     );
 }
@@ -718,7 +715,7 @@ fn an_element_under_no_live_identity_follows_the_live_one_it_shares_a_name_with(
     let mut walk = EventIterator::new(vec![order, report], true);
     let order = walk.next().expect("the order");
     let report = walk.next().expect("the report");
-    assert_eq!(report.get_prevuuid(), Some(order.get_curruuid()));
+    assert_eq!(report.get_prevuuid(), Some(order.get_uuid()));
     assert_eq!(report.get_seqnum(), 0);
     // Followed, the report carries the chain's cross code and stands as
     // the live one under the chain's identity, its own names with it.
@@ -726,7 +723,7 @@ fn an_element_under_no_live_identity_follows_the_live_one_it_shares_a_name_with(
     assert_eq!(report.get_crossuuid(), order.get_crossuuid());
     assert_eq!(walk.alive().count(), 1);
     let live = walk.alive().next().expect("the report stands");
-    assert_eq!(live.get_currunix(), at(20));
+    assert_eq!(live.get_transunix(), at(20));
     assert_eq!(live.get_identifiers().get(&EXEC_ID), Some("E-1"));
 
     // A name no live element goes by starts a chain of its own, and an
@@ -749,7 +746,7 @@ fn an_element_under_no_live_identity_follows_the_live_one_it_shares_a_name_with(
     assert_eq!((stranger.get_seqnum(), stranger.get_prevuuid()), (0, None));
     assert_eq!(stranger.get_crosscode(), "");
     let other = walk.next().expect("the other order's second");
-    assert_eq!(other.get_prevuuid(), Some(other_first.get_curruuid()));
+    assert_eq!(other.get_prevuuid(), Some(other_first.get_uuid()));
     assert_eq!(other.get_crosscode(), "10:0:O-900");
     assert_eq!(walk.alive().count(), 3);
 
@@ -793,7 +790,7 @@ fn an_element_under_no_live_identity_follows_the_live_one_it_shares_a_name_with(
             "{value}"
         );
         assert_eq!(late.get_crosscode(), "", "{value}");
-        assert_eq!(late.get_crossuuid(), late.get_curruuid(), "{value}");
+        assert_eq!(late.get_crossuuid(), late.get_uuid(), "{value}");
     }
 }
 
@@ -814,7 +811,7 @@ fn an_element_before_the_live_one_is_yielded_as_it_came_and_changes_nothing() {
     assert_eq!((stray.get_seqnum(), stray.get_prevuuid()), (0, None));
     // The live element is still the third, and the fourth follows it.
     let fourth = walk.next().expect("the fourth");
-    assert_eq!(fourth.get_prevuuid(), Some(third.get_curruuid()));
+    assert_eq!(fourth.get_prevuuid(), Some(third.get_uuid()));
     assert_eq!(fourth.get_seqnum(), 0);
 
     // A late element stating no side and another code of the chain's kind,
@@ -850,10 +847,7 @@ fn an_element_before_the_live_one_is_yielded_as_it_came_and_changes_nothing() {
     assert_eq!(stray.get_crosscode(), "10:1:O-100", "the chain's code");
     assert_derived(&stray, "the late element");
     assert_eq!(stray.get_crossuuid(), live.get_crossuuid());
-    assert_eq!(
-        stray.get_curruuid(),
-        stray.time_uuid().expect("an identity")
-    );
+    assert_eq!(stray.get_uuid(), stray.time_uuid().expect("an identity"));
     assert_eq!(
         walk.alive().collect::<Vec<_>>(),
         [&live],
@@ -902,7 +896,7 @@ fn a_grid_starts_no_earlier_than_the_first_fact_and_zero_preserves_source_stamps
             .iter()
             .filter_map(|event| event
                 .get_snapunix()
-                .map(|original| (event.get_currunix(), original)))
+                .map(|original| (event.get_transunix(), original)))
             .collect::<Vec<_>>(),
         [(0, -1)]
     );
@@ -933,12 +927,12 @@ fn the_walk_yields_the_callers_own_copy_and_reads_any_event() {
     let arrived = vec![incarnation("O-100", 10), incarnation("O-100", 20)];
     let mut walk = EventIterator::new(arrived, true);
     let mut first = walk.next().expect("the first");
-    first.set_curruuid(Uuid::from_v8(1));
+    first.set_uuid(Uuid::from_v8(1));
     let second = walk.next().expect("the second");
     assert_ne!(second.get_prevuuid(), Some(Uuid::from_v8(1)));
     assert_eq!(
-        walk.alive().next().map(Element::get_curruuid),
-        Some(second.get_curruuid())
+        walk.alive().next().map(Element::get_uuid),
+        Some(second.get_uuid())
     );
 }
 
@@ -946,7 +940,7 @@ fn the_walk_yields_the_callers_own_copy_and_reads_any_event() {
 fn a_deadline_emits_one_expired_snapshot_and_retires_the_live_identity() {
     let mut order = incarnation("O-100", 10);
     order.set_execunix(Some(at(8)), true);
-    order.set_recdunix(Some(at(9)));
+    order.set_sendunix(Some(at(9)));
     order.set_exprunix(Some(at(20)));
     // The walk states the creation the order left unstated, and nothing else.
     let mut original = order.clone();
@@ -960,7 +954,7 @@ fn a_deadline_emits_one_expired_snapshot_and_retires_the_live_identity() {
     assert_eq!(
         walked
             .iter()
-            .map(|event| ms(event.get_currunix()))
+            .map(|event| ms(event.get_transunix()))
             .collect::<Vec<_>>(),
         [10, 20, 30, 40]
     );
@@ -976,8 +970,8 @@ fn a_deadline_emits_one_expired_snapshot_and_retires_the_live_identity() {
         Some(at(8)),
         "expiry carries the lifecycle's latest execution"
     );
-    assert_eq!(expired.get_recdunix(), None, "expiry is a new event");
-    assert_eq!(expired.get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(expired.get_sendunix(), None, "expiry is a new event");
+    assert_eq!(expired.get_prevuuid(), Some(walked[0].get_uuid()));
     assert_eq!(expired.get_seqnum(), 0);
     assert_eq!(expired.get_crossuuid(), walked[0].get_crossuuid());
     assert_eq!(expired.get_crosscode(), "10:0:O-100");
@@ -1003,7 +997,7 @@ fn deadlines_precede_equal_time_sources_and_views_and_eof_drains_in_order() {
         walked
             .iter()
             .map(|event| (
-                ms(event.get_currunix()),
+                ms(event.get_transunix()),
                 event.get_snapunix().map(ms),
                 event.get_crosscode(),
                 event.get_state().is_failed(),
@@ -1037,7 +1031,7 @@ fn the_expirations_of_one_deadline_take_its_places_in_order() {
         walked[2..]
             .iter()
             .map(|event| (
-                ms(event.get_currunix()),
+                ms(event.get_transunix()),
                 event.get_state().is_failed(),
                 event.get_seqnum()
             ))
@@ -1059,7 +1053,7 @@ fn eof_keeps_the_deadline_horizon_for_nonexpiring_neighbors() {
     assert!(
         walked.iter().any(|event| {
             event.get_crosscode() == "10:0:O-100"
-                && event.get_currunix() == at(20)
+                && event.get_transunix() == at(20)
                 && event.get_state().is_failed()
         }),
         "the finite identity expires at the horizon"
@@ -1067,7 +1061,7 @@ fn eof_keeps_the_deadline_horizon_for_nonexpiring_neighbors() {
     assert_eq!(
         walked
             .iter()
-            .filter(|event| event.get_snapunix().is_some() && event.get_currunix() == at(20))
+            .filter(|event| event.get_snapunix().is_some() && event.get_transunix() == at(20))
             .map(|event| event.get_crosscode())
             .collect::<Vec<_>>(),
         ["10:0:O-900"],
@@ -1096,7 +1090,7 @@ fn replacing_or_ending_a_generation_removes_its_stale_deadline() {
     assert_eq!(
         walked
             .iter()
-            .map(|event| ms(event.get_currunix()))
+            .map(|event| ms(event.get_transunix()))
             .collect::<Vec<_>>(),
         [10, 15, 30],
         "neither replaced deadline survives the terminal generation"
@@ -1106,12 +1100,12 @@ fn replacing_or_ending_a_generation_removes_its_stale_deadline() {
     assert_eq!(
         walked
             .iter()
-            .map(|event| ms(event.get_currunix()))
+            .map(|event| ms(event.get_transunix()))
             .collect::<Vec<_>>(),
         [10, 15, 40],
         "the replacement owns the one remaining deadline"
     );
-    assert_eq!(walked[2].get_prevuuid(), Some(walked[1].get_curruuid()));
+    assert_eq!(walked[2].get_prevuuid(), Some(walked[1].get_uuid()));
 
     let mut later = incarnation("O-200", 10);
     later.set_exprunix(Some(at(40)));
@@ -1121,7 +1115,7 @@ fn replacing_or_ending_a_generation_removes_its_stale_deadline() {
     assert_eq!(
         walked
             .iter()
-            .map(|event| ms(event.get_currunix()))
+            .map(|event| ms(event.get_transunix()))
             .collect::<Vec<_>>(),
         [10, 15, 20],
         "an explicitly replaced deadline may move earlier"
@@ -1144,7 +1138,7 @@ fn a_grid_copies_every_living_identity_at_each_crossed_tick() {
     assert_eq!(
         sources
             .iter()
-            .map(|event| ms(event.get_currunix()))
+            .map(|event| ms(event.get_transunix()))
             .collect::<Vec<_>>(),
         [10, 15, 25],
         "source events keep their stated snapshot fact"
@@ -1154,7 +1148,7 @@ fn a_grid_copies_every_living_identity_at_each_crossed_tick() {
         .filter_map(|event| {
             event.get_snapunix().map(|original| {
                 (
-                    ms(event.get_currunix()),
+                    ms(event.get_transunix()),
                     event.get_crosscode(),
                     ms(original),
                 )
@@ -1175,25 +1169,25 @@ fn a_grid_copies_every_living_identity_at_each_crossed_tick() {
         ]
     );
     for snapshot in walked.iter().filter(|event| event.get_snapunix().is_some()) {
-        let tick = snapshot.get_currunix();
+        let tick = snapshot.get_transunix();
         let source = sources
             .iter()
             .rev()
             .find(|source| {
-                source.get_crosscode() == snapshot.get_crosscode() && source.get_currunix() <= tick
+                source.get_crosscode() == snapshot.get_crosscode() && source.get_transunix() <= tick
             })
             .expect("the living source copied at this tick");
         // Its content, its place and its cross element are the live event's;
         // its identity is the one its tick derives, so it is a row of its own.
-        assert_eq!(snapshot.get_snapunix(), Some(source.get_currunix()));
-        assert_eq!(snapshot.get_currhashcode(), source.get_currhashcode());
+        assert_eq!(snapshot.get_snapunix(), Some(source.get_transunix()));
+        assert_eq!(snapshot.get_hashcode(), source.get_hashcode());
         assert_eq!(snapshot.get_seqnum(), source.get_seqnum());
         assert_eq!(snapshot.get_prevuuid(), source.get_prevuuid());
         assert_eq!(snapshot.get_crossuuid(), source.get_crossuuid());
         assert_derived(snapshot, "the view");
         assert_eq!(
-            snapshot.get_curruuid() == source.get_curruuid(),
-            tick == source.get_currunix()
+            snapshot.get_uuid() == source.get_uuid(),
+            tick == source.get_transunix()
         );
         // Only instants moved, and they feed no code: the view is stamped
         // again over the live code, and is what settling a copy of it
@@ -1209,7 +1203,7 @@ fn a_grid_copies_every_living_identity_at_each_crossed_tick() {
             .is_none_or(|tick| tick <= event.get_exprunix().unwrap_or(i64::MAX))
     }));
     assert_eq!(
-        walked.last().map(|event| ms(event.get_currunix())),
+        walked.last().map(|event| ms(event.get_transunix())),
         Some(35),
         "EOF stops the grid at the greatest finite deadline"
     );
@@ -1249,7 +1243,7 @@ mod naming {
         let event = named("A", 1, &CL_ORD_ID, "A-1");
         let identity = event.get_crossuuid();
         let mut walk = EventIterator::new(Vec::<OrderEvent>::new(), true);
-        settle(&mut walk, identity, &event, event.get_curruuid());
+        settle(&mut walk, identity, &event, event.get_uuid());
         assert_eq!(named_schemes(&walk), 1);
         assert_eq!(named_identities(&walk), 1);
 
@@ -1276,7 +1270,7 @@ mod naming {
             } else {
                 (second_identity, &second)
             };
-            settle(&mut walk, identity, event, event.get_curruuid());
+            settle(&mut walk, identity, event, event.get_uuid());
             assert_eq!(
                 named_chains(&walk, &CL_ORD_ID, "SHARED"),
                 [first_identity],
@@ -1291,7 +1285,7 @@ mod naming {
         );
         assert!(named_chains(&walk, &CL_ORD_ID, "SHARED").is_empty());
         assert_eq!(named_schemes(&walk), 0, "the index holds nothing for it");
-        settle(&mut walk, second_identity, &second, second.get_curruuid());
+        settle(&mut walk, second_identity, &second, second.get_uuid());
         assert_eq!(
             named_chains(&walk, &CL_ORD_ID, "SHARED"),
             [second_identity],
@@ -1330,10 +1324,10 @@ mod naming {
         ];
         let mut walk = EventIterator::new(arrived, true);
         let walked: Vec<OrderEvent> = walk.by_ref().collect();
-        assert_eq!(walked[2].get_prevuuid(), Some(walked[0].get_curruuid()));
+        assert_eq!(walked[2].get_prevuuid(), Some(walked[0].get_uuid()));
         assert_eq!(
             walked[3].get_prevuuid(),
-            Some(walked[1].get_curruuid()),
+            Some(walked[1].get_uuid()),
             "B's report joins B, never A by the execution they share"
         );
         assert_eq!(walked[3].get_crosscode(), "10:0:O-2");
@@ -1441,7 +1435,7 @@ fn a_market_data_walk_chains_within_one_kind_and_passes_the_rest_through() {
             third.as_order_event().unwrap().get_seqnum(),
             third.as_order_event().unwrap().get_prevuuid()
         ),
-        (0, Some(order.get_curruuid()))
+        (0, Some(order.get_uuid()))
     );
     assert_eq!(walk.alive().count(), 2, "the order's chain and the fill's");
 
@@ -1500,7 +1494,7 @@ fn a_market_data_walk_chains_within_one_kind_and_passes_the_rest_through() {
     assert_derived(follower, "a typed follower of a FIX message");
     assert_eq!(follower.get_crossuuid(), walked[0].get_crossuuid());
     assert_eq!(
-        follower.get_curruuid(),
+        follower.get_uuid(),
         follower.time_uuid().expect("an identity")
     );
 }
@@ -1543,12 +1537,12 @@ fn a_new_over_a_new_like_live_element_walks_as_updated() {
         stating("O-1", 10, State::New),
         stating("O-1", 20, State::New),
     ];
-    let stated = arrived[1].get_currhashcode();
+    let stated = arrived[1].get_hashcode();
     let walked: Vec<OrderEvent> = EventIterator::new(arrived, true).collect();
     assert_eq!(*walked[1].get_state(), State::Updated);
-    assert_ne!(walked[1].get_currhashcode(), stated);
+    assert_ne!(walked[1].get_hashcode(), stated);
     assert_eq!(
-        walked[1].get_curruuid(),
+        walked[1].get_uuid(),
         walked[1].time_uuid().expect("an identity")
     );
     // A walk over the walked answers the same chain.
@@ -1623,7 +1617,7 @@ fn a_buy_and_a_sell_under_one_code_are_two_chains_and_a_sideless_element_joins_t
     let walked: Vec<OrderEvent> =
         EventIterator::new(vec![buy.clone(), sell.clone(), replaced, unsided], true).collect();
     // The sell's replacement follows the sell, not the buy.
-    assert_eq!(walked[2].get_prevuuid(), Some(walked[1].get_curruuid()));
+    assert_eq!(walked[2].get_prevuuid(), Some(walked[1].get_uuid()));
     // Both sides are alive, so the side-less cancel joins neither.
     assert_eq!(walked[3].get_prevuuid(), None);
     assert_eq!(walked[3].get_side(), Side::Unknown);
@@ -1633,7 +1627,7 @@ fn a_buy_and_a_sell_under_one_code_are_two_chains_and_a_sideless_element_joins_t
     // takes its side, and so its code.
     let unsided = sided("C-1", 30, Side::Unknown, State::Canceled, &[]);
     let walked: Vec<OrderEvent> = EventIterator::new(vec![buy.clone(), unsided], true).collect();
-    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_uuid()));
     assert_eq!(walked[1].get_side(), Side::Buy);
     assert_eq!(walked[1].get_crosscode(), "10:1:C-1");
 
@@ -1643,7 +1637,7 @@ fn a_buy_and_a_sell_under_one_code_are_two_chains_and_a_sideless_element_joins_t
     nameless.set_state(State::Canceled);
     nameless.finalize();
     let walked: Vec<OrderEvent> = EventIterator::new(vec![buy.clone(), nameless], true).collect();
-    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_uuid()));
     let other = sided(
         "S-9",
         30,
@@ -1718,7 +1712,7 @@ fn a_live_execution_keeps_its_orders_name_record() {
     let fill = walked[1].as_execution_event().expect("the fill");
     let report = walked[2].as_order_event().expect("the report");
     assert_eq!(fill.get_prevuuid(), None, "the fill is a chain of its own");
-    assert_eq!(report.get_prevuuid(), Some(order.get_curruuid()));
+    assert_eq!(report.get_prevuuid(), Some(order.get_uuid()));
     assert_eq!(report.get_crosscode(), order.get_crosscode());
 }
 
@@ -1746,13 +1740,13 @@ fn an_unsided_order_joins_the_one_live_side_of_its_base_under_the_stored_code() 
     // One side alive: the side-less order is that chain's next statement.
     let walked: Vec<OrderEvent> =
         EventIterator::new(vec![buy.clone(), unsided.clone()], true).collect();
-    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_uuid()));
     assert_eq!(walked[1].get_side(), Side::Buy);
     assert_eq!(walked[1].get_crosscode(), "10:1:ORD-1");
     assert_eq!(walked[1].get_crossuuid(), buy.get_crossuuid());
     let walked: Vec<OrderEvent> =
         EventIterator::new(vec![sell.clone(), unsided.clone()], true).collect();
-    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_uuid()));
     assert_eq!(
         walked[1].get_crosscode(),
         "10:2:ORD-1",
@@ -1826,7 +1820,7 @@ fn one_quote_identifier_is_one_chain_whatever_side_its_statements_state() {
     )
     .collect();
     assert_eq!(walked.len(), 2);
-    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_uuid()));
     assert_eq!(walked[1].get_crossuuid(), walked[0].get_crossuuid());
     assert_eq!(
         (walked[0].get_crosscode(), walked[1].get_crosscode()),
@@ -1862,7 +1856,7 @@ fn one_quote_identifier_is_one_chain_whatever_side_its_statements_state() {
         true,
     )
     .collect();
-    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_uuid()));
     assert_eq!(walked[1].get_crosscode(), "14:0:BID-1");
     let walked: Vec<QuoteEvent> = EventIterator::new(
         vec![
@@ -1884,7 +1878,7 @@ fn one_quote_identifier_is_one_chain_whatever_side_its_statements_state() {
         true,
     )
     .collect();
-    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_uuid()));
     assert_eq!(walked[1].get_crosscode(), "14:0:TWO-1");
 }
 
@@ -1931,7 +1925,7 @@ fn a_quote_holding_both_sides_goes_by_its_names_as_an_untagged_one() {
         true,
     )
     .collect();
-    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_uuid()));
     assert_eq!(walked[1].get_crosscode(), "14:0:TWO-1");
     assert_eq!(walked[1].get_side(), Side::Buy, "its tag is its own");
 
@@ -1941,7 +1935,7 @@ fn a_quote_holding_both_sides_goes_by_its_names_as_an_untagged_one() {
         true,
     )
     .collect();
-    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_uuid()));
     assert_eq!(walked[1].get_crosscode(), "14:0:BID-1");
     assert_eq!(walked[1].get_side(), Side::Both);
 
@@ -1994,7 +1988,7 @@ fn elements_split_off_one_message_never_join_one_another_by_a_name() {
         true,
     )
     .collect();
-    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_uuid()));
 }
 
 /// Two sides of one code stay two chains for as long as both live: each
@@ -2013,9 +2007,9 @@ fn two_sides_of_one_code_stay_two_chains_for_as_long_as_both_live() {
     ];
     let mut walk = EventIterator::new(arrived, true);
     let walked: Vec<OrderEvent> = walk.by_ref().collect();
-    assert_eq!(walked[2].get_prevuuid(), Some(walked[0].get_curruuid()));
-    assert_eq!(walked[3].get_prevuuid(), Some(walked[1].get_curruuid()));
-    assert_eq!(walked[4].get_prevuuid(), Some(walked[2].get_curruuid()));
+    assert_eq!(walked[2].get_prevuuid(), Some(walked[0].get_uuid()));
+    assert_eq!(walked[3].get_prevuuid(), Some(walked[1].get_uuid()));
+    assert_eq!(walked[4].get_prevuuid(), Some(walked[2].get_uuid()));
     assert_ne!(walked[0].get_crossuuid(), walked[1].get_crossuuid());
     assert_eq!(walked[0].get_crossuuid(), walked[4].get_crossuuid());
     assert_eq!(walked[1].get_crossuuid(), walked[3].get_crossuuid());
@@ -2074,7 +2068,7 @@ fn an_element_joins_a_live_chain_through_a_parent_identifiers_value() {
     assert!(
         walked
             .windows(2)
-            .all(|pair| pair[1].get_prevuuid() == Some(pair[0].get_curruuid())),
+            .all(|pair| pair[1].get_prevuuid() == Some(pair[0].get_uuid())),
         "one chain"
     );
     for (at, event) in walked.iter().enumerate() {
@@ -2115,7 +2109,7 @@ fn an_element_joins_a_live_chain_through_a_parent_identifiers_value() {
     let only = anonymous(20, &[(parent_order_id(), "A")]);
     assert_eq!(held(&only, "orderid").as_deref(), Some("A"));
     let walked: Vec<OrderEvent> = EventIterator::new(vec![first.clone(), only], true).collect();
-    assert_eq!(walked[1].get_prevuuid(), Some(first.get_curruuid()));
+    assert_eq!(walked[1].get_prevuuid(), Some(first.get_uuid()));
     assert_eq!(walked[1].get_crosscode(), "10:0:O-100");
 
     // A first value no live chain goes by joins nothing: a chain of its own.
@@ -2169,14 +2163,14 @@ fn a_replace_under_a_new_identifier_keeps_the_chains_cross_code_and_hashes() {
         assert_eq!(event.get_crosscode(), "10:0:O-100", "statement {at}");
         assert_derived(event, &format!("statement {at}"));
         assert_eq!(
-            event.get_curruuid(),
+            event.get_uuid(),
             event.time_uuid().expect("an identity"),
             "statement {at}"
         );
         if at > 0 {
             assert_eq!(
                 event.get_prevuuid(),
-                Some(walked[at - 1].get_curruuid()),
+                Some(walked[at - 1].get_uuid()),
                 "statement {at} follows the one before"
             );
         }
@@ -2232,7 +2226,7 @@ fn an_element_citing_two_live_chains_is_a_stated_conflict_and_stands_under_its_o
         true,
     )
     .collect();
-    assert_eq!(walked[2].get_prevuuid(), Some(walked[1].get_curruuid()));
+    assert_eq!(walked[2].get_prevuuid(), Some(walked[1].get_uuid()));
     assert_eq!(walked[2].get_crosscode(), "10:0:O-2");
     assert_eq!(walked[3], walked[2], "the twin restates it");
 
@@ -2252,7 +2246,7 @@ fn an_element_citing_two_live_chains_is_a_stated_conflict_and_stands_under_its_o
         true,
     )
     .collect();
-    assert_eq!(walked[2].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[2].get_prevuuid(), Some(walked[0].get_uuid()));
     assert_eq!(walked[2].get_side(), Side::Buy);
     assert_eq!(walked[2].get_crosscode(), "10:1:C-1");
 }
@@ -2293,7 +2287,7 @@ fn a_walk_carries_the_parents_of_each_identifier_along_its_chain() {
     assert!(
         walked
             .windows(2)
-            .all(|pair| pair[1].get_prevuuid() == Some(pair[0].get_curruuid())),
+            .all(|pair| pair[1].get_prevuuid() == Some(pair[0].get_uuid())),
         "one chain"
     );
 

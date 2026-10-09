@@ -1638,12 +1638,12 @@ fix_message_marketdatakind: MarketDataKind = fix_message.marketdatakind
 fix_message_msgpluginside: Side = fix_message.msgpluginside
 fix_message_strikepx: Scalar | None = fix_message.strikepx
 fix_message_metadata: dict[str, str] = fix_message.metadata
-fix_message_curruuid: Scalar = fix_message.curruuid
+fix_message_uuid: Scalar = fix_message.uuid
 fix_message_crossuuid: Scalar = fix_message.crossuuid
 fix_message_crosscode: str = fix_message.crosscode
-fix_message_currhashcode: int = fix_message.currhashcode
+fix_message_hashcode: int = fix_message.hashcode
 fix_message_crosshashcode: int = fix_message.crosshashcode
-fix_message_currunix: int = fix_message.currunix
+fix_message_transunix: int = fix_message.transunix
 fix_message_state: State = fix_message.state
 fix_message_seqnum: int = fix_message.seqnum
 fix_message_prevuuid: Scalar | None = fix_message.prevuuid
@@ -1705,18 +1705,18 @@ fix_capture_msgctxid: str | None = fix_message_capture.msgctxid
 fix_capture_msgsessionid: str | None = fix_message_capture.msgsessionid
 fix_capture_msgsesseventid: str | None = fix_message_capture.msgsesseventid
 
-fix_event_curruuid: Scalar = fix_message_event.curruuid
+fix_event_uuid: Scalar = fix_message_event.uuid
 fix_event_crossuuid: Scalar = fix_message_event.crossuuid
 fix_event_crosscode: str = fix_message_event.crosscode
-fix_event_currhashcode: int = fix_message_event.currhashcode
+fix_event_hashcode: int = fix_message_event.hashcode
 fix_event_crosshashcode: int = fix_message_event.crosshashcode
 fix_event_srcuuids: list[Scalar] = fix_message_event.srcuuids
-fix_event_currunix: int = fix_message_event.currunix
+fix_event_transunix: int = fix_message_event.transunix
 fix_event_state: State = fix_message_event.state
 fix_event_seqnum: int = fix_message_event.seqnum
 fix_event_creaunix: int | None = fix_message_event.creaunix
 fix_event_execunix: int | None = fix_message_event.execunix
-fix_event_recdunix: int | None = fix_message_event.recdunix
+fix_event_sendunix: int | None = fix_message_event.sendunix
 fix_event_exprunix: int | None = fix_message_event.exprunix
 fix_event_prevunix: int | None = fix_message_event.prevunix
 fix_event_prevuuid: Scalar | None = fix_message_event.prevuuid
@@ -1791,12 +1791,12 @@ text_line_text: TextLine = TextLine(1, "35=D|", ["FIX.4.4", None])
 text_line_under_options: TextLine = TextLine(2, "35=D|", None, TextOptions())
 text_line_mtime: int | None = text_line_under_options.mtime
 text_line_bodytype: MimeType = text_line_under_options.bodytype
-text_line_identity: Scalar = text_line_text.curruuid
+text_line_identity: Scalar = text_line_text.uuid
 text_line_cross: Scalar = text_line_text.crossuuid
 text_line_crosscode: str = text_line_text.crosscode
-text_line_hashcode: int = text_line_text.currhashcode
+text_line_hashcode: int = text_line_text.hashcode
 text_line_crosshash: int = text_line_text.crosshashcode
-text_line_unix: int = text_line_text.currunix
+text_line_unix: int = text_line_text.transunix
 text_line_seqnum: int = text_line_text.seqnum
 text_line_mutable_index: TextLine = TextLine(0, "body")
 text_line_mutable_index.index = 1
@@ -2020,9 +2020,9 @@ assert fix_message_forwardpoints is None or isinstance(fix_message_forwardpoints
 assert fix_message_ticker is None or isinstance(fix_message_ticker, str)
 assert fix_message_tif is None or isinstance(fix_message_tif, str)
 assert fix_message_tradable is None or isinstance(fix_message_tradable, bool)
-assert isinstance(fix_message_curruuid, Scalar) and isinstance(fix_message_crossuuid, Scalar)
-assert isinstance(fix_message_currhashcode, int) and isinstance(fix_message_crosshashcode, int)
-assert isinstance(fix_message_currunix, int) and isinstance(fix_message_seqnum, int)
+assert isinstance(fix_message_uuid, Scalar) and isinstance(fix_message_crossuuid, Scalar)
+assert isinstance(fix_message_hashcode, int) and isinstance(fix_message_crosshashcode, int)
+assert isinstance(fix_message_transunix, int) and isinstance(fix_message_seqnum, int)
 assert isinstance(fix_message_state, State) and isinstance(fix_message_side, Side)
 assert isinstance(fix_message_price, Scalar) and isinstance(fix_message_quantity, Scalar)
 assert isinstance(fix_message_currency, Scalar)
@@ -2041,12 +2041,12 @@ assert fix_capture_msgpluginid is None or fix_capture_msgpluginid
 assert fix_capture_msgctxid is None or fix_capture_msgctxid
 assert fix_capture_msgsessionid is None or fix_capture_msgsessionid
 assert fix_capture_msgsesseventid is None or fix_capture_msgsesseventid
-assert isinstance(fix_event_currunix, int) and isinstance(fix_event_crosscode, str)
-assert isinstance(fix_event_currhashcode, int) and isinstance(fix_event_crosshashcode, int)
+assert isinstance(fix_event_transunix, int) and isinstance(fix_event_crosscode, str)
+assert isinstance(fix_event_hashcode, int) and isinstance(fix_event_crosshashcode, int)
 assert isinstance(fix_event_seqnum, int) and isinstance(fix_event_unit, str)
 assert fix_event_creaunix is None or isinstance(fix_event_creaunix, int)
 assert fix_event_execunix is None or isinstance(fix_event_execunix, int)
-assert fix_event_recdunix is None or isinstance(fix_event_recdunix, int)
+assert fix_event_sendunix is None or isinstance(fix_event_sendunix, int)
 assert fix_event_exprunix is None or isinstance(fix_event_exprunix, int)
 assert fix_event_prevunix is None or isinstance(fix_event_prevunix, int)
 assert fix_event_snapunix is None or isinstance(fix_event_snapunix, int)
@@ -2067,7 +2067,7 @@ assert fix_event_spotrate is None or isinstance(fix_event_spotrate, Scalar)
 assert fix_event_forwardpoints is None or isinstance(fix_event_forwardpoints, Scalar)
 assert isinstance(fix_event_securityids, yggdryl.Identifiers) and isinstance(fix_event_metadata, dict)
 assert isinstance(fix_event_identifiers, yggdryl.Identifiers) and isinstance(fix_event_partyids, yggdryl.Identifiers)
-assert isinstance(fix_event_curruuid, Scalar) and isinstance(fix_event_crossuuid, Scalar)
+assert isinstance(fix_event_uuid, Scalar) and isinstance(fix_event_crossuuid, Scalar)
 assert isinstance(fix_event_state, State) and isinstance(fix_event_side, Side)
 assert isinstance(fix_event_price, Scalar) and isinstance(fix_event_quantity, Scalar)
 assert isinstance(fix_event_currency, Scalar)
@@ -2115,20 +2115,20 @@ graph_order_event: graph.OrderEvent = graph.OrderEvent(
     bidqty=100,
 )
 graph_order_event_skipped: graph.OrderEvent = graph.OrderEvent(
-    graph_order_event.currunix, book=..., crosscode="G-1", side=...
+    graph_order_event.transunix, book=..., crosscode="G-1", side=...
 )
-graph_order_event_curruuid: Scalar = graph_order_event.curruuid
+graph_order_event_uuid: Scalar = graph_order_event.uuid
 graph_order_event_crossuuid: Scalar = graph_order_event.crossuuid
 graph_order_event_crosscode: str = graph_order_event.crosscode
-graph_order_event_currhashcode: int = graph_order_event.currhashcode
+graph_order_event_hashcode: int = graph_order_event.hashcode
 graph_order_event_crosshashcode: int = graph_order_event.crosshashcode
 graph_order_event_srcuuids: list[Scalar] = graph_order_event.srcuuids
-graph_order_event_currunix: int = graph_order_event.currunix
+graph_order_event_transunix: int = graph_order_event.transunix
 graph_order_event_state: State = graph_order_event.state
 graph_order_event_seqnum: int = graph_order_event.seqnum
 graph_order_event_creaunix: int | None = graph_order_event.creaunix
 graph_order_event_execunix: int | None = graph_order_event.execunix
-graph_order_event_recdunix: int | None = graph_order_event.recdunix
+graph_order_event_sendunix: int | None = graph_order_event.sendunix
 graph_order_event_exprunix: int | None = graph_order_event.exprunix
 graph_order_event_prevunix: int | None = graph_order_event.prevunix
 graph_order_event_prevuuid: Scalar | None = graph_order_event.prevuuid
@@ -2183,15 +2183,15 @@ graph_order_event_pickle: tuple[object, tuple[bytes]] = graph_order_event.__redu
 graph_order: graph.Order = graph_order_event.into_element()
 graph_order_built: graph.Order = graph.Order(crosscode="G-1", price=1)
 graph_order_kind: Literal["order"] = graph_order.kind
-graph_order_at: graph.OrderEvent = graph_order.at(graph_order_event.currunix)
+graph_order_at: graph.OrderEvent = graph_order.at(graph_order_event.transunix)
 graph_order_with_previous: graph.Order | None = graph_order.with_previous(graph_order)
 graph_quote: graph.Quote = graph.Quote(crosscode="Q-1")
 graph_quote_event: graph.QuoteEvent = graph.QuoteEvent(
-    graph_order_event.currunix, crosscode="Q-1", side="SELL", price=11, quantity=50, ticker="IBM"
+    graph_order_event.transunix, crosscode="Q-1", side="SELL", price=11, quantity=50, ticker="IBM"
 )
 graph_quote_event_element: graph.Quote = graph_quote_event.into_element()
 graph_execution: graph.Execution = graph.Execution()
-graph_execution_event: graph.ExecutionEvent = graph_execution.at(graph_order_event.currunix)
+graph_execution_event: graph.ExecutionEvent = graph_execution.at(graph_order_event.transunix)
 graph_execution_kind: Literal["execution"] = graph_execution_event.kind
 
 graph_book_ref: graph.BookRef = graph.BookRef(action="0", scope="GLOBAL", position=1)
@@ -2207,14 +2207,14 @@ graph_book_ref_partial: bool = graph_book_ref.is_partial()
 graph_quote_event_booked: graph.QuoteEvent = graph_quote_event.with_book(graph_book_ref)
 
 graph_fill: graph.ExecutionEvent = graph.ExecutionEvent(
-    graph_order_event.currunix, crosscode="F-1", side="BUYS", lastpx=10, lastqty=5
+    graph_order_event.transunix, crosscode="F-1", side="BUYS", lastpx=10, lastqty=5
 )
 graph_trade: graph.TradeEvent = graph.TradeEvent.from_parts(graph_execution_event, [graph_fill])
 graph_trade_executions: list[graph.ExecutionEvent] = graph_trade.executions
 graph_trade_lastpx: Scalar | None = graph_trade.lastpx
 graph_trade_restated: graph.TradeEvent = graph_trade.restating(graph_trade)
 
-graph_book: graph.BookEvent = graph.BookEvent(graph_order_event.currunix, "IBM")
+graph_book: graph.BookEvent = graph.BookEvent(graph_order_event.transunix, "IBM")
 graph_book_with_operations: graph.BookEvent = graph_book.with_operations(
     [graph_order_event, graph.MarketData(graph_quote_event)]
 )
@@ -2230,7 +2230,7 @@ assert graph_book_events == [] and graph_book_controls == []
 graph_book_alive_on: list[graph.MarketData] = graph_book_with_operations.alive_on(Side.BUYS)
 graph_book_alive_on_text: list[graph.MarketData] = graph_book_with_operations.alive_on("SELL")
 graph_book_complete: bool = graph_book_with_operations.is_complete
-graph_book_keyed: graph.BookEvent = graph.BookEvent.keyed(graph_order_event.currunix, "XX0000000000")
+graph_book_keyed: graph.BookEvent = graph.BookEvent.keyed(graph_order_event.transunix, "XX0000000000")
 graph_book_rebuilt: graph.BookEvent | None = graph_book_with_operations.with_previous(graph_book_keyed)
 graph_book_limits: list[Scalar] = graph_book_with_operations.limits(Side.BUYS)
 graph_book_best_price: Scalar | None = graph_book_with_operations.best_price("BUYS")
@@ -2258,7 +2258,7 @@ graph_data_book_event: graph.BookEvent | None = graph_data.as_book_event()
 graph_data_leaf: MarketLeaf = graph_data.into_leaf()
 graph_data_fix: fix.FixMsg | None = graph_data.as_fix()
 graph_data_of_fix: graph.MarketData = graph.MarketData(fix_message)
-graph_data_curruuid: Scalar = graph_data.curruuid
+graph_data_uuid: Scalar = graph_data.uuid
 graph_data_price: Scalar | None = graph_data.price
 graph_data_with_previous: graph.MarketData | None = graph_data.with_previous(graph_data)
 graph_data_field: Field = graph.MarketData.field()
@@ -2333,12 +2333,12 @@ graph_event_iterator_alive: list[graph.MarketData] = graph_event_iterator.alive(
 graph_entry_id: str = graph.ENTRY_ID
 graph_entry_ref_id: str = graph.ENTRY_REF_ID
 
-assert graph_order_event_skipped == graph.OrderEvent(graph_order_event.currunix, crosscode="G-1")
-assert graph_order_event_curruuid and graph_order_event_crossuuid and graph_order_event_state
-assert graph_order_event_currhashcode and graph_order_event_crosshashcode
+assert graph_order_event_skipped == graph.OrderEvent(graph_order_event.transunix, crosscode="G-1")
+assert graph_order_event_uuid and graph_order_event_crossuuid and graph_order_event_state
+assert graph_order_event_hashcode and graph_order_event_crosshashcode
 assert graph_order_event_srcuuids == [] and graph_order_event_seqnum == 0
 assert graph_order_event_creaunix is None and graph_order_event_prevuuid is None
-assert graph_order_event_execunix is None and graph_order_event_recdunix is None
+assert graph_order_event_execunix is None and graph_order_event_sendunix is None
 assert graph_order_event_exprunix is None and graph_order_event_prevunix is None
 assert graph_order_event_snapunix is None and not graph_order_event_is_execution
 assert graph_order_event_price is not None and graph_order_event_quantity is not None
@@ -2364,7 +2364,7 @@ assert graph_order_event_with_previous is None and graph_order_event_merged is N
 assert graph_order_event_restated == graph_order_event
 assert not graph_order_event_after and not graph_order_event_before
 assert graph_order_event_pickle[0] == graph.OrderEvent._from_pickle
-assert graph_order.at(graph_order_event.currunix) == graph_order_at
+assert graph_order.at(graph_order_event.transunix) == graph_order_at
 assert graph_order_built.crosscode == "G-1" and graph_order_with_previous is None
 assert graph_order_event_crosscode == "10:1:G-1"
 assert graph_quote.kind == "quote" and graph_quote_event_element.kind == "quote"
@@ -2390,7 +2390,7 @@ assert graph_control_book.action == "snapshot" and graph_control_book.scope == "
 assert graph_data_kind == "order_event" and graph_data_kinds[3] == "order_event"
 assert graph_data_is_event and graph_data_book is None
 assert graph_data_order_event == graph_order_event and graph_data_book_event is None
-assert graph_data_leaf == graph_order_event and graph_data_curruuid == graph_order_event_curruuid
+assert graph_data_leaf == graph_order_event and graph_data_uuid == graph_order_event_uuid
 assert graph_data_price == graph_order_event_price and graph_data_with_previous is None
 assert graph_data_field.name == "marketdata"
 assert graph_data_rows_list == [

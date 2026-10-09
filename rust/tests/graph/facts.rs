@@ -32,7 +32,7 @@ fn an_undated_leaf_digests_its_kind_behind_its_holder() {
     let mut quote = Quote::new();
     quote.set_crosscode("ORDER".to_owned());
     quote.finalize();
-    assert_ne!(order.get_currhashcode(), quote.get_currhashcode());
+    assert_ne!(order.get_hashcode(), quote.get_hashcode());
 }
 
 /// What an ISIN implies hangs on it: removing the ISIN takes back the
@@ -297,11 +297,11 @@ mod internal {
         let mut order = Order::new();
         order.set_crosscode("ORDER".to_owned());
         order.finalize();
-        assert_ne!(order.get_currhashcode(), operation.1);
+        assert_ne!(order.get_hashcode(), operation.1);
         let mut event = OrderEvent::at(unix);
         event.set_crosscode("ORDER".to_owned());
         event.finalize();
-        assert_ne!(event.get_currhashcode(), operation_event.1);
+        assert_ne!(event.get_hashcode(), operation_event.1);
     }
 
     /// An undated holder states no order; a dated one is after another by

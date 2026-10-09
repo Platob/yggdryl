@@ -231,14 +231,14 @@ mod text {
         // Not the body alone: the object a line came from, the instant it is
         // dated by, and the bytes a bounded record dropped are columns the
         // clause binds against at their own datatypes. The first two are the
-        // event's own - a buffer's URL under `crosscode`, and `currunix`,
+        // event's own - a buffer's URL under `crosscode`, and `transunix`,
         // which every line answers, an undated buffer's at the epoch.
         let mut options = TextOptions::new();
         options.set_max_record_byte_size(Some(3));
         let source = named("app.log", b"alpha\nbravo\n");
 
         let clause =
-            "crosscode like 'mem://%' and cast(currunix as int64) = 0 and dropped_byte_size = 2";
+            "crosscode like 'mem://%' and cast(transunix as int64) = 0 and dropped_byte_size = 2";
         assert_eq!(
             bodies(&collect(&source, options.with_filter(clause).unwrap())),
             [b"alp".to_vec(), b"bra".to_vec()]

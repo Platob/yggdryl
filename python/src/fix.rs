@@ -1791,7 +1791,7 @@ impl PyFixMsg {
     /// of the FIX fields a message lifts, `Text(58)` - fills the holder that
     /// owns it and leaves the row. The clocks settle: `SendingTime` is the stated one,
     /// else UTC now, so a message meant to compare equal to another states
-    /// one; the instant `currunix` is the stated one, else the official
+    /// one; the instant `transunix` is the stated one, else the official
     /// transaction clock standing within the crate's default one-second
     /// delay of `SendingTime` - a `TransactTime`, else a ranked
     /// `TrdRegTimestamp` - else `SendingTime` itself, and the creation the
@@ -2198,11 +2198,11 @@ impl PyFixMsg {
     }
 
     /// The message's `UUIDv7` identity: its millisecond and sequence lead an
-    /// XXH3 payload over `currhashcode` and the whole sequence, seeded by
+    /// XXH3 payload over `hashcode` and the whole sequence, seeded by
     /// `crosshashcode`.
     #[getter]
-    fn curruuid(&self) -> PyScalar {
-        uuid_scalar(self.inner.get_curruuid())
+    fn uuid(&self) -> PyScalar {
+        uuid_scalar(self.inner.get_uuid())
     }
 
     /// The identity every message of one lifecycle shares: derived from
@@ -2230,8 +2230,8 @@ impl PyFixMsg {
     /// message lifted and its named content - everything but the standard
     /// header and trailer, and never the chain it is in.
     #[getter]
-    fn currhashcode(&self) -> u64 {
-        self.inner.get_currhashcode()
+    fn hashcode(&self) -> u64 {
+        self.inner.get_hashcode()
     }
 
     /// The XXH3-64 of the cross code, zero where the message names none.
@@ -2240,13 +2240,14 @@ impl PyFixMsg {
         self.inner.get_crosshashcode()
     }
 
-    /// When the message happened: nanoseconds since the Unix epoch, UTC -
+    /// When the operation the message states happened - its transaction
+    /// instant: nanoseconds since the Unix epoch, UTC -
     /// the stated instant, else the official transaction clock standing
     /// within the codec's `official_time_delay_ms` of `SendingTime`, else
     /// that `SendingTime`.
     #[getter]
-    fn currunix(&self) -> i64 {
-        self.inner.get_currunix()
+    fn transunix(&self) -> i64 {
+        self.inner.get_transunix()
     }
 
     /// The state the order is in, as the `State` member it is.
@@ -2282,10 +2283,11 @@ impl PyFixMsg {
         self.inner.get_execunix()
     }
 
-    /// When the message was recorded, where stated.
+    /// When the message crossed the wire - its carrier's clock, else its
+    /// stated `SendingTime` - where stated.
     #[getter]
-    fn recdunix(&self) -> Option<i64> {
-        self.inner.get_recdunix()
+    fn sendunix(&self) -> Option<i64> {
+        self.inner.get_sendunix()
     }
 
     /// When the order expires, where it has an expiry.
@@ -2868,7 +2870,7 @@ impl PyFixCodec {
     /// Every pin is the core's, spelled once here.
     /// `default_sending_time` is the `SendingTime` a genuinely new
     /// message takes when it states no valid one and nothing it was read
-    /// with dates it, neither a capture reaching tag 52 nor the `currunix`
+    /// with dates it, neither a capture reaching tag 52 nor the `transunix`
     /// of the line it was read out of - a native `Scalar` crosses as itself
     /// and must already be a nanosecond UTC `datetime64`, a `datetime` is
     /// read once into that clock, and any other layout is the core's
@@ -3142,7 +3144,7 @@ impl PyFixCodec {
 
     /// This codec with its lifecycle stating, or no longer stating, that the
     /// messages it is handed arrive in instant order - a table read hour
-    /// partition by hour partition, sorted by `currunix`. Every other
+    /// partition by hour partition, sorted by `transunix`. Every other
     /// setting, the dictionary included, is this codec's.
     #[pyo3(signature = (sorted))]
     fn with_sorted_lifecycle(&self, sorted: bool) -> Self {
@@ -3283,12 +3285,12 @@ impl PyFixCodec {
     /// capture's name reaches. `capture_names` is what decides which capture
     /// is which, once for the whole run, because a line answers its captures
     /// by position. A `timestamp` capture is context and stamps nothing; the
-    /// line's own clock does. Its `currunix` - an `mtime` capture, else its
-    /// handle's modification time - is the message's `recdunix`, and the
+    /// line's own clock does. Its `transunix` - an `mtime` capture, else its
+    /// handle's modification time - is the message's `sendunix`, and the
     /// sending clock of a message stating none: `SendingTime` is the
     /// message's own, else a `SendingTime` capture, else the line's
-    /// `currunix`, else the codec's `default_sending_time`, else UTC now,
-    /// and the instant `currunix` is read against it - the stated one, else
+    /// `transunix`, else the codec's `default_sending_time`, else UTC now,
+    /// and the instant `transunix` is read against it - the stated one, else
     /// the official clock standing within `official_time_delay_ms` of it,
     /// else it. A clock the parse supplied is never the message's own:
     /// `header().stated_sendingtime` is false, and neither the wire nor the
@@ -3349,8 +3351,8 @@ impl PyFixCodec {
     /// `pyarrow.RecordBatchReader` pulling one batch at a time. The schema is
     /// decided before the first row: the capture's own columns lead and the
     /// fixed FIX columns follow. Every row is parsed as the line door
-    /// parses one - a row's `currunix` cell is its line's clock, so it is
-    /// the messages' `recdunix` and the sending clock of one stating none -
+    /// parses one - a row's `transunix` cell is its line's clock, so it is
+    /// the messages' `sendunix` and the sending clock of one stating none -
     /// and batches close on the bytes each row lands as
     /// against `batch_byte_size`. With more than one `threads`, at most that
     /// many jobs run at once - an input batch, or one of the row ranges, the
@@ -3498,7 +3500,7 @@ impl PyFixCodec {
     /// `codec.lifecycle(messages)` for the walk. `messages` is any iterable
     /// of `FixMsg`, collected when this is called; the operations are then
     /// sorted, stably, by the instant a book folds them at - `snapunix`,
-    /// else `currunix` - so a book message's entry clock standing before an
+    /// else `transunix` - so a book message's entry clock standing before an
     /// earlier message's cannot regress. Nothing a message states is
     /// refused: an entry that cannot stand is left out with a warning to
     /// `logging`; a failure of the iterable itself raises as itself once
@@ -3833,8 +3835,8 @@ fn sending_time_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 /// Columns are spelled by the dictionary's
 /// folded canonical names - `msgtype`, never `35` - so a row reads the way a
 /// message reads; the tag stays each column's identity, on its `FIX:tag`,
-/// and is what fills it. `beginstring`, `currunix`, `creaunix`, `currhashcode`,
-/// `crosshashcode`, `curruuid` and `crossuuid` are the non-null columns,
+/// and is what fills it. `beginstring`, `transunix`, `creaunix`, `hashcode`,
+/// `crosshashcode`, `uuid` and `crossuuid` are the non-null columns,
 /// because every message settles them; a tag the dictionary does not hold
 /// is skipped rather than invented.
 #[pyfunction]
@@ -3887,9 +3889,9 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 
 /// The definitions this crate lists, in tag order from 65001.
 ///
-/// The event's clocks - `currunix`, `creaunix`, `recdunix`,
-/// `prevunix`, `snapunix`, `exprunix` - its identities - `currhashcode`,
-/// `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid`, the `crosscode` they
+/// The event's clocks - `transunix`, `creaunix`, `sendunix`,
+/// `prevunix`, `snapunix`, `exprunix` - its identities - `hashcode`,
+/// `crosshashcode`, `uuid`, `crossuuid`, `prevuuid`, the `crosscode` they
 /// derive from, its `seqnum` - the `state` it reached and the `marketdatakind` it is
 /// filed under - the `srcuuids` of the lines it was read from - what a
 /// bridge's own log states about a line - the `msgpluginid`, the `msgctxid`,

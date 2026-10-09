@@ -520,15 +520,15 @@ fn market_following_allocates_nothing_for_an_inherited_ticker() {
 #[test]
 fn market_event_identity_refresh_and_finalization_allocate_nothing() {
     let mut event = OrderEvent::at(1_700_000_000_000_000_000);
-    event.set_currhashcode(1);
+    event.set_hashcode(1);
     let mut generation = 1_u64;
     free("refreshing and finalizing a market event identity", || {
         generation = generation.wrapping_add(1);
-        event.set_currunix(1_700_000_000_000_000_000 + generation as i64);
+        event.set_transunix(1_700_000_000_000_000_000 + generation as i64);
         event.set_seqnum(generation);
         event.set_crosshashcode(generation);
         event.finalized(generation.rotate_left(17));
-        black_box((event.get_curruuid(), event.get_crossuuid()));
+        black_box((event.get_uuid(), event.get_crossuuid()));
     });
 }
 
@@ -917,9 +917,9 @@ fn the_typed_facts_of_a_message_are_borrowed_at_every_row_width() {
         free("the settled identity", || {
             let held = black_box(&message);
             black_box((
-                held.get_currunix(),
-                held.get_currhashcode(),
-                held.get_curruuid(),
+                held.get_transunix(),
+                held.get_hashcode(),
+                held.get_uuid(),
                 held.get_crosscode(),
             ));
         });
@@ -1124,7 +1124,7 @@ fn a_service_rebuild_allocates_per_delta_not_per_level() {
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
         assert_eq!(books.len(), 3);
-        let origin = BookEvent::new(books[0].get_currunix(), books[0].get_crosscode());
+        let origin = BookEvent::new(books[0].get_transunix(), books[0].get_crosscode());
         let first = books[0].clone().with_previous(&origin).unwrap();
         let previous = books[1].clone().with_previous(&first).unwrap();
         let delta = books[2].clone();
@@ -1163,7 +1163,7 @@ fn a_book_row_lays_out_alike_whether_its_alive_entries_state_sources() {
             .collect::<yggdryl::Result<Vec<_>>>()
             .unwrap();
         assert_eq!(books.len(), 2);
-        let origin = BookEvent::new(books[0].get_currunix(), books[0].get_crosscode());
+        let origin = BookEvent::new(books[0].get_transunix(), books[0].get_crosscode());
         let first = books[0].clone().with_previous(&origin).unwrap();
         let book = books[1].clone().with_previous(&first).unwrap();
         assert_eq!(book.alive().count(), levels * 16);
@@ -7106,7 +7106,7 @@ fn a_line_built_and_read_allocates_nothing_and_its_captures_once() {
     black_box(
         TextLine::from_bytes(0, page.clone(), Arc::clone(&options))
             .expect("a line")
-            .get_currhashcode(),
+            .get_hashcode(),
     );
     let line = TextLine::from_bytes(0, page.clone(), Arc::clone(&options)).expect("a line");
     let (first, count) = counted(|| black_box(line.captures().len()));
@@ -7120,15 +7120,15 @@ fn a_line_built_and_read_allocates_nothing_and_its_captures_once() {
         black_box(line.capture(1));
     });
     // The code is the body's XXH3-64, read off the bytes the line holds.
-    let (code, _) = counted(|| black_box(line.get_currhashcode()));
+    let (code, _) = counted(|| black_box(line.get_hashcode()));
     assert_eq!(code, 0, "the code reads what the line already holds");
     free("the content code asked again", || {
-        black_box(line.get_currhashcode());
+        black_box(line.get_hashcode());
     });
     let bare = TextLine::from_bytes(0, page, Arc::new(TextOptions::new())).expect("a line");
     free("a line under no header, read and digested", || {
         black_box(bare.captures().len());
-        black_box(bare.get_currhashcode());
+        black_box(bare.get_hashcode());
     });
     // The tree is the first ask's cost and nothing on the second: a line
     // read for its body and its place never pays for it.
@@ -7487,14 +7487,14 @@ fn located_lines_render_and_project_one_shared_crosscode() {
         // A line whose source changes owns a new cache and identity; its
         // siblings keep the reader's original shared value.
         let mut changed = held[0].clone();
-        let original_uuid = changed.get_curruuid();
+        let original_uuid = changed.get_uuid();
         let replacement = Arc::new(
             yggdryl::Uri::from_str("file:///replacement/location.log")
                 .expect("a replacement identifier"),
         );
         changed.set_sourceuri(Some(Arc::clone(&replacement)));
         assert_eq!(changed.get_crosscode(), replacement.to_string());
-        assert_ne!(changed.get_curruuid(), original_uuid);
+        assert_ne!(changed.get_uuid(), original_uuid);
         assert_eq!(held[0].get_crosscode(), expected);
         changed.set_sourceuri(None);
         assert_eq!(changed.get_crosscode(), "");
@@ -8816,14 +8816,14 @@ fn a_sorted_lifecycle_walk_over_distinct_chains_holds_what_its_live_set_costs() 
     // Once outside every count, so every process-wide first use is no
     // walk's.
     let mut warm = parse(&rendered_capture(1));
-    warm.sort_by_key(Event::get_currunix);
+    warm.sort_by_key(Event::get_transunix);
     walk(warm);
     let mut figures = Vec::new();
     for copies in [32_u64, 64] {
         let capture = rendered_capture(copies);
         let (input_bytes, mut messages) = retained(|| parse(&capture));
         let input_bytes = usize::try_from(input_bytes).expect("a parse keeps what it built");
-        messages.sort_by_key(Event::get_currunix);
+        messages.sort_by_key(Event::get_transunix);
         let input = messages.len();
         let (peak, yielded) = peaked(|| walk(messages));
         let per_input = peak as f64 / input as f64;

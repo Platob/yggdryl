@@ -457,18 +457,18 @@ pub enum Function {
     ///     unit: TimeUnit::Nanosecond,
     ///     timezone: Timezone::UTC,
     /// };
-    /// let schema = StructType::from_fields([ns.clone().required_field("currunix")])
+    /// let schema = StructType::from_fields([ns.clone().required_field("transunix")])
     ///     .map(DataType::from)?
     ///     .required_field("row");
-    /// let selector: Selector = "time_bucket('15 minutes', currunix) as partunix".parse()?;
-    /// assert_eq!(selector.to_string(), "time_bucket('15 minutes', currunix) as partunix");
+    /// let selector: Selector = "time_bucket('15 minutes', transunix) as partunix".parse()?;
+    /// assert_eq!(selector.to_string(), "time_bucket('15 minutes', transunix) as partunix");
     /// assert_eq!(selector.apply_field(&schema)?.fields()[0].dtype(), &ns);
     /// // 00:14:59.999999999 floors to midnight.
     /// let at = |count| Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC);
     /// let row = Scalar::from_sequence([at(899_999_999_999)?]);
     /// let floored = selector.apply_scalar(&schema, &row)?;
     /// assert_eq!(floored.as_sequence().unwrap()[0], at(0)?);
-    /// assert!("time_bucket('15m', currunix)".parse::<Selector>()?.apply_field(&schema).is_err());
+    /// assert!("time_bucket('15m', transunix)".parse::<Selector>()?.apply_field(&schema).is_err());
     /// # Ok(())
     /// # }
     /// ```

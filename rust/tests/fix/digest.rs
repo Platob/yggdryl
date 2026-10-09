@@ -34,8 +34,8 @@ fn sibling_order_changes_the_wire_digest_and_structural_hash_but_not_event_ident
     assert_ne!(ordered.digest(), reordered.digest());
     assert_ne!(ordered.stable_hash(), reordered.stable_hash());
     assert_eq!(
-        yggdryl::graph::Element::get_currhashcode(&ordered),
-        yggdryl::graph::Element::get_currhashcode(&reordered)
+        yggdryl::graph::Element::get_hashcode(&ordered),
+        yggdryl::graph::Element::get_hashcode(&reordered)
     );
     // And a lifted fact is held, so where the line put it changes nothing.
     let moved = reader
@@ -58,8 +58,8 @@ fn repeated_scalar_order_remains_part_of_the_event_identity() {
         .unwrap();
 
     assert_ne!(
-        yggdryl::graph::Element::get_currhashcode(&ordered),
-        yggdryl::graph::Element::get_currhashcode(&reversed)
+        yggdryl::graph::Element::get_hashcode(&ordered),
+        yggdryl::graph::Element::get_hashcode(&reversed)
     );
 }
 
@@ -145,16 +145,16 @@ fn every_header_extra_is_excluded_from_the_canonical_message_hash() {
     // message hash must do the same for deduplication and lifecycle identity.
     assert_eq!(original.digest(), replay.digest());
     assert_eq!(
-        yggdryl::graph::Element::get_currhashcode(&original),
-        yggdryl::graph::Element::get_currhashcode(&replay)
+        yggdryl::graph::Element::get_hashcode(&original),
+        yggdryl::graph::Element::get_hashcode(&replay)
     );
 
     let changed = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A|55=MSFT|10=0|")
         .unwrap();
     assert_ne!(
-        yggdryl::graph::Element::get_currhashcode(&original),
-        yggdryl::graph::Element::get_currhashcode(&changed)
+        yggdryl::graph::Element::get_hashcode(&original),
+        yggdryl::graph::Element::get_hashcode(&changed)
     );
 }
 
@@ -286,15 +286,15 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     assert_eq!(
         names,
         [
-            "curruuid",
+            "uuid",
             "crossuuid",
             "crosscode",
-            "currhashcode",
+            "hashcode",
             "crosshashcode",
             "srcuuids",
-            "currunix",
+            "transunix",
             "creaunix",
-            "recdunix",
+            "sendunix",
             "exprunix",
             "prevunix",
             "snapunix",
@@ -344,15 +344,15 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     assert_eq!(
         displays,
         [
-            Some("Current UUID"),
+            Some("UUID"),
             Some("Cross UUID"),
             Some("Cross Code"),
-            Some("Current Hash Code"),
+            Some("Hash Code"),
             Some("Cross Hash Code"),
             Some("Source UUIDs"),
-            Some("Current Time"),
+            Some("Transaction Time"),
             Some("Creation Time"),
-            Some("Recording Time"),
+            Some("Sending Time"),
             Some("Expiry Time"),
             Some("Previous Time"),
             Some("Snapshot Time"),
@@ -411,14 +411,14 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         unit: yggdryl::TimeUnit::Nanosecond,
         timezone: yggdryl::Timezone::UTC,
     };
-    for name in ["currhashcode", "crosshashcode", "seqnum"] {
+    for name in ["hashcode", "crosshashcode", "seqnum"] {
         assert_eq!(typed(name), &DataType::UInt64, "{name}");
     }
-    for name in ["curruuid", "crossuuid", "prevuuid"] {
+    for name in ["uuid", "crossuuid", "prevuuid"] {
         assert_eq!(typed(name), &DataType::uuid(), "{name}");
         assert_eq!(FixField::new(field(name)).names().count(), 0, "{name}");
     }
-    for name in ["execunix", "recdunix"] {
+    for name in ["execunix", "sendunix"] {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(field(name).is_nullable(), "{name}");
     }
@@ -441,7 +441,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         &DataType::serie(DataType::uuid().required_field("srcuuid"))
     );
     assert!(field("srcuuids").is_nullable());
-    for name in ["currunix", "creaunix"] {
+    for name in ["transunix", "creaunix"] {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(!field(name).is_nullable(), "{name}");
     }
@@ -459,10 +459,10 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     // The cross code is stated with them: the empty text where the message
     // names none, never a null.
     for name in [
-        "currhashcode",
+        "hashcode",
         "crosshashcode",
         "crosscode",
-        "curruuid",
+        "uuid",
         "crossuuid",
     ] {
         assert!(!field(name).is_nullable(), "{name}");
@@ -484,7 +484,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     );
     assert_eq!(FixField::new(field(name)).counter().unwrap(), Some(tag));
     // No partition column: how a layout is cut is the target's - an Iceberg
-    // table takes an `hour` transform over `currunix` - and a materialized copy
+    // table takes an `hour` transform over `transunix` - and a materialized copy
     // of that instant was a second owner of it.
     assert!(held.iter().all(|field| !field.is_partition()));
     assert!(held.iter().all(|field| field.name() != "timepartition"));
@@ -534,11 +534,8 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         [(65_044, "msgoriginator"), (65_048, "conversationid")]
     );
     assert_eq!(
-        [
-            yggdryl::CURRHASHCODE_TAG_NAME,
-            yggdryl::CROSSHASHCODE_TAG_NAME
-        ],
-        [(65_004, "currhashcode"), (65_005, "crosshashcode")]
+        [yggdryl::HASHCODE_TAG_NAME, yggdryl::CROSSHASHCODE_TAG_NAME],
+        [(65_004, "hashcode"), (65_005, "crosshashcode")]
     );
     assert_eq!(
         [yggdryl::PREVUNIX_TAG_NAME, yggdryl::PREVUUID_TAG_NAME],
@@ -709,8 +706,8 @@ fn the_object_a_line_was_read_from_is_not_part_of_the_message() {
     let at = schema
         .index_of(yggdryl::SOURCEURL_TAG_NAME.1)
         .expect("a carried sourceurl column");
-    let hashcode_at = yggdryl::fix_column_of(&schema, yggdryl::CURRHASHCODE_TAG_NAME.0)
-        .expect("a hashcode column");
+    let hashcode_at =
+        yggdryl::fix_column_of(&schema, yggdryl::HASHCODE_TAG_NAME.0).expect("a hashcode column");
     let mut identities = Vec::new();
     for url in [
         "file:///capture/2026-08-14/part-0.txt.gz",
@@ -735,7 +732,7 @@ fn the_object_a_line_was_read_from_is_not_part_of_the_message() {
             yggdryl::FixMsg::from_row(std::sync::Arc::clone(&registry), &schema, &carried).unwrap();
         assert_eq!(
             held[hashcode_at].as_u64(),
-            Some(yggdryl::graph::Element::get_currhashcode(&again)),
+            Some(yggdryl::graph::Element::get_hashcode(&again)),
             "the row read back is the message that wrote it",
         );
         identities.push(held[hashcode_at].clone());
@@ -777,7 +774,7 @@ fn the_line_a_message_was_read_from_is_its_one_source() {
 
     let first = line(0, 1_704_190_530_000_000_000);
     let message = read(&first);
-    assert_eq!(message.get_srcuuids(), [first.get_curruuid()]);
+    assert_eq!(message.get_srcuuids(), [first.get_uuid()]);
     // Provenance, not content: the bytes alone are the same message, with
     // no source, and every code the two derive is the same code.
     let raw = reader.sole_line(body).unwrap();
@@ -785,20 +782,20 @@ fn the_line_a_message_was_read_from_is_its_one_source() {
         raw.get_srcuuids().is_empty(),
         "raw bytes were read from no element"
     );
-    assert_eq!(message.get_currhashcode(), raw.get_currhashcode());
-    assert_eq!(message.get_curruuid(), raw.get_curruuid());
+    assert_eq!(message.get_hashcode(), raw.get_hashcode());
+    assert_eq!(message.get_uuid(), raw.get_uuid());
     assert_eq!(message.get_crosshashcode(), raw.get_crosshashcode());
     assert_eq!(message.digest(), raw.digest());
     // The same line read again states the same source; the same bytes read
     // as another line - another instant - state that line.
     assert_eq!(read(&first).get_srcuuids(), message.get_srcuuids());
     let later = line(1, 1_704_190_531_000_000_000);
-    assert_ne!(later.get_curruuid(), first.get_curruuid());
-    assert_eq!(read(&later).get_srcuuids(), [later.get_curruuid()]);
+    assert_ne!(later.get_uuid(), first.get_uuid());
+    assert_eq!(read(&later).get_srcuuids(), [later.get_uuid()]);
     // A line dated before the epoch has an instant no UUIDv7 holds: its
     // identity is nil, and nil names no element, so the message states none.
     let undated = line(2, -1);
-    assert!(undated.get_curruuid().is_nil());
+    assert!(undated.get_uuid().is_nil());
     assert!(
         read(&undated).get_srcuuids().is_empty(),
         "nil names no element"
@@ -828,10 +825,10 @@ fn the_line_a_message_was_read_from_is_its_one_source() {
             other => panic!("a uuid, got {other:?}"),
         })
         .collect();
-    assert_eq!(sources, [first.get_curruuid()]);
+    assert_eq!(sources, [first.get_uuid()]);
     let again = yggdryl::FixMsg::from_row(std::sync::Arc::clone(&registry), &schema, &row).unwrap();
     assert_eq!(again.get_srcuuids(), message.get_srcuuids());
-    assert_eq!(again.get_curruuid(), message.get_curruuid());
+    assert_eq!(again.get_uuid(), message.get_uuid());
     let none = raw.into_row(&schema).unwrap();
     assert!(none.as_sequence().expect("a row")[at].is_null());
 }
