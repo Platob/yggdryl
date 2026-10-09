@@ -1,0 +1,28 @@
+Make MarketMessage the one message and FixMsg the codec's handle over it
+
+`MarketMessage` is the market side's own message (D37): a concrete struct in
+`graph/message.rs` holding every element, event, market and operation fact
+typed in one boxed holder, the facts its source stated, the entries a
+protocol stated beyond them as the one row shape under the dictionary's
+shared root, its children - a book message's levels, each a message -
+its metadata, its anomalies and what it states of its instrument; the four
+traits are implemented once on it, so the walk, the merge, the digest, the
+writer and the book read a held message with no downcast and no `dyn`.
+`MarketData::Message` holds it inline and `MarketKind::Message` names it;
+the S3 trait, `Box<dyn MarketMessage>` and `as_message::<T>()` are gone.
+
+The FIX codec converts both ways through its registry: `FixMsg` is the
+handle over a message - `into_message` moves it out, `from_message` re-roots
+one onto this dictionary - the fixed row interleaves the fact columns and
+the entries by a per-registry index so its definition, order, dump and hash
+are unmoved, a tag the idmap maps onto a fact is never an entry, and a
+message no FIX parse built renders under the standard tags the idmap names
+for its facts, else their crate tags, so `parse(render(m))` restates `m`.
+`FixAnomaly` is `Anomaly` in `graph/`, `FixLifted` is the record.
+
+The dictionary hash, the census, the crate dump, the equivalence snapshot,
+the 912-byte `MarketData` pin and every cost row are unmoved; Python gains
+`MarketMessage` and `as_message`; Node's `asFix` is re-spelled `asMessage`.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Gfky7FUx35U5i4UJcrQGKp

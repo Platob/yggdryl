@@ -264,3 +264,10 @@ rows decided or changed this session:
    clock first, say so: it is one precedence line (`fix/build.rs`'s carrier
    fill and `fix/msg.rs`'s `record_at_sending`) and its tests, and the
    snapshot's `sendunix` values would move with it.
+
+## State at the handoff (2026-10-09, end of the session)
+P4 (4e46b5ab7) is pushed and its CI run is unread; P6 (the book service deletion, the user's
+instruction) and S4 (`yggdryl-market`, `yggdryl-fix`) are defined and not landed; P5 is parked as
+`.handoff/split/scratch/p5_on_p4.patch`. `.handoff/next/MARKET_SPLIT_CONTINUE.md` is the prompt
+the next session starts from; `.handoff/split/scratch/` the former scratchpad it runs the lanes
+from.

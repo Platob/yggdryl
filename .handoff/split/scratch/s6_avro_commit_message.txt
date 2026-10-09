@@ -1,0 +1,23 @@
+Move the Avro medium into yggdryl-avro
+
+Avro is the crate `yggdryl-avro` at `rust/avro/`: the schemas, datums,
+object containers, schema resolution, single-object framing and the
+record medium, with its tests, the Avro rows of the shared record
+benchmarks and the fastavro exchange beside it. `install()` claims
+`AVRO_CODEC` on the core's register once per process at rank 2, which
+`media::RESERVED_RANKS` keeps for it, so every options value hashes and
+orders as it did; the bindings' init and the CLI's `main` call it. The
+crate's hidden `implementer` carries the container, cursor and datum
+codec Iceberg's manifests read.
+
+The core no longer holds `avro`, its seed claim or `snap`. `claim`
+admits a reserved rank under its own name alone. `yggdryl::implementer`
+gains the record doors, dimensions, schema, cache clock, cast and value
+helpers a media crate reaches, and `PlanCache` moves into it. The core
+tests that build Avro objects move byte-identical to the crate's tests
+at their mirrored paths, the s2 pins among them. The `avro` leaf is
+listed in the CI table, and the docs, skills, AGENTS.md and the API
+inventory name `yggdryl_avro`.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Gfky7FUx35U5i4UJcrQGKp

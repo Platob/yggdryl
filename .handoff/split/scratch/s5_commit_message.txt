@@ -1,0 +1,46 @@
+Ship yggdryl-market for Python and npm and teach the release every crate
+
+The market and FIX doors leave the core's two binding packages for a package
+of their own on each runtime, `yggdryl-market`, over the one native module the
+core already ships (D11 option d): nothing native is built twice, and the
+market package is a pure language layer that pins the core exactly.
+
+Python: `python/market/` is the `yggdryl-market` distribution, built by
+flit_core and holding `yggdryl/market/` alone - `fix`, `graph`, `side`,
+`timeinforce`, `marketdatakind`, `marketdatatype`, `identifier`,
+`isin_registry`, `eusipa`, and `enums` for the five market listings - with
+`yggdryl==<version>` its one dependency. The core's `yggdryl/__init__.py`
+extends its `__path__` with `pkgutil.extend_path`, so `yggdryl.market` is a
+portion of the core's namespace wherever either is installed. `State`'s two
+FIX readings become `yggdryl.market.fix.state_from_status` and
+`state_from_msgtype`. The market suite moves to `python/market/tests/` with its
+own `conftest.py` and the capture pipeline it reads; `mypy --strict` declares
+both folders as package bases in the one configuration.
+
+Node: `node/market/` is the `yggdryl-market` package, its peer the exact core
+version. The core's loader hands the addon's market natives over through the
+`yggdryl/implementer` subpath and keeps none of their doors;
+`node/scripts/market-natives.js` classifies them from the Rust binding sources
+and writes the hand-over list, the market's `index.js` and `index.d.ts`, and
+the build and the package audit run it. `book.js` and the market tests and
+benchmarks move with the doors; the core suite stops naming the market, the
+two FIX-driven logging tests moving to the market's suite.
+
+CI: rows `python-market` and `node-market` run the two suites, the wheel
+smoke's market half and the market package audit; every suite that reads the
+market installs it beside the core; the `[leaves]` lines of `yggdryl-market`
+and `yggdryl-fix` name the two jobs.
+
+Release: `scripts/release_packages.py` is the one list of what a version
+publishes - every crate in dependency order, the two PyPI and npm names - and
+the version every manifest must agree on. Preflight reads every name on every
+registry and refuses a version some carry and others lack; every crate is
+dry-run and published in order; the market wheel, sdist and npm package are
+built once, smoke-tested on every platform beside the core's and published
+after it. `yggdryl-cli` is `publish = false`.
+
+AGENTS.md sections 2, 3, 4 and 6 say the same; `.api-bindings.txt` re-homes
+the market entries under their own sections.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Gfky7FUx35U5i4UJcrQGKp

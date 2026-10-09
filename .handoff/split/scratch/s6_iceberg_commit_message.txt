@@ -1,0 +1,15 @@
+Move the Iceberg table format into yggdryl-iceberg
+
+`yggdryl-iceberg` at `rust/iceberg/` holds the Iceberg tables - metadata,
+manifests, scans, commits, the `hadoop` catalog - and, under its `s3tables`
+feature, Amazon S3 Tables, linking `yggdryl-avro`, `yggdryl-parquet` and
+`yggdryl-s3`. `install()` claims `ICEBERG_FORMAT`, `HADOOP_FACTORY` and the
+table bucket's factory and locator on the core's registers, once; the
+bindings' init and the `yggdryl` command call it. `IcebergField` is minted in
+the crate over `Scheme::ICEBERG`, and the core keeps the type vocabulary
+(`yggdryl::iceberg::PrimitiveType`), loses its `iceberg` and `s3tables`
+features and its seeds, and reaches the crate's needs through
+`yggdryl::implementer`.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Gfky7FUx35U5i4UJcrQGKp

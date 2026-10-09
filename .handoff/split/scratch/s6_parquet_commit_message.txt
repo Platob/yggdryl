@@ -1,0 +1,27 @@
+Move the Parquet medium into yggdryl-parquet
+
+Parquet is the crate `yggdryl-parquet` at `rust/parquet/`: the reader
+and writer, the footer cache `ParquetFooter`, the footer statistics
+doors, geospatial and metadata, with its tests, the Parquet rows of the
+shared record and holder benchmarks, and the PyIceberg and Spark
+exchanges as its CI leaf. `install()` claims `PARQUET_CODEC` on the
+core's register once per process at rank 1, which
+`media::RESERVED_RANKS` keeps for it, so every options value hashes and
+orders as it did. The bindings' init calls it, and so does the CLI's
+`main` under its `parquet` feature, which `iceberg` implies. The crate's
+hidden `implementer` carries the footer, reader, encoder, statistics and
+read-ahead bound Iceberg reaches.
+
+The core no longer holds `parquet` or its seed claim. Its `parquet`
+feature remains only because `iceberg` implies it for footer metadata.
+`claim` admits a reserved rank under its own name alone.
+`yggdryl::implementer` gains the projection, landing and extension-name
+items the crate reaches beside the shared media section, and `PlanCache`
+moves into it. The core tests that build Parquet objects move
+byte-identical to the crate's tests at their mirrored paths, the s2 pins
+among them. Generated internals nest inside a crate root's own
+`internals`. The docs, skills, AGENTS.md and the API inventory name
+`yggdryl_parquet`.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Gfky7FUx35U5i4UJcrQGKp
