@@ -1681,6 +1681,105 @@ under the scratchpad's `logs/chain_s2*.log` report them.
 | local-only checks (charset tables, charset interop, ISIN seed, country and MIC tables) | not run: nothing the slice touches makes them stale |
 | disk | the whole run of one lane holds about 11 GB of test binaries under the session's allowance; the chain cleans the workspace's own artifacts between lanes and before the bindings, after a first chain died on a full disk |
 
+## S3: design
+
+The remaining seams in place, decided against the four maps under the
+scratchpad's `s3_map/` (`market_fix_reach.md`, `media_reach.md`,
+`d5_d9_d10_sites.md`, `pins_docs.md`) and their synthesis
+(`design_inputs.md`), read at `2d800d51b`. The core reaches 115
+crate-private items for the market and FIX crates (91 by path, 21 by method
+call, 3 only inside macro expansions); the D9 cycle is one type, `FixMsg`,
+named by `graph/market_data.rs` alone; of the 116 core items the media
+folders reach, S3 forwards the 17 that market or FIX code also reaches and
+S6 cuts the other 99. S3 needs no answer from the user.
+
+- **D5, refined.** Under D25 the eighteen code blocks stay; the four
+  `impl DataType` blocks in scope are `side.rs:293`, `timeinforce.rs:141`,
+  `marketdatakind.rs:279`, `marketdatatype.rs:547`. The spelling is an
+  inherent `pub const fn dtype() -> DataType` and a nullable `pub fn
+  field(name) -> Field` in `enum_leaf!`'s market arm (`enums.rs:307-315`),
+  one edit for the four kinds, legal in the invoking crate after S4, and
+  the inherent item is what keeps `Side::dtype()` unambiguous where `Value`
+  and `MarketValue` are both in scope. The four blocks go; `DataType::side()`
+  and its three siblings are deleted and every site re-spelled (252 lines:
+  tests 132, docs 80, skills 7, src 17, python 6, node 4, benches 3, cli 1,
+  inventory 5, AGENTS 1); `MarketValue::dtype()` has no caller and is
+  deleted. The `DataType` values are identical, so the crate dump and the
+  dictionary hash hold.
+- **D9, refined.** The trait is `MarketMessage`, in `graph/market_data.rs`:
+  supertraits `Event + Operation + Debug + Send + Sync + 'static`, the
+  by-value forms of the walk and merge arms as `self: Box<Self>`
+  (`into_market_data`, `into_market_leaf`, the following and merging arms),
+  `stable_hash`, and the object-safe twins `clone_box`, `dyn_eq`, `as_any`,
+  `into_any` (the `MediumOptions` precedent); `MarketData::Fix` holds
+  `Box<dyn MarketMessage>` and `MarketKind::Fix` stays (D10's vocabulary);
+  `MarketData::as_fix` becomes `downcast_ref::<T>()`, the bindings keeping
+  `as_fix` through it; the `From`/`TryFrom` impls move into `fix/`.
+  `MarketData` stays 912 bytes and the `allocations` rows at `:922`,
+  `:937`, `:1695` hold. The protocol-view builder is the existing
+  `protocol_field_types!` exported `#[macro_export] #[doc(hidden)]` with
+  `($vis, $scheme, $View, $ViewMut, $label)`, its one private field read
+  replaced by a public `ProtocolFieldMut::as_field`; the core's 23 views
+  pass `pub(crate)`, `fix/field.rs` passes `pub` and holds `FixField`/
+  `FixFieldMut`; the FIX entry of `for_each_well_known_protocol!`
+  (`metadata.rs:156-163`) goes and with it `Field::as_fix`/`as_fix_mut` and
+  `Metadata::as_fix`; every caller spells `FixField::new(&field)` (a
+  1,684-line script). Pins: the dictionary hash
+  `14_542_711_836_201_211_247`, the census, the five-document crate dump,
+  `market_register.rs`, `root/market.rs`, the S0 hashes, all unmoved.
+- **D10, refined.** Stays core, with the reason: `Scheme::FIX`
+  (`metadata.rs:409-431` reads a known scheme's property allocation-free;
+  a custom scheme would allocate per read and break `allocations.rs:789`);
+  the `MimeType` FIX words; the code names and listings (D25); `STATE_CODES`
+  (`State::from_spelling` reads it) with one forwarder; the FIX temporal
+  readers, `pub(crate)` behind forwarders (one flag-selected `clock_at` body
+  over private helpers, not an API); `parallel.rs`, reached through D6.
+  Moves into `fix/`: State's FIX doors as free functions in `fix/state.rs` -
+  `from_status`, `from_msgtype`, `STATUS_TAGS` and the seven tables
+  (`state.rs:319-504`) - their callers `fix/msg.rs:180, :2388-2394`,
+  `native_derivations.rs:297` and the Python natives (`python/src/state.rs:
+  47-56`, Python's surface unchanged until S5; Node has none) redirected,
+  the tests to `rust/tests/fix/state.rs`; the FIX view (D9); the 32
+  FIX-Latest logical names as a fix-owned table the core seed claims until
+  S4 (the listing pin holds, `logical_names()` sorts). Logging: a logger is
+  named by its module path under `yggdryl` whatever crate holds the module,
+  through a per-crate table at `logging/facade.rs` `is_foreign`/`logger_for`
+  (`yggdryl_market` -> `yggdryl`, `yggdryl_<folder>` -> `yggdryl.<folder>`,
+  so `yggdryl_fix::build` logs as `yggdryl.fix.build`), `yggdryl_cli` foreign
+  as `tests/logging/facade.rs:84-90` pins, the table pinned with synthetic
+  targets. Nothing of the market crate moves in S3.
+- **D6, refined.** One root file, `implementer.rs`, `pub mod` at the crate
+  root, in sections - both crates, market, fix, the 17 media-shared - each
+  item by its route: R, raised to `pub` inside a crate-private module and
+  `pub use`d (38); F, an `#[inline]` forwarder for an item of a published
+  module (40); A, a free forwarder over a `pub(crate)` inherent item (25);
+  M, the definition moved into `implementer.rs` (`InstantSequence`,
+  `Staged`, 6); X, `#[macro_export] #[doc(hidden)]` with expansions spelled
+  `$crate::implementer::..` (`warned!` with `warning::warn`, `enum_leaf!`
+  with `enums::Patterns`, 6). Eleven `pub(super)` functions of
+  `graph/element.rs` are raised to `pub(crate)` first;
+  `Field::new_with_metadata` (`field.rs:976`) joins the list. Every new pub
+  item carries its doc line (`missing_docs` under `-D warnings`);
+  `Proof::Proven` never crosses. The list is proven without S4's crates:
+  every leaving-file site re-pointed to `crate::implementer::X` by one
+  exact-string script, `cargo check --workspace --all-targets
+  --all-features --keep-going` clean, and `scratchpad/work/refs.py` re-run
+  answering zero non-pub cross-crate paths; S4's `cargo check -p` finds the
+  method-reached residue. The 31 market-owned items FIX reaches (15 paths,
+  16 methods) cannot be published inside `pub mod graph` and wait for
+  `yggdryl_market::implementer` in S4, which is therefore not moves-only for
+  them. Refused: a raise plus `#[doc(hidden)] pub use` inside a published
+  module (the AGENTS rule); a per-file `implementer` module gathered by a
+  generator (about forty files and a generator for thirteen raises saved).
+- **Order inside the one commit:** D5 (the macro arm, then the rename),
+  D10, the D9 trait, the D9 view (the builder, then the `as_fix` script),
+  D6 (forwarders, raises, moves, the re-point script, the static proof),
+  the bindings, the docs; each phase settled by `cargo check --workspace
+  --all-targets --keep-going --message-format=short` and its suite, the
+  whole run leading the chain. The stale sentences of D4, D5, D6 and D10
+  above are corrected by this slice's docs phase against these counts
+  (`design_inputs.md` B5).
+
 ## The ledger
 
 | D# | decision | evidence | slice |
