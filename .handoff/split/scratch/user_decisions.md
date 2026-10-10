@@ -273,3 +273,11 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
     instcode; FixMsg's content digest gated by a `digested` bit (decision 39 reaches it); the
     CrossUuid description rewritten inside P7's regeneration; "the optimized set unix" read as the
     projecting setters extended to set_creaunix, finalize still deriving both identities.
+41. The user's go for the release (2026-10-10): "once all landed commit to main and monitor main
+    realease github action". Read: when every queued lane has landed on the PR branch (P13, P12,
+    P10a, P10b, P14, P15, P5R, P16 with P7) and CI reads green at its head, PR #209 is marked
+    ready and merged into `main`, which runs `.github/workflows/release.yml` and publishes 0.1.22;
+    that run is watched to its end and a failure is fixed at its cause. This lifts the program's
+    "never push to main / never merge" rule for this one merge. The live AWS run
+    (`.handoff/next/LIVE_AWS_TEST_PROMPT.md`) is the user's and is not done by this session;
+    `CARGO_REGISTRY_TOKEN` must allow publishing the new crates `yggdryl-market` and `yggdryl-fix`.

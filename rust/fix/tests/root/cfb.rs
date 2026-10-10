@@ -1045,48 +1045,512 @@ fn the_structural_exceptions_are_a_statement_or_a_named_drop() {
 #[test]
 fn a_message_the_catalog_will_not_hold_is_named_at_its_grammar_binding() {
     crate::install::installed();
-    // A NumInGroup counter stated beside the group it counts - the nested
-    // grammar opens with 555 and the message states 555 again beside it - is
-    // a grammar contradicting itself, since a group is its list and its
-    // length the count. The message is dropped, every field it declared is
-    // kept and every other message still binds, and the warning names the
+    // A binding whose `type` is empty names no wire type the catalog can
+    // file a message under: the message is dropped, every field it declared
+    // is kept and every other message still binds, and the warning names the
     // binding that declared it by its line and column, as every other
     // warning names what it read, rather than the start of the file.
     let body = r#"<?xml version="1.0"?>
 <cplugin-configuration fix-version="4.4">
 	<vocabulary>
 		<vocabulary-tag name="55" alt="Symbol" type="string" />
-		<vocabulary-tag name="555" alt="NoLegs" type="integer" />
-		<vocabulary-tag name="556" alt="LegCurrency" type="string" />
 	</vocabulary>
 	<grammar-binding type="8"><grammar><tag-constraint name="55" /></grammar></grammar-binding>
-	<grammar-binding type="D">
-		<grammar>
-			<tag-constraint name="55" />
-			<tag-constraint name="555" />
-			<grammar><tag-constraint name="555" /><tag-constraint name="556" /></grammar>
-		</grammar>
+	<grammar-binding type="">
+		<grammar><tag-constraint name="55" /></grammar>
 	</grammar-binding>
 </cplugin-configuration>"#;
-    let binding = r#"<grammar-binding type="D">"#;
-    let at = body.find(binding).expect("the binding") + binding.len();
     let (read, warnings) =
         super::warned::during(|| FixRegistry::from_cfb_file(&handle(body), None));
     let (registry, roots) = read.expect("a readable CBlock");
     assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_located(body, &warnings[0]);
     for held in [
-        format!("at byte {at}: line 9, column 28: message \"D\""),
-        "expected no NumInGroup counter beside the group it counts, whose length is its count, got nolegs (555)".to_owned(),
-        "; the message is dropped and every field it declared kept".to_owned(),
+        "message \"\"",
+        "FIX:msgtype",
+        "; the message is dropped and every field it declared kept",
     ] {
         assert!(
-            warnings[0].contains(&held),
+            warnings[0].contains(held),
             "{held} missing from {warnings:?}"
         );
     }
     assert_eq!(roots.len(), 1, "message 8 still binds");
+    assert!(registry.field_by_tag(55).is_ok(), "tag 55 is kept");
+}
+
+/// One CBlock over the leg, party and symbol tags binding each
+/// `(type, grammar)` pair, the grammar's own body spelled as the file would.
+fn counted(bindings: &[(&str, &str)]) -> String {
+    let mut body = String::from(
+        r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="35" alt="MsgType" type="string" />
+		<vocabulary-tag name="55" alt="Symbol" type="string" />
+		<vocabulary-tag name="555" alt="NoLegs" type="integer" />
+		<vocabulary-tag name="556" alt="LegCurrency" type="string" />
+		<vocabulary-tag name="604" alt="NoLegSecurityAltID" type="integer" />
+		<vocabulary-tag name="605" alt="LegSecurityAltID" type="string" />
+		<vocabulary-tag name="453" alt="NoPartyIDs" type="integer" />
+		<vocabulary-tag name="448" alt="PartyID" type="string" />
+	</vocabulary>
+"#,
+    );
+    for (msgtype, grammar) in bindings {
+        body.push_str(&format!(
+            "\t<grammar-binding type=\"{msgtype}\"><grammar>{grammar}</grammar></grammar-binding>\n"
+        ));
+    }
+    body.push_str("</cplugin-configuration>");
+    body
+}
+
+/// The wire tags the scalar members of the message the dictionary files
+/// under `msgtype` read, in member order.
+fn member_tags(registry: &FixRegistry, msgtype: &str) -> Vec<i32> {
+    registry
+        .msgtype(msgtype)
+        .unwrap()
+        .as_field()
+        .fields()
+        .iter()
+        .filter(|member| !member.dtype().is_nested())
+        .filter_map(|member| FixField::new(member).tag().unwrap())
+        .collect()
+}
+
+/// The member `name` of one reader root.
+fn member<'a>(root: &'a Field, name: &str) -> &'a Field {
+    root.dtype()
+        .as_fields()
+        .expect("a struct root")
+        .iter()
+        .find(|held| held.name() == name)
+        .unwrap_or_else(|| panic!("{name} in {:?}", children(root)))
+}
+
+/// The members of the entry one group repeats, by name.
+fn entry(group: &Field) -> Vec<&str> {
+    let DataType::Serie(item) = group.dtype() else {
+        panic!("a serie, got {}", group.dtype());
+    };
+    item.dtype()
+        .as_fields()
+        .expect("an item struct")
+        .iter()
+        .map(yggdryl::Field::name)
+        .collect()
+}
+
+/// Reads `body`, asserting that nothing it states is warned of.
+fn read_quietly(body: &str) -> (FixRegistry, Vec<Field>) {
+    let (read, warnings) =
+        super::warned::during(|| FixRegistry::from_cfb_file(&handle(body), Some(DIALECT)));
+    assert!(warnings.is_empty(), "{warnings:?}");
+    read.expect("a readable CBlock")
+}
+
+const LEGS: &str =
+    r#"<grammar><tag-constraint name="555" /><tag-constraint name="556" /></grammar>"#;
+
+#[test]
+fn a_counter_stated_before_the_group_it_counts_is_left_out_silently() {
+    crate::install::installed();
+    // A group is its list and its length the count, so a NumInGroup counter
+    // a grammar states beside the nested grammar it opens says what the
+    // list already says: the member is left out, with no warning and
+    // nothing counted as dropped, and the message, the group and every
+    // other member stand.
+    let body = counted(&[
+        ("8", r#"<tag-constraint name="55" />"#),
+        (
+            "D",
+            &format!(r#"<tag-constraint name="55" /><tag-constraint name="555" />{LEGS}"#),
+        ),
+    ]);
+    let (registry, roots) = read_quietly(&body);
+    assert_eq!(roots.len(), 2);
+    assert_eq!(children(&roots[1]), ["symbol", "legs"]);
+    let legs = member(&roots[1], "legs");
+    assert_eq!(FixField::new(legs).counter().unwrap(), Some(555));
+    assert_eq!(entry(legs), ["legcurrency"]);
+    assert_eq!(
+        registry.field_by_tag(555).unwrap().dtype(),
+        &DataType::Int32
+    );
     for tag in [55, 555, 556] {
         assert!(registry.field_by_tag(tag).is_ok(), "tag {tag} is kept");
+    }
+    assert_eq!(member_tags(&registry, "D"), [55]);
+}
+
+#[test]
+fn a_counter_stated_after_the_group_it_counts_or_twice_is_left_out_silently() {
+    crate::install::installed();
+    // The tag decides, never the name: a second statement is renamed
+    // `nolegs2` as it is pushed, and it is the same counter.
+    for grammar in [
+        format!(r#"<tag-constraint name="55" />{LEGS}<tag-constraint name="555" />"#),
+        format!(
+            r#"<tag-constraint name="555" /><tag-constraint name="55" />{LEGS}<tag-constraint name="555" />"#
+        ),
+    ] {
+        let (registry, roots) = read_quietly(&counted(&[("D", &grammar)]));
+        assert_eq!(children(&roots[0]), ["symbol", "legs"], "{grammar}");
+        assert_eq!(entry(member(&roots[0], "legs")), ["legcurrency"]);
+        assert_eq!(member_tags(&registry, "D"), [55], "{grammar}");
+    }
+}
+
+#[test]
+fn a_counter_inside_an_entry_beside_the_nested_group_it_counts_is_left_out() {
+    crate::install::installed();
+    let grammar = r#"<grammar><tag-constraint name="555" /><tag-constraint name="556" /><tag-constraint name="604" /><grammar><tag-constraint name="604" /><tag-constraint name="605" /></grammar></grammar>"#;
+    let (registry, roots) = read_quietly(&counted(&[("D", grammar)]));
+    let legs = member(&roots[0], "legs");
+    assert_eq!(entry(legs), ["legcurrency", "legsecurityaltidgrp"]);
+    assert_eq!(
+        registry.field_by_tag(604).unwrap().dtype(),
+        &DataType::Int32
+    );
+}
+
+#[test]
+fn a_counter_one_binding_states_beside_the_other_bindings_group_is_left_out() {
+    crate::install::installed();
+    // Two bindings of one wire type are one message: the counter one binding
+    // states and the group the other opens meet where the two fold, in
+    // either order, and the message reads the group alone.
+    let grouped = format!(r#"<tag-constraint name="55" />{LEGS}"#);
+    let bare = r#"<tag-constraint name="555" /><tag-constraint name="55" />"#;
+    for bindings in [
+        [("S Inbound", grouped.as_str()), ("S Outbound", bare)],
+        [("S Inbound", bare), ("S Outbound", grouped.as_str())],
+    ] {
+        let mut all = vec![("8", r#"<tag-constraint name="55" />"#)];
+        all.extend(bindings);
+        let (registry, roots) = read_quietly(&counted(&all));
+        assert_eq!(roots.len(), 3);
+        let message = registry.msgtype("S").unwrap().as_field();
+        let legs = message
+            .fields()
+            .iter()
+            .find(|member| member.name() == "legs")
+            .unwrap_or_else(|| panic!("S reads its legs: {bindings:?}"));
+        assert_eq!(FixField::new(legs).group(), Some("legs"));
+        assert_eq!(member_tags(&registry, "S"), [55], "{bindings:?}");
+    }
+}
+
+#[test]
+fn a_counter_stays_where_the_fold_passes_the_group_over() {
+    crate::install::installed();
+    // The first binding states 555 twice and no group, so its second
+    // statement is the member `nolegs2`; the second binding opens a group it
+    // names `NoLegs2` on 555. The fold passes that group over, named, since
+    // the held member of its name reads a field: the count the wire carries
+    // is then owned by nothing else, so the members stand.
+    let body = counted(&[
+        (
+            "S Inbound",
+            r#"<tag-constraint name="555" /><tag-constraint name="555" />"#,
+        ),
+        (
+            "S Outbound",
+            r#"<grammar rg-name="NoLegs2"><tag-constraint name="555" /><tag-constraint name="556" /></grammar>"#,
+        ),
+    ]);
+    let (read, warnings) =
+        super::warned::during(|| FixRegistry::from_cfb_file(&handle(&body), Some(DIALECT)));
+    let (registry, _) = read.expect("a readable CBlock");
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(
+        warnings[0].contains("bound again"),
+        "the named drop: {warnings:?}"
+    );
+    assert_eq!(member_tags(&registry, "S"), [555, 555]);
+    let message = registry.msgtype("S").unwrap().as_field();
+    assert!(
+        message
+            .fields()
+            .iter()
+            .all(|member| !member.dtype().is_nested())
+    );
+}
+
+#[test]
+fn a_counter_beside_a_group_read_by_name_is_left_out() {
+    crate::install::installed();
+    // Two messages binding one group alike hold one definition; the second
+    // also states the counter beside it, and reads the definition alone.
+    let (registry, _) = read_quietly(&counted(&[
+        ("8", &format!(r#"<tag-constraint name="55" />{LEGS}"#)),
+        (
+            "D",
+            &format!(r#"<tag-constraint name="55" /><tag-constraint name="555" />{LEGS}"#),
+        ),
+    ]));
+    for msgtype in ["8", "D"] {
+        let message = registry.msgtype(msgtype).unwrap().as_field();
+        let legs = message.get_field("legs").expect("the group");
+        assert_eq!(FixField::new(legs).group(), Some("legs"), "{msgtype}");
+        assert_eq!(member_tags(&registry, msgtype), [55], "{msgtype}");
+    }
+}
+
+#[test]
+fn a_counter_whose_group_another_message_opens_is_an_ordinary_member() {
+    crate::install::installed();
+    // No list in 8 owns the count, so the counter 8 states is its member:
+    // the int32 every grammar opening a group with it made the tag.
+    let (registry, roots) = read_quietly(&counted(&[
+        (
+            "8",
+            r#"<tag-constraint name="55" /><tag-constraint name="555" />"#,
+        ),
+        (
+            "D",
+            &format!(r#"<tag-constraint name="55" /><tag-constraint name="555" />{LEGS}"#),
+        ),
+    ]));
+    assert_eq!(children(&roots[0]), ["symbol", "nolegs"]);
+    assert_eq!(children(&roots[1]), ["symbol", "legs"]);
+    let message = registry.msgtype("8").unwrap().as_field();
+    let nolegs = message.get_field("nolegs").expect("the counter");
+    assert_eq!(nolegs.dtype(), &DataType::Int32);
+    assert_eq!(FixField::new(nolegs).field_ref(), Some("nolegs"));
+    assert_eq!(member_tags(&registry, "8"), [55, 555]);
+    assert_eq!(member_tags(&registry, "D"), [55]);
+}
+
+#[test]
+fn a_required_counter_beside_an_optional_group_makes_the_group_required() {
+    crate::install::installed();
+    // The constraint left out says whether the group is there, so its
+    // `required` carries onto the group: required where either statement
+    // requires it, the entry untouched.
+    for grammar in [
+        format!(r#"<tag-constraint name="555" required="Y" />{LEGS}"#),
+        r#"<tag-constraint name="555" /><grammar><tag-constraint name="555" required="true" /><tag-constraint name="556" /></grammar>"#.to_owned(),
+    ] {
+        let (_, roots) = read_quietly(&counted(&[("D", &grammar)]));
+        let legs = member(&roots[0], "legs");
+        assert!(!legs.is_nullable(), "{grammar}");
+        assert_eq!(entry(legs), ["legcurrency"]);
+    }
+    let (_, roots) = read_quietly(&counted(&[(
+        "D",
+        &format!("<tag-constraint name=\"555\" />{LEGS}"),
+    )]));
+    assert!(
+        member(&roots[0], "legs").is_nullable(),
+        "neither requires it"
+    );
+}
+
+#[test]
+fn a_counter_restated_inside_its_own_entry_is_left_out() {
+    crate::install::installed();
+    // The entry a group repeats states the group's own counter again: that
+    // is a NumInGroup field in a component, the list's length again, and it
+    // goes the same way.
+    let (_, roots) = read_quietly(&counted(&[(
+        "D",
+        r#"<grammar><tag-constraint name="555" /><tag-constraint name="555" /><tag-constraint name="556" /></grammar>"#,
+    )]));
+    assert_eq!(children(&roots[0]), ["legs"]);
+    assert_eq!(entry(member(&roots[0], "legs")), ["legcurrency"]);
+}
+
+#[test]
+fn a_required_counter_restated_inside_its_own_entry_makes_the_group_required() {
+    crate::install::installed();
+    // The restated counter is a dropped constraint like the one beside the
+    // grammar, and its `required` carries onto the group the same way.
+    let (_, roots) = read_quietly(&counted(&[(
+        "D",
+        r#"<grammar><tag-constraint name="555" /><tag-constraint name="555" required="Y" /><tag-constraint name="556" /></grammar>"#,
+    )]));
+    let legs = member(&roots[0], "legs");
+    assert!(
+        !legs.is_nullable(),
+        "the restated counter required the group"
+    );
+    assert_eq!(entry(legs), ["legcurrency"]);
+}
+
+/// The leg grammar whose entry holds the alternate identifiers as a group.
+const NESTED: &str = r#"<tag-constraint name="55" /><grammar><tag-constraint name="555" /><tag-constraint name="556" /><grammar><tag-constraint name="604" /><tag-constraint name="605" /></grammar></grammar>"#;
+/// The leg grammar whose entry lists the alternate identifiers' counter alone,
+/// required.
+const COUNTED: &str = r#"<tag-constraint name="55" /><grammar><tag-constraint name="555" /><tag-constraint name="556" /><tag-constraint name="604" required="Y" /></grammar>"#;
+
+/// Whether the group on 604 inside the entry `S`'s legs repeat is required,
+/// asserting that the entry reads the group and no member on 604.
+fn nested_required(registry: &FixRegistry, msgtype: &str) -> bool {
+    let legs = registry
+        .msgtype(msgtype)
+        .unwrap()
+        .as_field()
+        .get_field("legs")
+        .expect("the legs group");
+    let component = FixField::new(legs).component().expect("an entry component");
+    let entry = registry
+        .definition(yggdryl_fix::FixCategory::Components, component)
+        .unwrap();
+    let tags: Vec<i32> = entry
+        .fields()
+        .iter()
+        .filter(|member| !member.dtype().is_nested() && FixField::new(member).group().is_none())
+        .filter_map(|member| FixField::new(member).tag().unwrap())
+        .collect();
+    assert_eq!(tags, [556], "the entry reads no member on 604");
+    let group = entry
+        .fields()
+        .iter()
+        .find(|member| member.dtype().is_nested() || FixField::new(member).group().is_some())
+        .expect("the group on 604");
+    !group.is_nullable()
+}
+
+#[test]
+fn a_required_counter_inside_an_entry_requires_the_group_in_either_binding_order() {
+    crate::install::installed();
+    // Two bindings of one wire type: one entry opens the group on 604, the
+    // other lists 604 alone and requires it. The group is required whichever
+    // binding folds first.
+    for bindings in [
+        [("S Inbound", COUNTED), ("S Outbound", NESTED)],
+        [("S Inbound", NESTED), ("S Outbound", COUNTED)],
+    ] {
+        let (registry, _) = read_quietly(&counted(&bindings));
+        assert!(nested_required(&registry, "S"), "{bindings:?}");
+    }
+}
+
+#[test]
+fn a_required_counter_inside_an_entry_requires_the_group_in_either_file_order() {
+    crate::install::installed();
+    for files in [
+        [("a.cfb", COUNTED), ("b.cfb", NESTED)],
+        [("a.cfb", NESTED), ("b.cfb", COUNTED)],
+    ] {
+        let bodies: Vec<(&str, String)> = files
+            .iter()
+            .map(|(name, grammar)| (*name, counted(&[("D", grammar)])))
+            .collect();
+        let named: Vec<(&str, &str)> = bodies
+            .iter()
+            .map(|(name, body)| (*name, body.as_str()))
+            .collect();
+        let tree = cblock_tree(&named);
+        let mut registry = FixRegistry::new();
+        let (merge, warnings) =
+            super::warned::during(|| registry.add_cfb_files(std::slice::from_ref(&tree), None));
+        let merge = merge.expect("two readable CBlocks");
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert!(merge.failed.is_empty(), "{:?}", merge.failed);
+        assert!(nested_required(&registry, "D"), "{files:?}");
+    }
+}
+
+const PARTIES: &str =
+    r#"<grammar><tag-constraint name="453" /><tag-constraint name="448" /></grammar>"#;
+
+#[test]
+fn a_cfb_file_listing_a_counter_beside_the_held_group_folds_without_it() {
+    crate::install::installed();
+    // The held D reads the group on 453; a venue's file lists 453 in D as a
+    // plain member and opens no grammar. The fold is where the two meet, and
+    // the member is left out rather than refusing the union.
+    let (mut registry, _) = read_quietly(&counted(&[(
+        "D",
+        &format!(r#"<tag-constraint name="55" />{PARTIES}"#),
+    )]));
+    let held = registry.msgtype("D").unwrap().as_field().clone();
+    let body = counted(&[(
+        "D",
+        r#"<tag-constraint name="55" /><tag-constraint name="453" required="Y" />"#,
+    )]);
+    let (merge, warnings) =
+        super::warned::during(|| registry.add_cfb_file(&handle(&body), Some("venue")));
+    let merge = merge.expect("the file folds");
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert!(merge.failed.is_empty(), "{:?}", merge.failed);
+    assert!(merge.dropped.is_empty(), "{:?}", merge.dropped);
+    let message = registry.msgtype("D").unwrap().as_field();
+    assert_eq!(member_tags(&registry, "D"), [55]);
+    assert_eq!(
+        message.fields().iter().map(Field::name).collect::<Vec<_>>(),
+        held.fields().iter().map(Field::name).collect::<Vec<_>>()
+    );
+    // The constraint left out required the group, and the fold says so.
+    let parties = message
+        .fields()
+        .iter()
+        .find(|member| member.dtype().is_nested() || FixField::new(member).group().is_some())
+        .expect("the group");
+    assert!(!parties.is_nullable());
+}
+
+#[test]
+fn a_cblock_message_folded_into_the_committed_store_is_filed_beside_the_held_one() {
+    crate::install::installed();
+    // Today's reading, pinned so it is seen: a CBlock never names its
+    // messages, so its D is filed under the wire value's own name beside the
+    // committed `newordersingle` rather than folding into it, and the
+    // counter it lists stays a member of that second definition, since no
+    // group in it owns the count. Wire type D still answers the held message.
+    let mut registry = super::committed_registry().as_ref().clone();
+    let body = counted(&[(
+        "D",
+        r#"<tag-constraint name="55" /><tag-constraint name="453" required="Y" />"#,
+    )]);
+    registry
+        .add_cfb_file(&handle(&body), Some("venue"))
+        .expect("the file folds");
+    assert_eq!(
+        registry.msgtype("D").unwrap().as_field().name(),
+        "newordersingle"
+    );
+    let vendor = registry
+        .definition(yggdryl_fix::FixCategory::Components, "message44")
+        .expect("the CBlock's D, filed apart");
+    assert_eq!(FixField::new(vendor).msgtype(), Some("D"));
+    let tags: Vec<i32> = vendor
+        .fields()
+        .iter()
+        .filter_map(|member| FixField::new(member).tag().unwrap())
+        .collect();
+    assert_eq!(tags, [55, 453]);
+}
+
+#[test]
+fn two_cfb_files_one_listing_the_counter_the_other_opening_the_group_fold_as_one() {
+    crate::install::installed();
+    let grouped = counted(&[("D", &format!(r#"<tag-constraint name="55" />{PARTIES}"#))]);
+    let bare = counted(&[(
+        "D",
+        r#"<tag-constraint name="55" /><tag-constraint name="453" />"#,
+    )]);
+    // URL order decides which file is held: the group first, then the
+    // counter first.
+    for files in [
+        [("a.cfb", grouped.as_str()), ("b.cfb", bare.as_str())],
+        [("a.cfb", bare.as_str()), ("b.cfb", grouped.as_str())],
+    ] {
+        let tree = cblock_tree(&files);
+        let mut registry = FixRegistry::new();
+        let (merge, warnings) =
+            super::warned::during(|| registry.add_cfb_files(std::slice::from_ref(&tree), None));
+        let merge = merge.expect("two readable CBlocks");
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(merge.sources, 2);
+        assert!(merge.failed.is_empty(), "{:?}", merge.failed);
+        let message = registry.msgtype("D").unwrap().as_field();
+        assert!(message.get_field("parties").is_some(), "{files:?}");
+        assert_eq!(member_tags(&registry, "D"), [55], "{files:?}");
     }
 }
 

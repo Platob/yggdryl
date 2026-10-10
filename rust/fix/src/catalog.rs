@@ -632,6 +632,15 @@ pub(super) struct Documents {
     /// member's target is read from ([`Self::incoming`]). Empty outside
     /// [`FixRegistry::merge_catalog`].
     source: HashMap<(FixCategory, u64), Vec<Field>>,
+    /// Each group member a left-out counter made required, by the name of
+    /// the definition holding it and its own: what the pass a fold ends with
+    /// ([`fold_alike_definitions`]) keeps required where it relaxes the rest,
+    /// so a group is required where either statement requires it, whichever
+    /// side folds first. A rollback drops what its checkpoint recorded.
+    carried: Vec<(SmolStr, SmolStr)>,
+    /// The length of [`Self::carried`] at each open checkpoint, innermost
+    /// last.
+    carried_marks: Vec<usize>,
 }
 
 /// What one write to [`Documents`] replaced.
@@ -653,6 +662,8 @@ impl Documents {
             journal: Vec::new(),
             open: 0,
             source: HashMap::new(),
+            carried: Vec::new(),
+            carried_marks: Vec::new(),
         };
         for (key, document) in registry.compact_catalog()? {
             documents.put(key, document);
@@ -669,6 +680,7 @@ impl Documents {
     /// undoes, never a copy of the catalog.
     pub(super) fn checkpoint(&mut self) -> usize {
         self.open += 1;
+        self.carried_marks.push(self.carried.len());
         self.journal.len()
     }
 
@@ -676,6 +688,7 @@ impl Documents {
     pub(super) fn release(&mut self, mark: usize) {
         debug_assert!(mark <= self.journal.len(), "a mark this journal answered");
         self.open = self.open.saturating_sub(1);
+        self.carried_marks.pop();
         if self.open == 0 {
             self.journal.clear();
         }
@@ -684,6 +697,9 @@ impl Documents {
     /// Undoes every write since `mark` was answered, newest first, and closes
     /// that checkpoint: the documents are exactly what they were at it.
     pub(super) fn rollback(&mut self, mark: usize) {
+        if let Some(&carried) = self.carried_marks.last() {
+            self.carried.truncate(carried);
+        }
         while self.journal.len() > mark {
             let Some(Replaced { key, document, tag }) = self.journal.pop() else {
                 break;
@@ -1103,10 +1119,17 @@ fn write_structure<'a>(
 /// structure, which a caller that keyed them never meets, and the sources
 /// write's otherwise.
 pub(super) fn fold_alike(held: &Field, incoming: &Field) -> Result<Field> {
-    fold_alike_at(held, incoming, true)
+    fold_alike_at(held, incoming, true, &[])
 }
 
-fn fold_alike_at(held: &Field, incoming: &Field, root: bool) -> Result<Field> {
+/// [`fold_alike`], keeping the held nullability of each of the definition's
+/// own members `kept` names - a component's, or the entry a group repeats -
+/// where every other member is relaxed.
+fn fold_alike_keeping(held: &Field, incoming: &Field, kept: &[&str]) -> Result<Field> {
+    fold_alike_at(held, incoming, true, kept)
+}
+
+fn fold_alike_at(held: &Field, incoming: &Field, root: bool, kept: &[&str]) -> Result<Field> {
     let mut merged = held.clone();
     if !root {
         merged.set_nullable(held.is_nullable() || incoming.is_nullable());
@@ -1129,7 +1152,13 @@ fn fold_alike_at(held: &Field, incoming: &Field, root: bool) -> Result<Field> {
             let members = ours
                 .iter()
                 .zip(theirs.iter())
-                .map(|(held, incoming)| fold_alike_at(held, incoming, false))
+                .map(|(held, incoming)| {
+                    let mut member = fold_alike_at(held, incoming, false, &[])?;
+                    if kept.iter().any(|name| folds_equal(name, held.name())) {
+                        member.set_nullable(held.is_nullable());
+                    }
+                    Ok(member)
+                })
                 .collect::<Result<Vec<_>>>()?;
             Some(DataType::from(StructType::from_fields(members)?))
         }
@@ -1145,7 +1174,13 @@ fn fold_alike_at(held: &Field, incoming: &Field, root: bool) -> Result<Field> {
         ) => {
             let ours = occurrence_of(held).expect("the variant was just matched");
             let theirs = occurrence_of(incoming).expect("the variant was just matched");
-            Some(group_dtype(held, fold_alike_at(ours, theirs, false)?)?)
+            // The entry a group repeats holds the group definition's own
+            // members.
+            let kept = if root { kept } else { &[] };
+            Some(group_dtype(
+                held,
+                fold_alike_at(ours, theirs, false, kept)?,
+            )?)
         }
         _ => None,
     };
@@ -1771,6 +1806,32 @@ impl FixRegistry {
                     }
                 }
             }
+        }
+        // A group is its list and its length the count: a scalar member on
+        // the counter of a group the merged structure reads states the list
+        // again, whichever side stated it, and is left out once every
+        // incoming member is in, so a group the fold passed over leaves it
+        // standing. Only a fold with another dictionary reads it so, as
+        // `beside` does: a definition written alone is refused as before.
+        if drops.is_some() {
+            let required = leave_out_counters(
+                &mut merged,
+                0,
+                |member| group_counter(documents, member),
+                // A member's tag is the field's it reads; one reading no
+                // field this dictionary holds is left for the catalog's own
+                // validation to read.
+                |member| {
+                    field_reference(member)
+                        .and_then(|name| self.definition(FixCategory::Fields, name).ok())
+                        .and_then(|field| FixField::new(field).tag().ok().flatten())
+                },
+            );
+            documents.carried.extend(
+                required
+                    .into_iter()
+                    .map(|group| (SmolStr::new(owner), group)),
+            );
         }
         Ok(merged)
     }
@@ -3016,14 +3077,17 @@ pub(super) const EMPTY_STRUCTURE: &str = "()";
 ///   folds into an empty dictionary as itself.
 ///
 /// A fold is [`fold_alike`]: the survivor's identity and its own
-/// nullability kept, each member's relaxed to the more permissive side, the
-/// sources of both listed; the other's document taken out, and every
+/// nullability kept, each member's relaxed to the more permissive side - but
+/// for a group a counter this fold left out made required, which stays
+/// required - the sources of both listed; the other's document taken out, and every
 /// document reading it reading the survivor - a member by its marker, a
 /// group by the component it draws on, wherever the reference stands.
 ///
 /// A definition that merged into the held one of its own name and states
 /// its structure relaxes it the same way, which the merge by name, keeping
-/// the held side's members as stated, does not.
+/// the held side's members as stated, does not - but for a group a counter
+/// the merge left out made required, which stays required: that side's
+/// statement requires the group, whichever side folds first.
 ///
 /// The survivor is a name the dictionary held, so the name a structure is
 /// filed under, and the order of its members, are the first source's, as
@@ -3033,12 +3097,16 @@ fn fold_alike_definitions(
     before: &HashMap<DefinitionKey, SmolStr>,
     folded: &[(FixCategory, Field, bool)],
 ) -> Result<()> {
+    // What a left-out counter required stays required: the counter's side
+    // stated it, so the group is required where either side requires it.
+    let carried = std::mem::take(&mut documents.carried);
     // Nothing was held, so everything arrived and stays as it arrived.
     if before.is_empty() {
         return Ok(());
     }
     // Merged by name: the held side's strictness, relaxed to the incoming
-    // side's where the two are of one structure.
+    // side's where the two are of one structure, but for a group a left-out
+    // counter made required.
     {
         let mut memo = StructureMemo::new();
         let mut relaxed = Vec::new();
@@ -3062,7 +3130,8 @@ fn fold_alike_definitions(
                     continue;
                 };
                 if held == stated && held != EMPTY_STRUCTURE {
-                    let merged = fold_alike(document, incoming)?;
+                    let merged =
+                        fold_alike_keeping(document, incoming, &kept(&carried, incoming.name()))?;
                     if &merged != document {
                         relaxed.push((key.clone(), merged));
                     }
@@ -3128,7 +3197,11 @@ fn fold_alike_definitions(
                     category.as_str(),
                     survivor.1
                 );
-                let alike = fold_alike(&documents.raw[&survivor], &documents.raw[other])?;
+                let alike = fold_alike_keeping(
+                    &documents.raw[&survivor],
+                    &documents.raw[other],
+                    &kept(&carried, &survivor.1),
+                )?;
                 documents.put(survivor.clone(), alike);
                 documents.remove(other);
                 renamed.push((other.1.clone(), survivor.1.clone()));
@@ -3143,6 +3216,15 @@ fn fold_alike_definitions(
         }
     }
     Ok(())
+}
+
+/// The members of the definition `owner` a left-out counter made required.
+fn kept<'a>(carried: &'a [(SmolStr, SmolStr)], owner: &str) -> Vec<&'a str> {
+    carried
+        .iter()
+        .filter(|(held, _)| folds_equal(held, owner))
+        .map(|(_, group)| group.as_str())
+        .collect()
 }
 
 /// Every document reading a definition `renamed` names reading the one it
@@ -3275,6 +3357,52 @@ fn remapped(
             ),
         })),
     }
+}
+
+/// Leaves out of `members`, from `from` on, every scalar member whose tag
+/// `tag_of` reads is the counter `counter_of` reads off a group among them,
+/// silently: the group is its list and its length the count, so the member
+/// states what the list already states. A member left out that is required
+/// makes the group it counts required, and the names of the groups it made
+/// so are answered.
+///
+/// The one rule a CBlock grammar's members and a fold's merged members are
+/// read by; the tag decides, never the name, since a second statement of one
+/// tag is renamed as it is pushed.
+pub(super) fn leave_out_counters(
+    members: &mut Vec<Field>,
+    from: usize,
+    counter_of: impl Fn(&Field) -> Option<i32>,
+    tag_of: impl Fn(&Field) -> Option<i32>,
+) -> Vec<SmolStr> {
+    let mut required = Vec::new();
+    let counters: Vec<i32> = members.iter().filter_map(&counter_of).collect();
+    if counters.is_empty() {
+        return required;
+    }
+    let mut index = from;
+    while index < members.len() {
+        let member = &members[index];
+        let counter = if member.dtype().is_nested() {
+            None
+        } else {
+            tag_of(member).filter(|tag| counters.contains(tag))
+        };
+        let Some(counter) = counter else {
+            index += 1;
+            continue;
+        };
+        if !members.remove(index).is_nullable() {
+            for group in members
+                .iter_mut()
+                .filter(|group| counter_of(group) == Some(counter))
+            {
+                group.set_nullable(false);
+                required.push(SmolStr::new(group.name()));
+            }
+        }
+    }
+    required
 }
 
 /// Keeps two members of one struct in wire order under names no two of

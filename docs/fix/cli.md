@@ -171,7 +171,7 @@ yggdryl fix --root scratch/catalog ingest cblocks/a.cfb cblocks/b.cfb
 yggdryl fix --root scratch/catalog ingest cblocks/
 ```
 
-One file is one mutation: a file that cannot be read, is not a well-formed CBlock, or whose fold refuses rather than passing a declaration over is left out and named, contributing nothing, while every other file still folds and commits. A path naming nothing is refused, and so is a run whose paths hold no `.cfb` file at all; a location beside others that holds none is named in a reader warning, and a run whose every file is left out exits nonzero once each is named, committing nothing.
+One file is one mutation: a file that cannot be read, is not a well-formed CBlock, or whose fold refuses rather than passing a declaration over is left out and named, contributing nothing, while every other file still folds and commits. A counter one file lists beside a group another file or the store holds is no such refusal: the member is left out and the file folds. A path naming nothing is refused, and so is a run whose paths hold no `.cfb` file at all; a location beside others that holds none is named in a reader warning, and a run whose every file is left out exits nonzero once each is named, committing nothing.
 
 `sync` folds a folder holding another dictionary; a `.cfb`, or any location that is not a folder, is refused naming `yggdryl fix ingest` and the role the location turned out to be.
 

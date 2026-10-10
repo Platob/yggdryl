@@ -234,7 +234,8 @@ Repeating counts such as ``NoPartyIDs`` are ``int32`` fields of the
 dictionary that frame a group on the wire and nothing else: ``Parties`` is a
 serie of ``Party`` components whose length is its count, reached by its name
 or by :meth:`FixRegistry.field_by_counter`, and no component, message, row or
-entry lists the counter beside it. A crate Map is a group too: its
+entry lists the counter beside it - a CBlock grammar or a fold that lists one
+beside its group is read without it. A crate Map is a group too: its
 occurrence is its non-null entries Struct, its key stays non-null and its own
 tag is its counter.
 

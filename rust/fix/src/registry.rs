@@ -1744,6 +1744,14 @@ impl FixRegistry {
     /// fold refuses rather than passing a member over is passed over whole,
     /// every write it made undone.
     ///
+    /// **A counter beside the group it counts is left out.** A group is its
+    /// list and its length the count, so a member reading the field a group
+    /// of the folded structure is counted by states the list again: once
+    /// every member of the other dictionary is in, it is left out, whichever
+    /// side stated it, with nothing named in [`FixMerge::dropped`], and a
+    /// required one makes the group required whichever side folds first. A definition written alone
+    /// that lists one is refused, as [`Self::insert_definition`] refuses it.
+    ///
     /// **One structure is one definition.** Once every definition of the
     /// source folded by name, each pair of components or groups of one
     /// structure the fold made - an arrival stating a held definition's
@@ -2183,7 +2191,10 @@ impl FixRegistry {
     /// resolution is the one place two files' contributions can refuse each
     /// other; where it does, the files fold again one at a time, each resolved
     /// before the next, so the file the union cannot hold is the one named
-    /// and left out, and the rest are still the dictionary.
+    /// and left out, and the rest are still the dictionary. A counter one
+    /// file lists beside a group another file, or this dictionary, holds is
+    /// not such a refusal: the member is left out, as [`Self::merge_with`]
+    /// leaves it out, and the file folds.
     ///
     /// # Errors
     ///

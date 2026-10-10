@@ -216,9 +216,11 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     and `is_clean()` means `dropped` and `failed` are both empty. What a
     CBlock states that the reader cannot keep is dropped, or kept another way
     (an unread type word types the tag string), with a `log` warning naming
-    the line, the column, the element and what the reader did instead; a map
-    entry whose key or value is blank, `none` or `null` states no code and is
-    skipped, named once per code set. `add_cfb_files` folds in ascending URL
+    the line, the column, the element and what the reader did instead; a
+    counter a grammar states beside the group it counts is left out
+    silently, the group's length being its count, in the file and in every
+    fold; a map entry whose key or value is blank, `none` or `null` states no
+    code and is skipped, named once per code set. `add_cfb_files` folds in ascending URL
     order, so where two files type one tag two ways the first-sorting file's
     declaration is held, and a code set only widens (the held name wins a
     shared value; a new value under a name another code claims keeps no
@@ -327,7 +329,8 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   `by_name("parties")?.as_sequence().map(<[Scalar]>::len)`, Python
   `len(by_name("parties").as_py())`, JavaScript `byName('parties').length`.
   A message root built by hand lists no counter beside its group, and a
-  registry definition that does is refused.
+  registry definition that does is refused - by hand; a CBlock grammar or a
+  fold that does is read without the counter.
 - `into_text` output reflects what the dictionary derived (a day order's
   `59=0`), minus facts supplied at intake (an unstated `SendingTime`); it is
   canonical wire, not a byte-for-byte copy of the input.

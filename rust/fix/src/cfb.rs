@@ -33,7 +33,10 @@
 //! own nullability. A nested grammar resolves its opening counter to int32 in
 //! the vocabulary and becomes a separately named Serie of components that
 //! states the counter as its `FIX:counter`: the count is the serie's length,
-//! so no message lists the counter beside it.
+//! so no message lists the counter beside it, and a `tag-constraint` that
+//! restates that counter beside the grammar - or inside the entry the group
+//! repeats - is left out of the message silently: the member states what the
+//! serie's length states, and a required one makes the group required.
 //!
 //! # Only repeating groups are structure
 //!
@@ -69,6 +72,14 @@
 //! structure, here and there alike.
 //!
 //! # What is lost, by name
+//!
+//! A `tag-constraint` on a nested grammar's counter stated beside that
+//! grammar, or inside the entry it repeats, at any depth: the group is its
+//! list and its length the count, so the member repeats the list. The tag
+//! stays an `int32` field of the dictionary, and the group is required where
+//! a constraint left out or the grammar's own counter requires it. A counter whose
+//! group is in another message, or in none, is an ordinary member, since no
+//! list in its structure owns the count.
 //!
 //! `part` (so a `header` constraint and a `body` constraint sit as siblings
 //! in one flat struct), `activated`, `read-only`, `ref`, `checkordering`,
@@ -327,8 +338,10 @@
 //! store keeps the tag, a tag whose type word nothing reads is typed string,
 //! a constraint on a tag the vocabulary never declared declares it as text
 //! named by its digits and keeps the member, a group with no counter keeps
-//! its parent, and a message the catalog will not hold keeps every field the
-//! file declared.
+//! its parent, and a message the catalog will not hold - a binding whose
+//! `type` names no wire type - keeps every field the file declared. A counter
+//! stated beside the group it counts is none of these: it is left out with
+//! no warning, since nothing it states is lost.
 //!
 //! An attribute is one attribute. One the reader cannot split into a key and
 //! a quoted value is dropped and the element keeps the rest; one whose value
@@ -367,7 +380,7 @@ use yggdryl::implementer::{ERROR_TEXT_LIMIT, elide_to, expected_got};
 use yggdryl::{Charset, DataType, Error, Field, IOBase, Result, StructType, Url};
 use yggdryl_market::Side;
 
-use super::catalog::{catalog_name, push_member};
+use super::catalog::{catalog_name, leave_out_counters, push_member};
 use super::codes::{FixCodes, claims, is_sentinel, names_collide};
 use super::{FixCode, FixField, FixFieldMut, FixRegistry, MSGTYPE_TAG_NAME};
 
@@ -458,7 +471,9 @@ impl FixRegistry {
     /// a nested grammar with no counter, nesting past the guard depth, a
     /// mapping to a type nothing listed, and anything the core will not store,
     /// from a spelling to a second declaration of one tag - is dropped with a
-    /// warning naming it, and the rest of the file is still a dictionary. The
+    /// warning naming it, and the rest of the file is still a dictionary. A
+    /// constraint restating a nested grammar's counter beside it, or inside
+    /// the entry it repeats, is left out of the message with no warning. The
     /// warnings are `log` records at warn level; nothing is emitted unless the
     /// host installs a logger.
     ///
@@ -2322,6 +2337,14 @@ impl<'doc> Parse<'doc> {
             }
             buffer.clear();
         }
+        // A nested grammar's first child is the counter its group takes, not
+        // a member beside the groups it holds.
+        leave_out_counters(
+            &mut children,
+            usize::from(depth > 1),
+            |child| FixField::new(child).counter().ok().flatten(),
+            |child| FixField::new(child).tag().ok().flatten(),
+        );
         Ok(children)
     }
 
@@ -2392,6 +2415,17 @@ impl<'doc> Parse<'doc> {
             dropping(self, &error);
             return None;
         }
+        // The entry the group repeats stating the group's own counter again
+        // states the list's length once more: it is left out the same way,
+        // and a required one makes the group required, as the counter the
+        // grammar opens with does.
+        let mut required = !counter.is_nullable();
+        children.retain(|child| {
+            let restated = !child.dtype().is_nested()
+                && FixField::new(child).tag().ok().flatten() == Some(tag);
+            required |= restated && !child.is_nullable();
+            !restated
+        });
         let (group_name, group_display, occurrence_name, occurrence_display) =
             super::component::group_names(&counter, declared);
         // Named as a catalog files a name, whatever the `rg-name` or the
@@ -2431,7 +2465,7 @@ impl<'doc> Parse<'doc> {
             self.stamp(&mut item)?;
             let mut group = DataType::serie(item).nullable_field(name);
             group.set_display(&display)?;
-            group.set_nullable(counter.is_nullable());
+            group.set_nullable(!required);
             self.stamp(&mut group)?;
             FixFieldMut::new(&mut group).set_counter(tag)?;
             FixFieldMut::new(&mut group).set_component(&entry)?;

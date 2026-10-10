@@ -894,6 +894,74 @@ fn ingest_names_what_the_reader_could_not_keep_where_it_stands_and_what_it_kept(
     assert!(text.contains(".cfb file that folds"), "{text}");
 }
 
+/// One `CBlock` binding `D` as `grammar` states it, over the party tags.
+fn parties(grammar: &str) -> String {
+    format!(
+        r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="35" alt="MsgType" type="string" />
+		<vocabulary-tag name="55" alt="Symbol" type="string" />
+		<vocabulary-tag name="453" alt="NoPartyIDs" type="integer" />
+		<vocabulary-tag name="448" alt="PartyID" type="string" />
+	</vocabulary>
+	<grammar-binding type="D"><grammar>{grammar}</grammar></grammar-binding>
+</cplugin-configuration>"#
+    )
+}
+
+#[test]
+fn ingest_folds_a_counter_beside_the_stores_group_without_it() {
+    installed();
+    let workspace = Workspace::new();
+    // The store's D reads the parties group on 453; a venue's file lists 453
+    // in D as a plain member. The group is its list and its length the count,
+    // so the member is left out and the file folds rather than being left
+    // out by name.
+    let folder = workspace.cblocks(&[(
+        "grouped.cfb",
+        &parties(
+            r#"<tag-constraint name="55" /><grammar><tag-constraint name="453" /><tag-constraint name="448" /></grammar>"#,
+        ),
+    )]);
+    workspace.success(&[
+        "ingest",
+        folder.join("grouped.cfb").to_str().expect("test path"),
+    ]);
+    let members = |stored: &FixRegistry| -> Vec<String> {
+        stored
+            .msgtype("D")
+            .expect("D stored")
+            .as_field()
+            .fields()
+            .iter()
+            .map(|member| member.name().to_owned())
+            .collect()
+    };
+    let held = members(&workspace.loaded());
+    let folder = workspace.cblocks(&[(
+        "bare.cfb",
+        &parties(r#"<tag-constraint name="55" /><tag-constraint name="453" />"#),
+    )]);
+    let text = output_text(&workspace.success(&[
+        "ingest",
+        folder.join("bare.cfb").to_str().expect("test path"),
+    ]));
+    assert!(!text.contains("left out"), "{text}");
+    let stored = workspace.loaded();
+    assert_eq!(members(&stored), held);
+    assert!(
+        stored
+            .msgtype("D")
+            .unwrap()
+            .as_field()
+            .fields()
+            .iter()
+            .all(|member| FixField::new(member).tag().unwrap() != Some(453)),
+        "no member on the counter"
+    );
+}
+
 #[test]
 fn ingest_refuses_a_location_holding_nothing_and_sync_names_the_verb_for_a_cblock() {
     installed();

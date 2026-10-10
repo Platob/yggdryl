@@ -481,7 +481,8 @@ A tag is what identifies a field on the wire and a name is what identifies it to
 `NoPartyIDs` is an `int32` field at tag 453. `Parties` is a separate Serie of the
 `Party` Struct, linked to that field through `FIX:counter`, which only frames the
 group on the wire. No component, message, row or entry lists the counter beside
-the group: the group's length is its count. Fields, components and groups are
+the group: the group's length is its count, and a CBlock grammar or a fold that
+lists one beside its group is read without it. Fields, components and groups are
 the three registry categories, a message being a component that carries
 `FIX:msgtype`.
 

@@ -467,7 +467,6 @@ mod anomaly;
 mod batch;
 #[path = "root/build.rs"]
 mod build;
-#[cfg(feature = "internals")]
 #[path = "root/catalog.rs"]
 mod catalog;
 #[path = "root/cfb.rs"]
