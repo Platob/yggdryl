@@ -18,7 +18,7 @@ A Serie group and its scalar count have separate definitions: `NoPartyIDs` is th
 
 | Collection | Shipped documents | Live registry |
 | --- | ---: | ---: |
-| Scalar fields | 6,241 | 6,273 |
+| Scalar fields | 6,241 | 6,274 |
 | Groups | 580 | 581 |
 | Components, including messages | 928 | 928 |
 | Messages, a subset of components | 181 | 181 |
@@ -38,9 +38,9 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
     // Every category is in the one length: the fields, the components and
     // the groups.
-    assert_eq!(registry.len(), 7_782);
+    assert_eq!(registry.len(), 7_783);
     // The walk is the same listing: the fields, then the definitions.
-    assert_eq!(registry.iter().count(), 7_782);
+    assert_eq!(registry.iter().count(), 7_783);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
     let parties = registry.field_by_name("parties")?;
     assert_eq!(FixField::new(parties).counter()?, Some(453));
@@ -69,8 +69,8 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     # Every category is in the one length: the fields, the components and the
     # groups; iterating a Python registry walks the fields alone.
-    assert len(registry) == 7_782
-    assert sum(1 for _ in registry) == 6_273
+    assert len(registry) == 7_783
+    assert sum(1 for _ in registry) == 6_274
     assert str(registry.field_by_tag(453).dtype) == "int32"
     parties = registry.field_by_name("parties")
     assert parties.fix.counter == 453
@@ -98,7 +98,7 @@ The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketda
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     // Every category is in the one size: the fields, the components and the
     // groups, which is what a Node registry iterates too.
-    assert.equal(registry.size, 7782)
+    assert.equal(registry.size, 7783)
     assert.equal([...registry].length, registry.size)
     assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
     const parties = registry.fieldByName('parties')

@@ -1375,7 +1375,7 @@ fn build() -> Result<Vec<Field>> {
 /// # fn main() -> yggdryl::Result<()> {
 /// #     yggdryl_fix::install().unwrap();
 /// let held = yggdryl_fix::fix_crate_fields()?;
-/// assert_eq!(held.len(), 52);
+/// assert_eq!(held.len(), 53);
 /// assert_eq!(held[0].name(), "uuid");
 /// assert_eq!(held[0].display(), Some("UUID"));
 /// assert_eq!(held[6].name(), "transunix");
