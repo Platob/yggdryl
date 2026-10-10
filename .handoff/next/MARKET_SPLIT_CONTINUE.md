@@ -29,12 +29,13 @@ P0 to P4, S0 to S3 and the CI restructure, as before; then, this session:
 - **S4** `9f69d7141` - `yggdryl-market` (`rust/market/`) and `yggdryl-fix` (`rust/fix/`). The user
   asked for this split to be validated by the medallion Python test:
   `pytest python/tests/test_fix.py -k medallion` passed on the tree, and the whole pytest suite too.
-  The three crates' whole runs pass 9379 tests with 0 failing.
+  The three crates' all-features whole runs pass 9379 tests with 0 failing (core 7646, market 664,
+  fix 1069 - P4's single-crate count, split three ways), the default lane 6681.
 - The results commit over them records P4, P6 and S4 in DESIGN.md and MARKET_SPLIT_NEXT.md, and
   holds this file.
 
-The CI run of the P6+S4 push is named in MARKET_SPLIT_NEXT.md's `State`. If it says "not read", read
-it first: through the GitHub MCP tools (load them with ToolSearch: `mcp__github__actions_list`
+The CI run of the P6+S4 push is named in MARKET_SPLIT_NEXT.md's `State`. Read the newest run on the
+branch first, whatever it records: through the GitHub MCP tools (load them with ToolSearch: `mcp__github__actions_list`
 `list_workflow_runs` filtered to the branch, then `list_workflow_jobs` and `get_job_logs`), to the
 `CI result` job. Reproduce a red job narrowly, fix it at cause in a commit of its own, push, and read
 again before any lane starts.
@@ -52,12 +53,15 @@ cp -r .handoff/split/scratch /tmp/s && export S=/tmp/s
 | P7 (D40) | `p7/user_instruction.md`, `p7/d40_design.md` - the same design as DESIGN.md "## P7: design" |
 | P8 (D41) | `p8/user_instruction.md`: the instruction, what the walk does today and the questions to settle on evidence |
 | P5R (D37) | `p5r_manager_prompt.md` (the brief), `p5_on_p4.patch` with `p5_on_p4.commits`, `p5_state.md`, `p5_decisions.md`, `p5_contract.md`, `p5_define_report.md`, `p5r_report.md`, `d37_design.md`, `p5_commit_message.txt` |
-| M6 (S6) | `m6_manager_prompt.md` (the brief), `s6_<crate>_move.py`, `s6_<crate>_report.md`, `s6_<crate>_commit_message.txt` and the `s6_<crate>/` residue folders for excel, xmla, avro, parquet, s3 and iceberg, `s6_contract.md`, `d36_design.md`, `d39_design.md`, `moves_map/`, `s3_backend_map/`, and `s4_move.py`, the library every move script imports (S4's lexer, use trees, rewriter and lock) |
+| M6 (S6) | `m6_manager_prompt.md` (the brief), `s6_<crate>_move.py`, `s6_<crate>_report.md`, `s6_<crate>_commit_message.txt` and the `s6_<crate>/` residue folders for excel, xmla, avro, s3 and iceberg (parquet's residue was emptied by its define), `s6_contract.md`, `d36_design.md`, `d39_design.md`, `moves_map/`, `s3_backend_map/`, and `s4_move.py`, the library every move script imports (S4's lexer, use trees, rewriter and lock) |
 | B5 (S5) | `b5_manager_prompt.md` (the brief), `s5_move.py`, `s5_define_report.md`, `s5/`, `s5_commit_message.txt`, `s4_move.py` (imported by `s5_move.py`) |
 | every lane | `regroup.md` (the lane protocols and every answer a define earned - binding), `user_decisions.md`, `s4_decisions.md` (the worked example of a settle's residue and how each item was decided), `logs/chain.sh` (the chain template) |
 
-The briefs were written before S4 landed, for lane managers in a session that had no workflows. Read
-them for what a lane must do and the decisions it carries. Where a brief disagrees with "Since S4"
+The briefs were written before S4 landed, for lane managers in a session that had no workflows, and
+were updated since for S4's paths and the new gates. Read them for what a lane must do and the
+decisions it carries. `regroup.md` binds where the files it names still exist; its landing order,
+worktrees, markers and disk thresholds are superseded by this prompt, and the files it names that
+are gone are in git history at `7b566b3b2`. Where a brief disagrees with "Since S4"
 below, the list below holds.
 
 ## Since S4: what the briefs do not know yet
@@ -102,7 +106,7 @@ below, the list below holds.
    `srcuuids` (its delta, its events and the previous book's `uuid`, never the previous book's sources)
    and its `hashcode` (the instant over the digest of those sources). The design is DESIGN.md
    "## P7: design" and ends with five readings put to the user. There is no script yet: write the
-   sweep first (the P4 sweep, `p4_sweep.py` in git history at `4e46b5ab7^`, is the model), then
+   sweep first (the P4 sweep is the model: `git show 7b566b3b2:.handoff/split/scratch/p4_sweep.py`), then
    settle. The dump, the dictionary hash, the snapshot's keys, the book identities and `fix.json`
    move once, each with its sentence.
 2. **P8 (D41)**: the lifecycle matches the previous alive element and the current one on one common
@@ -117,8 +121,13 @@ below, the list below holds.
    is now "P5R landed".
 5. **B5 (S5)**: the market binding packages, with the release learning every crate. The brief is
    `b5_manager_prompt.md`.
-6. **S7** (`RecordOptions` -> `MediaOptions`) and **S8** (the expression series) are designed in
-   DESIGN.md; design each in the foreground first. **S9**, the final sweep, waits for the user's go.
+6. **S7** (`RecordOptions` -> `MediaOptions`) and **S8** (the expression series) are stated in
+   `.handoff/next/MARKET_SPLIT_PROMPT.md` (U6, U7 and the S7/S8 sections; DESIGN.md has only their
+   slice rows and D18); design each in the foreground first. **S9**, the final sweep, waits for the
+   user's go.
+
+B5 (S5) lands after M6 (S6), not before as the program prompt's U5 orders: S5's release learns
+every leaf crate, so it waits until they all exist (`regroup.md`, "S5 define done").
 
 ## How a lane runs here (what worked in this session)
 - **Setup** (a fresh container has neither):

@@ -38,10 +38,13 @@ live AWS resource touched.
   ISIN registry into `yggdryl-market`, never a code.
 - The wire contracts S0 pinned are byte-identical through every slice: the
   `DataTypeId` bytes, the ranks, the `Shape` positions, the hash feeds, the
-  serde documents, the value-stream bytes, the Arrow extension names and the
-  FIX dictionary hash `14_542_711_836_201_211_247`. A moved pin is a
-  defect, never a re-pin; a cost pin (`allocations.rs`, `iobase_calls.rs`,
-  a bench) is never re-pinned from a sweep.
+  serde documents, the value-stream bytes and the Arrow extension names. The
+  FIX dictionary hash (`12_613_356_107_921_639_431` since P4, unmoved by P6
+  and S4) moves only in a slice that says why, in the sentence beside the
+  pin - P7 moves it, with the snapshot keys and the book identities, on
+  purpose. Any other moved pin is a defect, never a re-pin; a cost pin
+  (`allocations.rs`, `iobase_calls.rs`, a bench) is never re-pinned from a
+  sweep.
 - No test code under any `src/` (`grep -rn '#\[cfg(test)\]\|#\[test\]\|mod tests' rust/src rust/*/src python/src node/src cli/src` is empty before every commit).
 - Node gains no door; the slices re-spell and re-pin the doors that exist.
 - Layer order inside a slice: Rust core -> Python -> Node -> docs, settled by
@@ -141,4 +144,4 @@ The CLI links `yggdryl-s3` always (S6d; its `s3` feature goes). Still open, on t
 - P8 (D41): the lifecycle matches the previous alive and the current element on one common identifier, through an index, and propagates values. Evidence first, then the design.
 
 ## State at the handoff (2026-10-09, after S4)
-P6 (`1ad29bfa6`) and S4 (`9f69d7141`) are pushed together; their CI run is RUN_ID (read to `CI result`: RUN_RESULT). P7 (D40) is designed in DESIGN.md "## P7: design" and is next; P8 (D41) is recorded under "## P8" with the evidence to gather first; P5R follows them, then M6, B5, S7, S8 and S9 on the user's go. The former scratchpad is `.handoff/split/scratch/` (the S4 lane's log, notes, decisions and residue under `s4_lane/`, the results tables under `results/`, the user's P7 and P8 instructions under `p7/` and `p8/`).
+P6 (`1ad29bfa6`) and S4 (`9f69d7141`) are pushed together; their CI run is RUN_ID (read to `CI result`: RUN_RESULT). P7 (D40) is designed in DESIGN.md "## P7: design" and is next; P8 (D41) is recorded under "## P8" with the evidence to gather first; P5R follows them, then M6, B5, S7, S8 and S9 on the user's go. The former scratchpad is `.handoff/split/scratch/` (the S4 lane's decisions in `s4_decisions.md`, the user's P7 and P8 instructions under `p7/` and `p8/`; the results tables are DESIGN.md's).

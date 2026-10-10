@@ -156,18 +156,22 @@ its sentence, a rise a defect).
 
 ## Order and checks
 
-After S4 (the files under `rust/market/src/graph/`, `rust/market/src/`, `rust/fix/src/`) and
-before P5R. One commit: the core's `crated.rs`/`schema.rs`/`identity.rs`/`msg.rs`/`build.rs`
-(the lifted tags grown by the eleven, the derived definitions deleted, the band order), the
-market crate's `element.rs`, `book.rs`, `arrow.rs`, `market_column.rs` + the `LiftedColumn`,
-`facts.rs`, `market.rs`, `isin_registry.rs` and the seed, the bindings' properties, the pipeline
+After S4 and before P5R; it touches the three crates. One commit: the FIX crate's
+`rust/fix/src/{crated,schema,identity,msg,build}.rs` (the lifted tags grown by the eleven, the
+derived definitions deleted, the band order); the core's `rust/src/graph/element.rs`
+(`Element::cross_uuid` and `sync_cross`, D40.5 - the event vocabulary stays core); the market
+crate's `rust/market/src/graph/{book,arrow,market_column,facts,market}.rs` + the `LiftedColumn`,
+`rust/market/src/isin_registry.rs` and the seed; the bindings' properties, the pipeline
 (`python/tests/medallion.py`), the pages (`docs/fix/capture.md` the crate's columns table and the
 derived-column section, `docs/graph/schemas.md`, `docs/graph/{event,market,book,isin-registry}.md`,
-`docs/types/codes/*.md` where a column is named), the skills, the inventories. Checks: the fix
-and market crates' suites both lanes with every unmoved pin green without edit, the dump written
-once and the hash re-pinned once with its sentence, the snapshot's keys re-spelled and its value
-lines moved only where D40.5/D40.6 say, `pytest python/tests` whole with the medallion pipeline
-green, Node's suite, the three docs runners, `mkdocs build --strict`.
+`docs/types/codes/*.md` where a column is named), the skills, the inventories, and AGENTS.md's
+Layout rows naming `isincode`, `cficode`, `miccode` and `get_isincode`. Checks: the core suites
+that pin the cross identity (`rust/tests/graph/{element,column,element_column}.rs`,
+`rust/tests/text/{line,plan,options}.rs`), the fix and market crates' suites both lanes with every
+unmoved pin green without edit, the dump written once and the hash re-pinned once with its
+sentence, the snapshot's keys re-spelled and its value lines moved only where D40.5/D40.6 say,
+`pytest python/tests` whole with the medallion pipeline green, Node's suite, the three docs
+runners, `mkdocs build --strict`.
 
 ## Put to the user (interpretations taken; say if another was meant)
 

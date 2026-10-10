@@ -2342,7 +2342,8 @@ S4 note (the 31 market-owned items FIX reached mostly gone: a public message
 with public trait doors needs no `from_facts`).
 
 Slice: P5, in place, after P4 (it speaks `transunix`/`sendunix`) and before
-S4; one commit.
+S4; one commit. Superseded: it lands as P5R, inside the crates, after S4, P7
+and P8 (the D37 row).
 
 ## P3: design
 
@@ -2670,7 +2671,7 @@ What the tree is: the commit "Move the market vocabulary into yggdryl-market and
 | `cargo check --workspace --all-targets --all-features --keep-going --message-format=short` (first without `--locked`, then `--locked`); the default lane | 56 errors -> 0, 0 warnings; 0 |
 | `cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings`; the default lane per crate | clean (two CLI test findings fixed) |
 | `cargo test --locked -p yggdryl-market --all-targets --no-fail-fast`, and `--all-features` | green: allocations 38, graph 366, root 205, market_register 7, isin_registry 33, xxhash 5, arrow 2, expression 1, iobase_calls 1 |
-| `cargo test --locked -p yggdryl-fix --all-targets --no-fail-fast`, and `--all-features` | green: fix 900 / 1026, allocations 20, graph 12, iobase_calls 2, root 5, scale_ulbridge 3 + 1 ignored; the hash, the census and the snapshot unedited |
+| `cargo test --locked -p yggdryl-fix --all-targets --no-fail-fast`, and `--all-features` | green, counted before the FIX tests were re-laid under `--test root` (residue decision 17): fix 900 / 1026, allocations 20, graph 12, iobase_calls 2, root 5, scale_ulbridge 3 + 1 ignored; the hash, the census and the snapshot unedited |
 | the core harnesses, all-features lane (`root`, `graph`, `allocations`, `iobase_calls`, `media_register`, `logging`, `arrow`, `expression`, `json`, `serie`, `value`, `xmla`, `xxhash`, `text`, `iceberg`); default lane (`root`, `graph`, `text`, `allocations`) | green: allocations 126, arrow 35, expression 244, graph 35, iceberg 528, iobase_calls 64, json 33, logging 89, media_register 14, root 1715, serie 344, text 236, value 25, xmla 761, xxhash 82; root 1539, graph 34, text 212, allocations 118 |
 | `cargo test --locked -p yggdryl-cli --all-targets --no-fail-fast` | green: fix 14, market_register 2, quality 1, style 1, xmla 7 + 4 ignored |
 | `cargo test --doc -p yggdryl` / `-p yggdryl-market` / `-p yggdryl-fix --all-features` | 614 / 76 / 52 passed |
@@ -2681,8 +2682,11 @@ What the tree is: the commit "Move the market vocabulary into yggdryl-market and
 | `generate_internals.py --check`; `check_api_inventory.py`; `mkdocs build --strict`; `cargo fmt --all -- --check` | current (one block per crate); current; clean; clean |
 | the greps: test code under `src/`; old paths (`yggdryl::fix::`, `yggdryl::graph::Order*`, `yggdryl::Side`, ...); model identifiers | empty; empty; AGENTS.md's pre-existing Pace sentence alone |
 | review (read-only lenses over the settled tree) | back-compat: no re-export from an old path, no silencing attribute, no lazy install, no visibility raise outside a crate-private module, no public core API beyond `register_prebuilt`/`prebuilt`; its findings judged in the foreground - three defects fixed in the residue step (the core's `graph/element.rs` intra-doc links to moved items, a `use yggdryl_fix as fix` alias in a doc example, the market implementer with no test file), the FIX crate's tests re-laid under `tests/root/` per the mirror rule (`--test root`), the move-narration headers re-spelled to the mirror-rule form, and the reserved-kind table (`RESERVED_KINDS`, as D39's `RESERVED_RANKS`) and S3's logger-name rule kept as the contracts they are with their prose stating the rule rather than the history; pins: the dump untouched, the cost files HEAD minus whole moved blocks, the hash and census unmoved, the listing counts split by crate with every value byte-identical, one dropped market pin (the kinds' Iceberg int bounds and the `Side::SellUnd` cast-out) re-pinned in the market crate; medallion: the pipeline green again (1 passed, 68.7 s) on the settled tree |
-| a defect found while re-laying the FIX tests, fixed in this commit | the three process-global tests of `rust/fix/tests/root/global.rs` (the default registry from the environment, the home and an install) spawned their child under names that matched no test path (`global_env::…`, `global_home::…`, `global_install::…` - at HEAD too), so the child ran nothing and the parent took its exit as success: their bodies had never run. The names are the real paths, the two isolated runners (`rust/fix/tests/root.rs`, `rust/fix/tests/isin_registry.rs`) now refuse a child that reports anything but `1 passed`, and the three bodies pass (`cargo test --locked -p yggdryl-fix --test root global`: 4 passed) |
+| a defect found while re-laying the FIX tests, fixed in this commit | the three process-global tests of `rust/fix/tests/root/global.rs` (the default registry from the environment, the home and an install) spawned their child under names that matched no test path (`global_env::…`, `global_home::…`, `global_install::…` - at HEAD too), so the child ran nothing and the parent took its exit as success: their bodies had never run. The names are the real paths, the three isolated runners (`rust/fix/tests/root.rs`, `rust/fix/tests/isin_registry.rs`, `rust/market/tests/isin_registry.rs`) now refuse a child that reports anything but `1 passed`, and the three bodies pass (`cargo test --locked -p yggdryl-fix --test root global`: 4 passed) |
 | the residue step (the foreground's 31 decisions on the agents' and lenses' residue) | applied by two agents then one, each proven narrowly: the one shared install sentence spelled only for a reserved kind's name (the core's table knows the four names and their owner), the listing-claim pins, `StringEnum::DIRECTIONS` (dead at HEAD) deleted, the FIX crate's root tests merged into `rust/fix/tests/root/lib.rs`, the market implementer's test file, the core's `graph/element.rs` links as code spans, the reserved-kind table `RESERVED_KINDS` with its owner enforced at every key (a re-claim the conflict naming `yggdryl-market`), the logger-name rule and the reserved table documented as contracts, the move-narration headers in the mirror-rule form, the dropped market pins re-pinned, the stale prose in the pages, skills, inventories and READMEs re-homed; `cargo doc --workspace -D warnings` clean after it |
+| the chain on the committed tree (`logs/chain.sh`'s steps) | `cargo fmt --check` clean; all-features whole runs core 7646, market 664, fix 1069 - 9379 passed, 0 failed, P4's count split three ways; clippy both lanes and `cargo doc -D warnings` clean; the bench configuration built; rustdoc examples 1250; CLI 25 (+ 4 ignored); default lane 6681; Python: `maturin develop`, the medallion test 1 passed, `pytest python/tests` 2784 passed, 4 skipped, mypy clean; Node: `test:package:debug` green, 1083 tests with the two sandbox `TextDecoder` charset tests failing as at every slice (this container's Node 22.22 decodes windows-1252 `0x80` as itself), `tsc` clean, the loader and declarations unchanged; the two docs manifests current; `mkdocs build --strict`, the inventories, `generate_internals.py --check` and the planner suite clean; the greps as above |
+| the docs example runners | Python 837 run, 3 skipped, 0 failed; JavaScript 787 run, 2 skipped, 0 failed; Rust failed to compile at first - S4 moved the pages' Rust blocks into `cli/tests/docs_examples.rs` and gave the CLI every crate they name but `parquet` (the Parquet page's write example names `parquet::basic::Compression`) - and 939 passed once the CLI took `parquet` as a dev-dependency at the core's version (`8d1c6b733`, "Give the CLI's page examples the parquet crate": one lock edge, no package) |
+| CI | RUN_CI_ROW |
 
 ## P7: design
 
@@ -2844,18 +2848,22 @@ its sentence, a rise a defect).
 
 ## Order and checks
 
-After S4 (the files under `rust/market/src/graph/`, `rust/market/src/`, `rust/fix/src/`) and
-before P5R. One commit: the core's `crated.rs`/`schema.rs`/`identity.rs`/`msg.rs`/`build.rs`
-(the lifted tags grown by the eleven, the derived definitions deleted, the band order), the
-market crate's `element.rs`, `book.rs`, `arrow.rs`, `market_column.rs` + the `LiftedColumn`,
-`facts.rs`, `market.rs`, `isin_registry.rs` and the seed, the bindings' properties, the pipeline
+After S4 and before P5R; it touches the three crates. One commit: the FIX crate's
+`rust/fix/src/{crated,schema,identity,msg,build}.rs` (the lifted tags grown by the eleven, the
+derived definitions deleted, the band order); the core's `rust/src/graph/element.rs`
+(`Element::cross_uuid` and `sync_cross`, D40.5 - the event vocabulary stays core); the market
+crate's `rust/market/src/graph/{book,arrow,market_column,facts,market}.rs` + the `LiftedColumn`,
+`rust/market/src/isin_registry.rs` and the seed; the bindings' properties, the pipeline
 (`python/tests/medallion.py`), the pages (`docs/fix/capture.md` the crate's columns table and the
 derived-column section, `docs/graph/schemas.md`, `docs/graph/{event,market,book,isin-registry}.md`,
-`docs/types/codes/*.md` where a column is named), the skills, the inventories. Checks: the fix
-and market crates' suites both lanes with every unmoved pin green without edit, the dump written
-once and the hash re-pinned once with its sentence, the snapshot's keys re-spelled and its value
-lines moved only where D40.5/D40.6 say, `pytest python/tests` whole with the medallion pipeline
-green, Node's suite, the three docs runners, `mkdocs build --strict`.
+`docs/types/codes/*.md` where a column is named), the skills, the inventories, and AGENTS.md's
+Layout rows naming `isincode`, `cficode`, `miccode` and `get_isincode`. Checks: the core suites
+that pin the cross identity (`rust/tests/graph/{element,column,element_column}.rs`,
+`rust/tests/text/{line,plan,options}.rs`), the fix and market crates' suites both lanes with every
+unmoved pin green without edit, the dump written once and the hash re-pinned once with its
+sentence, the snapshot's keys re-spelled and its value lines moved only where D40.5/D40.6 say,
+`pytest python/tests` whole with the medallion pipeline green, Node's suite, the three docs
+runners, `mkdocs build --strict`.
 
 ## Put to the user (interpretations taken; say if another was meant)
 
@@ -2880,7 +2888,7 @@ previous alive event of its lifecycle by any one identifier the two share - a ch
 such as orderid, clordid, secondaryorderid, quoteid, tradeid, whichever one both state - found
 through an index keyed by identifier value rather than a scan (optimally), and the predecessor's
 values propagate onto the follower (the facts it states nothing of). Design in the foreground
-(DESIGN.md D41) after S4 is pushed; order relative to P7 and P5R to decide - the lifecycle walk is
+(DESIGN.md D41) after S4 is pushed; the order is decided: P7, then P8, then P5R - the lifecycle walk is
 `rust/market/src/graph/iterator.rs` + `rust/fix/src/enrich.rs` after S4.)
 
 ## Foreground notes (22:30 UTC) - what the walk does today, and the design questions D41 answers

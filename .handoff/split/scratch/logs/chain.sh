@@ -105,7 +105,7 @@ grep -rn '#\[cfg(test)\]\|#\[test\]\|mod tests' rust/src rust/*/src python/src n
 echo "test-in-src grep exit $? (1 = clean)" >> $L
 MODEL_WORDS="op""us|fa""ble|son""net|cla""ude-[a-z]+-[0-9]"
 grep -rniE "$MODEL_WORDS" --exclude-dir=.git --exclude-dir=target --exclude-dir=node_modules --exclude-dir=.handoff --exclude-dir=.venv --exclude-dir=site . >> $L 2>&1
-echo "model-id grep exit $? (1 = clean)" >> $L
+echo "model-id grep exit $? (AGENTS.md's Pace sentence alone is accepted)" >> $L
 step docs-python
 $V scripts/check_docs_examples.py --lang python >> $L 2>&1
 echo "docs-python exit $?" >> $L

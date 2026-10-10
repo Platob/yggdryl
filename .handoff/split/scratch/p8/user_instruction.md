@@ -7,7 +7,7 @@ previous alive event of its lifecycle by any one identifier the two share - a ch
 such as orderid, clordid, secondaryorderid, quoteid, tradeid, whichever one both state - found
 through an index keyed by identifier value rather than a scan (optimally), and the predecessor's
 values propagate onto the follower (the facts it states nothing of). Design in the foreground
-(DESIGN.md D41) after S4 is pushed; order relative to P7 and P5R to decide - the lifecycle walk is
+(DESIGN.md D41) after S4 is pushed; the order is decided: P7, then P8, then P5R - the lifecycle walk is
 `rust/market/src/graph/iterator.rs` + `rust/fix/src/enrich.rs` after S4.)
 
 ## Foreground notes (22:30 UTC) - what the walk does today, and the design questions D41 answers
