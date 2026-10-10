@@ -25,3 +25,7 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
    PR from `main` after the release. The user: "Include the instrument implementations and add
    local live aws testing prompt to finalize this pr first and publish 0.1.22", then "ask to
    finalize next implementations postponing the othe crates split", answered "All in this PR".
+8. The instrument cross code (`p9/crosscode_decision.md`): a security is keyed by its real ISIN
+   alone, the CFI a fact beside it; CFI class + characteristics key everything no agency numbers
+   (forex, forwards, swaps, options, futures, strategies). Answered "Bare ISIN for securities
+   (Recommended)"; the decision's items 2-9 stand unless the user says otherwise.
