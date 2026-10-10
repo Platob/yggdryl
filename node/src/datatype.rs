@@ -125,12 +125,7 @@ impl JsDataType {
             "large_cp1252" => CoreDataType::large_cp1252(),
             "cp1252_view" => CoreDataType::cp1252_view(),
             "large_cp1252_view" => CoreDataType::large_cp1252_view(),
-            "side" => CoreDataType::Side,
             "state" => CoreDataType::State,
-            "marketdatakind" => CoreDataType::MarketDataKind,
-            "marketdatatype" => CoreDataType::MarketDataType,
-            "timeinforce" => CoreDataType::TimeInForce,
-            "pluginside" => CoreDataType::PluginSide,
             "unit" => CoreDataType::Unit,
             "ric" => CoreDataType::Ric,
             "uuid" => CoreDataType::uuid(),
@@ -142,11 +137,17 @@ impl JsDataType {
             "timezone" => CoreDataType::Timezone,
             "mimetype" => CoreDataType::MimeType,
             "mediatype" => CoreDataType::MediaType,
-            _ => {
-                return Err(Error::from_reason(format!(
-                    "{kind:?} is not a parameter-free datatype kind"
-                )));
-            }
+            // A registered enum kind is named by the register, so a kind the
+            // core or another crate claims reaches this door with no arm of
+            // its own; a core name is never read as one.
+            _ => match yggdryl::market::kind_named(&kind) {
+                Some(market) => market.dtype(),
+                None => {
+                    return Err(Error::from_reason(format!(
+                        "{kind:?} is not a parameter-free datatype kind"
+                    )));
+                }
+            },
         };
         Ok(Self::from_core(inner))
     }
@@ -321,8 +322,8 @@ impl JsDataType {
     #[napi(ts_return_type = "Record<string, DataType>")]
     pub fn logical_names(env: &Env) -> Result<Object<'_>> {
         let mut names = Object::new(env)?;
-        for (name, dtype) in CoreDataType::LOGICAL_NAMES {
-            names.set(*name, Self::from_core(dtype.clone()))?;
+        for (name, dtype) in CoreDataType::logical_names() {
+            names.set(name, Self::from_core(dtype))?;
         }
         Ok(names)
     }
@@ -1214,8 +1215,8 @@ impl JsStringEnum {
     #[napi(ts_return_type = "Record<string, string[]>")]
     pub fn prebuilt(env: &Env) -> Result<Object<'_>> {
         let mut lists = Object::new(env)?;
-        for (name, values) in CoreStringEnum::PREBUILT {
-            lists.set(*name, values.to_vec())?;
+        for (name, values) in CoreStringEnum::prebuilt() {
+            lists.set(name, values.to_vec())?;
         }
         Ok(lists)
     }

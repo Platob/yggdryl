@@ -6,7 +6,7 @@
 
 | Key | Rule |
 | --- | --- |
-| Owner | trait `yggdryl::graph::Operation`, in `graph::market`; Rust-only - operation [leaves](index.md#leaves) answer it in Python/JavaScript |
+| Owner | trait `yggdryl_market::graph::Operation`, in `graph::market`; Rust-only - operation [leaves](index.md#leaves) answer it in Python/JavaScript |
 | `ordqty` | `get_ordqty`/`set_ordqty`: the quantity the operation ordered, FIX's `OrderQty(38)`, never the quantity the element is about ([`get_quantity`](market.md#contract)); it, `get_cumqty`, `get_leavesqty` and `get_cxlqty` fill one another by the state the operation reached - fresh, all of it left; working, any two of ordered, traded and left give the third; filled, nothing left and all of it traded; canceled, done for the day or expired, nothing left and the untraded rest canceled ([Market](market.md#setting-fill-or-overwrite)) |
 | `timeinforce`, `tradable` | `get_`/`set_` each: `timeinforce` how long it stands, an `Option<TimeInForce>` [enum member](../types/enum/timeinforce.md) - `set_timeinforce(TimeInForce::from_spelling("day"), true)` stores `DAY`, code `1`; Python answers the `yggdryl.TimeInForce` member and JavaScript its name, and either takes a member, its code, a name, FIX's name or the wire value; `tradable` (`Option<bool>`) whether the instrument can trade where a status says, `None` if the market said nothing either way |
 | `identifiers` | the operation's own [identifiers](#identifiers), an [`Identifiers`](identifier.md) map keyed `src:type` |
@@ -15,6 +15,8 @@
 | `is_followed_identifier(id)` | provided: whether an operation that follows another carries `id`, one of the chain's identifiers, where it states none of its source and type - every type but `mdentryrefid`, unless the holder's own dictionary says otherwise (a FIX message reads its registry's [`FIX:idmap` follow flags](../fix/registry.md#a-field-names-a-message-by-its-identifiers), each followed type's [parents](identifier.md#parentage) travelling with it) |
 | `parents_of(base)`, `parent_of(kind)` | provided: the parent types of one of the operation's identifier types, nearest first, and the base a parent type belongs to with its place among the base's parents - [`IdType::parents` and `parent_of`](identifier.md#parentage) unless the holder's own dictionary says otherwise (a FIX message reads its registry's [`FIX:parents`](../fix/registry.md#parents-of-an-identifier)) |
 | `follow_identity(live)` | provided (`Self: Element`): stands the operation under the identity of `live`, the live statement of the chain a [lifecycle walk](event.md#names-re-keying-and-conflicts) states it in - a sided operation stating no side takes the live one's side, then the live statement's stored cross code where that states one and this one's differs, the cross hash and cross element in step - and answers whether anything moved, the walk finalizing where it did; a FIX lifecycle message overrides it to write the side as `Side(54)`, so its row, its wire and its digest state it |
+| `fill_of()` | provided: what the statement reports of a fill, a [`Fill`](event.md#lifecycle-walk), read off the holder's own words and never its lifecycle state - a positive `lastqty` under an `execid` a `Fill::New`, under none `Unidentified`, anything else `NotAFill`; a FIX message overrides it off FIX 4.2's `ExecTransType(20)` where it states a bust, a correction or a status, else its `ExecType(150)` - `ExecID(17)`, `ExecRefID(19)`, `LastQty(32)` and `MultiLegReportingType(442)`: a trade a `New` of its last quantity, of the rise in `CumQty(14)` where it states none, a trade cancel a `Bust` of the fill `19` names, a trade correct a `Correct` of it, `17=0` `Unidentified`, a leg's report and everything else `NotAFill` ([FIX](../fix/lifecycle.md#an-orders-fills-are-counted-once)). The lifecycle walk counts an order chain's fills by it |
+| `states_end()` | provided, `true`: whether an ended state the statement reads is its holder's own word; a FIX message answers `false` for the `FILLED` an `ExecType(150)` `F` or `G` report reads where its `LeavesQty(151)` is nothing - the venue's remainder, which the walk's count may contradict |
 | `note_conflict(cited)` | provided: what a walk tells an operation it found citing two live chains and stood under its own identity - `cited` naming its own stored cross code and each chain's with the name that cited it; nothing by default, and a FIX message records a [`FixAnomaly`](../fix/message.md#anomalies) under `crosscode`, told before anything restates or settles it, so a twin carries the same |
 | `digest_operation` | provided (`Self: Element`): continues [`digest_market`](market.md#contract) with the quantity ordered, the time in force, whether it trades, and the identifiers and the party ids (each fed as source, type and value under the labels `identifiers` and `partyids`, in key order, the parents among them) |
 | `merging_operation` | where `Self: Element`, no clocks: `self` leads |
@@ -27,8 +29,10 @@
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Event, Market, Operation, OrderEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::{Market, Operation, OrderEvent};
     use yggdryl::{Decimal, State};
+    yggdryl_market::install()?;
 
     let mut order = OrderEvent::at(1_700_000_000_000_000_000);
     order.set_crosscode("O-1001".to_owned());
@@ -84,7 +88,7 @@
 | `insert_identifier(id)` | `Identifiers::insert`: fills an absent key or replaces a lower-ranked value; a named source fills or replaces its type's base key where it is empty or ranks below it; `false` when a value of equal or higher rank stands - another source of one type is another identifier |
 | `remove_identifier(&key)` | removes what an `IdKey` holds - a named source's key that identifier alone, the base key every key of its type; returns whether one was held |
 | A FIX message | its sets are logical facts read off its fields, the wire kept as sent: a caller's write is the message's word, held as stated - no field moves and no settle restates it ([FIX](../fix/message.md#the-identifier-maps)); a plain holder always answers `Ok` |
-| In a walk | a [chain identity](identifier.md#parentage) a live element goes by - `orderid`, `clordid`, `quoteid`, `tradeid`, `tradereportid` and their secondary ones, never an `execid` or a `quotereqid` - and the chain's first value a lineage identifier names, under its base, is how an element finds its chain, on its own side and within its own market data kind; one citing two chains is a [conflict](event.md#names-re-keying-and-conflicts), and stands under its own identity; a book resolves `mdentryid`/`mdentryrefid` [itself](book.md#entries), neither naming a lifecycle chain |
+| In a walk | an identifier of the same type and value a live element of its own market data kind, side and instrument holds ([`IdType::is_chain_name`](identifier.md#parentage): every type of this map - a [chain identity](identifier.md#parentage) by every value the chain went by, any other type by its live statement's value - but one many elements share, `trdmatchid`, `quotereqid`, `mdreqid` and a parent order's slot) and the chain's first value a lineage identifier names, under its base, is how an element finds its chain ([Lifecycle walk](event.md#lifecycle-walk)); one citing two chains is a [conflict](event.md#names-re-keying-and-conflicts), and stands under its own identity; a book resolves `mdentryid`/`mdentryrefid` [itself](book.md#entries), the walk matching an entry on them by its tagged leg and its instrument |
 
 ## Party identifiers
 
@@ -117,8 +121,10 @@ A replacement order following the one it replaces, then an acknowledgment that s
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Market, Operation, OrderEvent};
-    use yggdryl::{IdKey, IdSource, IdType, Identifier, Side, TimeInForce};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Market, Operation, OrderEvent};
+    use yggdryl_market::{IdKey, IdSource, IdType, Identifier, Side, TimeInForce};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let fix = |kind: IdType, value: &str| Identifier::new(IdKey::base(kind), value);

@@ -15,11 +15,13 @@ Storage backends (local, memory-mapped, ZIP, HTTP/1.1 behind the `http`
 feature with HTTP/2 and HTTP/3 behind `http2` and `http3`,
 and the S3, Google Cloud Storage, and Azure Blob object stores behind the `s3`
 feature), record media (Arrow IPC, Parquet, Avro, CSV, plain text, XML for
-Analysis and Iceberg tables), the event graph - orders, quotes, executions,
-books, candles, and the book display `yggdryl market serve` hosts over a
-table of them - and the FIX protocol are core domains over those same
-values; the expression layer is a grammar over them, never a second query
-engine.
+Analysis and Iceberg tables) and the event vocabulary are core domains over
+those same values; the expression layer is a grammar over them, never a second
+query engine. Two crates stand over the core: `yggdryl-market`, the market
+kinds, identifiers, instruments and market graph - orders, quotes,
+executions, books and candles - and `yggdryl-fix`, the FIX protocol over both.
+A Rust caller installs what it links (`yggdryl_market::install()`,
+`yggdryl_fix::install()`); the Python and Node packages install both.
 
 ## Documentation
 
@@ -52,7 +54,7 @@ pushes to `main` publish the result to GitHub Pages.
 ## Layout
 
 ```text
-rust/                    The core crate
+rust/                    The core crate, yggdryl
   src/*.rs               One type per root file - its datatype, field and
                          scalar - or one shared trait, enum or value; codecs
                          (gzip.rs, zlib.rs, zstd.rs) and charsets with string
@@ -68,7 +70,8 @@ rust/                    The core crate
   src/coding/            What every codec shares: Coded and Codec dispatch
   src/charset/           What every code page shares
   src/media/             What every record medium shares: Media, record
-                         options, inference, magic, merge, partitions
+                         options, the registers of media and table formats,
+                         inference, magic, merge, partitions
   src/{ipc,parquet,avro,csv,iceberg,xmla,excel}/
                          One folder per record medium; xmla/ also holds the
                          XML for Analysis provider and its HTTP server, and
@@ -79,16 +82,20 @@ rust/                    The core crate
                          One folder per structured codec
   src/{metadata,mime_type,media_type,uri}/
                          Field metadata, MIME and media types, identifiers
-  src/{arrow,expression,graph,fix}/
+  src/{arrow,expression,graph}/
                          Arrow interop, the expression grammar, the event
-                         graph - its books, candles and graph/serve.rs, the
-                         book display's HTTP service - FIX
+                         vocabulary every graph element answers
   src/hashing/           The private stable-hash adapters; xxhash/ and
                          txhash/ are one folder each
   src/logging/           Python's logging owned by the core: loggers, levels,
                          handlers and formatters behind the log facade
   tests/                 One test file per source file, at the mirrored path
   benchmarks/            Criterion targets, grouped by theme
+  market/                yggdryl-market: the market kinds, identifiers, ISIN
+                         registry and market graph - books and candles -
+                         with its own src/, tests/ and benchmarks/
+  fix/                   yggdryl-fix: the FIX dictionary, codec, messages
+                         and lifecycle, laid out the same way
 python/                  The Python extension
   src/                   PyO3 views, one type per root file; media/ holds
                          only the shared handle classes and partitions
@@ -98,7 +105,9 @@ node/                    The JavaScript extension
   src/                   Node-API views, laid out like python/src
   *.js                   The loader and its convenience protocols
   tests/                 The mirror of both, file for file
-cli/                     The yggdryl command-line tool
+cli/                     The yggdryl command-line tool; its tests compile
+                         the documentation's Rust examples and the pins
+                         only a build of every crate can state
 skills/                  Agent skills for code using the package, one folder
                          per layer, published as a Claude Code plugin by
                          .claude-plugin/
@@ -156,9 +165,9 @@ The record surface is one streaming read and three explicit write intents:
 `IOMedia::read_arrow_reader` returns an `arrow::BatchReader`, while
 `IOMedia::overwrite_arrow_reader`, `IOMedia::append_arrow_reader`, and
 `IOMedia::merge_arrow_reader` consume one. The encoding comes from the handle's
-media type rather than an argument, `options.field` selects and casts in one
-pass, and a handle addressing a folder reads and writes across the partitions
-beneath it. The canonical signatures and intent rules live on the
+media type, the medium the register claims for it, rather than an argument;
+`options.field` selects and casts in one pass, and a handle addressing a folder
+reads and writes across the partitions beneath it. The canonical signatures and intent rules live on the
 [records page](docs/holder/index.md#records).
 
 ```rust
@@ -311,6 +320,7 @@ surface and the all-feature workspace separately.
 cargo fmt --all -- --check
 cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings
 cargo test -p yggdryl --all-targets
+cargo test -p yggdryl-market -p yggdryl-fix --all-targets
 cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
 cargo test -p yggdryl --all-targets --all-features
 cargo check -p yggdryl --profile bench --benches --all-features

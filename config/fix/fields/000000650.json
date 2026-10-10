@@ -1,6 +1,6 @@
 [
   {
-    "name": "curruuid",
+    "name": "uuid",
     "dtype": {
       "type": "uuid"
     },
@@ -9,8 +9,8 @@
       "FIX:datatype": "String",
       "FIX:tag": "65001",
       "FIX:transient": "false",
-      "description": "The element's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash.",
-      "display": "Current UUID"
+      "description": "The element's own UUID: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash.",
+      "display": "UUID"
     }
   },
   {
@@ -42,7 +42,7 @@
     }
   },
   {
-    "name": "currhashcode",
+    "name": "hashcode",
     "dtype": {
       "type": "uint64"
     },
@@ -52,7 +52,7 @@
       "FIX:tag": "65004",
       "FIX:transient": "false",
       "description": "The XXH3-64 of what the event states and the named FIX content behind it.",
-      "display": "Current Hash Code"
+      "display": "Hash Code"
     }
   },
   {
@@ -91,7 +91,7 @@
     }
   },
   {
-    "name": "currunix",
+    "name": "transunix",
     "dtype": {
       "type": "datetime64",
       "unit": "nanosecond",
@@ -102,8 +102,8 @@
       "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "65007",
       "FIX:transient": "false",
-      "description": "When the event happened: the settled instant, UTC.",
-      "display": "Current Time"
+      "description": "When the operation happened: the settled transaction instant, UTC.",
+      "display": "Transaction Time"
     }
   },
   {
@@ -121,12 +121,12 @@
       ],
       "FIX:tag": "65008",
       "FIX:transient": "false",
-      "description": "When the message was created: what it states, else when it happened; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed.",
+      "description": "When the message was created: what it states, else its transunix; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed.",
       "display": "Creation Time"
     }
   },
   {
-    "name": "recdunix",
+    "name": "sendunix",
     "dtype": {
       "type": "datetime64",
       "unit": "nanosecond",
@@ -137,8 +137,8 @@
       "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "65009",
       "FIX:transient": "false",
-      "description": "When the message was recorded: by its carrier, where the carrier states one, else by its sender, where it states a SendingTime; the earliest its statements know.",
-      "display": "Recording Time"
+      "description": "When the message crossed the wire: its carrier's clock where the carrier states one, else the sender's SendingTime; the earliest its statements know.",
+      "display": "Sending Time"
     }
   },
   {
@@ -315,7 +315,7 @@
       "FIX:datatype": "UTCTimestamp",
       "FIX:tag": "65024",
       "FIX:transient": "false",
-      "description": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know.",
+      "description": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its transunix; the latest its chain reached once followed, and the earliest two statements of it know.",
       "display": "Execution Time"
     }
   },
@@ -335,14 +335,14 @@
   {
     "name": "msgpluginside",
     "dtype": {
-      "type": "pluginside"
+      "type": "side"
     },
     "nullable": false,
     "metadata": {
       "FIX:codeset": "msgpluginsidecodeset",
       "FIX:datatype": "int",
       "FIX:tag": "65043",
-      "description": "The role of the FIX plugin whose session produced the message: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the dialect states none; a session fact read off the dialect's source entry, never off a FIX tag, and independent of Side(54).",
+      "description": "The role of the FIX plugin whose session produced the message, as a side: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the dialect states none; a session fact read off the dialect's source entry, never off a FIX tag, a column of its own beside Side(54), the order's side.",
       "display": "Message Plugin Side"
     }
   },
@@ -463,6 +463,19 @@
       "FIX:transient": "false",
       "description": "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
       "display": "Source URL"
+    }
+  },
+  {
+    "name": "instcode",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:datatype": "String",
+      "FIX:tag": "65054",
+      "description": "The cross code of the instrument the message is about, the instrument table's own key: the real ISIN of a security an agency numbered, class:body - the two CFI class letters, then the body the characteristics spell, IF:EUR/USD for a spot pair - for everything no agency numbers. Written at the parse where the code is a function of the message alone - a stated real ISIN, a detected currency pair - filled by the lifecycle from the instrument the message resolves to otherwise, followed along a chain, fed to no digest; a row stating one is the row's word.",
+      "display": "Instrument Code"
     }
   }
 ]

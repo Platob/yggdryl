@@ -10,6 +10,7 @@ Usage:
     python scripts/stage_cli.py                   # release, host target
     python scripts/stage_cli.py --debug           # a faster, much larger binary
     python scripts/stage_cli.py --target <triple> # cross build, for a release matrix
+    python scripts/stage_cli.py --debug --locked  # CI: refuse a lock that would move
     python scripts/stage_cli.py --clear           # remove the staged binary again
 """
 
@@ -105,6 +106,11 @@ def main() -> int:
     parser.add_argument("--debug", action="store_true", help="stage a debug build")
     parser.add_argument("--target", help="the Rust target triple to build for")
     parser.add_argument(
+        "--locked",
+        action="store_true",
+        help="pass --locked to cargo, so a Cargo.lock that would move is an error",
+    )
+    parser.add_argument(
         "--clear",
         action="store_true",
         help="remove the staged binary and build nothing",
@@ -127,6 +133,8 @@ def main() -> int:
         command.append("--release")
     if arguments.target:
         command += ["--target", arguments.target]
+    if arguments.locked:
+        command.append("--locked")
     command += ["--message-format", "json-render-diagnostics"]
     print(" ".join(command))
     result = subprocess.run(

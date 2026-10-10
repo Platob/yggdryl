@@ -49,10 +49,11 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | raw metadata | `insert_metadata(k, v)?`, `get_metadata(k)` | `field.metadata[k] = v` | `field.set(k, v)`, `field.get(k)` |
 | reserved properties | `set_parquet_field_id(17)`, `set_comment(..)?` | `set_parquet_field_id(17)`, `set_comment(..)` | `setParquetFieldId(17)`, `setComment(..)` |
 | one protocol's keys | `as_iceberg_mut().insert("doc", ..)?` | `field.iceberg["doc"] = ..` | `field.iceberg.set('doc', ..)` |
-| a registered enum (`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce`, `pluginside`) | `DataType::Side.scalar("BUYS")?`, `Side::from_spelling("1")`, `MarketDataKind::Order.code()`, `TimeInForce::from_fix("0")`, `PluginSide::from_plugin_type(class)` | `yggdryl.side(name)`, `Side.BUYS` (an `IntEnum`), `MarketDataKind.from_spelling("order")`, `TimeInForce.from_fix("0")`, `PluginSide.from_plugin_type(class)` | `fields.side(name)`, `Side.BUYS` (a frozen name-to-code object), `timeInForceFromFix('0')`, `pluginSideFromPluginType(class)` |
+| a registered kind - `side`, `marketdatakind`, `marketdatatype`, `timeinforce` - under `DataType::Market` | `Side::dtype()`, `Side::field("side")` (a nullable field), `DataType::Market(kind)` (`kind.name()`, `kind.id() == Side::ID`), `<Side as MarketValue>::from_scalar(&value)` (owned), `market::kind_named("side")`, `market::kinds()` | `DataType("side")`, as before: no new door | `new DataType('side')`, as before: no new door |
+| a registered enum (`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce`) | `Side::dtype().scalar("BUYS")?`, `Side::from_scalar(&value)` (`Value`, borrowed), `Side::from_spelling("1")`, `MarketDataKind::Order.code()`, `TimeInForce::from_fix("0")`, `yggdryl_fix::plugin_side(class)` (a FIX plugin's role, a `Side`) - the four kinds `yggdryl_market`'s, after `yggdryl_market::install()?` | `yggdryl.side(name)`, `Side.BUYS` (an `IntEnum`), `MarketDataKind.from_spelling("order")`, `TimeInForce.from_fix("0")`, `fix.plugin_side(class)` | `fields.side(name)`, `Side.BUYS` (a frozen name-to-code object), `timeInForceFromFix('0')`, `fix.pluginSide(class)` |
 | a free enum spelling (`order fill`, `Part-Filled`, `pending cxl`) | `State::from_spelling("order fill")` - read by its words once the exact vocabularies miss, cached | `State.from_spelling("order fill")`, `DataType("state").scalar(...)` | `new DataType('state').scalar('order fill')` |
 | a registered code's validity (`isin`, `cusip`, `sedol`, `figi`, `lei`, `dti`, `bic`, `country`, `ccy`, `mic`, `cfi`) | `code.rank()`, `code.is_real()` (`CodeValue`), `IdType::Isin.rank(text)`, `Isin::rank_of(text)`, `Isin::is_closed`, `Lei::is_closed`, `Dti::is_closed`, `Isin::is_listed_prefix`, `Isin::NONE`, `Country::is_listed`, `Ccy::is_none`, `Mic::is_none` | Rust only: a value of the right shape is accepted whatever its rank | Rust only |
-| a structured product's EUSIPA/SSPA category (a value, not a datatype) | `Eusipa::new(2300)?`, `"2300".parse::<Eusipa>()?`; `code()`, `group()`, `level()`, `name()`, `sspa_name()`, `is_listed()` | `Eusipa(2300)`, `Eusipa("2300")`; `.code`, `.group`, `.level`, `.name`, `.sspa_name`, `.is_listed`, `int(c)` | no `Eusipa`: a registry row's `eusipacode` is a number |
+| a structured product's EUSIPA/SSPA category (a value, not a datatype) | `Eusipa::new(2300)?`, `"2300".parse::<Eusipa>()?`; `code()`, `group()`, `level()`, `name()`, `sspa_name()`, `is_listed()` | `Eusipa(2300)`, `Eusipa("2300")`; `.code`, `.group`, `.level`, `.name`, `.sspa_name`, `.is_listed`, `int(c)` | no `Eusipa`: an instrument row's `eusipacode` is a number |
 | an enumerated column (`FIELD:enum`) | `StringEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?` + `Field::new("side", DataType::fixed_ascii(4)?, false).try_with_string_enum(&side)?`; `string_enum()?`; `StringEnum::from_logical_name("ccy")?` | `StringEnum("Side", {"BUY": "B", "SELL": "S"})` + `field.set_string_enum(side)`; `field.string_enum`; `StringEnum.from_logical_name("ccy")`; `yggdryl.enums.Ccy` / `Country` bases | `new StringEnum('Side', { BUY: 'B', SELL: 'S' })` + `field.setStringEnum(side)`; `field.stringEnum`; `StringEnum.fromLogicalName('ccy')` |
 | compare, diff | `equals(&o, true)`, `show_diffs(&o, true, false)` | `equals(o, with_metadata=False)`, `show_diffs(o)` | `equals(o, false)`, `showDiffs(o)` |
 | merge two schemas | `a.merge_with(&b, true)?` | `a.merge_with(b)` | `a.mergeWith(b)` |
@@ -63,7 +64,7 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | Arrow schema in and out | `Field::from_arrow_field(&f)?`, `into_arrow_field()?` | `Field.from_arrow(f)`, `Field.from_arrow_schema(s, name=)`, `into_arrow()`, `into_arrow_schema()` | schemas cross with batches (`yggdryl-arrow`): `Serie.fromArrowBatch(batch).field`; `Field.fromArrow(f)` and `field.intoArrow()` cross an Arrow JS field through a real IPC round trip, keeping `nullable: false` and its extension; `DataType.fromArrow(t)` takes only a bare type, which carries neither in Arrow JS - import the **field** instead to keep them |
 | Arrow extension type of a datatype | `DataTypeId::Ccy.arrow_extension_name()`, `DataTypeId::arrow_extension_names()`; `arrow_field.try_extension_type::<CcyType>()?`, `.with_extension_type(CcyType)` (every marker, `StringType`, `BytesType`) | registered on `import yggdryl`: `DataType("ccy").into_arrow()` is a `yggdryl.extension.YggdrylType`, `.datatype` reads it back; `DataType.ARROW_EXTENSION_NAMES` | metadata only: `field.intoArrow().metadata.get('ARROW:extension:name')` |
 | canonical default | `default_value()?` | `default_scalar()` | `defaultJSValue()` |
-| engine compatibility | `into_scheme_compat(&Scheme::SPARK)?` | `into_scheme_compat("spark")` | `intoSchemeCompat('spark')` |
+| engine compatibility (`arrow`, `spark`, `polars`, `pandas`, `iceberg`, `doris`) | `into_scheme_compat(&Scheme::SPARK)?` | `into_scheme_compat("spark")` | `intoSchemeCompat('spark')` |
 | an integer column stored as bits (a `uint64` digest as an Iceberg `long`) | `field.as_field_properties_mut().set_representation(Representation::Bits)?` | `field.field_properties.representation = "bits"` | `field.fieldProperties.representation = 'bits'` |
 
 Every spelling the grammar reads - Arrow, SQL, Hive, Spark, Iceberg and FIX names, the
@@ -226,7 +227,7 @@ string and byte leaves, the legacy `list` words - is in
   a BIC's or an LEI's shape, refused on its key otherwise
   (`yggdryl-market-data`, Identifiers).
 - `Eusipa` is a value, not a datatype: there is no `eusipa` column type, and
-  a column of categories is an integer (the registry's `eusipacode` is
+  a column of categories is an integer (an instrument's `eusipacode` is
   `int32`). A code is held by its shape alone - four digits, `1` an
   investment product and `2` a leverage product (`1000` to `2999`) - so a
   code no map lists is accepted with `name()`/`sspa_name()` none and
@@ -243,16 +244,16 @@ string and byte leaves, the legacy `list` words - is in
   is accepted on the `StringEnum("Side", ...)` field above. Check membership
   yourself (`side.get_member(v)` / `getMember(v)` answers the member name or
   none) when non-members must fail.
-- `side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` and
-  `pluginside` are not text: each is a `uint8` (`side`, `marketdatakind`,
-  `timeinforce`, `pluginside`) or
+- `side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are
+  not text: each is a `uint8` (`side`, `marketdatakind`, `timeinforce`) or
   `uint16` (`state`, `marketdatatype`) column of member codes (kind `enum`),
   any integer column casting in and a code naming no member refused, which a value reads as the member -
   Python's `IntEnum` (`Side.BUYS`), JavaScript's name (`'BUYS'`), Rust's variant
   (`Side::Buy`). Text reads through the vocabulary (`"1"` is FIX's `BUYS`); a
-  `marketdatakind` code is an integer, never the text `"10"`. A `pluginside`
-  (`UKNW`, `BUYS`, `SELL`: a FIX plugin's role) is no `side` though two names
-  are spelled alike: a cast between the two is refused by name.
+  `marketdatakind` code is an integer, never the text `"10"`. A FIX plugin's
+  role is a `side` (`yggdryl_fix::plugin_side(class)` reads a CBlock's class into
+  `BUYS`, `SELL` or `UKNW`; `BuySide` and `SellSide` are spellings of the
+  first two), and a cast between any two enums is refused by name.
 - `forex` is a code, not a string: one pair `CCY/CCY` of two distinct ISO 4217
   currencies, however a feed spells it; a digital-asset ticker is a `ccy` but no
   leg, so `BTC/USDT` is no `forex`. A symbol with a tenor or a RIC

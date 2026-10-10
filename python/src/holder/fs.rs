@@ -986,10 +986,10 @@ fn store_role(
     let (container, key) = path.split_once('/').unwrap_or((path, ""));
     let options = store_options(&arguments)?;
     Ok(Some(match role {
-        NativeRole::Path => s3::path_at_with(provider, container, key, options).map(Holder::S3Path),
-        NativeRole::File => s3::file_at_with(provider, container, key, options).map(Holder::S3File),
+        NativeRole::Path => s3::path_at_with(provider, container, key, options).map(Holder::from),
+        NativeRole::File => s3::file_at_with(provider, container, key, options).map(Holder::from),
         NativeRole::Folder => {
-            s3::folder_at_with(provider, container, key, options).map(Holder::S3Folder)
+            s3::folder_at_with(provider, container, key, options).map(Holder::from)
         }
     }))
 }

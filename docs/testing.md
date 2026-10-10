@@ -27,7 +27,6 @@ Every check runs from the repository root, which owns the Cargo workspace.
     ```bash
     npm ci --prefix node
     npm run --prefix node build:debug
-    cargo build --locked -p yggdryl-cli   # the command node/tests/book.test.js spawns
     npm test --prefix node
     ```
 
@@ -42,7 +41,11 @@ top-level entry: a source folder is declared by `rust/tests/<folder>.rs`, and
 the files the crate root holds by `rust/tests/root.rs`. Five targets stand
 outside the mirror because what they pin is a cost or an exchange rather than a
 file. `--all-features` is what turns `internals` on, and with it a target runs
-everything it declares.
+everything it declares. `yggdryl-market` and `yggdryl-fix` keep the same rule
+against their own `src/` - `rust/market/tests/`, `rust/fix/tests/`, each with
+its harness targets and its own `allocations` and `iobase_calls` - and the
+`yggdryl` command's `market_register` target holds what only a build of every
+crate can pin.
 
 === "Rust"
 
@@ -56,7 +59,6 @@ everything it declares.
     cargo test -p yggdryl --all-features --test coding
     cargo test -p yggdryl --all-features --test csv
     cargo test -p yggdryl --all-features --test expression
-    cargo test -p yggdryl --all-features --test fix
     cargo test -p yggdryl --all-features --test fs
     cargo test -p yggdryl --all-features --test graph
     cargo test -p yggdryl --all-features --test hashing
@@ -93,7 +95,23 @@ everything it declares.
     cargo test -p yggdryl --all-features --test docs_index      # the landing-page example
     cargo test -p yggdryl --all-features --test interop         # the exchanges with an outside implementation
     cargo test -p yggdryl --all-features --test spill_doors     # the doors that settle under the process spill bound, in a process of their own
-    cargo test -p yggdryl --all-features --test scale_ulbridge  # the capture pipeline on series, table to table, three copies of the capture
+    cargo test -p yggdryl-market --all-features --test root
+    cargo test -p yggdryl-market --all-features --test arrow
+    cargo test -p yggdryl-market --all-features --test expression
+    cargo test -p yggdryl-market --all-features --test graph
+    cargo test -p yggdryl-market --all-features --test iceberg
+    cargo test -p yggdryl-market --all-features --test instrument
+    cargo test -p yggdryl-market --all-features --test market_register
+    cargo test -p yggdryl-market --all-features --test xxhash
+    cargo test -p yggdryl-market --all-features --test allocations
+    cargo test -p yggdryl-market --all-features --test iobase_calls
+    cargo test -p yggdryl-fix --all-features --test root
+    cargo test -p yggdryl-fix --all-features --test graph
+    cargo test -p yggdryl-fix --all-features --test instrument
+    cargo test -p yggdryl-fix --all-features --test allocations
+    cargo test -p yggdryl-fix --all-features --test iobase_calls
+    cargo test -p yggdryl-fix --all-features --test scale_ulbridge  # the capture pipeline on series, table to table, three copies of the capture
+    cargo test -p yggdryl-cli --test market_register                # the register's whole order across every crate
     ```
 
 === "Python"
@@ -115,11 +133,11 @@ everything it declares.
 ## The capture path at scale
 
 ```bash
-YGGDRYL_SCALE_BYTES=21474836480 cargo test --release -p yggdryl \
+YGGDRYL_SCALE_BYTES=21474836480 cargo test --release -p yggdryl-fix \
     --test scale_ulbridge --features iceberg -- --ignored --nocapture
 ```
 
-`rust/tests/scale_ulbridge.rs` runs the capture pipeline end to end on series, over a ULBridge capture of any size - the 144 lines of `rust/tests/fix/ulbridge.log` repeated, every clock and identifier stepped per copy, written through the crate's own Zstandard encoder into several `.log.zst` files. The folder of files is read as one stream of text rows (`read_serie`) and appended into an Iceberg table (`append_serie`); that table is read back in its order, parsed and walked (`parse_text_serie`, `lifecycle_serie`) and written over a second table (`overwrite_serie`); and that one is read back in its order into books, the complete book of every quarter of an hour written over a third table, and between them every book's `delta` - the orders and quotes it applied - and its `events` - the executions and snapshot controls it recorded - each flattened to `marketdata` rows over a table of its own. Every table is created from the schema of the stream written to it, partitioned by `partunix` - `time_bucket('15 minutes', currunix)`, a column the table computes - and sorted by `partunix, currunix, seqnum, currhashcode`. The ordinary pass runs three copies and checks every table row by row: each row in the quarter its instant falls in, a read in the table's order, the identity columns typed `uuid`, a second run of the FIX stage leaving the table as it was, and a run over one window of the text rewriting the partitions that window's rows reach and no other. The scale run asserts that the process's `RssAnon` stays where it stood a quarter of the way in, where the platform states one; it is `#[ignore]`d and a no-op printing `SKIPPED` unless `YGGDRYL_SCALE_BYTES` names the uncompressed size to generate, so no CI job runs it. `YGGDRYL_SCALE_STAGE` (`lines`, `text`, `parse`, `lifecycle`, `fix`, `books`) ends the path early to put a growth on the stage that owns it, and `YGGDRYL_SCALE_FOLDER` is where the input and the tables are written.
+`rust/fix/tests/scale_ulbridge.rs` runs the capture pipeline end to end on series, over a ULBridge capture of any size - the 144 lines of `rust/tests/support/ulbridge.log` repeated, every clock and identifier stepped per copy, written through the crate's own Zstandard encoder into several `.log.zst` files. The folder of files is read as one stream of text rows (`read_serie`) and appended into an Iceberg table (`append_serie`); that table is read back in its order, parsed and walked (`parse_text_serie`, `lifecycle_serie`) and written over a second table (`overwrite_serie`); and that one is read back in its order into books, the complete book of every quarter of an hour written over a third table, and between them every book's `delta` - the orders and quotes it applied - and its `events` - the executions and snapshot controls it recorded - each flattened to `marketdata` rows over a table of its own. Every table is created from the schema of the stream written to it, partitioned by `partunix` - `time_bucket('15 minutes', transunix)`, a column the table computes - and sorted by `partunix, transunix, seqnum, hashcode`. The ordinary pass runs three copies and checks every table row by row: each row in the quarter its instant falls in, a read in the table's order, the identity columns typed `uuid`, a second run of the FIX stage leaving the table as it was, and a run over one window of the text rewriting the partitions that window's rows reach and no other. The scale run asserts that the process's `RssAnon` stays where it stood a quarter of the way in, where the platform states one; it is `#[ignore]`d and a no-op printing `SKIPPED` unless `YGGDRYL_SCALE_BYTES` names the uncompressed size to generate, so no CI job runs it. `YGGDRYL_SCALE_STAGE` (`lines`, `text`, `parse`, `lifecycle`, `fix`, `books`) ends the path early to put a growth on the stage that owns it, and `YGGDRYL_SCALE_FOLDER` is where the input and the tables are written.
 
 ## The documentation is tested too
 
@@ -230,6 +248,34 @@ AVRO_FUZZ_ITERATIONS=200000 cargo test -p yggdryl --features internals --test av
 
 A skipped half fails its driver, so a skipped exchange never reads as a pass.
 
+## What CI runs for a change
+
+`.github/workflows/ci.yml` builds the core first and fans every job that reuses
+it out behind it; `.github/ci/rows.toml` says what each job reads, and the
+`Changes` job plans the run from it through `scripts/ci/plan.py`. A push to
+`main` runs every job, and so does a pull request that touches the core, the
+lock, a manifest, the workflow, the table, the planner or a path no row names.
+Otherwise a pull request runs the jobs its change can reach, less those an
+earlier run of it already passed with the same inputs. `CI result` judges the
+run against the plan: every planned job passed and every other was skipped.
+
+A change under a leaf crate's folder `rust/<leaf>/`, its manifest aside, runs
+what proves that leaf and the leaves built on it, and nothing more:
+
+| Runs | Skips |
+| --- | --- |
+| the leaf's clippy, rustdoc, tests and rustdoc examples in both feature lanes, its MSRV check where it has one; the format check; the API inventories; the Rust page examples; the Python wheel with the `pyarrow>=18` test leg; the Node.js addon and suite with the CLI tests; the leaf's exchanges | the core's test shards, the workspace lints, the free-threaded build, the `pyarrow==18.*` leg, the Python and JavaScript page examples, every other exchange |
+
+| Leaf | Its exchanges |
+| --- | --- |
+| `avro` | Avro (fastavro) |
+| `parquet` | PyIceberg, Spark |
+| `iceberg` | PyIceberg, Spark, the Iceberg check at Rust 1.94 |
+| `excel` | Excel (openpyxl) |
+| `market`, `fix`, `xmla` | none |
+
+A leaf's line in `.github/ci/rows.toml` names in `paths` the files of the core's tree its sources include - the capture, the bench profile, a shared `rust/tests/support/` fixture - so a change to one runs that leaf, and `scripts/tests/test_ci_plan.py` holds the line to the sources; a change under `config/` runs the leaves, the bindings and the CLI, not the core's test shards.
+
 ## What a test looks like here
 
 - A name states the behaviour: `a_missing_stream_reads_as_empty_rather_than_failing`.
@@ -245,7 +291,9 @@ A skipped half fails its driver, so a skipped exchange never reads as a pass.
 | `rust/tests/root/<name>.rs` | The file `rust/src/<name>.rs` holds, pinned; a folder's own `mod.rs` is pinned by `mod_.rs` |
 | `rust/tests/support/` | Fixtures several targets declare - a counting allocator, an in-process S3 |
 | `rust/tests/allocations.rs`, `iobase_calls.rs`, `benchmark_mode.rs`, `docs_index.rs`, `interop/` | What is pinned as a cost or an exchange rather than as a file |
-| `rust/tests/spill_doors.rs`, `scale_ulbridge.rs` | What must own its process: the spill doors install the process spill bound before anything reads it, and the scale run measures the process's `RssAnon` while a ULBridge capture streams from a `.log.zst` into an Iceberg table - three copies in the ordinary loop, the scale run `#[ignore]`d and a no-op printing `SKIPPED` unless `YGGDRYL_SCALE_BYTES` names the size to generate |
+| `rust/tests/spill_doors.rs`, `rust/fix/tests/scale_ulbridge.rs` | What must own its process: the spill doors install the process spill bound before anything reads it, and the scale run measures the process's `RssAnon` while a ULBridge capture streams from a `.log.zst` into an Iceberg table - three copies in the ordinary loop, the scale run `#[ignore]`d and a no-op printing `SKIPPED` unless `YGGDRYL_SCALE_BYTES` names the size to generate |
+| `rust/market/tests/`, `rust/fix/tests/` | The same layout for `yggdryl-market` and `yggdryl-fix` against their own `src/`, each test installing its crate first, and at a core file's path what that file answers for the crate's kinds or messages |
+| `cli/tests/market_register.rs` | What only a build of every crate can pin: the register's whole order across the core's codes and the market kinds |
 | `python/tests/**/test_<name>.py` | The mirror of `python/yggdryl/` and `python/src/`, which share one shape |
 | `node/tests/**/<name>.test.js` | The mirror of `node/src/` and the JavaScript beside it, plus `tsc --noEmit` over the `.types.ts` files |
 | `*/benchmarks/<theme>*` | [Benchmarks](benchmarks.md), which stay grouped by a caller's vocabulary |

@@ -1,13 +1,11 @@
 # `yggdryl`: the command line, one namespace per subcommand.
 #
 # `yggdryl fix` is everything a desk does to a FIX dictionary, from a shell,
-# `yggdryl xmla serve` puts folders of record media on the wire as XML for
-# Analysis catalogs, and `yggdryl market serve` puts a table of market data on the
-# wire as the book display - bid and ask candles, books and audits - with a FIX
-# bridge capture folded in first. Its own member rather than a binary inside the
-# core, so a library consumer carries none of what a terminal needs - argument
-# parsing, raw mode, colour - and the core's dependency set stays exactly what a
-# schema needs.
+# and `yggdryl xmla serve` puts folders of record media on the wire as XML for
+# Analysis catalogs. Its own member rather than a binary inside the core, so a
+# library consumer carries none of what a terminal needs - argument parsing, raw
+# mode, colour - and the core's dependency set stays exactly what a schema
+# needs.
 [package]
 name = "yggdryl-cli"
 version.workspace = true
@@ -15,7 +13,9 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "The yggdryl command line: manage a FIX dictionary, serve XML for Analysis catalogs and serve the book display of a market-data table (`yggdryl market serve`) from a terminal."
+# The command ships inside the wheel (`scripts/stage_cli.py`), never on crates.io.
+publish = false
+description = "The yggdryl command line: manage a FIX dictionary and serve XML for Analysis catalogs from a terminal."
 
 [[bin]]
 name = "yggdryl"
@@ -26,9 +26,11 @@ doc = false
 
 [dependencies]
 # The default core plus `http`: a tool that reads a dictionary wants the same
-# core a consumer has, and `yggdryl xmla serve` and `yggdryl market serve` answer on the
-# core's HTTP server.
+# core a consumer has, and `yggdryl xmla serve` answers on the core's HTTP
+# server.
 yggdryl = { path = "../rust", features = ["http"] }
+yggdryl-market = { workspace = true, features = ["http"] }
+yggdryl-fix = { workspace = true, features = ["http"] }
 # Argument parsing with derived help, so every command documents itself and
 # `--help` is generated from the same declaration the parser uses.
 clap = { version = "4.5", features = ["derive", "wrap_help"] }
@@ -38,16 +40,26 @@ clap = { version = "4.5", features = ["derive", "wrap_help"] }
 crossterm = { version = "0.29", default-features = false, features = ["events", "windows"] }
 shlex = "2.0"
 
+[dev-dependencies]
+# What the pages' Rust blocks name beside the crates, compiled by
+# `scripts/check_docs_examples.py` into `tests/docs_examples.rs`.
+arrow-array.workspace = true
+arrow-schema.workspace = true
+log.workspace = true
+# The Parquet page names the page codec as the parquet crate spells it.
+parquet = { version = "59.2.0", default-features = false }
+serde_json = "1.0"
+smol_str = "=0.3.2"
+
 [features]
-# `yggdryl xmla serve` and `yggdryl market serve` over an Iceberg folder need the
-# core's table reader, and `yggdryl market serve --capture` makes an empty folder a table with
-# it; without it an Iceberg table is listed and refused on read, by name. The
+# `yggdryl xmla serve` over an Iceberg folder needs the core's table reader;
+# without it an Iceberg table is listed and refused on read, by name. The
 # staged binary (`scripts/stage_cli.py`) enables it; the default build stays the
 # schema-only core.
-iceberg = ["yggdryl/iceberg"]
-# `yggdryl market serve` over an S3 location, and over an Amazon S3 Tables
-# table (`s3tables://<bucket>/<namespace>/<table>`): the core's object store and
-# its table-bucket catalog. The staged binary enables `s3tables`, which implies
+iceberg = ["yggdryl/iceberg", "yggdryl-market/iceberg", "yggdryl-fix/iceberg"]
+# `yggdryl xmla serve` over an S3 location, and over an Amazon S3 Tables
+# table bucket (`s3tables://<bucket>`): the core's object store and its
+# table-bucket catalog. The staged binary enables `s3tables`, which implies
 # both, beside `iceberg`.
 s3 = ["yggdryl/s3"]
 s3tables = ["yggdryl/s3tables", "iceberg"]

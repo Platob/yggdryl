@@ -1644,7 +1644,15 @@ fn a_root_folder_laid_out_as_an_iceberg_table_is_a_table_in_every_build() {
         // A build that reads Iceberg holds the table as the Iceberg table it
         // is; any other describes the layout and refuses to read it.
         #[cfg(feature = "iceberg")]
-        assert!(matches!(table, Table::Iceberg(_)), "{table:?}");
+        {
+            assert!(matches!(table, Table::Registered(_)), "{table:?}");
+            assert!(
+                table
+                    .downcast_ref::<yggdryl::iceberg::IcebergTable<yggdryl::Handle>>()
+                    .is_some(),
+                "{table:?}"
+            );
+        }
         #[cfg(not(feature = "iceberg"))]
         {
             let Table::Media(media) = &table else {
@@ -1753,8 +1761,9 @@ fn a_table_format_folder_is_never_read_as_the_leaves_it_holds() {
         let error = ledger.record_options().expect_err("refused by name");
         assert_eq!(
             error.to_string(),
-            "invalid record value at $.encoding: `market.ledger` is laid out as an Iceberg \
-             table, which this build does not read; the `iceberg` feature is not enabled"
+            "invalid record value at $.encoding: `market.ledger` is laid out as a table \
+             format this build does not read; install the crate that claims it and call its \
+             `install()`"
         );
     }
 }

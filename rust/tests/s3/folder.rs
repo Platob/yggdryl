@@ -300,6 +300,28 @@ mod accounting {
         assert_eq!(recorded[1].method, "POST");
         assert!(store.keys(BUCKET).is_empty());
     }
+
+    /// A prefix is held again as a clone on the same client, with no
+    /// request, and is a container already: no role to re-describe.
+    #[test]
+    fn a_prefix_is_held_again_without_a_request() {
+        use yggdryl::holder::RegisteredHandle;
+        use yggdryl::s3::S3Folder;
+
+        let store = store();
+        let prefix = folder(&store, "lake/");
+        store.clear_requests();
+
+        assert_eq!(prefix.implementation_name(), "S3Folder");
+        assert!(prefix.as_leaf().expect("no request").is_none());
+        assert!(prefix.as_container().expect("no request").is_none());
+        let again = prefix.reopen().expect("the prefix again");
+        assert_eq!(
+            again.downcast_ref::<S3Folder>().expect("a prefix").prefix(),
+            "lake/"
+        );
+        assert_eq!(store.request_count(), 0, "none of them a request");
+    }
 }
 
 mod protocol {

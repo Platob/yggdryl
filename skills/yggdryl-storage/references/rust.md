@@ -701,8 +701,14 @@ assert_eq!(batches.iter().map(|batch| batch.num_rows()).collect::<Vec<_>>(), [2,
   `IOBase::applied_codec()` - `Codec::Identity` for stored bytes, the
   wrapped coding for a `Coded`/`Gzip`/`Zlib`/`Zstd` view - before touching
   anything.
-- `Holder::from_url` with an `s3:`/`gs:`/`az:` scheme needs the `s3` feature;
-  without it the scheme is refused.
+- `Holder::from_url` with an `s3:`/`gs:`/`az:` scheme needs the `s3` feature,
+  under which the core claims the object stores' storage backend; without it
+  no backend claims the scheme, and it is refused naming the crate to install,
+  as every scheme nothing holds is. The handle is `Holder::Registered`: read
+  its role with `held.downcast_ref::<S3Path>()` (or `S3File`, `S3Folder`), and
+  reach what the store specializes through `IOBase` - `as_leaf`,
+  `as_container`, `upload_from`, `discard`, `set_known_size` - never by
+  matching a variant.
 - `Holder::from_url` reads an object-store location's query
   (`?endpoint_override=minio%3A9000&scheme=http`) as the store's properties
   beneath the ones passed - a passed property wins whatever its spelling -

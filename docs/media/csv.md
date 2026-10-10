@@ -8,7 +8,7 @@ Delimited text as RFC 4180 writes it: a header naming the columns, then one reco
 | --- | --- |
 | Declared by | `text/csv`, `.csv`; `text/tab-separated-values`, `.tsv` - the same medium under a tab |
 | Build | default |
-| Rust | `yggdryl::csv`: `Csv<H>` over any handle with `CsvOptions`; a `.csv`, `.tsv` or `.csv.gz` name composes it, and `RecordOptions` reads and sets its dialect as `csv_<setting>` / `set_csv_<setting>` - `header` / `set_header`, which Excel shares, apart |
+| Rust | `yggdryl::csv`: `Csv<H>` over any handle with `CsvOptions` and `CSV_CODEC`, the medium's [codec](index.md#registering-a-medium); a `.csv`, `.tsv` or `.csv.gz` name composes it, and `RecordOptions` reads and sets its dialect as `csv_<setting>` / `set_csv_<setting>` - `header` / `set_header`, which Excel shares, apart |
 | Python, JavaScript | any `IOBase` whose name declares CSV, through the [calls every medium answers](index.md#read); the dialect is a set of `RecordOptions` properties |
 | Settings | the [dialect](#dialect): `separator`, `quote`, `escape`, `comment`, `header`, `null_values`, `trim`, `infer_row_size` |
 | Coding, charset | the handle's: `trades.csv.gz` is gzip by name and `;charset=windows-1252` a declared charset |
@@ -285,7 +285,7 @@ handle.readRecords({ separator: ';' })    // JavaScript: every read and write ta
 
 ## Edges
 
-- While a `Csv` handle is open its schema is cached, and answered only for options reading the document as the ones it was read under: another separator, header, quote, escape, comment, `null_values`, `trim` or `infer_row_size` reads it afresh.
+- While a `Csv` handle is open, or closed under a `cache_ttl` its entry is younger than, its schema is held in the [metadata cache](index.md#the-metadata-cache) beside the dialect it was inferred under, and answered only for options reading the document as the ones it was read under: another separator, header, quote, escape, comment, `null_values`, `trim` or `infer_row_size` reads it afresh. A write refreshes or drops it as the cache's rule says, and a borrowed `handle_mut` drops it.
 - An empty document declares no schema - `read_arrow_field` is refused at `$.csv` - and reads as no rows; declared, it is the declared schema and no rows.
 - `row_size` counts the records in one pass and reads no cell; `column_size` is the header's width; both, like `read_arrow_field`, cost one `pstream_bytes` of the handle ([Call counts](../holder/index.md#call-counts)).
 

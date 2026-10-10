@@ -6,7 +6,7 @@ How long an order stands: FIX `TimeInForce(59)` as an enum of fifteen members - 
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `timeinforce`, `TimeInForceType`/`TimeInForceField`, the `TimeInForce` enum and `Scalar::TimeInForce`; `DataType::timeinforce()` |
+| Owns | `timeinforce`, the registered kind `TIMEINFORCE_KIND` under `DataType::Market`, its marker `TimeInForceType`, the `TimeInForce` enum; `TimeInForce::dtype()` and `TimeInForce::field(name)` |
 | Validates | A member, the code of one, or a spelling - the stored name in any case, the FIX specification's name folded, or the `TimeInForce(59)` wire value unfolded - reaches one member; anything else is refused rather than stored |
 | Lazy | Nothing - the member table is static |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
@@ -19,20 +19,22 @@ What `as_str` answers and every text format writes is the member's stored name -
 
 ## DataType
 
-`timeinforce` is the one spelling, `DataType::timeinforce()` the constructor; kind `enum`.
+`timeinforce` is the one spelling, `TimeInForce::dtype()` the datatype (a `const fn`: what every column of the kind declares) and `TimeInForce::field(name)` a nullable field of it, `TimeInForce::ID` the id - a [registered kind](../datatype.md#registered-kinds) under `DataType::Market`; kind `enum`. `DataType` holds no constructor per kind: the kind's own type answers its datatype, and the bindings' doors are unchanged (`DataType("timeinforce")` in Python, `new DataType('timeinforce')` in JavaScript).
 
 === "Rust"
 
     ```rust
     use yggdryl::{DataType, DataTypeKind};
+    use yggdryl_market::TimeInForce;
+    yggdryl_market::install()?;
 
-    assert_eq!(DataType::timeinforce(), DataType::TimeInForce);
-    assert_eq!(DataType::from_str("timeinforce")?, DataType::TimeInForce);
-    assert_eq!(DataType::TimeInForce.to_string(), "timeinforce");
-    assert_eq!(DataType::TimeInForce.kind(), DataTypeKind::Enum);
-    assert_eq!(DataType::TimeInForce.id().as_u8(), 0xc5);
-    assert!(DataType::TimeInForce.is_enum() && !DataType::TimeInForce.is_code());
-    assert_eq!(DataType::TimeInForce.code_width(), None);
+    assert!(matches!(TimeInForce::dtype(), DataType::Market(kind) if kind.id() == TimeInForce::ID));
+    assert_eq!(DataType::from_str("timeinforce")?, TimeInForce::dtype());
+    assert_eq!(TimeInForce::dtype().to_string(), "timeinforce");
+    assert_eq!(TimeInForce::dtype().kind(), DataTypeKind::Enum);
+    assert_eq!(TimeInForce::dtype().id().as_u8(), 0xc5);
+    assert!(TimeInForce::dtype().is_enum() && !TimeInForce::dtype().is_code());
+    assert_eq!(TimeInForce::dtype().code_width(), None);
     ```
 
 === "Python"
@@ -58,16 +60,17 @@ What `as_str` answers and every text format writes is the member's stored name -
 
 ## Field
 
-`TimeInForceField` is the typed marker; Python and JavaScript name the factory `timeinforce`.
+`TimeInForceField` is `FieldOf<TimeInForceType>`, `TimeInForceType` the kind's marker over the `Market` variant; Python and JavaScript name the factory `timeinforce`.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, TimeInForceField};
+    use yggdryl_market::{TimeInForce, TimeInForceField};
+    yggdryl_market::install()?;
 
     let tif = TimeInForceField::unit("timeinforce", true);
-    assert_eq!(tif.dtype(), &DataType::TimeInForce);
-    assert_eq!(tif.to_field(), Field::new("timeinforce", DataType::TimeInForce, true));
+    assert_eq!(tif.dtype(), &TimeInForce::dtype());
+    assert_eq!(tif.to_field(), TimeInForce::field("timeinforce"));
     ```
 
 === "Python"
@@ -100,29 +103,31 @@ The value is the member, whichever spelling named it: `GTC` for `GTC`, `gtc`, FI
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Scalar, TimeInForce};
+    use yggdryl::Scalar;
+    use yggdryl_market::TimeInForce;
+    yggdryl_market::install()?;
 
-    let gtc = DataType::TimeInForce.scalar("GTC")?;
-    assert_eq!(gtc, Scalar::TimeInForce(TimeInForce::GoodTillCancel));
+    let gtc = TimeInForce::dtype().scalar("GTC")?;
+    assert_eq!(gtc, Scalar::from(TimeInForce::GoodTillCancel));
     assert_eq!(gtc.kind(), "timeinforce");
     assert_eq!(TimeInForce::GoodTillCancel.code(), 2);
 
     // The stored name in any case, FIX's name, the wire value and the code
     // reach one member.
-    assert_eq!(DataType::TimeInForce.scalar("gtc")?, gtc);
-    assert_eq!(DataType::TimeInForce.scalar("GoodTillCancel")?, gtc);
-    assert_eq!(DataType::TimeInForce.scalar("1")?, gtc);
-    assert_eq!(DataType::TimeInForce.scalar(2_i32)?, gtc);
+    assert_eq!(TimeInForce::dtype().scalar("gtc")?, gtc);
+    assert_eq!(TimeInForce::dtype().scalar("GoodTillCancel")?, gtc);
+    assert_eq!(TimeInForce::dtype().scalar("1")?, gtc);
+    assert_eq!(TimeInForce::dtype().scalar(2_i32)?, gtc);
     // Text is a spelling, an integer a code: `1` is the code of `DAY`.
     assert_eq!(
-        DataType::TimeInForce.scalar(1_i32)?,
-        Scalar::TimeInForce(TimeInForce::Day)
+        TimeInForce::dtype().scalar(1_i32)?,
+        Scalar::from(TimeInForce::Day)
     );
 
     // A spelling nothing publishes, or the code of no member, answers nothing
     // rather than a guess.
-    assert!(DataType::TimeInForce.scalar("Z").is_err());
-    assert!(DataType::TimeInForce.scalar(14_i32).is_err());
+    assert!(TimeInForce::dtype().scalar("Z").is_err());
+    assert!(TimeInForce::dtype().scalar(14_i32).is_err());
     ```
 
 === "Python"
@@ -176,9 +181,11 @@ The value is the member, whichever spelling named it: `GTC` for `GTC`, `gtc`, FI
 
     use arrow_array::{Array, ArrayRef, Int64Array, StringArray, UInt8Array};
     use arrow_schema::DataType as ArrowDataType;
-    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
+    use yggdryl::{ArrowCastOptions, Field, Serie};
+    use yggdryl_market::TimeInForce;
+    yggdryl_market::install()?;
 
-    let tif = Field::new("timeinforce", DataType::TimeInForce, false);
+    let tif = Field::new("timeinforce", TimeInForce::dtype(), false);
     let arrow = tif.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::UInt8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.timeinforce");
@@ -261,12 +268,14 @@ Three vocabularies name one member: the stored name, the specification's name an
 | `13` | `C` | `GFM` | `GoodForMonth` | Good for the month. |
 | `99` | any other | `OTHER` | - | A time in force no member names. |
 
-`from_spelling` answers the member or nothing, and `read` is the same reading as a refusal - the value door. `from_fix` is the wire reading and never refuses: the wire value, else any spelling - a bridge writing `day` where the standard writes `0` - else `OTHER`, because a venue's own value is still a time in force. `fix_code` answers the wire value, `None` for `UKNW` and `OTHER`. `StringEnum::TIMESINFORCE` is the thirteen wire values, sorted, the listing the logical name `timeinforce` prebuilds for a US-ASCII column declaring the vocabulary it holds; `DataType::from_logical_name("timeinforce")` is this enum.
+`from_spelling` answers the member or nothing, and `read` is the same reading as a refusal - the value door. `from_fix` is the wire reading and never refuses: the wire value, else any spelling - a bridge writing `day` where the standard writes `0` - else `OTHER`, because a venue's own value is still a time in force. `fix_code` answers the wire value, `None` for `UKNW` and `OTHER`. `yggdryl_market::TIMESINFORCE` is the thirteen wire values, sorted, the listing the logical name `timeinforce` prebuilds - once `install()` registers it - for a US-ASCII column declaring the vocabulary it holds; `DataType::from_logical_name("timeinforce")` is this enum.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{StringEnum, TimeInForce};
+    use yggdryl::StringEnum;
+    use yggdryl_market::{TIMESINFORCE, TimeInForce};
+    yggdryl_market::install()?;
 
     assert_eq!(TimeInForce::ALL.len(), 15);
     assert_eq!(TimeInForce::from_spelling("0"), Some(TimeInForce::Day));
@@ -286,7 +295,8 @@ Three vocabularies name one member: the stored name, the specification's name an
     assert_eq!(TimeInForce::Unknown.fix_code(), None);
 
     assert!(TimeInForce::read("Z").is_err());
-    assert_eq!(StringEnum::TIMESINFORCE.len(), 13);
+    assert_eq!(TIMESINFORCE.len(), 13);
+    assert_eq!(StringEnum::prebuilt_values("timeinforce"), TIMESINFORCE);
     ```
 
 === "Python"
@@ -342,13 +352,15 @@ A venue that states how long an order stands in a field of its own, or spells `T
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::Operation;
-    use yggdryl::{DataType, FixCodec, FixRegistry, TimeInForce};
+    use yggdryl_market::graph::Operation;
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixCodec, FixFieldMut, FixRegistry};
+    use yggdryl_market::TimeInForce;
+    yggdryl_fix::install()?;
 
     let mut venue = DataType::utf8().nullable_field("VenueTif");
-    venue.as_fix_mut().set_tag(20059)?;
-    venue
-        .as_fix_mut()
+    FixFieldMut::new(&mut venue).set_tag(20059)?;
+    FixFieldMut::new(&mut venue)
         .set_timeinforces(&[("D", TimeInForce::Day), ("G", TimeInForce::GoodTillCancel)])?;
     assert_eq!(venue.get_metadata("FIX:timeinforce"), Some(r#"["D=DAY","G=GTC"]"#));
 
@@ -432,7 +444,7 @@ A venue that states how long an order stands in a field of its own, or spells `T
 - Text is a spelling and an integer a code: `"1"` is the wire value of `GTC`, `1` is the code of `DAY`; `"10"` is no spelling at all.
 - A wire value never folds: `A` is `GFT` and `a` names nothing, because a folded lookup would answer the wrong member for a dialect whose values differ by case.
 - The default value is `UKNW`, code `0`: a stated value, not an absence. An empty text cell entering the column is null ([Cast](../cast.md#empty-text)), and a required column refuses it. A [FIX capture](../../fix/capture.md) under the shipped dictionary reads an absent `TimeInForce(59)` as `0`, a day order, from the field's own definition rather than from this datatype.
-- `UKNW` is the zero member's spelling as of this release; `UNKN`, the retired spelling, names no time in force. A `timeinforce` column stores the code, so a stored `0` reads as `UKNW` unchanged; a text column or a document that spells `UNKN` is rebuilt by its writer, never reinterpreted. An [operation](../../graph/operation.md)'s digest feeds the stored name of the time in force it states, so an order or an execution stating `UKNW` digests under the new name: its `currhashcode` and `curruuid` move, its `crossuuid` where it states no cross code, and its followers' identities with them. A `marketdata` table written before this release is rebuilt from its capture, never merged into by `curruuid`; the UKNW spelling alone does not move FIX hashes; the separate FIX digest-label rename from `msgcat` to `marketdatakind` changes each FIX message's `currhashcode` and `curruuid`, and an anonymous split execution's `crosshashcode`.
+- `UKNW` is the zero member's spelling as of this release; `UNKN`, the retired spelling, names no time in force. A `timeinforce` column stores the code, so a stored `0` reads as `UKNW` unchanged; a text column or a document that spells `UNKN` is rebuilt by its writer, never reinterpreted. An [operation](../../graph/operation.md)'s digest feeds the stored name of the time in force it states, so an order or an execution stating `UKNW` digests under the new name: its `hashcode` and `uuid` move, its `crossuuid` where it states no cross code, and its followers' identities with them. A `marketdata` table written before this release is rebuilt from its capture, never merged into by `uuid`; the UKNW spelling alone does not move FIX hashes; the separate FIX digest-label rename from `msgcat` to `marketdatakind` changes each FIX message's `hashcode` and `uuid`, and an anonymous split execution's `crosshashcode`.
 - JSON, TOML, YAML and XML write a time in force as its stored name; the [value stream](../value-stream.md) and a digest feed its four-byte little-endian code under its own identifier, so a time in force, a [side](side.md) and an integer of one code are three values.
 - An [operation](../../graph/operation.md)'s `timeinforce` is a member of this enum, a `timeinforce` column in the [`marketdata` row](../../graph/schemas.md#the-marketdata-row). The [FIX row](../../graph/schemas.md#the-fix-row)'s `timeinforce` column is `TimeInForce(59)` itself, the wire text the dictionary types it as, which the message reads its member from; the crate adds no FIX field of its own for it.
 - `utf8` under `yggdryl.timeinforce` is a foreign field wearing the name and imports as the text it is.
@@ -442,7 +454,7 @@ A venue that states how long an order stands in a field of its own, or spells `T
 === "Rust"
 
     ```bash
-    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test root -- timeinforce::
+    cargo test -p yggdryl-market --test root -- timeinforce::
     ```
 
 === "Python"

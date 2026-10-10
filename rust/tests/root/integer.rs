@@ -20,7 +20,7 @@ fn integer_markers_cover_every_signed_and_unsigned_width() {
 mod reading {
     //! The one integer grammar, read through the value door.
 
-    use yggdryl::{DataType, MarketDataKind, Scalar, Side, State};
+    use yggdryl::{DataType, Scalar, State};
 
     #[test]
     fn the_value_door_reads_an_enum_member_as_its_stored_code() {
@@ -33,14 +33,14 @@ mod reading {
             Scalar::from(i32::from(State::New.code()))
         );
         assert_eq!(
-            DataType::UInt8.scalar(Scalar::Side(Side::Buy)).unwrap(),
-            Scalar::from(Side::Buy.code())
+            DataType::UInt8
+                .scalar(Scalar::State(State::Unknown))
+                .unwrap(),
+            Scalar::from(State::Unknown.code())
         );
         assert_eq!(
-            DataType::UInt16
-                .scalar(Scalar::MarketDataKind(MarketDataKind::Order))
-                .unwrap(),
-            Scalar::from(u16::from(MarketDataKind::Order.code()))
+            DataType::UInt16.scalar(Scalar::State(State::New)).unwrap(),
+            Scalar::from(State::New.code())
         );
         assert_eq!(
             DataType::Int64.scalar(Scalar::State(State::New)).unwrap(),

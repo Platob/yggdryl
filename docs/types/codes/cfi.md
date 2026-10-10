@@ -254,7 +254,7 @@ assert!(Cfi::new("ESVUFR")?.is_real());
 
 ## Two statements of one instrument
 
-`Cfi::refined(lead, other)` is the one fold of two statements of a CFI code: `lead` keeps every letter it states and takes the other's where it states `X`, when the two describe one instrument - one `(category, group)` and no attribute position holding two different letters. An unclassified code - all `X`, or a letter no group accepts - states nothing, so it yields whole to a classified other; two unclassified codes answer `None`, and so do another category or group, which is another instrument, and a contradicted attribute, where the caller keeps the statement it leads with. [`merge_with`](index.md#the-code-family-value) is that fold as the `CodeValue` leaf contract states it - the refined code, else this code as it is. A FIX message folds `CFICode(461)` and its `DETAILEDCFICODE` alias through it ([FIX message](../../fix/message.md)), and an [`IsinRegistry`](../../graph/isin-registry.md) refines a learned code with it. Rust only.
+`Cfi::refined(lead, other)` is the one fold of two statements of a CFI code: `lead` keeps every letter it states and takes the other's where it states `X`, when the two describe one instrument - one `(category, group)` and no attribute position holding two different letters. An unclassified code - all `X`, or a letter no group accepts - states nothing, so it yields whole to a classified other; two unclassified codes answer `None`, and so do another category or group, which is another instrument, and a contradicted attribute, where the caller keeps the statement it leads with. [`merge_with`](index.md#the-code-family-value) is that fold as the `CodeValue` leaf contract states it - the refined code, else this code as it is. A FIX message folds `CFICode(461)` and its `DETAILEDCFICODE` alias through it ([FIX message](../../fix/message.md)), and an [`Instruments`](../../graph/instrument.md) refines a learned code with it. Rust only.
 
 ```rust
 use yggdryl::{Cfi, CodeValue};
@@ -284,7 +284,7 @@ assert_eq!(Cfi::new("ESVUFR")?.merge_with(&Cfi::new("DBFNFB")?).as_str(), "ESVUF
 - `Cfi::refined` answers `None` for anything that is not two codes describing one instrument; `merge_with` turns that `None` back into this code, so the leading statement's letter stands on a contradicted attribute.
 - Python declares the vocabulary over the width as `yggdryl.enums.CFI`, over the `yggdryl.enums.Cfi` base a caller subclasses for a vocabulary of its own; `StringEnum::from_logical_name("cfi")` answers an enum of no members, because the grid is a rule rather than a listing.
 - `CFICode(461)` is the standard classification field, so no crate column carries one ([FIX message definitions](index.md#fix-message-definitions)).
-- A lifecycle learns a detailed CFI code only under a real [ISIN](isin.md) into an [`IsinRegistry`](../../graph/isin-registry.md) - a compatible code refining the held one, a contradicting one replacing it whatever the time - and fills or refines it into a later message of that instrument - never into `CFICode(461)` on the wire.
+- A lifecycle learns a detailed CFI code into the [`Instrument`](../../graph/instrument.md) the message keys - by a real [ISIN](isin.md), or, for an instrument no agency numbers, by its CFI class and body ([cross code](../../graph/instrument.md#the-cross-code)) - a compatible code refining the held one, a contradicting one replacing it whatever the time, and fills or refines it into a later message of that instrument - never into `CFICode(461)` on the wire.
 
 ## Commands
 

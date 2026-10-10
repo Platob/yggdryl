@@ -28,3 +28,41 @@ fn a_repeated_warning_is_logged_again_at_each_tenfold_count() {
     assert_eq!(logged, [10, 100, 1_000, 10_000, 100_000, 1_000_000]);
     assert!(!is_tenfold(1) && !is_tenfold(20) && !is_tenfold(110));
 }
+
+/// A site is keyed by the logger name it carries - the names a Python
+/// logger is configured by, one tree whatever crate a module lives in - so
+/// the FIX crate's `tests::site` is the logger `yggdryl.fix.tests.site`,
+/// the market crate's modules log under `yggdryl` itself, and a crate
+/// outside the workspace is a site of its own.
+#[test]
+fn a_site_is_keyed_by_its_logger_name_whatever_crate_holds_it() {
+    const WHAT: &str = "a test value one site states";
+    let before = count("yggdryl.fix.tests.site", WHAT, "price");
+    warn("yggdryl_fix::tests::site", WHAT, "price", "row 0");
+    warn("yggdryl.fix.tests.site", WHAT, "price", "row 1");
+    assert_eq!(count("yggdryl.fix.tests.site", WHAT, "price") - before, 2);
+    assert_eq!(
+        count("yggdryl_fix::tests::site", WHAT, "price"),
+        count("yggdryl.fix.tests.site", WHAT, "price")
+    );
+
+    let market = count("yggdryl::tests::site::market", WHAT, "price");
+    warn(
+        "yggdryl_market::tests::site::market",
+        WHAT,
+        "price",
+        "row 0",
+    );
+    assert_eq!(
+        count("yggdryl::tests::site::market", WHAT, "price") - market,
+        1
+    );
+
+    let foreign = count("yggdryl_cli::tests::site", WHAT, "price");
+    warn("yggdryl_cli::tests::site", WHAT, "price", "row 0");
+    assert_eq!(
+        count("yggdryl_cli::tests::site", WHAT, "price") - foreign,
+        1
+    );
+    assert_eq!(count("yggdryl::cli::tests::site", WHAT, "price"), 0);
+}

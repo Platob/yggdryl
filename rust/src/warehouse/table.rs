@@ -1,7 +1,9 @@
 //! A table: an object whose rows any record read and write reaches, and the
 //! enum that says which implementation holds them.
 
+use std::any::Any;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
 use smol_str::SmolStr;
 
@@ -26,6 +28,69 @@ pub trait TableValue: ObjectValue + IOBase {
     fn storage(&self) -> String;
 }
 
+/// A table implemented outside the core's [`MediaTable`], as
+/// [`Table::Registered`] holds it: the table contract and the byte and
+/// record surface every table answers, the name a refusal calls the
+/// implementation by, what a trait object owes the derive-heavy enum
+/// holding it - a copy, equality, a hash and the downcast
+/// [`Table::downcast_ref`] reads - and the consuming updates and the
+/// presence question every table answers.
+///
+/// [`IOMedia::as_any`] is the medium's state a record read downcasts, and
+/// [`RegisteredTable::as_any`] the table itself: a caller holding a
+/// `dyn RegisteredTable` names the one it means.
+pub trait RegisteredTable: TableValue + IOBase + Send + Sync + fmt::Debug {
+    /// The implementation's own name, as a refusal names it:
+    /// `IcebergTable`.
+    fn implementation_name(&self) -> &'static str;
+
+    /// A boxed copy.
+    fn clone_box(&self) -> Box<dyn RegisteredTable>;
+
+    /// Equality across the trait object: the same implementation holding an
+    /// equal table.
+    fn dyn_eq(&self, other: &dyn RegisteredTable) -> bool;
+
+    /// The implementation's own hash, into any hasher.
+    fn dyn_hash(&self, state: &mut dyn Hasher);
+
+    /// The table as `Any`, for [`Table::downcast_ref`].
+    fn as_any(&self) -> &dyn Any;
+
+    /// The table as `Any`, mutably, for [`Table::downcast_mut`].
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+
+    /// The table with properties stated on it, which its storage opens
+    /// with.
+    fn with_properties(self: Box<Self>, properties: Properties) -> Box<dyn RegisteredTable>;
+
+    /// The table with its parent's effective properties pushed into it.
+    fn inheriting(self: Box<Self>, parent: &Properties) -> Box<dyn RegisteredTable>;
+
+    /// Whether anything is at the table's location now.
+    fn exists(&self) -> bool;
+}
+
+impl Clone for Box<dyn RegisteredTable> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
+
+impl PartialEq for dyn RegisteredTable {
+    fn eq(&self, other: &Self) -> bool {
+        self.dyn_eq(other)
+    }
+}
+
+impl Eq for dyn RegisteredTable {}
+
+impl Hash for dyn RegisteredTable {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.dyn_hash(state);
+    }
+}
+
 /// The implementation a table is held by.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -35,40 +100,55 @@ pub enum Table {
     /// Boxed: a media table carries its identifier, its location, two
     /// property bags and a declared field.
     Media(Box<MediaTable>),
-    /// An Iceberg table, rooted on the handle its catalog keeps.
-    ///
-    /// Boxed: the table carries its description and, once it has read one,
-    /// the current metadata document.
-    #[cfg(feature = "iceberg")]
-    Iceberg(Box<crate::iceberg::IcebergTable<super::Handle>>),
+    /// A table an implementation outside the core answers - an Iceberg
+    /// table rooted on the handle its catalog keeps - held through the
+    /// contract every such table answers.
+    Registered(Box<dyn RegisteredTable>),
 }
 
 impl Table {
     /// Borrow the implementation through the contract every table answers.
     pub fn as_table(&self) -> &dyn TableValue {
         match self {
-            Self::Media(table) => table.as_ref(),
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg(table) => table.as_ref(),
+            Self::Media(table) => &**table,
+            Self::Registered(table) => &**table,
         }
     }
 
     /// Borrow the implementation as a byte handle.
     pub fn as_io(&self) -> &dyn IOBase {
         match self {
-            Self::Media(table) => table.as_ref(),
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg(table) => table.as_ref(),
+            Self::Media(table) => &**table,
+            Self::Registered(table) => &**table,
         }
     }
 
     /// Borrow the implementation mutably as a byte handle.
     pub fn as_io_mut(&mut self) -> &mut dyn IOBase {
         match self {
-            Self::Media(table) => table.as_mut(),
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg(table) => table.as_mut(),
+            Self::Media(table) => &mut **table,
+            Self::Registered(table) => &mut **table,
         }
+    }
+
+    /// The implementation as the type it is, when it is a `T`: a
+    /// [`MediaTable`], or a registered table's own type.
+    #[must_use]
+    pub fn downcast_ref<T: 'static>(&self) -> Option<&T> {
+        let any: &dyn Any = match self {
+            Self::Media(table) => &**table,
+            Self::Registered(table) => RegisteredTable::as_any(&**table),
+        };
+        any.downcast_ref()
+    }
+
+    /// The implementation as the type it is, mutably, when it is a `T`.
+    pub fn downcast_mut<T: 'static>(&mut self) -> Option<&mut T> {
+        let any: &mut dyn Any = match self {
+            Self::Media(table) => &mut **table,
+            Self::Registered(table) => RegisteredTable::as_any_mut(&mut **table),
+        };
+        any.downcast_mut()
     }
 
     /// Return this table with properties stated on it, which its handle
@@ -78,33 +158,30 @@ impl Table {
     pub fn with_properties(self, properties: Properties) -> Self {
         match self {
             Self::Media(table) => Self::Media(Box::new(table.with_properties(properties))),
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg(table) => Self::Iceberg(Box::new(table.with_properties(properties))),
+            Self::Registered(table) => Self::Registered(table.with_properties(properties)),
         }
     }
 
     fn as_media(&self) -> &dyn IOMedia {
         match self {
-            Self::Media(table) => table.as_ref(),
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg(table) => table.as_ref(),
+            Self::Media(table) => &**table,
+            Self::Registered(table) => &**table,
         }
     }
 
     fn as_media_mut(&mut self) -> &mut dyn IOMedia {
         match self {
-            Self::Media(table) => table.as_mut(),
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg(table) => table.as_mut(),
+            Self::Media(table) => &mut **table,
+            Self::Registered(table) => &mut **table,
         }
     }
 
-    /// The implementation's own name: `MediaTable` or `IcebergTable`.
-    pub(crate) const fn implementation_name(&self) -> &'static str {
+    /// The implementation's own name: `MediaTable`, or what a registered
+    /// table calls itself.
+    pub(crate) fn implementation_name(&self) -> &'static str {
         match self {
             Self::Media(_) => "MediaTable",
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg(_) => "IcebergTable",
+            Self::Registered(table) => table.implementation_name(),
         }
     }
 
@@ -112,8 +189,7 @@ impl Table {
     pub(crate) fn exists(&self) -> bool {
         match self {
             Self::Media(table) => table.exists(),
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg(table) => table.exists(),
+            Self::Registered(table) => table.exists(),
         }
     }
 
@@ -121,8 +197,7 @@ impl Table {
     pub(crate) fn inheriting(self, parent: &Properties) -> Self {
         match self {
             Self::Media(table) => Self::Media(Box::new(table.inheriting(parent))),
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg(table) => Self::Iceberg(Box::new(table.inheriting(parent))),
+            Self::Registered(table) => Self::Registered(table.inheriting(parent)),
         }
     }
 }
@@ -183,13 +258,8 @@ impl From<MediaTable> for Table {
     }
 }
 
-#[cfg(feature = "iceberg")]
-impl From<crate::iceberg::IcebergTable<super::Handle>> for Table {
-    fn from(table: crate::iceberg::IcebergTable<super::Handle>) -> Self {
-        Self::Iceberg(Box::new(table))
-    }
-}
-
+/// Every verb is the implementation's, the capabilities a backend
+/// specializes included.
 impl IOBase for Table {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.as_io().pread(offset, buffer)
@@ -240,8 +310,16 @@ impl IOBase for Table {
         self.as_io_mut().append_bytes(bytes)
     }
 
+    fn upload_from(&mut self, source: &mut dyn std::io::Read, length: u64) -> Result<()> {
+        self.as_io_mut().upload_from(source, length)
+    }
+
     fn size(&self) -> u64 {
         self.as_io().size()
+    }
+
+    fn set_known_size(&mut self, size: u64) {
+        self.as_io_mut().set_known_size(size);
     }
 
     fn capacity(&self) -> u64 {
@@ -308,12 +386,24 @@ impl IOBase for Table {
         self.as_io_mut().remove(recursive)
     }
 
+    fn discard(&self) -> Result<bool> {
+        self.as_io().discard()
+    }
+
     fn parent(&self) -> Option<crate::holder::Holder> {
         self.as_io().parent()
     }
 
     fn child_by_path(&self, name: &str) -> Result<crate::holder::Holder> {
         self.as_io().child_by_path(name)
+    }
+
+    fn as_leaf(&self) -> Result<Option<crate::holder::Holder>> {
+        self.as_io().as_leaf()
+    }
+
+    fn as_container(&self) -> Result<Option<crate::holder::Holder>> {
+        self.as_io().as_container()
     }
 
     fn ls(&self, recursive: bool, include_private: bool) -> crate::Listing {
@@ -370,17 +460,12 @@ impl IOMedia for Table {
         IOMedia::merge_by(self.as_media())
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        IOMedia::read_parquet_statistics(self.as_media())
+    fn as_any(&self) -> Option<&dyn Any> {
+        IOMedia::as_any(self.as_media())
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_geospatial_statistics(
-        &self,
-        column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
-        IOMedia::read_parquet_geospatial_statistics(self.as_media(), column)
+    fn read_origin_field(&self) -> Result<Option<Field>> {
+        IOMedia::read_origin_field(self.as_media())
     }
 
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
@@ -428,5 +513,6 @@ crate::media_serie::media_serie!(
     WarehouseTableSerie,
     WarehouseTable,
     as_warehouse_table,
-    get_warehouse_table_mut
+    get_warehouse_table_mut,
+    accepts = None
 );

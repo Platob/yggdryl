@@ -62,12 +62,12 @@ test('a line is crossed by the identifier it was read under', () => {
   // Every row of one read is addressed the same way, so they cross alike.
   assert.equal(lines[1].sourceuri, lines[0].sourceuri)
   assert.equal(lines[1].crossuuid, lines[0].crossuuid)
-  assert.notEqual(lines[1].curruuid, lines[0].curruuid)
+  assert.notEqual(lines[1].uuid, lines[0].uuid)
   // The identifier seeds the identity and stays out of the content code: the
   // same body held under none is the same code and another identity.
   const bare = new TextLine(lines[0].index, lines[0].body)
-  assert.equal(bare.currhashcode, lines[0].currhashcode)
-  assert.notEqual(bare.curruuid, lines[0].curruuid)
+  assert.equal(bare.hashcode, lines[0].hashcode)
+  assert.notEqual(bare.uuid, lines[0].uuid)
 })
 
 test('a line reads itself on the first ask', () => {
@@ -88,23 +88,23 @@ test('a line is an event under the options it reads itself by', () => {
   assert.equal(line.body, '8=FIX|55=AAPL|35=D')
   assert.deepEqual(line.captures, ['INFO'])
   assert.equal(line.mtime, null)
-  assert.equal(line.currunix, 0n)
+  assert.equal(line.transunix, 0n)
   assert.equal(line.seqnum, 0n)
   // The content code is the body's XXH3-64 and nothing else - not the
   // captures, the row or the source - and the identity derives from the
   // instant, the row and that code, so one body on two rows is two.
-  assert.equal(line.currhashcode, xxhash.xxh3(Buffer.from('8=FIX|55=AAPL|35=D')))
-  assert.match(line.curruuid, /^[0-9a-f-]{36}$/)
+  assert.equal(line.hashcode, xxhash.xxh3(Buffer.from('8=FIX|55=AAPL|35=D')))
+  assert.match(line.uuid, /^[0-9a-f-]{36}$/)
   const later = new TextLine(7n, '[INFO] 8=FIX|55=AAPL|35=D', null, options)
   assert.equal(later.index, 7n)
   assert.equal(later.seqnum, 7n)
-  assert.equal(later.currhashcode, line.currhashcode)
-  assert.notEqual(line.curruuid, later.curruuid)
+  assert.equal(later.hashcode, line.hashcode)
+  assert.notEqual(line.uuid, later.uuid)
   // A line read under no header holds the whole text as its body, so its
   // code is another one.
   assert.notEqual(
-    line.currhashcode,
-    new TextLine(0n, '[INFO] 8=FIX|55=AAPL|35=D').currhashcode,
+    line.hashcode,
+    new TextLine(0n, '[INFO] 8=FIX|55=AAPL|35=D').hashcode,
   )
   // A line a caller holds was read under no identifier, so both accessors
   // answer null and nothing spells a cross code.
@@ -357,8 +357,8 @@ test('a line\'s row number is its place and orders its identity', () => {
     lines.map((line) => line.seqnum),
     [1n, 2n, 3n],
   )
-  const identities = lines.map((line) => line.curruuid)
+  const identities = lines.map((line) => line.uuid)
   assert.deepEqual([...identities].sort(), identities)
   assert.equal(new Set(identities).size, 3)
-  assert.equal(new Set(lines.map((line) => line.currhashcode)).size, 1)
+  assert.equal(new Set(lines.map((line) => line.hashcode)).size, 1)
 })

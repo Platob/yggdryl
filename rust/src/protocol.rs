@@ -17,7 +17,7 @@ use std::borrow::Cow;
 use std::cmp;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::ops::{Deref, DerefMut, Index};
+use std::ops::{Deref, Index};
 use std::str::FromStr;
 
 use smol_str::SmolStr;
@@ -842,7 +842,7 @@ impl FieldPropertiesField<'_> {
     /// use yggdryl::{DataType, Representation, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut digest = DataType::UInt64.required_field("currhashcode");
+    /// let mut digest = DataType::UInt64.required_field("hashcode");
     /// assert_eq!(digest.as_field_properties().representation(), Representation::Value);
     /// assert!(digest.scalar(Scalar::from(-1_i64)).is_err());
     ///
@@ -1932,39 +1932,52 @@ impl fmt::Display for ProtocolFieldMut<'_> {
     }
 }
 
-/// Mint one protocol's named borrowed and mutable field views.
+/// Mints one protocol's named borrowed and mutable field views: the builder
+/// a crate invokes for its own scheme - the FIX view's in `fix/field.rs`,
+/// with public constructors - beside the core's own views, which the
+/// well-known list drives with crate-private ones.
+///
+/// `$vis` is the constructors' visibility, `$scheme` the [`Scheme`] the
+/// views read, `$view` and `$view_mut` the two types it declares and
+/// `$label` the protocol's name in their docs. The expansion names only
+/// public doors - [`Field::protocol`], [`Field::protocol_mut`] and the
+/// views' own `as_field` - so it compiles in any crate depending on this
+/// one, and the docs it writes link nothing, since a link would resolve
+/// where the views are declared.
+#[macro_export]
+#[doc(hidden)]
 macro_rules! protocol_field_types {
-    ($name:ident, $mutable:ident, $constant:ident, $view:ident, $view_mut:ident, $label:literal) => {
+    ($vis:vis, $scheme:expr, $view:ident, $view_mut:ident, $label:expr) => {
         #[doc = concat!("A field borrowed as its ", $label, " protocol.")]
         ///
-        /// Dereferences to [`ProtocolField`] for the property surface and
-        /// through it to [`crate::Field`] for the field surface.
+        /// Dereferences to `ProtocolField` for the property surface and
+        /// through it to `Field` for the field surface.
         #[derive(Clone)]
-        pub struct $view<'field>(ProtocolField<'field>);
+        pub struct $view<'field>($crate::ProtocolField<'field>);
 
         impl<'field> $view<'field> {
             #[doc = concat!("Borrows a field as its ", $label, " protocol.")]
-            pub(crate) fn new(field: &'field Field) -> Self {
-                Self(ProtocolField::new(field, Scheme::$constant))
+            $vis fn new(field: &'field $crate::Field) -> Self {
+                Self(field.protocol(&$scheme))
             }
         }
 
-        impl<'field> Deref for $view<'field> {
-            type Target = ProtocolField<'field>;
+        impl<'field> ::core::ops::Deref for $view<'field> {
+            type Target = $crate::ProtocolField<'field>;
 
             fn deref(&self) -> &Self::Target {
                 &self.0
             }
         }
 
-        impl AsRef<Field> for $view<'_> {
-            fn as_ref(&self) -> &Field {
+        impl ::core::convert::AsRef<$crate::Field> for $view<'_> {
+            fn as_ref(&self) -> &$crate::Field {
                 self.0.as_field()
             }
         }
 
-        impl fmt::Debug for $view<'_> {
-            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        impl ::core::fmt::Debug for $view<'_> {
+            fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 formatter
                     .debug_tuple(stringify!($view))
                     .field(&format_args!("{}", self.0))
@@ -1972,43 +1985,43 @@ macro_rules! protocol_field_types {
             }
         }
 
-        impl fmt::Display for $view<'_> {
-            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                fmt::Display::fmt(&self.0, formatter)
+        impl ::core::fmt::Display for $view<'_> {
+            fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                ::core::fmt::Display::fmt(&self.0, formatter)
             }
         }
 
-        impl PartialEq for $view<'_> {
+        impl ::core::cmp::PartialEq for $view<'_> {
             fn eq(&self, other: &Self) -> bool {
                 self.0 == other.0
             }
         }
 
-        impl Eq for $view<'_> {}
+        impl ::core::cmp::Eq for $view<'_> {}
 
-        impl PartialOrd for $view<'_> {
-            fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        impl ::core::cmp::PartialOrd for $view<'_> {
+            fn partial_cmp(&self, other: &Self) -> Option<::core::cmp::Ordering> {
                 Some(self.cmp(other))
             }
         }
 
-        impl Ord for $view<'_> {
-            fn cmp(&self, other: &Self) -> cmp::Ordering {
+        impl ::core::cmp::Ord for $view<'_> {
+            fn cmp(&self, other: &Self) -> ::core::cmp::Ordering {
                 self.0.cmp(&other.0)
             }
         }
 
-        impl Hash for $view<'_> {
-            fn hash<H: Hasher>(&self, state: &mut H) {
-                self.0.hash(state);
+        impl ::core::hash::Hash for $view<'_> {
+            fn hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+                ::core::hash::Hash::hash(&self.0, state);
             }
         }
 
         // `for` selects on the exact type and never derefs, so the base
         // impl alone would not put a named view in a loop.
-        impl<'view, 'field> IntoIterator for &'view $view<'field> {
+        impl<'view, 'field> ::core::iter::IntoIterator for &'view $view<'field> {
             type Item = (&'field str, &'field str);
-            type IntoIter = PropertyIter<'field, 'view>;
+            type IntoIter = $crate::PropertyIter<'field, 'view>;
 
             fn into_iter(self) -> Self::IntoIter {
                 self.0.iter()
@@ -2017,49 +2030,49 @@ macro_rules! protocol_field_types {
 
         #[doc = concat!("A field mutably borrowed as its ", $label, " protocol.")]
         ///
-        /// Dereferences to [`ProtocolFieldMut`], which is what carries the
-        /// write surface; there is no path from here to [`crate::Field`]'s
-        /// own mutators.
-        pub struct $view_mut<'field>(ProtocolFieldMut<'field>);
+        /// Dereferences to `ProtocolFieldMut`, which is what carries the
+        /// write surface; there is no path from here to `Field`'s own
+        /// mutators.
+        pub struct $view_mut<'field>($crate::ProtocolFieldMut<'field>);
 
         impl<'field> $view_mut<'field> {
             #[doc = concat!("Borrows a field mutably as its ", $label, " protocol.")]
-            pub(crate) fn new(field: &'field mut Field) -> Self {
-                Self(ProtocolFieldMut::new(field, Scheme::$constant))
+            $vis fn new(field: &'field mut $crate::Field) -> Self {
+                Self(field.protocol_mut(&$scheme))
             }
 
             #[doc = concat!("Borrows the read-only ", $label, " view of the same field.")]
             ///
-            /// This refines [`ProtocolFieldMut::as_protocol`] to the named
+            /// This refines `ProtocolFieldMut::as_protocol` to the named
             /// type, which is what lets a typed remover read its own typed
             /// prior value.
             pub fn as_protocol(&self) -> $view<'_> {
-                $view::new(&*self.0.field)
+                $view::new(self.0.as_field())
             }
         }
 
-        impl<'field> Deref for $view_mut<'field> {
-            type Target = ProtocolFieldMut<'field>;
+        impl<'field> ::core::ops::Deref for $view_mut<'field> {
+            type Target = $crate::ProtocolFieldMut<'field>;
 
             fn deref(&self) -> &Self::Target {
                 &self.0
             }
         }
 
-        impl<'field> DerefMut for $view_mut<'field> {
+        impl<'field> ::core::ops::DerefMut for $view_mut<'field> {
             fn deref_mut(&mut self) -> &mut Self::Target {
                 &mut self.0
             }
         }
 
-        impl AsRef<Field> for $view_mut<'_> {
-            fn as_ref(&self) -> &Field {
+        impl ::core::convert::AsRef<$crate::Field> for $view_mut<'_> {
+            fn as_ref(&self) -> &$crate::Field {
                 self.0.as_field()
             }
         }
 
-        impl fmt::Debug for $view_mut<'_> {
-            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        impl ::core::fmt::Debug for $view_mut<'_> {
+            fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 formatter
                     .debug_tuple(stringify!($view_mut))
                     .field(&format_args!("{}", self.0))
@@ -2067,15 +2080,24 @@ macro_rules! protocol_field_types {
             }
         }
 
-        impl fmt::Display for $view_mut<'_> {
-            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                fmt::Display::fmt(&self.0, formatter)
+        impl ::core::fmt::Display for $view_mut<'_> {
+            fn fmt(&self, formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                ::core::fmt::Display::fmt(&self.0, formatter)
             }
         }
     };
 }
 
-for_each_well_known_protocol!(protocol_field_types);
+/// The core's own views: every entry of the well-known list through the
+/// builder, their constructors crate-private - a caller reaches them through
+/// the named accessors the same list puts on [`Field`].
+macro_rules! core_protocol_field_types {
+    ($name:ident, $mutable:ident, $constant:ident, $view:ident, $view_mut:ident, $label:expr) => {
+        protocol_field_types!(pub(crate), Scheme::$constant, $view, $view_mut, $label);
+    };
+}
+
+for_each_well_known_protocol!(core_protocol_field_types);
 
 #[cfg(feature = "internals")]
 #[doc(hidden)]

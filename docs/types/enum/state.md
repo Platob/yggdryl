@@ -6,7 +6,7 @@ What state one thing is in, from asked for to ended: a lifecycle-sorted enum of 
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `state`, `StateType`/`StateField`, the `State` enum and `Scalar::State` |
+| Owns | `state`, `StateType`/`StateField`, the `State` enum and `Scalar::State`; the FIX readings of a state are the `yggdryl-fix` crate's free functions (`yggdryl_fix::state`), no methods of `State` |
 | Validates | A member, the code of one, or a spelling one of five vocabularies names - a stored name, a FIX wire code, the specification's name, a scheduler's word, a bridge's short name - reaches one member; anything else is refused rather than stored |
 | Lazy | Nothing - the member table and the vocabularies are static |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
@@ -281,7 +281,7 @@ The three endings are ranked apart deliberately: "did it finish" and "did it wor
 
 ## FIX status fields, one vocabulary
 
-A FIX message states its state in whichever status field its kind answers a request by. `State::from_fix_status(tag, code)` reads each under its own code set, and a [FIX message](../../fix/capture.md) takes the first of `State::FIX_STATUS_TAGS` it states - `OrdStatus(39)`, `ExecType(150)`, `ExecAckStatus(1036)`, `TrdRptStatus(939)`, `QuoteStatus(297)`, `AllocStatus(87)`, `ConfirmStatus(665)`, `AffirmStatus(940)`, `MassActionResponse(1375)`, `MassCancelResponse(531)` - else the state its message type asks for by being the message it is (`State::from_fix_msgtype`): a new order is `PENDING_NEW`, a cancel request `PENDING_CANCEL`, a reject `REJECTED`.
+A FIX message states its state in whichever status field its kind answers a request by. `yggdryl_fix::state::from_status(tag, code)` reads each under its own code set, and a [FIX message](../../fix/capture.md) takes the first of `yggdryl_fix::state::STATUS_TAGS` it states - `OrdStatus(39)`, `ExecType(150)`, `ExecAckStatus(1036)`, `TrdRptStatus(939)`, `QuoteStatus(297)`, `AllocStatus(87)`, `ConfirmStatus(665)`, `AffirmStatus(940)`, `MassActionResponse(1375)`, `MassCancelResponse(531)` - else the state its message type asks for by being the message it is (`yggdryl_fix::state::from_msgtype`): a new order is `PENDING_NEW`, a cancel request `PENDING_CANCEL`, a reject `REJECTED`. The three are free functions of the FIX crate, so `State` holds no FIX table: it keeps the `OrdStatus(39)`/`ExecType(150)` wire-code table its own `from_spelling` reads, which `from_status` reads for those two tags; a word on either of the two that is no wire code - a bridge logging `ORDSTATUS=partfilled` or `EXECTYPE=trade` - reads as the state's own spelling through `State::from_spelling`, so a bridge's partial fill is `PARTIALLY_FILLED` rather than the `TRADE` its execution type alone says. Rust; Python keeps the classmethods `State.from_fix_status` and `State.from_fix_msgtype`, redirecting to them, and JavaScript has none.
 
 `OrdStatus(39)` and `ExecType(150)` share their letters and not always their meaning - `D` is Restated in one and AcceptedForBidding in the other - so a [FIX column](../../fix/capture.md) reads a code through the name its own field's [code set](../../fix/registry.md#a-field-names-the-code-set-it-reads-by) gives it before it reads the letter: `150=D` is `RESTATED` and `39=D` is `ACCEPTED`. The FIX dictionary holds the members themselves as the crate's own `statecodeset`, each code's value the integer a column stores and its name the stored name.
 
@@ -289,12 +289,15 @@ A FIX message states its state in whichever status field its kind answers a requ
 
     ```rust
     use yggdryl::State;
+    use yggdryl_fix::state;
+    yggdryl_fix::install()?;
 
-    assert_eq!(State::from_fix_status(39, "1"), Some(State::PartiallyFilled));
-    assert_eq!(State::from_fix_status(1036, "1"), Some(State::Acknowledged));
-    assert_eq!(State::from_fix_status(87, "0"), Some(State::Allocated));
-    assert_eq!(State::from_fix_msgtype("D"), Some(State::PendingNew));
-    assert_eq!(State::from_fix_msgtype("8"), None);
+    assert_eq!(state::from_status(39, "1"), Some(State::PartiallyFilled));
+    assert_eq!(state::from_status(39, "partfilled"), Some(State::PartiallyFilled));
+    assert_eq!(state::from_status(1036, "1"), Some(State::Acknowledged));
+    assert_eq!(state::from_status(87, "0"), Some(State::Allocated));
+    assert_eq!(state::from_msgtype("D"), Some(State::PendingNew));
+    assert_eq!(state::from_msgtype("8"), None);
     ```
 
 === "Python"
@@ -303,6 +306,7 @@ A FIX message states its state in whichever status field its kind answers a requ
     from yggdryl import State
 
     assert State.from_fix_status(39, "1") is State.PARTIALLY_FILLED
+    assert State.from_fix_status(39, "partfilled") is State.PARTIALLY_FILLED
     assert State.from_fix_status(1036, "1") is State.ACKNOWLEDGED
     assert State.from_fix_msgtype("D") is State.PENDING_NEW
     assert State.from_fix_msgtype("8") is None
@@ -315,6 +319,8 @@ A state that reached none - `UNKNOWN` - takes the other, and otherwise the state
 
 ```rust
 use yggdryl::State;
+use yggdryl_fix::state;
+yggdryl_fix::install()?;
 
 assert_eq!(State::unknown(), State::Unknown);
 assert_eq!(State::Unknown.merge_with(State::New), State::New);
@@ -322,7 +328,7 @@ assert_eq!(State::New.merge_with(State::Filled), State::Filled);
 assert_eq!(State::Filled.merge_with(State::New), State::Filled);
 
 // Awaiting a verification ranks past the acceptance and below the answers.
-assert_eq!(State::from_fix_status(939, "8"), Some(State::PendingVerification));
+assert_eq!(state::from_status(939, "8"), Some(State::PendingVerification));
 assert_eq!(State::PendingVerification.code(), 4006);
 assert_eq!(State::Accepted.merge_with(State::PendingVerification), State::PendingVerification);
 assert_eq!(State::Disputed.merge_with(State::PendingVerification), State::Disputed);
@@ -333,6 +339,8 @@ assert_eq!(State::from_spelling("approved"), Some(State::Approved));
 ## Stated anew over a live one
 
 `UPDATED` (`3004`) is the working band's member for a thing stated anew while it is live. `is_new_like` answers which states something can be stated anew over: acknowledged (rank `20`) or working (rank `30`), or one of the changes that carry on - `UPDATED`, `REPLACED`, `RESTATED`, `AMENDED`. Never the pending band, because a `NEW` after a `PENDING_NEW` is the first acknowledgement rather than a restatement, and never a state that progressed or ended. The [lifecycle walk](../../graph/event.md#lifecycle-walk) reads it: a statement of `NEW` following a live element whose state is new-like is that element `UPDATED`, and later progress folds over it by rank as over any state. `is_new_like` is Rust only.
+
+The walk's second refinement is an order's count: a partial-fill-like state - `IN_PROGRESS`, `PARTIALLY_FILLED`, `TRADE`, or a carrying-on `UPDATED`, `REPLACED`, `RESTATED`, `AMENDED` the fold leaves a fill in - whose fills, counted once each by execution identifier, reach the order quantity reads `FILLED`, and a `FILLED` a report reads off its remainder rather than states, over a chain the walk counted short, reads `PARTIALLY_FILLED` ([An order's fills are counted once](../../fix/lifecycle.md#an-orders-fills-are-counted-once)). The count turns a working state `FILLED` and never a stated `FILLED` back.
 
 === "Rust"
 

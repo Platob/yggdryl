@@ -27,7 +27,7 @@ def trade() -> graph.TradeEvent:
 
 def test_from_parts_of_two_executions() -> None:
     made = trade()
-    assert made.crosscode == "21:0:T-1" and made.currunix == CLOCK
+    assert made.crosscode == "21:0:T-1" and made.transunix == CLOCK
     assert made.ticker == "ACME"
     assert made.lastqty is not None and made.lastqty.as_py() == 10
     executions = made.executions
@@ -52,7 +52,7 @@ def test_any_dated_operation_or_market_data_roots_a_trade() -> None:
 def test_refusals_name_what_was_wrong() -> None:
     with pytest.raises(TypeError, match="expected a dated operation as the trade's root, got order"):
         graph.TradeEvent.from_parts(graph.Order(), [])  # type: ignore[arg-type]
-    with pytest.raises(ValueError, match=r"executions\[0\]\.currunix: expected the trade timestamp"):
+    with pytest.raises(ValueError, match=r"executions\[0\]\.transunix: expected the trade timestamp"):
         graph.TradeEvent.from_parts(graph.ExecutionEvent(CLOCK + 1), [fill("B", "BUYS", 1)])
     with pytest.raises(ValueError, match="at least one execution"):
         graph.TradeEvent.from_parts(graph.ExecutionEvent(CLOCK), [])
@@ -69,7 +69,7 @@ def test_the_verbs_answer_new_trades() -> None:
         [fill("BUY-1", "BUYS", 4, CLOCK + 1)],
     )
     followed = later.with_previous(first)
-    assert followed is not None and followed.prevuuid == first.curruuid
+    assert followed is not None and followed.prevuuid == first.uuid
     assert later.prevuuid is None
     assert later.is_after(first) and first.is_before(later)
     # A trade folds another statement of itself into the same trade.
@@ -85,6 +85,6 @@ def test_equality_hash_repr_copy_pickle() -> None:
     assert twin.executions == made.executions
     assert copy.copy(made) == made and copy.deepcopy(made) == made
     assert repr(made) == (
-        f'TradeEvent({made.curruuid.as_py()}, currunix={CLOCK}, crosscode="21:0:T-1")'
+        f'TradeEvent({made.uuid.as_py()}, transunix={CLOCK}, crosscode="21:0:T-1")'
     )
     assert made != object()

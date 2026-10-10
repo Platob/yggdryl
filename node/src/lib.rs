@@ -38,10 +38,10 @@ mod holder;
 mod http;
 mod iceberg;
 mod identifier;
+mod instrument;
 mod iobase;
 mod iomedia;
 mod ioresult;
-mod isin_registry;
 mod join;
 mod key_serie;
 pub use key_serie::{JsKeySerie, JsKeySeries, JsStreamKeySerie};
@@ -60,8 +60,6 @@ mod window_serie;
 mod marketdatakind;
 #[allow(dead_code)]
 mod marketdatatype;
-#[allow(dead_code)]
-mod pluginside;
 #[allow(dead_code)]
 mod side;
 #[allow(dead_code)]
@@ -98,8 +96,8 @@ pub use expression::{
 pub use field::{JsField, JsProtocolField, MetadataEntry};
 pub use fix::{
     FixCaptureView, FixCodecOptions, FixEntryView, FixHeaderView, JsFixCodec, JsFixFieldIterator,
-    JsFixMessages, JsFixMsg, JsFixRegistry, JsMsgType, fix_crate_fields, fix_schema,
-    fix_schema_carrying, fix_schema_tags, fix_ulbridge_rowheader_native,
+    JsFixMessages, JsFixMsg, JsFixRegistry, JsMsgType, fix_crate_fields, fix_plugin_side,
+    fix_schema, fix_schema_carrying, fix_schema_tags, fix_ulbridge_rowheader_native,
 };
 pub use graph::{
     BookLimit, BookRefInput, CandleReading, JsBookEvent, JsBookIterator, JsBookRef, JsCandle,
@@ -471,6 +469,11 @@ pub fn hostname_native() -> &'static str {
 #[napi_derive::module_init]
 fn install_logging() {
     logging::install();
+    // The crates split off the core claim what they register before an
+    // export can read a name of theirs, in dependency order; a refusal is
+    // a build linking two claimants, which no caller can repair.
+    yggdryl_market::install().expect("yggdryl-market claims its kinds");
+    yggdryl_fix::install().expect("yggdryl-fix claims its names");
 }
 
 impl Generator for JsDifferenceIterator {

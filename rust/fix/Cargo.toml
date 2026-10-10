@@ -1,0 +1,48 @@
+[package]
+name = "yggdryl-fix"
+description = "FIX for yggdryl: the FIX dictionary registry and its store, the codec, its messages, their lifecycle and their Arrow rows over the market crate's graph"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["fix", "fix-protocol", "market-data", "arrow", "trading"]
+categories = ["parser-implementations", "finance"]
+
+[features]
+default = []
+http = ["yggdryl/http", "yggdryl-market/http"]
+parquet = ["yggdryl/parquet", "yggdryl-market/parquet"]
+iceberg = ["parquet", "yggdryl/iceberg", "yggdryl-market/iceberg"]
+internals = ["yggdryl/internals", "yggdryl-market/internals"]
+
+[dependencies]
+yggdryl.workspace = true
+yggdryl-market.workspace = true
+arrow-array.workspace = true
+arrow-schema.workspace = true
+log.workspace = true
+memchr = "2.7"
+quick-xml = { version = "=0.41.0", default-features = false }
+regex = "1.11"
+serde = { version = "1.0", features = ["derive", "rc"] }
+smallvec = { version = "1", features = ["union"] }
+smol_str = { version = "=0.3.2", features = ["serde"] }
+
+[dev-dependencies]
+criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
+serde_json = { version = "1.0", features = ["raw_value", "unbounded_depth"] }
+
+# The FIX registry: tiered resolution against a plain map, mutation over a
+# realistic dictionary, and shard loading against shard count. The module is
+# unconditional, so the target compiles in a default build.
+[[bench]]
+name = "fix"
+path = "benchmarks/fix.rs"
+harness = false
+
+[[bench]]
+name = "fix_allocations"
+path = "benchmarks/fix_allocations.rs"
+harness = false

@@ -32,6 +32,7 @@ mod vocabulary {
             ("GS", Scheme::GS),
             ("AZ", Scheme::AZ),
             ("SPARK", Scheme::SPARK),
+            ("DORIS", Scheme::DORIS),
             ("POLARS", Scheme::POLARS),
             ("PANDAS", Scheme::PANDAS),
             ("PYTHON", Scheme::PYTHON),

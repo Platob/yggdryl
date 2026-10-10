@@ -70,8 +70,9 @@ pub(crate) mod writer;
 pub use cell::{
     Cell, CellKind, CellRange, CellRef, DateSystem, MAX_CELL_TEXT, MAX_COLUMNS, MAX_ROWS,
 };
-pub use media::{Excel, overwrite_arrow_reader, read_batch_reader, read_field};
-pub(crate) use media::{row_size, stated_field};
+pub use media::{
+    EXCEL_CODEC, Excel, ExcelCodec, overwrite_arrow_reader, read_batch_reader, read_field,
+};
 pub use options::ExcelOptions;
 pub use sheet::{MAX_SHEET_NAME, Row, Sheet, SheetState, validate_sheet_name};
 pub use styles::NumberFormat;
@@ -114,5 +115,3 @@ pub(crate) fn reject_outer_coding<H: crate::IOBase + ?Sized>(handle: &H) -> crat
         ),
     })
 }
-
-pub use media::ExcelSerie;

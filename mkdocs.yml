@@ -187,7 +187,6 @@ nav:
       - MarketDataType: types/enum/marketdatatype.md
       - Side: types/enum/side.md
       - TimeInForce: types/enum/timeinforce.md
-      - PluginSide: types/enum/pluginside.md
     - Nested:
       - types/nested/index.md
       - Struct: types/nested/struct.md
@@ -255,7 +254,7 @@ nav:
     - Market: graph/market.md
     - Operation: graph/operation.md
     - Identifier: graph/identifier.md
-    - IsinRegistry: graph/isin-registry.md
+    - Instrument: graph/instrument.md
     - Order: graph/order.md
     - Quote: graph/quote.md
     - Execution: graph/execution.md
@@ -263,7 +262,6 @@ nav:
     - Book: graph/book.md
     - Market data: graph/market-data.md
     - Candle: graph/candle.md
-    - Book display: graph/serve.md
     - Row schemas: graph/schemas.md
   - FIX:
     - fix/index.md

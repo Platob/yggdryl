@@ -10,6 +10,7 @@ Smoke what you changed while you are changing it, then push and let CI run the m
     cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings
     cargo test -p yggdryl --all-targets
     cargo test -p yggdryl --doc
+    # a change reaching rust/market/ or rust/fix/: the clippy, test and doc lines with -p yggdryl-market -p yggdryl-fix
     ```
 
 === "Python"
@@ -31,22 +32,38 @@ Smoke what you changed while you are changing it, then push and let CI run the m
     npm run --prefix node build:debug
     node --test node/tests/<file>.test.js          # the loop, while you write
     npm run --prefix node test:package:debug
-    cargo build --locked -p yggdryl-cli            # the command node/tests/book.test.js spawns
     npm test --prefix node
     ```
 
-CI runs the rest on the pushed branch: both feature lanes, the 1.94 MSRV, the exchanges with MinIO, Azurite, fake-gcs-server, `zipfile`, fastavro, PyIceberg and Spark, both pyarrow legs, and every documentation example in three languages. Two checks have no job and stay local - `python scripts/generate_charset_tables.py --check` and `python scripts/check_charset_interop.py` - as does any benchmark whose number a page states.
+CI runs the rest on the pushed branch: on a change to the core and on every push to `main`, both feature lanes, the 1.94 MSRV, the exchanges with MinIO, Azurite, fake-gcs-server, `zipfile`, fastavro, openpyxl, PyIceberg and Spark, both pyarrow legs, and every documentation example in three languages; a pull request runs the jobs its change can reach ([Testing](testing.md#what-ci-runs-for-a-change)). Two checks have no job and stay local - `python scripts/generate_charset_tables.py --check` and `python scripts/check_charset_interop.py` - as does any benchmark whose number a page states.
 
 ## Where things go
 
-A test's home is not a choice: `rust/tests/` mirrors `rust/src/` file for file,
-`python/tests/` mirrors `python/yggdryl/` and `python/src/`, and `node/tests/`
-mirrors `node/src/` and the JavaScript beside it. Adding a source file adds its
-test file at the matching path.
+The workspace holds three Rust crates: `yggdryl` in `rust/`, the core;
+`yggdryl-market` in `rust/market/` over it - the four market kinds, the
+identifiers, the instruments and the market graph; and `yggdryl-fix` in
+`rust/fix/` over both - the FIX dictionary, codec, messages and lifecycle. The
+bindings and the `yggdryl` command link all three.
+
+A test's home is not a choice: each crate's `tests/` mirrors its `src/` file
+for file - `rust/tests/` mirrors `rust/src/`, `rust/market/tests/`
+`rust/market/src/`, `rust/fix/tests/` `rust/fix/src/` - `python/tests/` mirrors
+`python/yggdryl/` and `python/src/`, and `node/tests/` mirrors `node/src/` and
+the JavaScript beside it. A test sits in the lowest crate that links everything
+it names: a pin of what a core file answers for a market kind lives in
+`rust/market/tests/` at that core file's path, and a pin across every crate in
+`cli/tests/`. Adding a source file adds its test file at the matching path.
+
+A Rust caller installs what it links before the core reads a name a crate
+brings: `yggdryl_market::install()?` claims the market kinds and their
+listings, `yggdryl_fix::install()?` the FIX Latest names after installing the
+market crate itself. Every test, benchmark, rustdoc example and page block
+naming a market or FIX item installs; the Python and Node packages and
+the `yggdryl` command install both when they load.
 
 | Source | Docs tab |
 | --- | --- |
-| `rust/src/datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `typed.rs`, `protocol.rs`, `metadata.rs` and one root file per type - `string.rs`, `bytes.rs`, `integer.rs`, `decimal.rs` with `int256.rs`, the five temporal files with `temporal.rs`, `timezone.rs`, `uuid.rs`, `geospatial.rs`, `code.rs` with the thirteen codes including `bbg.rs`, `ric.rs` and `forex.rs`, `enums.rs` with the enums `state.rs`, `side.rs` and `marketdatakind.rs`, `mime_type/datatype.rs`, `media_type/datatype.rs` | [Types](types/index.md) |
+| `rust/src/datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `typed.rs`, `protocol.rs`, `metadata.rs` and one root file per type - `string.rs`, `bytes.rs`, `integer.rs`, `decimal.rs` with `int256.rs`, the five temporal files with `temporal.rs`, `timezone.rs`, `uuid.rs`, `geospatial.rs`, `code.rs` with the thirteen codes including `bbg.rs`, `ric.rs` and `forex.rs`, `enums.rs` with `state.rs` and the market kinds of `rust/market/src/` - `side.rs`, `timeinforce.rs`, `marketdatakind.rs`, `marketdatatype.rs` - `mime_type/datatype.rs`, `media_type/datatype.rs` | [Types](types/index.md) |
 | `rust/src/iobase.rs`, `rust/src/iobase/`, the `rust/src/io*.rs` roles, `rust/src/holder/`, and one root folder per backend: `rust/src/local/`, `fs/`, `zip/`, `s3/` | [Holder](holder/index.md) |
 | `rust/src/warehouse/` - the object, namespace, catalog and table traits and enums, `Properties`, the path intake, the lazy views, `Warehouse`, `SystemWarehouse`, and the memory, folder and media implementations | [Warehouse](warehouse/index.md) |
 | `rust/src/http/` - the client, sessions, requests, responses, streams, pages and the `Server`; its `wire.rs` message grammar | [Holder: HTTP](holder/index.md#http) and [Media: HTTP messages](media/http.md) |
@@ -57,12 +74,12 @@ test file at the matching path.
 | `rust/src/uri/` | [URI](uri/index.md) |
 | `rust/src/arrow/` | [Arrow](arrow/index.md) |
 | `rust/src/expression/` | [Expression](expression/index.md) |
-| `rust/src/graph/`, `rust/src/limit.rs`, `rust/src/identifier.rs`, `rust/src/idkey.rs`, `rust/src/idtype.rs`, `rust/src/idsource.rs`, `rust/src/isin_registry.rs` | [Graph](graph/index.md) |
+| `rust/src/graph/`, the event vocabulary, and `rust/market/src/`: `graph/`, `limit.rs`, `identifier.rs`, `idkey.rs`, `idtype.rs`, `idsource.rs`, `securityid.rs`, `instrument.rs`, `characteristics.rs`, `listing.rs`, `eusipa.rs` | [Graph](graph/index.md) |
 | `rust/src/digest.rs`, `rust/src/hashing/`, `rust/src/xxhash/`, `rust/src/txhash/` | [Hashing](hashing.md) |
 | `rust/src/logging/` | [Logging](logging.md) |
-| `rust/src/fix/` | [FIX](fix/index.md) |
+| `rust/fix/src/` | [FIX](fix/index.md) |
 
-Each shared trait, enum, value or type owns one root `rust/src/<name>.rs`; each implementation owns a root folder or file of its own name; a parent folder holds only what its implementations share. The Python package is laid out the same way and reimplements nothing: one module per type at the package root, one module or package per implementation - `yggdryl.avro`, `yggdryl.iceberg`, `yggdryl.json`, `yggdryl.gzip`, `yggdryl.xxhash`, `yggdryl.txhash` - and a package only where its implementations share something, `media/`, `text/`, `coding/`, `holder/`, `charset/`, `enums/`. Every type is re-exported from `yggdryl` itself, as the crate re-exports each of its root files. JavaScript keeps `xxhash` and `txhash` over the same root `xxhash/` and `txhash/`. Runnable examples live in the documentation, never in an `examples/` directory.
+Each shared trait, enum, value or type owns one root file of its crate's `src/` - `rust/src/<name>.rs` in the core; each implementation owns a root folder or file of its own name; a parent folder holds only what its implementations share. The Python package is laid out the same way and reimplements nothing: one module per type at the package root, one module or package per implementation - `yggdryl.avro`, `yggdryl.iceberg`, `yggdryl.json`, `yggdryl.gzip`, `yggdryl.xxhash`, `yggdryl.txhash` - and a package only where its implementations share something, `media/`, `text/`, `coding/`, `holder/`, `charset/`, `enums/`. Every type is re-exported from `yggdryl` itself, as the crate re-exports each of its root files. JavaScript keeps `xxhash` and `txhash` over the same root `xxhash/` and `txhash/`. Runnable examples live in the documentation, never in an `examples/` directory.
 
 ## What a change must satisfy
 

@@ -7,13 +7,14 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict};
 
-use yggdryl::graph::{
-    BookRef as CoreBookRef, Element, Execution as CoreExecution,
-    ExecutionEvent as CoreExecutionEvent, ExecutionKind, MdUpdateAction as CoreMdUpdateAction,
-    Order as CoreOrder, OrderEvent as CoreOrderEvent, OrderKind, Quote as CoreQuote,
-    QuoteEvent as CoreQuoteEvent, QuoteKind,
-};
+use yggdryl::graph::Element;
 use yggdryl::{DataType, Decimal, Scalar};
+use yggdryl_market::graph::{
+    BookRef as CoreBookRef, Execution as CoreExecution, ExecutionEvent as CoreExecutionEvent,
+    ExecutionKind, MdUpdateAction as CoreMdUpdateAction, Order as CoreOrder,
+    OrderEvent as CoreOrderEvent, OrderKind, Quote as CoreQuote, QuoteEvent as CoreQuoteEvent,
+    QuoteKind,
+};
 
 use super::{decimal_scalar, ellipsis, slot_repr, stated_operation};
 use crate::scalar::{PyScalar, from_py};
@@ -102,21 +103,21 @@ macro_rules! operation_event_class {
             element_getters, event_getters, market_getters, operation_getters,
             kind_getters, common_verbs, event_verbs
         ]; {
-            /// Build the event at `currunix` nanoseconds since the epoch from
+            /// Build the event at `transunix` nanoseconds since the epoch from
             /// its named facts, keyed by column name - the event, market and
             /// operation columns - each checked by its column's field and
             /// stated through its column, with `book`'s control facts, then
             /// finalized. A fact given as `...` is skipped; `None` clears. A
-            /// derived identity, or `currunix` again, is refused by name.
+            /// derived identity, or `transunix` again, is refused by name.
             #[new]
-            #[pyo3(signature = (currunix, book=ellipsis(), **facts))]
+            #[pyo3(signature = (transunix, book=ellipsis(), **facts))]
             fn new(
                 py: Python<'_>,
-                currunix: i64,
+                transunix: i64,
                 book: Py<PyAny>,
                 facts: Option<&Bound<'_, PyDict>>,
             ) -> PyResult<Self> {
-                let mut event = stated_operation::<$kind>($name, currunix, facts, false)?;
+                let mut event = stated_operation::<$kind>($name, transunix, facts, false)?;
                 let book = book.bind(py);
                 if !book.is(py.Ellipsis()) && !book.is_none() {
                     let book = book.extract::<PyRef<'_, PyBookRef>>().map_err(|_| {

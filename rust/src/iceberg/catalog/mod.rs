@@ -10,10 +10,14 @@
 //! folder see the same tables.
 //!
 //! [`IcebergCatalog`] and [`IcebergNamespace`] answer the warehouse traits
-//! ([`CatalogValue`], [`NamespaceValue`], [`ObjectValue`]); the collection
-//! views, the dotted descent and registration are the generic ones -
-//! [`Namespaces`](crate::Namespaces), [`Tables`](crate::Tables),
-//! [`Catalog::resolve`](crate::Catalog::resolve), [`Warehouse`](crate::Warehouse).
+//! ([`CatalogValue`], [`NamespaceValue`], [`ObjectValue`]) and are held as
+//! the `Registered` variants, an [`IcebergTable`] over a [`Handle`] too
+//! ([`RegisteredCatalog`], [`RegisteredNamespace`], [`RegisteredTable`]);
+//! [`HADOOP_FACTORY`] is the [`CatalogFactory`] a `type` of `hadoop` asks
+//! [`Catalog::from_url`] for. The collection views, the dotted descent and
+//! registration are the generic ones - [`Namespaces`](crate::Namespaces),
+//! [`Tables`](crate::Tables), [`Catalog::resolve`],
+//! [`Warehouse`](crate::Warehouse).
 //! Namespaces nest to any depth, so a catalog states no
 //! [`namespace_levels`](CatalogValue::namespace_levels).
 //!
@@ -69,16 +73,22 @@ mod namespace;
 
 pub use namespace::IcebergNamespace;
 
+use std::any::Any;
+use std::hash::{Hash, Hasher};
+
 use smol_str::{SmolStr, format_smolstr};
 
 use super::IcebergTable;
 use super::metadata::FormatVersion;
 use super::partition::PartitionSpec;
 use crate::holder::Holder;
-use crate::warehouse::{Handle, Site, entry_name, extended, path_text, table_layout};
+use crate::warehouse::{
+    CatalogFactory, RegisteredCatalog, RegisteredTable, Site, entry_name, extended, path_text,
+    table_layout,
+};
 use crate::{
-    CatalogValue, Error, Field, IOBase, IOKind, Namespace, NamespaceValue, Object, ObjectValue,
-    Objects, Properties, Result, Table, Url,
+    Arn, Catalog, CatalogValue, Error, Field, Handle, IOBase, IOKind, Namespace, NamespaceValue,
+    Object, ObjectValue, Objects, Properties, Result, Scheme, Table, Url,
 };
 
 /// The reserved folder every level keeps its own document in.
@@ -301,6 +311,134 @@ impl CatalogValue for IcebergCatalog {
     }
 }
 
+impl RegisteredCatalog for IcebergCatalog {
+    fn implementation_name(&self) -> &'static str {
+        "IcebergCatalog"
+    }
+
+    fn clone_box(&self) -> Box<dyn RegisteredCatalog> {
+        Box::new(self.clone())
+    }
+
+    fn dyn_eq(&self, other: &dyn RegisteredCatalog) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<Self>()
+            .is_some_and(|other| self == other)
+    }
+
+    fn dyn_hash(&self, mut state: &mut dyn Hasher) {
+        Hash::hash(self, &mut state);
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn with_properties(self: Box<Self>, properties: Properties) -> Box<dyn RegisteredCatalog> {
+        Box::new((*self).with_properties(properties))
+    }
+}
+
+impl From<IcebergCatalog> for Catalog {
+    fn from(catalog: IcebergCatalog) -> Self {
+        Self::Registered(Box::new(catalog))
+    }
+}
+
+impl From<IcebergCatalog> for Object {
+    fn from(catalog: IcebergCatalog) -> Self {
+        Self::Catalog(Catalog::from(catalog))
+    }
+}
+
+impl RegisteredTable for IcebergTable<Handle> {
+    fn implementation_name(&self) -> &'static str {
+        "IcebergTable"
+    }
+
+    fn clone_box(&self) -> Box<dyn RegisteredTable> {
+        Box::new(self.clone())
+    }
+
+    fn dyn_eq(&self, other: &dyn RegisteredTable) -> bool {
+        RegisteredTable::as_any(other)
+            .downcast_ref::<Self>()
+            .is_some_and(|other| self == other)
+    }
+
+    fn dyn_hash(&self, mut state: &mut dyn Hasher) {
+        Hash::hash(self, &mut state);
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn with_properties(self: Box<Self>, properties: Properties) -> Box<dyn RegisteredTable> {
+        Box::new(IcebergTable::with_properties(*self, properties))
+    }
+
+    fn inheriting(self: Box<Self>, parent: &Properties) -> Box<dyn RegisteredTable> {
+        Box::new(IcebergTable::inheriting(*self, parent))
+    }
+
+    fn exists(&self) -> bool {
+        IcebergTable::exists(self)
+    }
+}
+
+impl From<IcebergTable<Handle>> for Table {
+    fn from(table: IcebergTable<Handle>) -> Self {
+        Self::Registered(Box::new(table))
+    }
+}
+
+impl From<IcebergTable<Handle>> for Object {
+    fn from(table: IcebergTable<Handle>) -> Self {
+        Self::Table(Table::from(table))
+    }
+}
+
+/// What builds an [`IcebergCatalog`] from a location: the catalog a `type`
+/// of `hadoop` - PyIceberg's spelling - asks [`Catalog::from_url`] for, a
+/// warehouse folder laid out as `HadoopCatalog` lays one out.
+#[derive(Debug)]
+pub struct HadoopFactory;
+
+/// The one [`HadoopFactory`], claimed under the `type` word `hadoop`.
+pub static HADOOP_FACTORY: HadoopFactory = HadoopFactory;
+
+impl CatalogFactory for HadoopFactory {
+    fn type_word(&self) -> Option<&'static str> {
+        Some("hadoop")
+    }
+
+    fn scheme(&self) -> Option<Scheme> {
+        None
+    }
+
+    fn catalog(
+        &self,
+        name: SmolStr,
+        url: &Url,
+        _arn: Option<&Arn>,
+        properties: &Properties,
+    ) -> Result<Catalog> {
+        Ok(Catalog::from(
+            IcebergCatalog::new(name, url.clone())?.with_properties(properties.clone()),
+        ))
+    }
+}
+
 /// What occupies a resolved folder, classified in one pass and without a
 /// read: presence costs one call, and only a present folder pays for the
 /// listing of its `metadata/` that tells a table from a namespace.
@@ -362,13 +500,13 @@ fn is_not_a_directory(error: &Error) -> bool {
 /// for a location nothing occupies yet that is a leaf-to-be. A catalog knows
 /// better - its names address containers - so the leaf spellings are re-cast
 /// as the same backend's folder: a local or bound location keeping every
-/// bound-location fact, an object store's undecided location or object the
-/// prefix it names on the same client, with no request.
+/// bound-location fact, and a claimed backend's handle the container its
+/// location names on the same client ([`IOBase::as_container`]) - an object
+/// store's undecided location or object the prefix it spells, with no
+/// request - or itself where it is a container already.
 fn folder_role(child: Holder) -> Result<Holder> {
     match child {
         Holder::LocalFolder(_) | Holder::FsFolder(_) => Ok(child),
-        #[cfg(feature = "s3")]
-        Holder::S3Folder(_) => Ok(child),
         Holder::LocalPath(path) => Ok(Holder::LocalFolder(crate::local::LocalFolder::from_url(
             path.url().clone(),
         )?)),
@@ -386,19 +524,24 @@ fn folder_role(child: Holder) -> Result<Holder> {
         Holder::FsFile(file) => Ok(Holder::FsFolder(crate::fs::FsFolder::new(
             file.bound().clone(),
         ))),
-        #[cfg(feature = "s3")]
-        Holder::S3Path(path) => Ok(Holder::S3Folder(path.as_directory()?)),
-        #[cfg(feature = "s3")]
-        Holder::S3File(file) => Ok(Holder::S3Folder(file.as_directory()?)),
-        other => {
-            let described = other
-                .url()
-                .map_or_else(|| "<memory>".to_owned(), ToString::to_string);
-            Err(invalid(format_smolstr!(
-                "expected a backend that can hold a folder for a catalog name, got {described}"
-            )))
-        }
+        Holder::Registered(_) => match child.as_container()? {
+            Some(folder) => Ok(folder),
+            None if child.is_container() => Ok(child),
+            None => Err(no_folder(&child)),
+        },
+        other => Err(no_folder(&other)),
     }
+}
+
+/// The refusal of a child whose backend holds no folder a catalog name can
+/// address.
+fn no_folder(child: &Holder) -> Error {
+    let described = child
+        .url()
+        .map_or_else(|| "<memory>".to_owned(), ToString::to_string);
+    invalid(format_smolstr!(
+        "expected a backend that can hold a folder for a catalog name, got {described}"
+    ))
 }
 
 /// Check one part of a path as a folder name under a catalog.
@@ -446,15 +589,9 @@ fn resolve(folder: &Holder, parent: &[SmolStr], name: &str) -> Result<Holder> {
 fn object_of(folder: Holder, table: bool, path: Vec<SmolStr>, effective: &Properties) -> Object {
     if table {
         let root = Handle::bound(folder, false, &path, Properties::new());
-        Object::Table(Table::Iceberg(Box::new(
-            IcebergTable::at(path, root).inheriting(effective),
-        )))
+        Object::from(IcebergTable::at(path, root).inheriting(effective))
     } else {
-        Object::Namespace(Namespace::Iceberg(Box::new(IcebergNamespace::listed(
-            path,
-            folder,
-            effective.clone(),
-        ))))
+        Object::from(IcebergNamespace::listed(path, folder, effective.clone()))
     }
 }
 
@@ -515,10 +652,10 @@ fn create_namespace(
     match classify(resolve(folder, path, name)?)? {
         Occupant::Nothing(child) => {
             write_document(&child, NAMESPACE_DOCUMENT, properties)?;
-            Ok(Namespace::Iceberg(Box::new(
+            Ok(Namespace::from(
                 IcebergNamespace::listed(below, child, effective.clone())
                     .with_properties(properties.clone()),
-            )))
+            ))
         }
         Occupant::Namespace(_) => Err(Error::conflict("namespace", "namespace", path_text(&below))),
         Occupant::Table(_) => Err(Error::conflict("namespace", "table", path_text(&below))),
@@ -641,7 +778,7 @@ fn create_table(
                 .placed(below)
                 .with_properties(properties.clone())
                 .inheriting(effective);
-            Ok(Table::Iceberg(Box::new(table)))
+            Ok(Table::from(table))
         }
         Occupant::Namespace(_) => Err(Error::conflict("table", "namespace", path_text(&below))),
         Occupant::Table(_) => Err(Error::conflict("table", "table", path_text(&below))),

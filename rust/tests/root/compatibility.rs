@@ -174,6 +174,13 @@ fn compatibility_targets_share_the_canonical_scheme_parser() {
     assert!(Scheme::COMPATIBILITY_TARGETS.contains(&Scheme::ICEBERG));
     assert!(Scheme::ICEBERG.is_compatibility_target());
     assert_eq!(Scheme::from_str("Iceberg").unwrap(), Scheme::ICEBERG);
+
+    // Doris is a target of its own beside Iceberg, last in the list.
+    assert_eq!(Scheme::from_str("Doris").unwrap(), Scheme::DORIS);
+    assert!(Scheme::DORIS.is_known());
+    assert!(Scheme::DORIS.is_compatibility_target());
+    assert!(!Scheme::DORIS.is_storage());
+    assert_eq!(Scheme::COMPATIBILITY_TARGETS.last(), Some(&Scheme::DORIS));
 }
 
 #[test]
@@ -193,6 +200,7 @@ fn a_non_compatibility_scheme_is_rejected_by_normalization_not_by_parsing() {
     assert!(message.contains("polars"), "{message}");
     assert!(message.contains("pandas"), "{message}");
     assert!(message.contains("iceberg"), "{message}");
+    assert!(message.contains("doris"), "{message}");
     assert!(matches!(
         error,
         Error::InvalidDataType {
@@ -806,7 +814,7 @@ fn every_scalar_leaf_has_an_answer_for_every_target() {
     //
     // This walks every parameter-free identifier instead of the seven, so the
     // next leaf added without a compatibility arm fails here.
-    for id in DataTypeId::ALL {
+    for id in DataTypeId::all() {
         if id.is_parameterized() {
             continue;
         }
@@ -818,6 +826,7 @@ fn every_scalar_leaf_has_an_answer_for_every_target() {
             &Scheme::POLARS,
             &Scheme::PANDAS,
             &Scheme::ICEBERG,
+            &Scheme::DORIS,
         ] {
             if let Err(error) = dtype.clone().into_scheme_compat(scheme) {
                 let reason = error.to_string();
@@ -838,7 +847,7 @@ fn every_scalar_leaf_has_an_answer_for_every_target() {
 fn every_foreign_engine_reads_an_enum_as_its_int32_code_and_a_code_as_its_text() {
     let mut enums = 0;
     let mut codes = 0;
-    for id in DataTypeId::ALL {
+    for id in DataTypeId::all() {
         if id.is_parameterized() {
             continue;
         }
@@ -859,6 +868,7 @@ fn every_foreign_engine_reads_an_enum_as_its_int32_code_and_a_code_as_its_text()
             &Scheme::POLARS,
             &Scheme::PANDAS,
             &Scheme::ICEBERG,
+            &Scheme::DORIS,
         ] {
             assert_eq!(
                 dtype.clone().into_scheme_compat(scheme).unwrap(),
@@ -871,7 +881,9 @@ fn every_foreign_engine_reads_an_enum_as_its_int32_code_and_a_code_as_its_text()
             dtype
         );
     }
-    assert!(enums >= 5, "{enums} enums seen");
+    // The core holds one enum leaf, `state`; the kinds a market crate
+    // claims are listed only once it has claimed them.
+    assert!(enums >= 1, "{enums} enums seen");
     assert!(codes >= 12, "{codes} codes seen");
 }
 
@@ -884,7 +896,7 @@ fn every_foreign_engine_reads_an_enum_as_its_int32_code_and_a_code_as_its_text()
 fn every_iceberg_widening_lands_on_a_type_the_iceberg_writer_spells() {
     use yggdryl::DataTypeKind;
     use yggdryl::iceberg::PrimitiveType;
-    let mut samples: Vec<DataType> = DataTypeId::ALL
+    let mut samples: Vec<DataType> = DataTypeId::all()
         .iter()
         .filter(|id| !id.is_parameterized())
         .filter_map(|id| DataType::from_str(id.as_str()).ok())
@@ -973,6 +985,15 @@ fn an_unsigned_column_stating_bits_takes_the_signed_integer_of_its_width() {
             ],
         ),
         (
+            Scheme::DORIS,
+            [
+                DataType::Int32,
+                DataType::Int32,
+                DataType::Int32,
+                DataType::Int64,
+            ],
+        ),
+        (
             Scheme::POLARS,
             [
                 DataType::UInt8,
@@ -1023,7 +1044,7 @@ fn an_unsigned_column_stating_bits_takes_the_signed_integer_of_its_width() {
 
     // A column stating nothing still widens, and a bare datatype states
     // nothing.
-    for scheme in [Scheme::SPARK, Scheme::ICEBERG] {
+    for scheme in [Scheme::SPARK, Scheme::ICEBERG, Scheme::DORIS] {
         assert_eq!(
             DataType::UInt64
                 .required_field("count")
@@ -1079,4 +1100,291 @@ fn an_unsigned_column_stating_bits_takes_the_signed_integer_of_its_width() {
         value.as_field_properties().representation(),
         Representation::Bits
     );
+}
+
+/// Doris's Iceberg catalog maps no `time`, `unknown`, `variant`, `geometry`
+/// or `geography` column, so each is refused where it is, under Doris's own
+/// kind; what Iceberg refuses Doris refuses too, naming Doris.
+#[test]
+fn doris_refuses_what_its_iceberg_catalog_maps_no_type_for() {
+    let cases = vec![
+        (
+            DataType::Time64(TimeUnit::Microsecond),
+            vec!["maps no time-of-day column", "got time64 of us"],
+        ),
+        (
+            DataType::Time32(TimeUnit::Millisecond),
+            vec!["maps no time-of-day column", "got time32 of ms"],
+        ),
+        (DataType::Null, vec!["maps no", "got null"]),
+        (DataType::variant(), vec!["maps no", "got variant"]),
+        (
+            DataType::geometry(None).unwrap(),
+            vec!["maps no", "got geometry"],
+        ),
+        (
+            DataType::geography(None, None).unwrap(),
+            vec!["maps no", "got geography"],
+        ),
+        (
+            DataType::date64(),
+            vec!["date64 milliseconds", "Doris date32 days"],
+        ),
+        (
+            DataType::Duration64(TimeUnit::Microsecond),
+            vec!["Doris has no elapsed-time type", "got duration64(us)"],
+        ),
+        (
+            DataType::Interval(TimeUnit::MonthDayNano),
+            vec!["Doris has no calendar interval type"],
+        ),
+        (
+            DataType::decimal256(39, 0).unwrap(),
+            vec!["decimal256(39, 0)", "Doris precision is limited to 38"],
+        ),
+        (
+            DataType::BigDecimal,
+            vec!["Doris precision is limited to 38"],
+        ),
+    ];
+    for (rejected, fragments) in cases {
+        let source = DataType::from(
+            StructType::from_fields([Field::new("created", rejected.clone(), true)]).unwrap(),
+        );
+        let error = source.into_scheme_compat(&Scheme::DORIS).unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("$.created"), "{rejected:?}: {message}");
+        for fragment in fragments {
+            assert!(message.contains(fragment), "{rejected:?}: {message}");
+        }
+        assert!(matches!(
+            error,
+            Error::InvalidDataType {
+                kind: "DorisCompatibility",
+                ..
+            }
+        ));
+    }
+}
+
+/// Doris reads Iceberg's `timestamp` and `timestamptz` at microseconds and
+/// maps neither `_ns` type, so a timestamp of every other unit - seconds,
+/// milliseconds, nanoseconds - is laid out at microseconds under its own
+/// zone - zoned, naive or a named zone alike - and a microsecond one passes
+/// as it is.
+#[test]
+fn doris_lays_every_timestamp_out_at_microseconds_keeping_its_zone() {
+    let new_york = Timezone::from_str("America/New_York").unwrap();
+    for zone in [Timezone::UTC, Timezone::NAIVE, new_york] {
+        let micros = DataType::datetime64(TimeUnit::Microsecond, zone).unwrap();
+        for unit in [
+            TimeUnit::Second,
+            TimeUnit::Millisecond,
+            TimeUnit::Nanosecond,
+        ] {
+            assert_eq!(
+                DataType::datetime64(unit, zone)
+                    .unwrap()
+                    .into_scheme_compat(&Scheme::DORIS)
+                    .unwrap(),
+                micros,
+                "{unit} {zone:?}"
+            );
+        }
+        let nanos = DataType::datetime64(TimeUnit::Nanosecond, zone).unwrap();
+        assert_eq!(
+            micros.clone().into_scheme_compat(&Scheme::DORIS).unwrap(),
+            micros,
+            "{zone:?}"
+        );
+        // Iceberg itself keeps the nanoseconds: the rewrite is Doris's alone.
+        assert_eq!(
+            nanos.clone().into_scheme_compat(&Scheme::ICEBERG).unwrap(),
+            nanos
+        );
+    }
+
+    // A field keeps its name, nullability and metadata across the rewrite.
+    let field = Field::from_parts(
+        "transunix",
+        DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
+        false,
+        [("comment", "when it happened")],
+    )
+    .unwrap();
+    let laid_out = field.into_scheme_compat(&Scheme::DORIS).unwrap();
+    assert_eq!(laid_out.name(), "transunix");
+    assert!(!laid_out.is_nullable());
+    assert_eq!(laid_out.get_metadata("comment"), Some("when it happened"));
+    assert_eq!(
+        laid_out.dtype(),
+        &DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).unwrap()
+    );
+}
+
+/// The write onto a laid-out field casts the values: a second or a
+/// millisecond count widens exactly, a nanosecond one is truncated to whole
+/// microseconds.
+#[test]
+fn a_write_onto_the_doris_layout_widens_seconds_and_truncates_nanoseconds() {
+    use arrow_array::{
+        Array, ArrayRef, TimestampMicrosecondArray, TimestampMillisecondArray,
+        TimestampNanosecondArray, TimestampSecondArray,
+    };
+    use yggdryl::{ArrowCastOptions, Serie};
+
+    let cases: [(TimeUnit, ArrayRef, [i64; 2]); 3] = [
+        (
+            TimeUnit::Second,
+            Arc::new(TimestampSecondArray::from(vec![1, -2]).with_timezone("UTC")),
+            [1_000_000, -2_000_000],
+        ),
+        (
+            TimeUnit::Millisecond,
+            Arc::new(TimestampMillisecondArray::from(vec![1_234, -5]).with_timezone("UTC")),
+            [1_234_000, -5_000],
+        ),
+        (
+            TimeUnit::Nanosecond,
+            Arc::new(TimestampNanosecondArray::from(vec![1_999, 2_000]).with_timezone("UTC")),
+            [1, 2],
+        ),
+    ];
+    for (unit, array, expected) in cases {
+        let source = Field::new(
+            "at",
+            DataType::datetime64(unit, Timezone::UTC).unwrap(),
+            false,
+        );
+        let laid_out = source.clone().into_scheme_compat(&Scheme::DORIS).unwrap();
+        let written = Serie::from_arrow_array(Some(&source), array, ArrowCastOptions::new())
+            .unwrap()
+            .cast(&laid_out, ArrowCastOptions::new())
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
+        let micros = written
+            .as_any()
+            .downcast_ref::<TimestampMicrosecondArray>()
+            .expect("laid out at microseconds");
+        assert_eq!(micros.values().as_ref(), expected.as_slice(), "{unit}");
+    }
+}
+
+/// The rewrite reaches every depth - a struct's child, a serie's item, a
+/// map's key and value, a fixed-size serie (which Doris reads as a list) -
+/// while everything Doris maps passes as Iceberg lays it out.
+#[test]
+fn doris_recurses_through_nested_layouts() {
+    let nanos = DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC).unwrap();
+    let micros = DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).unwrap();
+    let source = DataType::from(
+        StructType::from_fields([
+            Field::new("id", DataType::UInt16, false),
+            Field::new("at", nanos.clone(), false),
+            Field::new(
+                "fills",
+                DataType::serie(Field::new("item", nanos.clone(), true)),
+                true,
+            ),
+            Field::new(
+                "window",
+                DataType::fixed_size_serie(Field::new("item", nanos.clone(), false), 2).unwrap(),
+                true,
+            ),
+            Field::new(
+                "marks",
+                DataType::map_of(nanos.clone(), nanos.clone(), true).unwrap(),
+                true,
+            ),
+            Field::new(
+                "nested",
+                DataType::from(
+                    StructType::from_fields([Field::new("seen", nanos.clone(), true)]).unwrap(),
+                ),
+                true,
+            ),
+            Field::new("key", DataType::Uuid, true),
+            Field::new("code", DataType::fixed_binary(4).unwrap(), true),
+        ])
+        .unwrap(),
+    );
+    let laid_out = source.clone().into_scheme_compat(&Scheme::DORIS).unwrap();
+    let fields = laid_out.as_fields().unwrap();
+    assert_eq!(fields[0].dtype(), &DataType::Int32);
+    assert_eq!(fields[1].dtype(), &micros);
+    assert_eq!(
+        fields[2].dtype(),
+        &DataType::serie(Field::new("item", micros.clone(), true))
+    );
+    assert_eq!(
+        fields[3].dtype(),
+        &DataType::serie(Field::new("item", micros.clone(), false))
+    );
+    let map = fields[4].dtype().as_mapping().unwrap();
+    let entries = map.entries().dtype().as_fields().unwrap();
+    assert_eq!(entries[0].dtype(), &micros);
+    assert_eq!(entries[1].dtype(), &micros);
+    assert_eq!(fields[5].dtype().as_fields().unwrap()[0].dtype(), &micros);
+    // `uuid` and `fixed(N)` are in Doris's mapping table.
+    assert_eq!(fields[6].dtype(), &DataType::Uuid);
+    assert_eq!(fields[7].dtype(), &DataType::fixed_binary(4).unwrap());
+
+    // What Doris lays out Iceberg keeps: the Doris answer is an Iceberg one.
+    assert_eq!(
+        laid_out
+            .clone()
+            .into_scheme_compat(&Scheme::ICEBERG)
+            .unwrap(),
+        laid_out
+    );
+    // A time-of-day nested anywhere is refused at its path.
+    let nested_time = DataType::serie(Field::new(
+        "item",
+        DataType::Time64(TimeUnit::Microsecond),
+        true,
+    ));
+    let message = nested_time
+        .into_scheme_compat(&Scheme::DORIS)
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("$[]"), "{message}");
+    assert!(message.contains("time-of-day"), "{message}");
+}
+
+/// Every leaf Doris lays out is one Iceberg lays out the same way, but a
+/// nanosecond timestamp, and one the Iceberg writer spells.
+#[test]
+fn every_doris_answer_is_an_iceberg_answer_the_iceberg_writer_spells() {
+    use yggdryl::DataTypeKind;
+    use yggdryl::iceberg::PrimitiveType;
+    let mut seen = 0;
+    for id in DataTypeId::all() {
+        if id.is_parameterized() {
+            continue;
+        }
+        let Ok(dtype) = DataType::from_str(id.as_str()) else {
+            continue;
+        };
+        if matches!(dtype.kind(), DataTypeKind::Nested) {
+            continue;
+        }
+        let Ok(doris) = dtype.clone().into_scheme_compat(&Scheme::DORIS) else {
+            continue;
+        };
+        seen += 1;
+        assert_eq!(
+            doris.clone().into_scheme_compat(&Scheme::ICEBERG).unwrap(),
+            doris,
+            "{dtype}"
+        );
+        assert!(
+            PrimitiveType::from_dtype(&doris).is_ok(),
+            "{dtype} laid out as {doris}, which Iceberg does not spell"
+        );
+        if let DataType::DateTime64 { unit, .. } = &doris {
+            assert_eq!(*unit, TimeUnit::Microsecond, "{dtype}");
+        }
+    }
+    assert!(seen > 20, "{seen} leaves seen");
 }

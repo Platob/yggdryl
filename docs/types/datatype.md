@@ -6,13 +6,13 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 97 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the seventeen [codes](codes/index.md), the six [enums](enum/index.md) |
+| Owns | 91 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the seventeen [codes](codes/index.md), the [`state`](enum/state.md) enum, and `Market`, the one variant the four market [enums](enum/index.md) sit under as [registered kinds](#registered-kinds) |
 | Parses | Arrow, SQL, Hive, Spark, Iceberg, FIX spellings; `to_string` re-parses losslessly, including `figi` as ANSI X9.145's checked identifier |
-| Identity | `id()`, `kind()`: 97 ids, 13 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
+| Identity | `id()`, `kind()`: 96 ids - the core's 92, the seventeen codes among them, `DataTypeId::ALL`, and the four registered market enums, `DataTypeId::all()` - 13 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf, a registered kind's its claimed byte |
 | Serializes | one structural model under JSON, YAML, TOML |
 | Defaults | one non-null default per variant, freshly allocated |
 | Limits | recursion 64; a default above 64 MiB errors |
-| Compatibility | `arrow`, `spark`, `polars`, `pandas`, `iceberg`; layout rewrites only |
+| Compatibility | `arrow`, `spark`, `polars`, `pandas`, `iceberg`, `doris`; layout rewrites only, but `doris`'s instant at microseconds ([Apache Doris](#apache-doris)) |
 | Rust only | the enum itself; [`is_struct` and `into_struct_type`](#as-a-struct) |
 | JavaScript | the model as JSON only: no YAML, TOML or `pretty` |
 | Serializes strings, bytes | one `string` tag and one `binary` tag with `layout` naming the leaf and `fixed` or `max` beside it ([String](text/string.md#serialized-shape), [Bytes](text/bytes.md#serialized-shape)) |
@@ -64,12 +64,15 @@ Parse any spelling, display the canonical one, round-trip both text forms.
 
 ## Logical names
 
-A FIX name resolves to, and displays as, an ordinary datatype.
+A FIX name resolves to, and displays as, an ordinary datatype. `DataType::logical_names()` lists every name in name order, a [registered kind](#registered-kinds)'s own name among them, and `DataType::register_logical_name(name, dtype, by)` claims one more for a crate, once, on the same claim-once register, Rust only.
 
 === "Rust"
 
     ```rust
     use yggdryl::{DataType, StringEnum, TimeUnit, Timezone};
+
+    // The FIX Latest names are yggdryl-fix's, claimed by its `install()`.
+    yggdryl_fix::install()?;
 
     // A name is one more spelling of a datatype, so it displays as that datatype.
     let price = DataType::from_logical_name("Price")?;
@@ -96,9 +99,9 @@ A FIX name resolves to, and displays as, an ordinary datatype.
         DataType::from_str("utc_date_only")?,
         DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?,
     );
-    assert_eq!(DataType::LOGICAL_NAMES[0], ("ccy", DataType::Ccy));
+    assert!(DataType::logical_names().contains(&("ccy", DataType::Ccy)));
 
-    // Three of the names also prebuild the vocabulary their codes come from.
+    // A code's name also prebuilds the vocabulary its codes come from.
     assert_eq!(StringEnum::prebuilt_values("MIC"), StringEnum::MICS);
     assert!(StringEnum::prebuilt_values("tenor").is_empty());
     // A name that is a width rather than a code resolves to the fixed string.
@@ -129,7 +132,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert DataType("utc_date_only") == DataType("datetime64(ns, UTC)")
     assert DataType.logical_names()["ccy"] == DataType("ccy")
 
-    # Three of the names also prebuild the vocabulary their codes come from.
+    # A code's name also prebuilds the vocabulary its codes come from.
     assert StringEnum.prebuilt()["mic"] == StringEnum.prebuilt()["exchange"]
     assert "tenor" not in StringEnum.prebuilt()
     # A name that is a width rather than a code resolves to the fixed string.
@@ -161,7 +164,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(DataType.from('utc_date_only').id, 'datetime64')
     assert.equal(DataType.logicalNames().ccy.id, 'ccy')
 
-    // Three of the names also prebuild the vocabulary their codes come from.
+    // A code's name also prebuilds the vocabulary its codes come from.
     assert.deepEqual(StringEnum.prebuilt().mic, StringEnum.prebuilt().exchange)
     assert.equal(StringEnum.prebuilt().tenor, undefined)
     // A name that is a width rather than a code resolves to the fixed string.
@@ -172,7 +175,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(DataType.from('float').id, 'float32')
     ```
 
-The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifiers `isin`, `cusip`, `sedol`, `bbg`, `ric` and `figi`, the codes `unit` and `forex`, and the reference-data codes `lei`, `bic`, `elf`, `dti` and `fisn`, each resolving to its own [code](codes/index.md), and `side`, `state`, `marketdatakind`, `marketdatatype` and `timeinforce` to the [Side](enum/side.md), [State](enum/state.md), [MarketDataKind](enum/marketdatakind.md), [MarketDataType](enum/marketdatatype.md) and [TimeInForce](enum/timeinforce.md) enums; `ccy`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
+The registry is the FIX Latest table - `yggdryl-fix`'s, claimed by its `install()` - plus `mic`, `cfi`, the securities identifiers `isin`, `cusip`, `sedol`, `bbg`, `ric` and `figi`, the codes `unit` and `forex`, and the reference-data codes `lei`, `bic`, `elf`, `dti` and `fisn`, each resolving to its own [code](codes/index.md), and `side`, `state`, `marketdatakind`, `marketdatatype` and `timeinforce` to the [Side](enum/side.md), [State](enum/state.md), [MarketDataKind](enum/marketdatakind.md), [MarketDataType](enum/marketdatatype.md) and [TimeInForce](enum/timeinforce.md) enums; `ccy`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md), and `side` and `timeinforce` the market crate's once its `install()` registers them.
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
@@ -299,6 +302,37 @@ The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifie
 
 Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase strings. `DataTypeId::as_u8` is the identifier as one byte, laid out by family - `DataTypeKind::id` is the family's own number, the start of the range its leaves take and a placeholder no leaf takes but for the null family's, and `DataTypeKind::last` its end - and `DataTypeId::from_u8` and `DataTypeKind::of_u8` read a byte back; the [value stream](value-stream.md) and the [digest feed](../hashing.md#encoding) write that byte. `DataTypeKind::range`, `last`, `contains` and `DataTypeId::temporal_family` are Rust only.
 
+## Registered kinds
+
+A registered kind - one of the four market [enums](enum/index.md) `marketdatakind`, `side`, `marketdatatype` and `timeinforce`, or an enum a crate claims - is no variant of its own. It is a `MarketDescriptor`, one `static` in the kind's root file (`SIDE_KIND`), and the one `DataType::Market` variant holds it through a `MarketType`, as `Field::Market`, `Scalar::Market` (a `MarketScalar`) and `Serie::Market` (a `MarketSerie`) do beside it. The descriptor states the kind's byte in the enum range, its name, its Arrow extension name, its storage - `MarketStorage::Code8` or `Code16`, the `uint8` or `uint16` code of a member - its `members` in code order, the ranks its values and its datatype order and hash by, and `read`, the door a spelling crosses into a member's code. The kind's own type answers `ID`, `NAME` and `EXTENSION_NAME` (`Side::ID`), its datatype and a nullable field of it, `dtype()` and `field(name)` (`Side::dtype()`, `Side::field("side")`: written once by `enum_leaf!`'s market arm for every kind, with no constructor per kind on `DataType`), and `MarketValue`, the owned narrowing of a scalar back to it. The seventeen [codes](codes/index.md) are not registered kinds: each is a variant of its own, like every other core leaf, and `DataTypeId::ALL` counts them.
+
+A kind is claimed once, by `yggdryl::market::claim(kind, by)`, under its byte, its name and its extension name, and a second claim of any of the three is refused naming the first claimant - read before the ranks, the members and the name the kind states, so a reserved kind claimed again, by any crate, is that conflict. The byte is a free one in the enum range: `0xc2..=0xc5` are the four market kinds `yggdryl-market` owns, each claimed only at the byte, name, extension name and ranks `RESERVED_KINDS` reserves for it, by that crate, `0xc1` is `state`, `0xc6` is retired and no kind takes it again, and `0xc7..=0xcf` are free. Any other kind states the reserved ranks, at least one member in code order within the storage's width, a name in its folded spelling that the datatype grammar does not already read, and an extension name the core does not recognize. Every intake - a parsed name, a serde tag, a value-stream byte, an Arrow extension name - reads the register through `market::kind_of(id)`, `market::kind_named(name)` and `market::kind_for_extension(name)`, and `market::kinds()` lists every claim in byte order; a value in hand carries its kind and reads nothing. A name no claim answers is refused as ``unknown datatype "x": no registered datatype answers it``, and a reserved kind's name or extension name adds the install that claims it - ``unknown datatype "side": no registered datatype answers it; `side` is read only once the crate that claims it is installed (`yggdryl_market::install()`) `` - which `DataType::from_logical_name` says too beside the names it lists, so `side` parses only once `yggdryl_market::install()` has claimed it.
+
+The register is Rust only; Python and JavaScript reach the kinds as every datatype - `DataType("side")`, the field factories and every value door - and gain no door.
+
+```rust
+use yggdryl::{market, DataType};
+use yggdryl_market::{Side, SIDE_KIND};
+yggdryl_market::install()?;
+
+let side = DataType::from_str("side")?;
+let DataType::Market(kind) = &side else {
+    panic!("expected a registered kind, got {side}");
+};
+assert_eq!(kind.name(), "side");
+assert_eq!(kind.kind().name, "side");
+assert_eq!(kind.id(), Side::ID);
+assert_eq!(side, Side::dtype());
+
+// Every intake reads the register; a name no claim answers finds nothing.
+assert_eq!(market::kind_named("side"), Some(&SIDE_KIND));
+assert_eq!(market::kind_for_extension(Side::EXTENSION_NAME), Some(&SIDE_KIND));
+assert_eq!(market::kind_of(Side::ID), Some(&SIDE_KIND));
+assert_eq!(market::kind_named("acme"), None);
+// A byte, a name and an extension name are claimed once.
+assert!(market::claim(&SIDE_KIND, "acme").is_err());
+```
+
 ## As a struct
 
 `is_struct` reports the Struct shape alone: a serie of records, a map and a union are not one. `into_struct_type` answers the datatype a record is under - a struct as it is, a clone sharing its children with nothing checked, and any other datatype as the one-child `struct<value: self>`, the child named `media::DEFAULT_VALUE_NAME` (`value`) and nullable so that a null value wraps too. The wrap adds one level, so it is refused naming `$` where the result would nest past the recursion limit of 64 (`DataType::PARSE_RECURSION_LIMIT`) or take a schema walk past its 1,000,000-node budget - which a subtree shared through one `Arc` per level reaches long before the depth limit. A [field](field.md#as-a-struct) and a [value](scalar.md#as-a-struct) wrap the same way.
@@ -422,8 +456,8 @@ A datatype Arrow cannot state alone rides an extension name, one per datatype id
 (`DataTypeId::arrow_extension_name`): `arrow.uuid`, `arrow.parquet.variant`, `geoarrow.wkb`,
 `yggdryl.string` for every string leaf but plain `utf8`, `large_utf8` and `utf8_view`,
 `yggdryl.bytes` for `sized_binary` and `large_binary_view`, and `yggdryl.<name>` for the fixed
-decimals, the version, URL, URN, timezone, MIME and media types, the six enum leaves and the
-seventeen codes - thirty-six names in all, `DataTypeId::arrow_extension_names()`. The name over the
+decimals, the version, URL, URN, timezone, MIME and media types, the five enum leaves and the
+seventeen codes - thirty-five names in all, `DataTypeId::arrow_extension_names()`. The name over the
 storage its datatype lays out reads back as that datatype, a dictionary of it included; over any
 other storage it is a foreign field wearing the name and reads as its storage.
 
@@ -766,11 +800,12 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
 | `spark` | `uint8` -> `int16`, `uint64` -> `decimal128(20,0)`, `fixed_size_serie` -> `serie`; a column stating `bits`: `uintN` -> `intN` |
 | `polars`, `pandas` | no map, and the error names key/value structs; Polars keeps unsigned and `fixed_size_serie` |
 | `iceberg` | `int8`, `int16`, `uint8`, `uint16` -> `int32`; keeps `fixed[n]`, us/ns timestamps; no duration or interval; a column stating `bits`: `uint32` -> `int32`, `uint64` -> `int64` |
+| `doris` | `iceberg`'s, then an s, ms or ns timestamp -> us under its own zone; no `time`, `null`, `variant`, `geometry` or `geography` ([Apache Doris](#apache-doris)) |
 
 On a [Field](field.md) the call keeps name, nullability, and metadata, and rebuilds the Arrow projection cache only when something changed.
 [Iceberg](../media/iceberg.md) is a closed primitive vocabulary, not an engine.
 
-What either layout wrote reads back as what it was. An integer column's value door takes a decimal with no fraction, so a `uint64` digest or count stored as `decimal(20,0)` returns as the number it was wherever a row is read back into its facts - a FIX message's `currhashcode` and `seqnum`, a market row's - and a column stating `bits` takes the `long` of its width by its bits, so a digest stored that way returns as the digest it was. The two digest columns of a FIX or market row read an `int64` cell as its bits whatever the schema states, since a negative cell is no other `u64`; `seqnum` is a count and is read by value. A FIX row whose digest or place cell cannot be read so is refused by its column rather than read as zero ([integer edges](numeric/integer.md#edges)).
+What either layout wrote reads back as what it was. An integer column's value door takes a decimal with no fraction, so a `uint64` digest or count stored as `decimal(20,0)` returns as the number it was wherever a row is read back into its facts - a FIX message's `hashcode` and `seqnum`, a market row's - and a column stating `bits` takes the `long` of its width by its bits, so a digest stored that way returns as the digest it was. The two digest columns of a FIX or market row read an `int64` cell as its bits whatever the schema states, since a negative cell is no other `u64`; `seqnum` is a count and is read by value. A FIX row whose digest or place cell cannot be read so is refused by its column rather than read as zero ([integer edges](numeric/integer.md#edges)).
 
 ### A column stating its bits
 
@@ -789,7 +824,7 @@ struct's children state their own.
     ```rust
     use yggdryl::{DataType, Representation, Scheme, StructType};
 
-    let mut digest = DataType::UInt64.required_field("currhashcode");
+    let mut digest = DataType::UInt64.required_field("hashcode");
     digest.as_field_properties_mut().set_representation(Representation::Bits)?;
     let row = DataType::from(StructType::from_fields([
         digest,
@@ -814,7 +849,7 @@ struct's children state their own.
     ```python
     from yggdryl import DataType, Field
 
-    digest = Field("currhashcode", "uint64", nullable=False)
+    digest = Field("hashcode", "uint64", nullable=False)
     digest.field_properties.representation = "bits"
     row = Field(
         "row",
@@ -823,8 +858,8 @@ struct's children state their own.
     )
 
     iceberg = row.into_scheme_compat("iceberg")
-    assert iceberg.dtype["currhashcode"].dtype == DataType("int64")
-    assert iceberg.dtype["currhashcode"].field_properties.representation == "bits"
+    assert iceberg.dtype["hashcode"].dtype == DataType("int64")
+    assert iceberg.dtype["hashcode"].field_properties.representation == "bits"
     assert iceberg.dtype["count"].dtype == DataType.decimal(20, 0)
     ```
 
@@ -834,16 +869,92 @@ struct's children state their own.
     const assert = require('node:assert/strict')
     const { fields } = require('yggdryl')
 
-    const digest = fields.uint64('currhashcode', { nullable: false })
+    const digest = fields.uint64('hashcode', { nullable: false })
     digest.fieldProperties.representation = 'bits'
     const row = fields.struct('row', [digest, fields.uint64('count', { nullable: false })], {
       nullable: false,
     })
 
     const iceberg = row.intoSchemeCompat('iceberg')
-    assert.equal(iceberg.dtype.getField('currhashcode').dtype.toString(), 'int64')
-    assert.equal(iceberg.dtype.getField('currhashcode').fieldProperties.representation, 'bits')
+    assert.equal(iceberg.dtype.getField('hashcode').dtype.toString(), 'int64')
+    assert.equal(iceberg.dtype.getField('hashcode').fieldProperties.representation, 'bits')
     assert.equal(iceberg.dtype.getField('count').dtype.toString(), 'decimal128(20,0)')
+    ```
+
+### Apache Doris
+
+`doris` lays a schema out as Apache Doris's Iceberg catalog reads an Iceberg table: the
+[`iceberg`](#compatibility-rewriting) layout, narrowed to the types Doris's
+[column type mapping](https://doris.apache.org/docs/lakehouse/catalogs/iceberg-catalog) names.
+Doris reads `timestamp` and `timestamptz` at microseconds (`datetime(6)`) and maps no format-version-3
+`timestamp_ns` or `timestamptz_ns`, so a timestamp of any other unit - zoned or naive - is laid out
+at microseconds under its own zone: the one resolution change any target makes, which the write onto
+the laid-out field casts, widening a second or a millisecond count exactly and truncating each
+nanosecond value to whole microseconds. Every Iceberg type that table does not name is `UNSUPPORTED` in Doris, so
+`time`, `null` (`unknown`), `variant`, `geometry` and `geography` are refused at their path;
+`uuid`, `fixed[n]`, `struct`, `map` and `list` keep Iceberg's layout. A reader of such a table that
+wants the nanoseconds back casts each batch onto the row it wrote.
+JavaScript spells it `intoSchemeCompat('doris')`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field, Scheme, StructType, TimeUnit, Timezone};
+
+    let row = DataType::from(StructType::from_fields([
+        Field::new("at", DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?, false),
+        Field::new("small", DataType::UInt8, false),
+    ])?)
+    .required_field("row");
+
+    let doris = row.clone().into_scheme_compat(&Scheme::DORIS)?;
+    assert_eq!(
+        doris.fields()[0].dtype(),
+        &DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC)?
+    );
+    assert_eq!(doris.fields()[1].dtype(), &DataType::Int32);
+    // Iceberg itself keeps the nanoseconds.
+    let iceberg = row.into_scheme_compat(&Scheme::ICEBERG)?;
+    assert_eq!(
+        iceberg.fields()[0].dtype(),
+        &DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?
+    );
+
+    // A type Doris maps nothing for is refused at its path.
+    let error = DataType::from(StructType::from_fields([Field::new(
+        "opened",
+        DataType::Time64(TimeUnit::Microsecond),
+        true,
+    )])?)
+    .into_scheme_compat(&Scheme::DORIS)
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("$.opened") && error.contains("maps no time-of-day column"));
+    ```
+
+=== "Python"
+
+    ```python
+    import pytest
+
+    from yggdryl import DataType, Field
+
+    row = Field(
+        "row",
+        DataType.from_fields([
+            Field("at", "datetime64(ns, UTC)", nullable=False),
+            Field("small", "uint8", nullable=False),
+        ]),
+        nullable=False,
+    )
+
+    doris = row.into_scheme_compat("doris")
+    assert doris.dtype["at"].dtype == DataType("datetime64(us, UTC)")
+    assert doris.dtype["small"].dtype == DataType("int32")
+    assert row.into_scheme_compat("iceberg").dtype["at"].dtype == DataType("datetime64(ns, UTC)")
+
+    with pytest.raises(ValueError, match="maps no time-of-day column"):
+        DataType.from_fields([Field("opened", "time64(us)")]).into_scheme_compat("doris")
     ```
 
 ## Building the enum directly
@@ -876,6 +987,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 - nesting past 64 -> error, in parsing, default construction, and compatibility walks alike; `into_struct_type` counts the level its wrap adds.
 - `into_scheme_compat("duckdb")` -> refused by name, listing the accepted targets.
 - `datetime64(ns)` to `spark` -> refused with `got ns` and the node path; scale never clamped, extension metadata never relabeled.
+- `datetime64(ns, UTC)` to `doris` -> `datetime64(us, UTC)`, the zone kept, and a write onto it truncates each value to whole microseconds; `datetime64(s)` and `datetime64(ms)` -> `datetime64(us)` too, widened exactly; `time64(us)` to `doris` -> refused, since Doris maps no Iceberg `time`.
 - `DataType::UInt64.into_scheme_compat(&Scheme::ICEBERG)` -> `decimal128(20, 0)` always: a bare datatype states no `FIELD:representation`, only a field does.
 - `DataType.fromArrow({})` -> `TypeError`: only a `DataType`, datatype text or an Apache Arrow JS type is read, and an arbitrary object is never stringified.
 - `int`, `float`, `char`, `String`, `Boolean` -> grammar meanings (`int32`, `float32`, `utf8`, `boolean`), not FIX.

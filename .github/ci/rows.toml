@@ -1,0 +1,294 @@
+# What every job of `.github/workflows/ci.yml` reads, so a pull request runs
+# only the jobs its change can reach. `scripts/ci/plan.py` reads this in the
+# `changes` job; a push to `main` runs every job whatever it says.
+#
+# A row is the paths that decide its jobs' outcome. `paths` are git
+# pathspecs in glob magic - `*` stays inside one directory, `**/` spans any
+# number of them - matched by the planner against the change and by
+# `git ls-files` for the row's fingerprint, and a test in
+# `scripts/tests/test_ci_plan.py` holds the two to one answer over the tree.
+# A row `extends` the rows whose paths it also reads, and every row reads
+# `workflow`, so a change to how CI runs runs everything.
+#
+# On a pull request a row runs when the change against the base touches one
+# of its paths and the ledger records no green run of it at the same
+# fingerprint: the blob of every path the row reads, the toolchain and the
+# runner image. The ledger is what lets the program branch, whose diff
+# against `main` always holds the core, push a leaf or a page and pay for
+# that alone. A path that no classifying row and no `inert` pattern names
+# runs everything, which is the answer to a file this table does not know;
+# so does the `ci:full` label from the push after it is set.
+#
+# A row names only the jobs that prove it. The jobs those need - the core
+# lanes, the wheel, the addon - are read from `needs:` in `ci.yml` and run
+# with them; a job needs only what it reuses, so one that restores no lane
+# starts at once.
+
+# Changing only these runs nothing: no job of `ci.yml` reads them.
+inert = [
+  "AGENTS.md",
+  "README.md",
+  "LICENSE",
+  ".gitignore",
+  ".claude-plugin/**",
+  ".handoff/**",
+  # `docs.yml` builds the site from these; it has its own path filter.
+  "mkdocs.yml",
+  "requirements-docs.txt",
+  ".github/workflows/docs.yml",
+  ".github/workflows/release.yml",
+  # The crate's package files: `cargo package` reads them, no CI job does.
+  "rust/README.md",
+  "rust/LICENSE",
+  "rust/OPTIMIZATION.md",
+  # AGENTS.md section 2, "What CI never runs".
+  "scripts/generate_*.py",
+  "scripts/check_charset_interop.py",
+  "scripts/check_instruments_seed.py",
+  "scripts/bench_avro_baseline.py",
+  "scripts/docs_core_remaining.js",
+  "scripts/tests/**",
+]
+
+# A ledger line proves a row for this many days, and the ledger keeps this
+# many lines: a floating pip pin or an emulator release is met again within
+# a week on a branch that keeps pushing, and on `main` at once.
+[ledger]
+days = 7
+lines = 4000
+
+# The legs of the `python` job: every one where a row of its own runs it,
+# `leaf` alone where only a leaf crate's row does.
+[python]
+legs = ["pyarrow==18.*", "pyarrow>=18"]
+leaf = ["pyarrow>=18"]
+
+# The test targets each lane of a package runs as a job of its own; `rest`
+# is every other target, `--lib`, `--bins` and `--examples` among them, and
+# the rustdoc examples. `scripts/ci/plan.py targets` refuses a named target
+# the package does not have and a target named twice, so the union of a
+# lane's shards is `--all-targets` exactly. Retune a shard from the run's
+# step times; a moved target is a failure that names it.
+[shards.yggdryl]
+full = { allocations = ["test:allocations"] }
+
+[shards.yggdryl-market]
+full = { allocations = ["test:allocations", "test:graph"] }
+
+[shards.yggdryl-fix]
+default = { fix = ["test:root", "bench:fix"] }
+full = { fix = ["test:root", "bench:fix"], allocations = ["test:allocations", "test:scale_ulbridge"] }
+
+# The leaf crates under `rust/<name>`. Each one line, flipped on by deleting
+# its `#` in the change that creates `rust/<name>/Cargo.toml` (S4, S6, S6b,
+# S6c of .handoff/split/DESIGN.md); the planner refuses a crate under
+# `rust/` with no line here and a line with no crate. A leaf becomes the row
+# `crate-<name>` - the core library, the leaves it is `after`, its own
+# folder, `config/` and the files of the core's tree its sources include,
+# named by its line's `paths` (a `#[path]` module, an `include_bytes!`, a
+# path built under `CARGO_MANIFEST_DIR`, held to the sources by
+# `scripts/tests/test_ci_plan.py`) - which runs what proves the leaf and
+# nothing more: the `leaves` matrix (clippy and rustdoc on its package
+# alone, its tests in both feature lanes, sharded by `[shards.<package>]`
+# where it has one, and `cargo check` at the declared MSRV where `msrv` is
+# given), the `[leaf]` jobs below every leaf shares, and its own `jobs` -
+# the exchanges that exercise it. A leaf-only change runs no core test shard, no workspace
+# clippy, no free-threaded build, no `pyarrow==18.*` leg, no Python or
+# JavaScript page example and no other exchange; a change to the core, the
+# lock or a manifest, and every push to `main`, still runs everything.
+[leaves]
+market = { package = "yggdryl-market", paths = ["rust/tests/support/counting_filesystem.rs", "rust/benchmarks/bench_profile.rs"] }
+fix = { package = "yggdryl-fix", after = ["market"], paths = ["rust/tests/support/ulbridge.log", "rust/benchmarks/bench_profile.rs", "rust/benchmarks/allocation_measurement.rs"] }
+# avro = { package = "yggdryl-avro", jobs = ["avro-interop"] }
+# parquet = { package = "yggdryl-parquet", jobs = ["pyiceberg-interop", "spark-interop"] }
+# iceberg = { package = "yggdryl-iceberg", after = ["avro", "parquet"], msrv = "--features s3tables", jobs = ["pyiceberg-interop", "spark-interop", "iceberg-msrv"] }
+# excel = { package = "yggdryl-excel", jobs = ["excel-interop"] }
+# xmla = { package = "yggdryl-xmla" }
+
+# What every leaf's row runs beside the `leaves` matrix and its own `jobs`:
+# the bindings and the CLI link every crate, so the wheel with one pytest
+# leg (the `leaf` legs of `[python]`), the addon, the Node.js suite and the
+# CLI's tests are the leaf's proof too, and so are the Rust page examples
+# and the inventories, and the format check.
+[leaf]
+jobs = ["fmt", "inventory", "docs-rust", "python-wheel", "python", "node", "cli"]
+
+[rows.workflow]
+paths = [
+  ".github/workflows/ci.yml",
+  ".github/actions/**",
+  ".github/ci/**",
+  "scripts/ci/**",
+  "scripts/tests/test_ci_plan.py",
+]
+
+# Every cargo command loads the whole workspace, so a member manifest that
+# does not parse fails them all.
+[rows.cargo]
+paths = [
+  "Cargo.toml",
+  "Cargo.lock",
+  "**/Cargo.toml",
+  "clippy.toml",
+  ".cargo/**",
+  "rust-toolchain",
+  "rust-toolchain.toml",
+]
+
+# What the core library compiles from.
+[rows.corelib]
+extends = ["cargo"]
+paths = ["rust/Cargo.toml", "rust/src/**"]
+
+# The core's own proof: its tests, benchmarks and rustdoc examples in both
+# lanes, its lints and its MSRV. `config/` is no input of theirs: the
+# leaves' rows, the bindings' and the CLI's read it.
+[rows.core]
+extends = ["corelib"]
+paths = ["rust/tests/**", "rust/benchmarks/**"]
+jobs = ["lint-default", "iceberg-msrv", "core-tests-default", "core-tests-full"]
+
+# The core library every binding, the CLI and the Rust page examples link,
+# and what their suites read outside their folders: the dictionary under
+# `config/`, and the capture `python/tests/test_fix.py` and
+# `node/tests/fix.test.js` replay, `rust/tests/support/ulbridge.log`. A leaf
+# crate they link is not here: its own row runs the jobs that prove it
+# (`[leaf]`), so a leaf-only change runs those and no other binding job.
+[rows.libs]
+extends = ["corelib"]
+paths = ["config/**", "rust/tests/support/ulbridge.log"]
+
+# `rustfmt` reads every Rust file and its own settings. A path is known
+# only by a row that `classifies` it, and the sources classify nothing here
+# - the rows that compile them do - so `**/*.rs` cannot hide a file no
+# other row knows: `rust/build.rs` runs everything, not `fmt` alone.
+[rows.fmt]
+extends = ["cargo", "rust-sources"]
+paths = ["**/rustfmt.toml", "**/.rustfmt.toml"]
+jobs = ["fmt"]
+
+[rows.rust-sources]
+paths = ["**/*.rs"]
+classifies = false
+
+[rows.cli]
+extends = ["libs"]
+paths = ["cli/**"]
+jobs = ["cli"]
+
+[rows.pyext]
+extends = ["libs"]
+paths = ["python/Cargo.toml", "python/src/**"]
+
+[rows.nodeext]
+extends = ["libs"]
+paths = ["node/Cargo.toml", "node/build.rs", "node/src/**"]
+
+# Clippy and rustdoc over the whole workspace under every feature: every
+# target of every member.
+[rows.lint]
+extends = ["core", "cli", "pyext", "nodeext"]
+jobs = ["lint-full"]
+
+# The wheel carries the extension and the staged command.
+[rows.wheel]
+extends = ["pyext", "cli"]
+paths = ["python/*", "python/yggdryl/**", "python/wheel-data/**", "scripts/stage_cli.py"]
+jobs = ["python-wheel"]
+
+[rows.python]
+extends = ["wheel"]
+paths = ["python/**", "scripts/check_wheel_smoke.py"]
+jobs = ["python", "python-freethreaded"]
+
+[rows.spark]
+extends = ["python"]
+paths = ["scripts/setup_spark_interop.py"]
+jobs = ["spark-interop"]
+
+[rows.addon]
+extends = ["nodeext"]
+paths = ["node/**"]
+jobs = ["node-addon"]
+
+# The manifests are generated by the addon.
+[rows.node]
+extends = ["addon"]
+paths = [
+  "docs/assets/fix.json",
+  "docs/assets/playground.json",
+  "scripts/build_docs_fix.js",
+  "scripts/build_docs_playground.js",
+]
+jobs = ["node"]
+
+[rows.docs]
+paths = ["docs/**", "skills/**", "scripts/check_docs_examples.py"]
+
+[rows.docs-rust]
+extends = ["libs", "docs"]
+jobs = ["docs-rust"]
+
+[rows.docs-python]
+extends = ["wheel", "docs"]
+jobs = ["docs-python"]
+
+[rows.docs-javascript]
+extends = ["addon", "docs"]
+jobs = ["docs-javascript"]
+
+# The sections name `rust/src` - and a leaf's `src` - `python/yggdryl` and
+# the files `node/package.json` ships.
+[rows.inventory]
+extends = ["corelib", "crates"]
+paths = [
+  ".api-inventory.txt",
+  ".api-bindings.txt",
+  "scripts/check_api_inventory.py",
+  "python/yggdryl/**",
+  "node/**",
+  "python/pyproject.toml",
+  "scripts/release_packages.py",
+]
+jobs = ["inventory"]
+
+# One `interop` target holds every exchange's Rust half, so a change to any
+# of them can break the build of all seven.
+[rows.interop]
+extends = ["corelib"]
+paths = ["rust/tests/interop.rs", "rust/tests/interop/**"]
+
+[rows.x-zip]
+extends = ["interop"]
+paths = ["scripts/check_zip_interop.py"]
+jobs = ["zip-interop"]
+
+[rows.x-avro]
+extends = ["interop"]
+paths = ["scripts/check_avro_interop.py"]
+jobs = ["avro-interop"]
+
+[rows.x-excel]
+extends = ["interop"]
+paths = ["scripts/check_excel_interop.py"]
+jobs = ["excel-interop"]
+
+[rows.x-iceberg]
+extends = ["interop"]
+paths = ["scripts/check_iceberg_interop.py"]
+jobs = ["pyiceberg-interop"]
+
+[rows.x-s3]
+extends = ["interop"]
+paths = ["scripts/check_object_interop.py"]
+jobs = ["object-interop"]
+
+[rows.x-azure]
+extends = ["interop"]
+paths = ["scripts/check_azure_interop.py"]
+jobs = ["azure-interop"]
+
+[rows.x-gcs]
+extends = ["interop"]
+paths = ["scripts/check_gcs_interop.py"]
+jobs = ["gcs-interop"]

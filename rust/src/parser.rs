@@ -709,9 +709,7 @@ mod field {
                 reason,
                 ..
             } => field_parse_error(position.saturating_add(nested), reason),
-            Error::UnknownDataType(name) => {
-                field_parse_error(position, format!("unknown datatype {name:?}"))
-            }
+            unknown @ Error::UnknownDataType(_) => field_parse_error(position, unknown.to_string()),
             Error::InvalidDataType { kind, reason } => {
                 field_parse_error(position, format!("invalid {kind} datatype: {reason}"))
             }
@@ -853,7 +851,8 @@ impl fmt::Display for DataType {
         use DataType as D;
         match self {
             // Every parameter-free type displays as its variant name, which
-            // `DataTypeId::as_str` already spells; only parameters need an arm.
+            // `DataType::name` already spells - a registered kind's its own -
+            // so only parameters need an arm.
             D::Null
             | D::Boolean
             | D::Int8
@@ -877,12 +876,8 @@ impl fmt::Display for DataType {
             | D::Bbg
             | D::Ric
             | D::Figi
-            | D::Side
+            | D::Market(_)
             | D::State
-            | D::MarketDataKind
-            | D::MarketDataType
-            | D::TimeInForce
-            | D::PluginSide
             | D::Unit
             | D::Forex
             | D::Lei
@@ -1331,15 +1326,21 @@ impl<'a> Parser<'a> {
             }
             "map" => self.parse_map(depth + 1)?,
             "runendencoded" | "runend" | "ree" => self.parse_run_end(depth + 1)?,
-            // A registered logical name is one more spelling of the datatype
-            // it names, resolved through the registry and never a copied
-            // list. The keyword is already folded, so the lookup reuses it.
+            // A registered logical name - a market kind's own name among
+            // them, read from the market register - is one more spelling of
+            // the datatype it names, resolved through the register and never
+            // a copied list. The keyword is already folded, so the lookup
+            // reuses it, and a word no register answers is refused naming
+            // the registration it lacks.
             _ => match crate::vocabulary::folded_logical_name(&keyword) {
                 Some(dtype) => dtype,
+                // Positioned, as every refusal of the grammar is, and
+                // naming the registration the word lacks.
                 None => {
-                    return Err(
-                        self.error_at(token.start, format_smolstr!("unknown datatype {word:?}"))
-                    );
+                    return Err(self.error_at(
+                        token.start,
+                        format_smolstr!("{}", crate::market::unregistered(format_args!("{word}"))),
+                    ));
                 }
             },
         };
@@ -2166,7 +2167,7 @@ pub(crate) fn is_closing_or_separator(symbol: char) -> bool {
 /// symbolic name - so `UTCTimestamp`, `utc_timestamp`, `utc-timestamp` and
 /// `UTC TIMESTAMP` are one spelling everywhere rather than one spelling per
 /// layer.
-pub(crate) fn folded(value: &str) -> impl Iterator<Item = char> + '_ {
+pub fn folded(value: &str) -> impl Iterator<Item = char> + '_ {
     value
         .chars()
         .filter(|character| !matches!(character, '_' | '-' | ' '))
@@ -2188,7 +2189,7 @@ const fn is_dropped(byte: u8) -> bool {
 /// byte, so those walk the bytes directly. `char::to_lowercase` answers an
 /// iterator because one character can fold to several, which is real but rare
 /// enough that paying for it on every comparison would be the wrong trade.
-pub(crate) fn folds_equal(left: &str, right: &str) -> bool {
+pub fn folds_equal(left: &str, right: &str) -> bool {
     if left.is_ascii() && right.is_ascii() {
         let mut left = left.bytes().filter(|byte| !is_dropped(*byte));
         let mut right = right.bytes().filter(|byte| !is_dropped(*byte));
@@ -2217,7 +2218,7 @@ pub(crate) fn folds_equal(left: &str, right: &str) -> bool {
 /// any other is fed character by character, because one character can fold
 /// to several. The registry's own name key lowercases ASCII alone and is no
 /// substitute: `ÉTAT` and `état` are one fold and two of its keys.
-pub(crate) fn fold_digest(value: &str) -> u64 {
+pub fn fold_digest(value: &str) -> u64 {
     let mut state = crate::xxhash::Xxh64::new();
     if value.is_ascii() {
         let mut chunk = [0_u8; 64];
@@ -2240,7 +2241,9 @@ pub(crate) fn fold_digest(value: &str) -> u64 {
     state.as_u64()
 }
 
-pub(crate) fn normalized(value: &str) -> String {
+/// One spelling's [`folded`] form as an owned string: a keyword or a name
+/// folded once and then compared or looked up whole.
+pub fn normalized(value: &str) -> String {
     // Sized to the input once: a fold drops separators and lowercases the
     // rest, so the folded name is the input's length or near it.
     let mut name = String::with_capacity(value.len());

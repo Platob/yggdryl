@@ -5,13 +5,13 @@
 
 use napi::bindgen_prelude::{BigInt, Either, Null, Result};
 use napi_derive::napi;
-use yggdryl::graph::{
+use yggdryl::{DataType, Decimal, Scalar};
+use yggdryl_market::graph::{
     BookRef as CoreBookRef, Execution as CoreExecution, ExecutionEvent as CoreExecutionEvent,
     ExecutionKind, MdUpdateAction as CoreMdUpdateAction, Order as CoreOrder,
     OrderEvent as CoreOrderEvent, OrderKind, Quote as CoreQuote, QuoteEvent as CoreQuoteEvent,
     QuoteKind,
 };
-use yggdryl::{DataType, Decimal, Scalar};
 
 use super::{decimal_text, instant_of, stated_operation};
 use crate::napi_error;
@@ -135,20 +135,20 @@ macro_rules! operation_event_class {
 
         #[napi]
         impl $class {
-            /// Build the event at `currunix` nanoseconds since the epoch from
+            /// Build the event at `transunix` nanoseconds since the epoch from
             /// its named facts, one record `Scalar` keyed by column name -
             /// the event, market and operation columns - each checked by its
             /// column's field and stated through its column, with `book`'s
             /// control facts, then finalized. A `null` fact clears; a
-            /// derived identity, or `currunix` again, is refused by name.
+            /// derived identity, or `transunix` again, is refused by name.
             #[napi(constructor)]
             pub fn new(
-                currunix: Either<BigInt, f64>,
+                transunix: Either<BigInt, f64>,
                 facts: Option<&JsScalar>,
                 book: Option<&JsBookRef>,
             ) -> Result<Self> {
-                let currunix = instant_of(currunix, "currunix")?;
-                let mut event = stated_operation::<$kind>($name, currunix, facts, false)?;
+                let transunix = instant_of(transunix, "transunix")?;
+                let mut event = stated_operation::<$kind>($name, transunix, facts, false)?;
                 if let Some(book) = book {
                     event.set_book(Some(book.inner.clone()));
                 }

@@ -2,7 +2,7 @@
 
 use napi::bindgen_prelude::Result;
 use napi_derive::napi;
-use yggdryl::MsgType;
+use yggdryl_fix::MsgType;
 
 use super::JsFixMsg;
 use crate::field::JsField;
@@ -31,7 +31,7 @@ impl JsMsgType {
     pub fn marketdatakind(&self) -> Option<&'static str> {
         self.inner
             .marketdatakind()
-            .map(yggdryl::MarketDataKind::as_str)
+            .map(yggdryl_market::MarketDataKind::as_str)
     }
 
     /// The native canonical name.

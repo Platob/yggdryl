@@ -4,19 +4,20 @@
 
 ## Which encoding will this handle use?
 
-The handle's media type decides; `record_options()` answers that encoding's `RecordOptions` and refuses one the build does not implement; an absent resource reads as no batches.
+The handle's media type decides; `record_options()` answers that encoding's `RecordOptions` and refuses one no medium claims, naming the crate to install; an absent resource reads as no batches. A medium's own settings are its options struct, reached as `options.settings::<ParquetOptions>()`.
 
 ```rust
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
+use yggdryl::parquet::ParquetOptions;
 use yggdryl::{IOBase, IOMedia, MimeType, Url};
 
 let options = RecordOptions::for_media_type(&Url::from_str("file:///trades.parquet")?.media_type())?;
 assert_eq!(options.mime_type(), MimeType::PARQUET);
-assert_eq!(options.parquet_max_row_group_size(), Some(1_048_576));
-assert_eq!(RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.parquet_max_row_group_size(), None);
+assert_eq!(options.settings::<ParquetOptions>().map(|parquet| parquet.max_row_group_size), Some(1_048_576));
+assert!(RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.settings::<ParquetOptions>().is_none());
 
-// Absent reads as empty; an unimplemented encoding is named, never guessed.
+// Absent reads as empty; an encoding no claim answers is named, never guessed.
 let empty = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
 assert_eq!(empty.read_arrow_reader(&empty.record_options()?)?.count(), 0);
 let orc = Buffer::new().with_media_type(MimeType::ORC.into());
@@ -340,6 +341,7 @@ use std::sync::Arc;
 use arrow_array::{Int64Array, RecordBatch};
 use yggdryl::holder::Buffer;
 use yggdryl::media::IORecordOptions;
+use yggdryl::parquet::ParquetOptions;
 use yggdryl::{arrow, DataType, IOBase, IOMedia, MimeType, StructType, Url};
 
 let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
@@ -349,13 +351,14 @@ let batch = RecordBatch::try_new(Arc::clone(&arrow_schema), vec![Arc::new(Int64A
 
 let mut handle = Buffer::new().with_media_type(MimeType::PARQUET.into());
 let mut options = handle.record_options()?;
-options.set_parquet_compression_name("snappy")?;
-options.set_parquet_max_row_group_size(250)?;
+let parquet = options.require_settings_mut::<ParquetOptions>("$.compression", "a page compression")?;
+parquet.set_compression_name("snappy")?;
+parquet.set_max_row_group_size(250);
 handle.overwrite_arrow_reader(arrow::batch_reader(Arc::clone(&arrow_schema), [batch.clone()]), &options)?;
 
 // row_size and the statistics come from the footer, never from decoding rows.
 assert_eq!(handle.row_size()?, 1_000);
-assert_eq!(handle.read_parquet_statistics()?.row_groups.len(), 4);
+assert_eq!(yggdryl::parquet::read_media_statistics(&handle)?.row_groups.len(), 4);
 let kept: usize = handle
     .read_arrow_reader(&options.clone().with_filter("id >= 900")?)?
     .map(|batch| batch.map(|batch| batch.num_rows()))
@@ -372,7 +375,7 @@ assert!(refused.to_string().contains("parquet compresses"), "{refused}");
 
 ## Avro: a container file, or bytes with a reader schema
 
-A `.avro` handle is a record medium (`set_avro_block_codec`: `null`, `deflate`, `snappy`, `zstandard`). `yggdryl::avro` is the scalar codec; a reader schema resolves renames, promotions and defaults.
+A `.avro` handle is a record medium (`AvroOptions::set_block_codec`, reached as `options.require_settings_mut::<AvroOptions>(..)`: `null`, `deflate`, `snappy`, `zstandard`). `yggdryl::avro` is the scalar codec; a reader schema resolves renames, promotions and defaults.
 
 ```rust
 use yggdryl::avro::{self, Schema};
@@ -400,10 +403,10 @@ assert_eq!(decoded.rows[0].get_key_str("note").and_then(Scalar::as_str), Some("n
 
 ## Excel: one worksheet as records, the workbook as cells
 
-A `.xlsx` handle is a record medium over one worksheet - `set_excel_sheet`, `set_header` and `set_excel_range` pick which cells - and `yggdryl::excel::Workbook` is the same package cell by cell.
+A `.xlsx` handle is a record medium over one worksheet - `ExcelOptions::set_sheet` and `set_range`, reached through `require_settings_mut::<ExcelOptions>(..)`, and `RecordOptions::set_header` pick which cells - and `yggdryl::excel::Workbook` is the same package cell by cell.
 
 ```rust
-use yggdryl::excel::{CellRef, Sheet, Workbook};
+use yggdryl::excel::{CellRef, ExcelOptions, Sheet, Workbook};
 use yggdryl::holder::Buffer;
 use yggdryl::media::IORecordOptions;
 use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar, Serie, StructType};
@@ -421,13 +424,13 @@ let rows = Serie::from_scalars(field.clone(), [
 // One worksheet as records, under the declared field.
 let mut handle = Buffer::new().with_media_type(MimeType::XLSX.into());
 let mut options = handle.record_options()?.with_field(field.clone());
-options.set_excel_sheet(Some("Trades"))?;
+options.require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")?.set_sheet(Some("Trades"))?;
 handle.overwrite_arrow_batch(rows.clone().into_arrow_batch()?, &options)?;
 let read: usize = handle.read_arrow_reader(&options)?.map(|batch| batch.unwrap().num_rows()).sum();
 assert_eq!(read, 2);
 // Inferred, a number column is the float64 the file stores.
 let mut inferred = handle.record_options()?;
-inferred.set_excel_sheet(Some("Trades"))?;
+inferred.require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")?.set_sheet(Some("Trades"))?;
 assert_eq!(handle.read_arrow_field(&inferred)?.fields()[0].dtype(), &DataType::Float64);
 
 // The workbook: any cell by its A1 reference, a sheet as a Serie and back.
@@ -795,11 +798,11 @@ std::fs::remove_dir_all(&root)?;
 ## Gotchas in Rust
 
 - `IOBase`, `IOMedia` and `IORecordOptions` are traits: import them or the methods do not resolve.
-- Every verb that decodes, casts, or writes rows takes `&RecordOptions`; get it from `handle.record_options()?` so the variant matches the encoding. `row_size()`, `column_size()`, `record_options()` and `read_parquet_statistics()` take none: they derive their own options internally. `read_serie` and the `*_serie` writes take `Option<&RecordOptions>`, `None` the handle's own.
+- Every verb that decodes, casts, or writes rows takes `&RecordOptions`; get it from `handle.record_options()?` so the variant matches the encoding. `row_size()`, `column_size()`, `record_options()` and `parquet::read_media_statistics(&handle)` take none: they derive their own options internally. `read_serie` and the `*_serie` writes take `Option<&RecordOptions>`, `None` the handle's own.
 - `with_select`, `with_filter`, `with_merge_by` and `with_plan` parse and return `Result`; `with_field`, `with_max_row_size`, `with_commit_batch_num` do not.
 - `with_plan` keeps a plan's `limit` as `max_row_size` and its `offset` as `row_offset`; a merge with a `row_offset` is refused.
 - `write_serie` on a JSON, JSON Lines, YAML, TOML or XML handle takes `IOMode::Overwrite` only - `overwrite_serie` - and reads only the declared `field` off the options: a document is written whole. A run, or a record holding an absent row, is refused before any handle is touched.
 - A declared nullable column reads a value it cannot convert as null under the default `safe`; `with_safe(false)` refuses it.
 - There is no `read_records` in Rust: rows out are `read_serie` columns (`child`, `scalar(i)`) or the `RecordBatch`es themselves.
 - A CSV byte role is a `u8` (`b';'`), one ASCII byte that is no line break and no other role's; `set_csv_*` on another encoding's options is an error, and `csv_*` on them answers `None`. `linesep` is `CsvOptions::with_linesep` only.
-- Parquet, Iceberg and S3 do not exist without their Cargo features; a Parquet-only setter on another encoding's options is an error, not a no-op.
+- Parquet, Iceberg and S3 do not exist without their Cargo features; a Parquet setting on another encoding's options is an error, not a no-op - `require_settings_mut::<ParquetOptions>` refuses it naming both encodings.

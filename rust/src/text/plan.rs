@@ -98,7 +98,7 @@ impl TextPlan {
         // The element and the event the line is, in the columns every graph
         // event is stated in and every generated schema opens with - a FIX
         // row and a `marketdata` row too - so a message's `srcuuids` joins
-        // the line's `curruuid` here, and a line read back keeps the
+        // the line's `uuid` here, and a line read back keeps the
         // identity a message named.
         for column in ElementColumn::ALL {
             push_named(

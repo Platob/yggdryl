@@ -186,7 +186,9 @@ The value is the canonical spelling: upper case, the check character as stated. 
 A DTI is written in thirty symbols - the ten digits and the consonants but `Y`, `0123456789BCDFGHJKLMNPQRSTVWXZ` - so no word can be spelled in one, and a symbol's value is its place in that list. The first eight characters are the base, which never opens with `0`, and the ninth is the check character under ISO/IEC 7064 hybrid MOD 31,30: from `p = 30`, each base symbol of value `v` sets `s = (p + v) mod 30` - thirty where that is zero - and `p = 2s mod 31`; the check symbol is the one whose value is `(31 - p) mod 30`. `closing_character` computes it, `is_closed` answers whether it closes an upper-case identifier - the [rank](index.md#rank) a value answers, one where it closes, zero where it does not - `check_character` reads the ninth as stated, and `is_canonical` whether text is the canonical spelling, upper case and the shape, whatever the check says. The algorithm is the rule and nothing else is: the crate keeps no table of exceptions, so a code the registry assigned whose stored check character the algorithm does not give ranks zero, exactly as a typo does, and a merge takes any code that closes over it. Rust only.
 
 ```rust
-use yggdryl::{CodeValue, Dti, IdType};
+use yggdryl::{CodeValue, Dti};
+use yggdryl_market::IdType;
+yggdryl_market::install()?;
 
 let token = Dti::new("X9J9K872S")?;
 assert_eq!(token.check_character(), 'S');
@@ -221,7 +223,7 @@ for refused in ["A9J9K872S", "Y9J9K872S", "09J9K872S", "X9J9K872"] {
 - Serde reads a DTI through the same door: a document holding a spelling that is not the shape is refused rather than deserialized, and lower case is folded.
 - No default value: the empty text names no token, so an empty text cell entering the column is null ([Cast](../cast.md#empty-text)).
 - [`merge_with`](index.md#the-code-family-value) takes an identifier that closes over one that does not, whichever leads; two of one rank keep this one.
-- An [`IsinRegistry`](../../graph/isin-registry.md) column of type `dti` declares this datatype; a store whose column is `utf8` reads each cell through this code's rule.
+- An [`Instrument`](../../graph/instrument.md) holds a DTI among its `securityids` under `dti`, read through this code's rule, and `dti` is the last of `Instruments::LOOKUP_CODES`, so a DTI alone leads back to the instrument holding it.
 
 ## Commands
 

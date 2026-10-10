@@ -3,7 +3,7 @@
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl::TimeInForce;
+use yggdryl_market::TimeInForce;
 
 use crate::napi_error;
 

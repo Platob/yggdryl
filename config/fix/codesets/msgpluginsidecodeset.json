@@ -1,19 +1,99 @@
 {
   "codes": [
     {
-      "doc": "No plugin role found, or one no member names.",
+      "doc": "A side stated as none, which a merge takes the other side over.",
       "name": "UKNW",
       "value": "0"
     },
     {
-      "doc": "A Buy-Side plugin: it originates orders and cancels and receives execution reports.",
+      "doc": "Buy.",
       "name": "BUYS",
       "value": "1"
     },
     {
-      "doc": "A Sell-Side plugin: it receives orders and cancels and answers with execution reports.",
+      "doc": "Sell.",
       "name": "SELL",
       "value": "2"
+    },
+    {
+      "doc": "Buy minus.",
+      "name": "BUYM",
+      "value": "3"
+    },
+    {
+      "doc": "Sell plus.",
+      "name": "SELP",
+      "value": "4"
+    },
+    {
+      "doc": "Sell short.",
+      "name": "SSHT",
+      "value": "5"
+    },
+    {
+      "doc": "Sell short exempt.",
+      "name": "SSEX",
+      "value": "6"
+    },
+    {
+      "doc": "Undisclosed.",
+      "name": "UNDI",
+      "value": "7"
+    },
+    {
+      "doc": "Cross.",
+      "name": "CROS",
+      "value": "8"
+    },
+    {
+      "doc": "Cross short.",
+      "name": "CRSH",
+      "value": "9"
+    },
+    {
+      "doc": "Cross short exempt.",
+      "name": "CRSX",
+      "value": "10"
+    },
+    {
+      "doc": "As defined.",
+      "name": "ASDF",
+      "value": "11"
+    },
+    {
+      "doc": "Opposite.",
+      "name": "OPPO",
+      "value": "12"
+    },
+    {
+      "doc": "Subscribe.",
+      "name": "SUBS",
+      "value": "13"
+    },
+    {
+      "doc": "Redeem.",
+      "name": "REDM",
+      "value": "14"
+    },
+    {
+      "doc": "Lend.",
+      "name": "LEND",
+      "value": "15"
+    },
+    {
+      "doc": "Borrow.",
+      "name": "BORR",
+      "value": "16"
+    },
+    {
+      "doc": "Sell undisclosed.",
+      "name": "SELU",
+      "value": "17"
+    },
+    {
+      "doc": "Both sides at once: a book, or a quote holding its bid and its ask and tagging neither.",
+      "name": "BOTH",
+      "value": "99"
     }
   ],
   "name": "msgpluginsidecodeset"

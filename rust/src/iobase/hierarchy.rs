@@ -102,10 +102,9 @@ pub(crate) fn raw_relative<'path>(base: &str, path: &'path str) -> Option<&'path
 /// A listing failure answers `false` rather than propagating: this is a
 /// predicate, and a container nobody can list holds no rows anyone can read.
 pub(crate) fn container_is_tabular(handle: &(impl IOBase + ?Sized)) -> bool {
-    #[cfg(feature = "iceberg")]
     // A folder holding a table format is one tabular value however its files
     // are named, and asking costs one lookup of the metadata directory.
-    if matches!(crate::iceberg::located(handle), Ok(Some(_))) {
+    if matches!(crate::media::format::locate(handle), Ok(Some(_))) {
         return true;
     }
     let mut level = handle.ls(false, false);

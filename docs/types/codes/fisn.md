@@ -201,17 +201,18 @@ for refused in ["ACME CORP SH", "/SH", "ACME CORP/", "ACME\tCORP/SH", "SOCIÉTÉ
 }
 ```
 
-## In the instrument registry
+## On an instrument
 
-An [`IsinRegistry`](../../graph/isin-registry.md) row holds an instrument's short name in its `fisn` column, typed `fisn`, right after `ticker`: an instrument fact, held alike on every [listing](../../graph/isin-registry.md#listings) of its ISIN - one row per market - and filled into an element on any market. A lifecycle learns it where a message states one - `FinancialInstrumentShortName(2737)`, or a `fisn` security identifier - and fills it into an element stating none as a `derived` identifier; the [seed](../../graph/isin-registry.md#seed) states it where FIRDS spells one. A merge replaces a held name by one that differs, as every column.
+An [`Instrument`](../../graph/instrument.md) holds its short name among its `securityids` under `fisn`, and its row projects it as the `fisn` column, typed `fisn`, right after `forexcode`: an instrument fact, never a listing's, filled into an element on any market. A lifecycle learns it where a message states one - `FinancialInstrumentShortName(2737)`, or a `fisn` security identifier - and fills it into an element stating none as a `derived` identifier; the [seed](../../graph/instrument.md#seed) states it where FIRDS spells one. A merge replaces a held name by one that differs, as every fact. It never enters the [cross code](../../graph/instrument.md#the-cross-code).
 
 === "Rust"
 
     ```rust
-    use yggdryl::IsinRegistry;
+    use yggdryl_market::Instruments;
+    yggdryl_market::install()?;
 
-    let registry = IsinRegistry::seeded();
-    let name = registry.get("US0378331005").and_then(|row| row.fisn()).expect("seeded");
+    let seeded = Instruments::seeded();
+    let name = seeded.get("US0378331005").and_then(|apple| apple.fisn()).expect("seeded");
     assert_eq!(name.as_str(), "APPLE INC/SH SH");
     assert_eq!((name.issuer(), name.description()), ("APPLE INC", "SH SH"));
     ```
@@ -219,30 +220,29 @@ An [`IsinRegistry`](../../graph/isin-registry.md) row holds an instrument's shor
 === "Python"
 
     ```python
-    from yggdryl import IsinRegistry
+    from yggdryl import Instruments
 
-    registry = IsinRegistry.seeded()
-    row = registry.get("US0378331005")
-    assert row is not None and row["fisn"] == "APPLE INC/SH SH"
-    field = IsinRegistry.field()
-    assert field.index_of("fisn") == field.index_of("ticker") + 1
+    apple = Instruments.seeded().get("US0378331005")
+    assert apple["fisn"] == apple["securityids"]["fisn"] == "APPLE INC/SH SH"
+    field = Instruments.field()
+    assert field.index_of("fisn") == field.index_of("forexcode") + 1
     ```
 
 === "JavaScript"
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { IsinRegistry } = require('yggdryl')
+    const { Instruments } = require('yggdryl')
 
-    const registry = IsinRegistry.seeded()
-    assert.equal(registry.get('US0378331005').fisn, 'APPLE INC/SH SH')
-    const field = IsinRegistry.field()
-    assert.equal(field.indexOf('fisn'), field.indexOf('ticker') + 1)
+    const apple = Instruments.seeded().get('US0378331005')
+    assert.equal(apple.fisn, 'APPLE INC/SH SH')
+    const field = Instruments.field()
+    assert.equal(field.indexOf('fisn'), field.indexOf('forexcode') + 1)
     ```
 
 ## Similarity
 
-`Fisn::similarity` scores how alike two short names are, from `0` to `1`: one less the Levenshtein distance between their bytes over the longer one's length - both already upper case - symmetric, `1` for two equal names, and allocating nothing. It is what the instrument registry's [economic match](../../graph/isin-registry.md#by-short-name) weighs, at or above its `economic_threshold` (`0.85` unless set). Python and JavaScript hold no `Fisn` value, so the score crosses there as a `resolve` answer's `similarity`.
+`Fisn::similarity` scores how alike two short names are, from `0` to `1`: one less the Levenshtein distance between their bytes over the longer one's length - both already upper case - symmetric, `1` for two equal names, and allocating nothing. It is what the instruments' [economic match](../../graph/instrument.md#by-short-name) weighs, at or above its `economic_threshold` (`0.85` unless set). Python and JavaScript hold no `Fisn` value, so the score crosses there as a `resolve` answer's `similarity`.
 
 === "Rust"
 
@@ -262,12 +262,12 @@ An [`IsinRegistry`](../../graph/isin-registry.md) row holds an instrument's shor
     ```python
     import math
 
-    from yggdryl import Identifier, IsinRegistry, graph
+    from yggdryl import Identifier, Instruments, graph
 
-    registry = IsinRegistry()
-    registry.merge({"isin": "US0378331005", "miccode": "XNAS", "fisn": "APPLE INC./SH"})
+    held = Instruments()
+    held.merge({"isin": "US0378331005", "listings": [{"miccode": "XNAS"}], "fisn": "APPLE INC./SH"})
     order = graph.OrderEvent(1, securityids=[Identifier("fisn", "APPLE INC/SH")], currency="USD")
-    answer = registry.resolve(order)
+    answer = held.resolve(order)
     assert answer.tier == "economic" and answer.similarity is not None
     assert math.isclose(answer.similarity, 12 / 13), "one insertion in thirteen"
     ```
@@ -276,12 +276,16 @@ An [`IsinRegistry`](../../graph/isin-registry.md) row holds an instrument's shor
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Identifier, IsinRegistry, graph } = require('yggdryl')
+    const { Identifier, Instruments, graph } = require('yggdryl')
 
-    const registry = new IsinRegistry()
-    registry.merge({ isin: 'US0378331005', miccode: 'XNAS', fisn: 'APPLE INC./SH' })
+    const ZERO = '00000000-0000-0000-0000-000000000000'
+    const held = new Instruments()
+    held.merge({
+      uuid: ZERO, crossuuid: ZERO, crosscode: '', hashcode: 0n, crosshashcode: 0n, placeholder: false,
+      isin: 'US0378331005', fisn: 'APPLE INC./SH', listings: [{ miccode: 'XNAS', ticker: null, currency: null, codes: null }],
+    })
     const order = new graph.OrderEvent(1n, { securityids: [new Identifier('fisn', 'APPLE INC/SH')], currency: 'USD' })
-    const answer = registry.resolve(order)
+    const answer = held.resolve(order)
     assert.equal(answer.tier, 'economic')
     assert.ok(Math.abs(answer.similarity - 12 / 13) < 1e-12, 'one insertion in thirteen')
     ```

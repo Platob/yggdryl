@@ -370,7 +370,9 @@ digit that closes, a listed prefix - is its rank (`CodeValue::rank`), which a
 merge decides by and nothing refuses.
 
 ```rust
-use yggdryl::{Ccy, CodeValue, Country, DataType, IdType, Isin, Mic, Scalar, Str, Uuid};
+use yggdryl::{Ccy, CodeValue, Country, DataType, Isin, Mic, Scalar, Str, Uuid};
+use yggdryl_market::IdType;
+yggdryl_market::install()?;
 
 let bounded = DataType::sized_ascii(4)?;
 let usd = bounded.scalar("USD")?;
@@ -419,10 +421,12 @@ assert_eq!(
 `Eusipa` is a value, not a datatype: EUSIPA's four-digit product category,
 which the SSPA's Swiss map numbers the same way, held by its shape alone -
 `1` an investment product, `2` a leverage product - and named by each map
-where it lists the code. An `IsinEntry` holds one as its `eusipacode`.
+where it lists the code. An `Instrument` holds one as its `eusipacode`.
 
 ```rust
-use yggdryl::{Eusipa, Isin, IsinEntry};
+use yggdryl_market::{Eusipa, Instrument};
+use yggdryl::Isin;
+yggdryl_market::install()?;
 
 let constant: Eusipa = "2300".parse()?;
 assert_eq!((constant.code(), constant.group(), constant.level()), (2300, 23, 2));
@@ -440,15 +444,15 @@ assert_eq!(
 );
 assert!(Eusipa::from_text("23x0").is_err());
 
-let entry = IsinEntry::new(Isin::new("CH0123456789")?).with_eusipacode(Some(constant));
-assert_eq!(entry.eusipacode(), Some(constant));
+let product = Instrument::for_security(Isin::new("CH0012214059")?)?.with_eusipacode(Some(constant));
+assert_eq!(product.eusipacode(), Some(constant));
 ```
 
 ## Enums: side, marketdatakind, state, timeinforce
 
-`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` and
-`pluginside` are the `enum` family: each member is a code in a column - `uint8`
-for `side`, `marketdatakind`, `timeinforce` and `pluginside`, `uint16` for
+`side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are the
+`enum` family: each member is a code in a column - `uint8` for `side`,
+`marketdatakind` and `timeinforce`, `uint16` for
 `state` and `marketdatatype`,
 `code()` answering that width - and its stored name in text, read from every spelling
 its vocabulary has. A side is never absent - `UKNW` (code 0) is unstated. A side's name is a four-letter code (`BUYS`, `SELL`,
@@ -456,7 +460,10 @@ its vocabulary has. A side is never absent - `UKNW` (code 0) is unstated. A side
 and never written.
 
 ```rust
-use yggdryl::{DataType, MarketDataKind, PluginSide, Scalar, Side, State, TimeInForce};
+use yggdryl_fix::plugin_side;
+use yggdryl_market::{MarketDataKind, Side, TimeInForce};
+use yggdryl::{Scalar, State};
+yggdryl_fix::install()?;
 
 // A side reads its stored name, FIX's wire code or the specification's name.
 assert_eq!(Side::from_spelling("1"), Some(Side::Buy));
@@ -464,14 +471,14 @@ assert_eq!(Side::from_spelling("Sell short"), Some(Side::SShort));
 assert_eq!((Side::Buy.code(), Side::Buy.as_str()), (1, "BUYS"));
 assert_eq!(Side::from_spelling("BUY"), Some(Side::Buy), "an earlier stored name is read, never written");
 assert_eq!(Side::default(), Side::Unknown);
-assert_eq!(DataType::Side.scalar("SELL")?, Scalar::Side(Side::Sell));
-assert_eq!(DataType::Side.kind().as_str(), "enum");
+assert_eq!(Side::dtype().scalar("SELL")?, Scalar::from(Side::Sell));
+assert_eq!(Side::dtype().kind().as_str(), "enum");
 
 // FIX's MsgCat code set: the category every market data row is filed under.
 assert_eq!(MarketDataKind::from_spelling("quotation"), Some(MarketDataKind::Quotation));
 assert_eq!((MarketDataKind::Trade.code(), MarketDataKind::Trade.as_str()), (21, "TRAD"));
 assert_eq!(MarketDataKind::from_spelling("10"), None, "a stored code is an integer, never text");
-assert!(DataType::marketdatakind().is_enum());
+assert!(MarketDataKind::dtype().is_enum());
 
 // Lifecycle states sort by code; `UPDATED` is a NEW stated over a live new-like one.
 assert_eq!(State::Updated.code(), 3004);
@@ -481,13 +488,12 @@ assert!(State::Updated.is_new_like() && State::Updated.is_live());
 assert_eq!(TimeInForce::from_spelling("0"), Some(TimeInForce::Day));
 assert_eq!(TimeInForce::from_fix("Z"), TimeInForce::Other, "a venue's own value");
 assert_eq!((TimeInForce::GoodTillCancel.code(), TimeInForce::GoodTillCancel.fix_code()), (2, Some("1")));
-assert_eq!(DataType::timeinforce().scalar("IOC")?, Scalar::TimeInForce(TimeInForce::ImmediateOrCancel));
+assert_eq!(TimeInForce::dtype().scalar("IOC")?, Scalar::from(TimeInForce::ImmediateOrCancel));
 
-// A FIX plugin's role, read off a CBlock's plugin class; no `Side`, though
-// `BUYS` and `SELL` are spelled alike.
-assert_eq!(PluginSide::from_plugin_type("x.SellSideFIXCPluginCBlock"), PluginSide::SellSide);
-assert_eq!(DataType::pluginside().scalar("buy-side")?, Scalar::PluginSide(PluginSide::BuySide));
-assert!(DataType::pluginside().scalar(Scalar::Side(Side::Buy)).is_err());
+// A FIX plugin's role is a side, read off a CBlock's plugin class; the
+// role's own name is one of the side's spellings.
+assert_eq!(plugin_side("x.SellSideFIXCPluginCBlock"), Side::Sell);
+assert_eq!(Side::dtype().scalar("buy-side")?, Scalar::from(Side::Buy));
 ```
 
 ## Nested values: serie, map, union, dictionary

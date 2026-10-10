@@ -2358,3 +2358,60 @@ mod declared {
         assert_eq!(before, second.stable_hash());
     }
 }
+
+/// An extension name under `yggdryl.` that no datatype rides imports as its
+/// storage with the `ARROW:extension:*` keys kept - the fallback a kind that
+/// has not registered takes once the market kinds leave the core - and the
+/// retired `yggdryl.currency` is refused by name. Pinned on `2ae975674`.
+#[test]
+fn an_unknown_yggdryl_name_imports_as_its_storage_and_the_retired_one_is_refused() {
+    use std::collections::HashMap;
+
+    use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
+    use yggdryl::{DataType, Field};
+
+    let unknown =
+        ArrowField::new("value", ArrowDataType::Utf8, true).with_metadata(HashMap::from([
+            (
+                EXTENSION_TYPE_NAME_KEY.to_owned(),
+                "yggdryl.nosuch".to_owned(),
+            ),
+            (EXTENSION_TYPE_METADATA_KEY.to_owned(), "{}".to_owned()),
+        ]));
+    let imported = Field::from_arrow_field(&unknown).unwrap();
+    assert_eq!(imported.dtype(), &DataType::utf8());
+    assert_eq!(
+        imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
+        Some("yggdryl.nosuch")
+    );
+    assert_eq!(
+        imported.get_metadata(EXTENSION_TYPE_METADATA_KEY),
+        Some("{}")
+    );
+    assert_eq!(imported.into_arrow_field().unwrap(), unknown);
+    // The two enum storages the same way.
+    for storage in [ArrowDataType::UInt8, ArrowDataType::UInt16] {
+        let unknown = ArrowField::new("value", storage, true).with_metadata(HashMap::from([(
+            EXTENSION_TYPE_NAME_KEY.to_owned(),
+            "yggdryl.nosuch".to_owned(),
+        )]));
+        let imported = Field::from_arrow_field(&unknown).unwrap();
+        assert!(!imported.dtype().is_enum() && !imported.dtype().is_code());
+        assert_eq!(
+            imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
+            Some("yggdryl.nosuch")
+        );
+        assert_eq!(imported.into_arrow_field().unwrap(), unknown);
+    }
+    let retired =
+        ArrowField::new("value", ArrowDataType::Utf8, true).with_metadata(HashMap::from([(
+            EXTENSION_TYPE_NAME_KEY.to_owned(),
+            "yggdryl.currency".to_owned(),
+        )]));
+    let refused = Field::from_arrow_field(&retired).unwrap_err().to_string();
+    assert!(
+        refused.contains("retired extension") && refused.contains("yggdryl.ccy"),
+        "{refused}"
+    );
+}

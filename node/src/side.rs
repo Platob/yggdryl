@@ -2,7 +2,7 @@
 //! from.
 
 use napi_derive::napi;
-use yggdryl::Side;
+use yggdryl_market::Side;
 
 /// One member of the core's side enum - FIX's `Side(54)`: its four-letter code,
 /// the code a `side` column stores, what it means, its one-character FIX

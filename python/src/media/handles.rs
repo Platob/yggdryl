@@ -91,19 +91,24 @@ pub(crate) enum Encoding {
     Xmla,
     Csv,
     Excel,
+    /// A medium a crate registered: the plain `Media` class, named by the
+    /// medium's own title.
+    Other(&'static str),
 }
 
 impl Encoding {
     /// Read the encoding off a media value before it is moved.
-    pub(crate) const fn of(media: &yggdryl::media::Media) -> Self {
-        match media {
-            yggdryl::media::Media::Ipc(_) => Self::Ipc,
-            yggdryl::media::Media::Parquet(_) => Self::Parquet,
-            yggdryl::media::Media::Avro(_) => Self::Avro,
-            yggdryl::media::Media::Text(_) => Self::Text,
-            yggdryl::media::Media::Xmla(_) => Self::Xmla,
-            yggdryl::media::Media::Csv(_) => Self::Csv,
-            yggdryl::media::Media::Excel(_) => Self::Excel,
+    pub(crate) fn of(media: &yggdryl::media::Media) -> Self {
+        let medium = media.medium();
+        match medium.name() {
+            "ipc" => Self::Ipc,
+            "parquet" => Self::Parquet,
+            "avro" => Self::Avro,
+            "text" => Self::Text,
+            "xmla" => Self::Xmla,
+            "csv" => Self::Csv,
+            "excel" => Self::Excel,
+            _ => Self::Other(medium.title()),
         }
     }
 }
@@ -127,6 +132,7 @@ pub(crate) fn describe(
         Encoding::Xmla => Py::new(py, media.add_subclass(PyXmla))?.into_any(),
         Encoding::Csv => Py::new(py, media.add_subclass(PyCsv))?.into_any(),
         Encoding::Excel => Py::new(py, media.add_subclass(PyExcel))?.into_any(),
+        Encoding::Other(_) => Py::new(py, media)?.into_any(),
     })
 }
 

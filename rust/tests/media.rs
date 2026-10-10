@@ -1,5 +1,7 @@
 //! Record-format integration tests, one module per media family.
 
+#[path = "media/cache.rs"]
+mod cache;
 #[path = "media/inference.rs"]
 mod inference;
 #[path = "media/magic.rs"]

@@ -183,7 +183,7 @@ const firstOperation: OrderEvent | null = operations[0].asOrderEvent()
 declare const event: OrderEvent
 const header: FixHeaderView = message.header()
 const capture: FixCaptureView = message.capture()
-// The plugin side is always stated - a PluginSide member's name, the
+// The plugin side is always stated - a Side member's name, the
 // neutral member included - as every enum fact crosses, never null.
 const pluginside: string = capture.msgpluginside
 // @ts-expect-error never null: the neutral member is a stated value
@@ -193,17 +193,18 @@ void pluginside
 const text: string | null = message.text
 const metadata: Record<string, string> = message.metadata
 // The graph facts a message answers directly.
-const curruuid: string = message.curruuid
+const uuid: string = message.uuid
 const crossuuid: string = message.crossuuid
 const crosscode: string = message.crosscode
-const currhashcode: bigint = message.currhashcode
+const hashcode: bigint = message.hashcode
 const crosshashcode: bigint = message.crosshashcode
-const currunix: bigint = message.currunix
+const transunix: bigint = message.transunix
 const state: string = message.state
 const seqnum: number = message.seqnum
 const prevuuid: string | null = message.prevuuid
 const srcuuids: string[] = message.srcuuids
 const messageSecurityIds: Identifiers = message.securityids
+const messageInstcode: string | null = message.instcode
 const messageIsin: string | null = message.isincode
 const messageFxRates: Record<string, string> = message.fxrates
 const messageIdentifiers: Identifiers = message.identifiers
@@ -227,15 +228,15 @@ message.msgcat
 // The instants the message states, as the leaf does.
 const messageCreated: bigint | null = message.creaunix
 const messageExecuted: bigint | null = message.execunix
-const messageRecorded: bigint | null = message.recdunix
+const messageRecorded: bigint | null = message.sendunix
 const messagePrevUnix: bigint | null = message.prevunix
 const messageSnap: bigint | null = message.snapunix
 const messageExpiry: bigint | null = message.exprunix
 // And the same facts on an operation leaf, with the instants and the lanes.
-const eventCurrunix: bigint = event.currunix
+const eventTransunix: bigint = event.transunix
 const eventCreated: bigint | null = event.creaunix
 const eventExecuted: bigint | null = event.execunix
-const eventRecorded: bigint | null = event.recdunix
+const eventRecorded: bigint | null = event.sendunix
 const eventPrevUnix: bigint | null = event.prevunix
 const eventSnap: bigint | null = event.snapunix
 const eventExpiry: bigint | null = event.exprunix
@@ -257,6 +258,7 @@ const eventSecurityIds: Identifiers = event.securityids
 const eventSpotRate: string | null = event.spotrate
 const eventForwardPoints: string | null = event.forwardpoints
 const eventMetadata: Record<string, string> = event.metadata
+const eventInstcode: string | null = event.instcode
 const eventIsin: string | null = event.isincode
 const eventFxRates: Record<string, string> = event.fxrates
 const eventIdentifiers: Identifiers = event.identifiers
@@ -287,19 +289,19 @@ void entryValue
 void walked
 void text
 void metadata
-void curruuid
+void uuid
 void crossuuid
 void crosscode
-void currhashcode
+void hashcode
 void crosshashcode
-void currunix
+void transunix
 void state
 void seqnum
 void prevuuid
 void srcuuids
 void eventSources
 void messageSecurityIds
-void messageIsin
+void [messageInstcode, messageIsin]
 void messageFxRates
 void messageIdentifiers
 void messagePartyIds
@@ -315,7 +317,7 @@ void bidpx
 void askccy
 void messageCategory
 void strikepx
-void eventCurrunix
+void eventTransunix
 void eventCreated
 void eventExecuted
 void eventRecorded
@@ -347,7 +349,7 @@ void eventSecurityIds
 void eventSpotRate
 void eventForwardPoints
 void eventMetadata
-void eventIsin
+void [eventInstcode, eventIsin]
 void eventFxRates
 void eventIdentifiers
 void eventPartyIds
@@ -369,7 +371,7 @@ void msgsessionid
 void msgsesseventid
 
 // @ts-expect-error a graph fact is read, never assigned
-message.curruuid = 'other'
+message.uuid = 'other'
 // @ts-expect-error the entries are derived from the row
 message.entries = []
 // @ts-expect-error a merge keeps no clock of the reference it chose

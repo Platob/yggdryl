@@ -170,6 +170,10 @@ impl crate::IOMedia for Coded {
         crate::IOMedia::merge_by(self.as_io())
     }
 
+    fn read_origin_field(&self) -> Result<Option<crate::Field>> {
+        crate::IOMedia::read_origin_field(self.as_io())
+    }
+
     fn read_arrow_field(&self, options: &crate::media::RecordOptions) -> Result<crate::Field> {
         crate::IOMedia::read_arrow_field(self.as_io(), options)
     }
@@ -210,21 +214,15 @@ impl crate::IOMedia for Coded {
         crate::IOMedia::merge_serie(self.as_io_mut(), value, options)
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        crate::IOMedia::read_parquet_statistics(self.as_io())
-    }
-
-    #[cfg(feature = "parquet")]
-    fn read_parquet_geospatial_statistics(
-        &self,
-        column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
-        crate::IOMedia::read_parquet_geospatial_statistics(self.as_io(), column)
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        crate::IOMedia::as_any(self.as_io())
     }
 }
 
-/// A `Coded` value is the decoded view of the handle it wraps.
+/// A `Coded` value is the decoded view of the handle it wraps: every verb is
+/// the held view's - the plain handle under the identity coding, the coding
+/// wrapper otherwise, which answers the capabilities a backend specializes
+/// as its own state requires.
 impl IOBase for Coded {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.as_io().pread(offset, buffer)
@@ -250,8 +248,16 @@ impl IOBase for Coded {
         self.as_io_mut().create_bytes(bytes)
     }
 
+    fn upload_from(&mut self, source: &mut dyn std::io::Read, length: u64) -> Result<()> {
+        self.as_io_mut().upload_from(source, length)
+    }
+
     fn size(&self) -> u64 {
         self.as_io().size()
+    }
+
+    fn set_known_size(&mut self, size: u64) {
+        self.as_io_mut().set_known_size(size);
     }
 
     fn capacity(&self) -> u64 {
@@ -326,12 +332,24 @@ impl IOBase for Coded {
         self.as_io_mut().remove(recursive)
     }
 
+    fn discard(&self) -> Result<bool> {
+        self.as_io().discard()
+    }
+
     fn parent(&self) -> Option<Holder> {
         self.as_io().parent()
     }
 
     fn child_by_path(&self, name: &str) -> Result<Holder> {
         self.as_io().child_by_path(name)
+    }
+
+    fn as_leaf(&self) -> Result<Option<Holder>> {
+        self.as_io().as_leaf()
+    }
+
+    fn as_container(&self) -> Result<Option<Holder>> {
+        self.as_io().as_container()
     }
 
     fn ls(&self, recursive: bool, include_private: bool) -> crate::Listing {

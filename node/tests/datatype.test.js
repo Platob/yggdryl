@@ -240,7 +240,7 @@ test('every string column is one of eighteen leaves: a shape in a charset', () =
   assert.throws(() => DataType.fixedUtf8(0), /at least one byte, got 0/)
   assert.throws(() => DataType.fixedUtf8(2.5), /width must be an unsigned 32-bit integer/)
   // The retired tags are no longer read back.
-  assert.throws(() => DataType.fromJSON({ type: 'utf8' }), /unknown variant `utf8`/)
+  assert.throws(() => DataType.fromJSON({ type: 'utf8' }), /unknown datatype "utf8"/)
 })
 
 test('a string leaf reads back from its structural JSON', () => {
@@ -394,7 +394,7 @@ test('every byte column is one datatype: a layout and a bound', () => {
   assert.throws(() => DataType.fixedSizeBinary(-1), /byteWidth must be an unsigned 32-bit integer/)
   assert.throws(
     () => DataType.fromJSON({ type: 'fixed_size_binary', width: 16 }),
-    /unknown variant `fixed_size_binary`/,
+    /unknown datatype "fixed_size_binary"/,
   )
 })
 

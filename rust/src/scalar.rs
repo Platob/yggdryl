@@ -65,8 +65,8 @@ use crate::uuid::Uuid;
 use crate::value::Children;
 use crate::version::Version;
 use crate::{
-    Bbg, Bic, Ccy, Cfi, Country, Cusip, Dti, Elf, Figi, Fisn, Forex, Isin, Lei, MarketDataKind,
-    MarketDataType, Mic, PluginSide, Ric, Sedol, Side, State, TimeInForce, Unit, decimal,
+    Bbg, Bic, Ccy, Cfi, Country, Cusip, Dti, Elf, Figi, Fisn, Forex, Isin, Lei, MarketScalar, Mic,
+    Ric, Sedol, State, Unit, decimal,
 };
 use crate::{
     DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone, i256,
@@ -217,18 +217,10 @@ pub enum Scalar {
     Mic(Mic),
     /// ISO 10962 classification code.
     Cfi(Cfi),
-    /// FIX's side of a trade: an enum stored as its code.
-    Side(Side),
+    /// A member of a registered enum kind, under the kind it is one of.
+    Market(MarketScalar),
     /// What state one thing is in: a lifecycle-sorted enum, stored as its code.
     State(State),
-    /// What kind of market data an element is: FIX's MsgCat code set, stored
-    /// as its code.
-    MarketDataKind(MarketDataKind),
-    MarketDataType(MarketDataType),
-    /// How long an order stands.
-    TimeInForce(TimeInForce),
-    /// The role of a FIX plugin.
-    PluginSide(PluginSide),
     /// ISO 6166 securities identification number.
     Isin(Isin),
     /// CUSIP securities identifier.
@@ -436,11 +428,10 @@ impl Serialize for Scalar {
                 )
             }
             // An enum member writes its stored name under the datatype's name.
-            held @ enum_scalars!() => tagged(
-                serializer,
-                held.id().as_str(),
-                &held.enum_name().expect("an enum member names itself"),
-            ),
+            Self::State(held) => tagged(serializer, DataTypeId::State.core_str(), &held.as_str()),
+            // A registered enum kind writes the member's stored name under its
+            // kind's name.
+            Self::Market(held) => tagged(serializer, held.kind().name, &held.as_str()),
             // A code writes its text under its own datatype's name.
             code_scalars!() => tagged(
                 serializer,
@@ -717,10 +708,12 @@ impl<'de> Deserialize<'de> for Scalar {
             }
         }
 
-        // This mirror must cover every `Scalar` variant: one missing here is
-        // not a compile error, it is a variant serde silently refuses to read
-        // back. Its names are the wire tags, snake-cased, so they spell the
-        // tag that is written rather than the Rust variant.
+        // This mirror must cover every core `Scalar` variant: one missing
+        // here is not a compile error, it is a variant serde silently refuses
+        // to read back. Its names are the wire tags, snake-cased, so they
+        // spell the tag that is written rather than the Rust variant. A
+        // registered kind's value is no variant of it: its tag is its kind's
+        // name, which only the register answers at run time.
         #[derive(Deserialize)]
         #[serde(tag = "type", content = "value", rename_all = "snake_case")]
         enum StructuralWire {
@@ -754,16 +747,7 @@ impl<'de> Deserialize<'de> for Scalar {
             Cusip(SmolStr),
             Sedol(SmolStr),
             Bbg(SmolStr),
-            Side(SmolStr),
             State(SmolStr),
-            #[serde(rename = "marketdatakind")]
-            MarketDataKind(SmolStr),
-            #[serde(rename = "marketdatatype")]
-            MarketDataType(SmolStr),
-            #[serde(rename = "timeinforce")]
-            TimeInForce(SmolStr),
-            #[serde(rename = "pluginside")]
-            PluginSide(SmolStr),
             Uuid(SmolStr),
             Version(Version),
             Timezone(SmolStr),
@@ -813,7 +797,225 @@ impl<'de> Deserialize<'de> for Scalar {
             Fisn(SmolStr),
         }
 
-        match StructuralWire::deserialize(deserializer)? {
+        /// What a document reads as: the core wire, which the match below
+        /// converts, or a registered kind's value, which the kind's own
+        /// reader built.
+        enum Read {
+            Core(StructuralWire),
+            Registered(Scalar),
+        }
+
+        /// A document whose value came before its tag, buffered whole: the
+        /// core wire first, then a tag beside a text, which is every value
+        /// a registered kind writes.
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Buffered {
+            Core(StructuralWire),
+            Text {
+                #[serde(rename = "type")]
+                tag: SmolStr,
+                value: SmolStr,
+            },
+        }
+
+        /// A map or a sequence with what `Document` already read off its
+        /// front handed back first, so the core wire reads the document
+        /// whole and directly, nothing buffered.
+        struct Replay<'t, A> {
+            /// The first key, still to be handed back.
+            key: Option<&'t str>,
+            /// The tag - the first key's value, or a sequence's first
+            /// element - still to be handed back; `None` where the first
+            /// value is still `rest`'s.
+            tag: Option<&'t str>,
+            rest: A,
+        }
+
+        impl<'de, A: serde::de::MapAccess<'de>> serde::de::MapAccess<'de> for Replay<'_, A> {
+            type Error = A::Error;
+
+            fn next_key_seed<K: serde::de::DeserializeSeed<'de>>(
+                &mut self,
+                seed: K,
+            ) -> std::result::Result<Option<K::Value>, A::Error> {
+                match self.key.take() {
+                    Some(key) => seed
+                        .deserialize(serde::de::value::StrDeserializer::<A::Error>::new(key))
+                        .map(Some),
+                    None => self.rest.next_key_seed(seed),
+                }
+            }
+
+            fn next_value_seed<V: serde::de::DeserializeSeed<'de>>(
+                &mut self,
+                seed: V,
+            ) -> std::result::Result<V::Value, A::Error> {
+                match self.tag.take() {
+                    Some(tag) => {
+                        seed.deserialize(serde::de::value::StrDeserializer::<A::Error>::new(tag))
+                    }
+                    None => self.rest.next_value_seed(seed),
+                }
+            }
+        }
+
+        impl<'de, A: serde::de::SeqAccess<'de>> serde::de::SeqAccess<'de> for Replay<'_, A> {
+            type Error = A::Error;
+
+            fn next_element_seed<T: serde::de::DeserializeSeed<'de>>(
+                &mut self,
+                seed: T,
+            ) -> std::result::Result<Option<T::Value>, A::Error> {
+                match self.tag.take() {
+                    Some(tag) => seed
+                        .deserialize(serde::de::value::StrDeserializer::<A::Error>::new(tag))
+                        .map(Some),
+                    None => self.rest.next_element_seed(seed),
+                }
+            }
+        }
+
+        /// Whether the core wire reads `tag`: [`crate::serde::core_tag`]
+        /// over the derived shadow, so no second list of its tags exists.
+        fn is_core_tag(tag: &str) -> bool {
+            crate::serde::core_tag::<StructuralWire>(tag)
+        }
+
+        /// The registered kind a tag names, refused naming the tag where no
+        /// claim answers it.
+        fn registered<E: serde::de::Error>(
+            tag: &str,
+        ) -> std::result::Result<&'static crate::MarketDescriptor, E> {
+            crate::market::kind_named(tag)
+                .ok_or_else(|| E::custom(crate::market::unregistered(format_args!("{tag}"))))
+        }
+
+        /// A buffered tag beside a text, read by the tag: a core tag re-read
+        /// as the wire it is - so a refusal is the one the wire states - and
+        /// any other through its registered kind's own reader.
+        fn read_text<E: serde::de::Error>(tag: &str, value: &str) -> std::result::Result<Read, E> {
+            if is_core_tag(tag) {
+                let document = serde::de::value::MapDeserializer::<_, E>::new(
+                    [("type", tag), ("value", value)].into_iter(),
+                );
+                return StructuralWire::deserialize(document).map(Read::Core);
+            }
+            registered::<E>(tag)?
+                .scalar(value)
+                .map(Read::Registered)
+                .map_err(E::custom)
+        }
+
+        /// The one reader of a document. The tag is read first: a core tag
+        /// hands what was read back to the core wire, a registered kind's
+        /// reads its text through the kind, and a tag neither answers is
+        /// refused naming the registration it lacks. A key the document
+        /// does not name is stepped over, as the core wire steps over it.
+        struct Document;
+
+        impl<'de> serde::de::Visitor<'de> for Document {
+            type Value = Read;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a scalar document: a `type` tag beside its `value`")
+            }
+
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> std::result::Result<Read, A::Error> {
+                let first = loop {
+                    match map.next_key::<SmolStr>()? {
+                        Some(key) if key != "type" && key != "value" => {
+                            map.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                        first => break first,
+                    }
+                };
+                let Some(first) = first else {
+                    return Err(A::Error::missing_field("type"));
+                };
+                if first == "value" {
+                    // A value read before its tag cannot be read as anything
+                    // yet, so the document is buffered whole.
+                    let replay = Replay {
+                        key: Some("value"),
+                        tag: None,
+                        rest: map,
+                    };
+                    return match Buffered::deserialize(
+                        serde::de::value::MapAccessDeserializer::new(replay),
+                    )? {
+                        Buffered::Core(wire) => Ok(Read::Core(wire)),
+                        Buffered::Text { tag, value } => read_text(&tag, &value),
+                    };
+                }
+                let tag: SmolStr = map.next_value()?;
+                if is_core_tag(&tag) {
+                    let replay = Replay {
+                        key: Some("type"),
+                        tag: Some(tag.as_str()),
+                        rest: map,
+                    };
+                    return StructuralWire::deserialize(
+                        serde::de::value::MapAccessDeserializer::new(replay),
+                    )
+                    .map(Read::Core);
+                }
+                let kind = registered::<A::Error>(&tag)?;
+                let mut value = None;
+                while let Some(key) = map.next_key::<SmolStr>()? {
+                    match key.as_str() {
+                        "type" => return Err(A::Error::duplicate_field("type")),
+                        "value" if value.is_some() => {
+                            return Err(A::Error::duplicate_field("value"));
+                        }
+                        "value" => value = Some(map.next_value::<SmolStr>()?),
+                        _ => {
+                            map.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                let value = value.ok_or_else(|| A::Error::missing_field("value"))?;
+                kind.scalar(&value)
+                    .map(Read::Registered)
+                    .map_err(A::Error::custom)
+            }
+
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> std::result::Result<Read, A::Error> {
+                let Some(tag) = seq.next_element::<SmolStr>()? else {
+                    return Err(A::Error::invalid_length(0, &self));
+                };
+                if is_core_tag(&tag) {
+                    let replay = Replay {
+                        key: None,
+                        tag: Some(tag.as_str()),
+                        rest: seq,
+                    };
+                    return StructuralWire::deserialize(
+                        serde::de::value::SeqAccessDeserializer::new(replay),
+                    )
+                    .map(Read::Core);
+                }
+                let kind = registered::<A::Error>(&tag)?;
+                let Some(value) = seq.next_element::<SmolStr>()? else {
+                    return Err(A::Error::invalid_length(1, &self));
+                };
+                kind.scalar(&value)
+                    .map(Read::Registered)
+                    .map_err(A::Error::custom)
+            }
+        }
+
+        let wire = match deserializer.deserialize_struct("Scalar", &["type", "value"], Document)? {
+            Read::Core(wire) => wire,
+            Read::Registered(value) => return Ok(value),
+        };
+        match wire {
             StructuralWire::Null => Ok(Self::Null),
             StructuralWire::Bool(value) => Ok(Self::from(value)),
             StructuralWire::I8(value) => Ok(Self::from(value)),
@@ -895,25 +1097,9 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralWire::Sedol(value) => crate::Sedol::new(value)
                 .map(Self::Sedol)
                 .map_err(D::Error::custom),
-            // A side and a state are read by their spelling, exactly as a
-            // column reads them.
-            StructuralWire::Side(value) => crate::Side::read(&value)
-                .map(Self::Side)
-                .map_err(D::Error::custom),
+            // A state is read by its spelling, exactly as a column reads it.
             StructuralWire::State(value) => crate::State::read(&value)
                 .map(Self::State)
-                .map_err(D::Error::custom),
-            StructuralWire::MarketDataKind(value) => crate::MarketDataKind::read(&value)
-                .map(Self::MarketDataKind)
-                .map_err(D::Error::custom),
-            StructuralWire::MarketDataType(value) => crate::MarketDataType::read(&value)
-                .map(Self::MarketDataType)
-                .map_err(D::Error::custom),
-            StructuralWire::TimeInForce(value) => crate::TimeInForce::read(&value)
-                .map(Self::TimeInForce)
-                .map_err(D::Error::custom),
-            StructuralWire::PluginSide(value) => crate::PluginSide::read(&value)
-                .map(Self::PluginSide)
                 .map_err(D::Error::custom),
             StructuralWire::Uuid(value) => Uuid::from_bytes(value.as_bytes())
                 .map(Self::Uuid)
@@ -1158,17 +1344,11 @@ impl Ord for Scalar {
             | Self::Elf(_)
             | Self::Dti(_)
             | Self::Fisn(_) => code_key(self).cmp(&code_key(other)),
+            // A registered enum kind's values share a rank with their kind
+            // alone, and order by the kind's byte then the code.
+            Self::Market(left) => same_kind!(Self::Market(right) => left.order(right)),
             // An enum member orders by its code: a state's is its rank.
             Self::State(left) => same_kind!(Self::State(right) => left.cmp(right)),
-            Self::MarketDataKind(left) => {
-                same_kind!(Self::MarketDataKind(right) => left.cmp(right))
-            }
-            Self::MarketDataType(left) => {
-                same_kind!(Self::MarketDataType(right) => left.cmp(right))
-            }
-            Self::Side(left) => same_kind!(Self::Side(right) => left.cmp(right)),
-            Self::TimeInForce(left) => same_kind!(Self::TimeInForce(right) => left.cmp(right)),
-            Self::PluginSide(left) => same_kind!(Self::PluginSide(right) => left.cmp(right)),
             Self::Uuid(left) => same_kind!(Self::Uuid(right) => left.cmp(right)),
             Self::Version(left) => same_kind!(Self::Version(right) => left.cmp(right)),
             Self::Timezone(left) => same_kind!(Self::Timezone(right) => left.cmp(right)),
@@ -1277,12 +1457,10 @@ impl Hash for Scalar {
             | Self::Elf(_)
             | Self::Dti(_)
             | Self::Fisn(_) => code_key(self).hash(state),
+            // A registered enum kind feeds its code at its storage's width,
+            // exactly what the kinds fed as variants of their own.
+            Self::Market(held) => held.hash_feed(state),
             Self::State(value) => value.hash(state),
-            Self::MarketDataKind(value) => value.hash(state),
-            Self::MarketDataType(value) => value.hash(state),
-            Self::Side(value) => value.hash(state),
-            Self::TimeInForce(value) => value.hash(state),
-            Self::PluginSide(value) => value.hash(state),
             Self::Uuid(value) => value.hash(state),
             Self::Version(value) => value.hash(state),
             Self::Timezone(value) => value.hash(state),
@@ -1377,25 +1555,14 @@ macro_rules! code_scalars {
     };
 }
 
-/// The enum leaves as one pattern: a value stored as the `int32` code of its
-/// member. [`Scalar::enum_code`] and [`Scalar::enum_name`] are the same list
-/// in value position.
-macro_rules! enum_scalars {
-    () => {
-        $crate::Scalar::State(_)
-            | $crate::Scalar::MarketDataKind(_)
-            | $crate::Scalar::MarketDataType(_)
-            | $crate::Scalar::Side(_)
-            | $crate::Scalar::TimeInForce(_)
-            | $crate::Scalar::PluginSide(_)
-    };
-}
-
 /// The eighteen string leaves as one pattern, each binding its characters to
 /// `$text`; the number a fixed or sized leaf states is not bound.
 ///
 /// [`Scalar::as_string`] is the same list in value position, and
-/// [`Scalar::string_parameters`] the leaf.
+/// [`Scalar::string_parameters`] the leaf. Exported for the crates this core
+/// is split into, which match on it.
+#[macro_export]
+#[doc(hidden)]
 macro_rules! string_scalars {
     ($text:pat) => {
         $crate::Scalar::Utf8String($text)
@@ -1421,6 +1588,9 @@ macro_rules! string_scalars {
 
 /// The six byte leaves as one pattern, each binding its payload to
 /// `$payload`; the number a fixed or sized leaf states is not bound.
+/// Exported for the crates this core is split into, which match on it.
+#[macro_export]
+#[doc(hidden)]
 macro_rules! bytes_scalars {
     ($payload:pat) => {
         $crate::Scalar::Binary($payload)
@@ -1525,14 +1695,10 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Variant(_) => 26,
         // A state is its own kind, ordered by the rank its code states.
         Scalar::State(_) => 27,
-        // Every other enum leaf is its own kind too, ordered by its codes.
-        Scalar::MarketDataKind(_) => 28,
-        // A side ranked with the codes while it was one; as an enum it is its
-        // own kind, appended so no other pair moves.
-        Scalar::Side(_) => 29,
-        Scalar::MarketDataType(_) => 30,
-        Scalar::TimeInForce(_) => 31,
-        Scalar::PluginSide(_) => 32,
+        // A registered enum kind states its own rank: 28 to 31 for the four
+        // core kinds.
+        Scalar::Market(held) => held.kind().value_rank,
+        // 32 was `pluginside`, since retired: the plugin's role is a side.
     }
 }
 
@@ -1597,12 +1763,8 @@ impl Scalar {
             Self::Ccy(_) => DataTypeId::Ccy,
             Self::Mic(_) => DataTypeId::Mic,
             Self::Cfi(_) => DataTypeId::Cfi,
-            Self::Side(_) => DataTypeId::Side,
+            Self::Market(held) => held.id(),
             Self::State(_) => DataTypeId::State,
-            Self::MarketDataKind(_) => DataTypeId::MarketDataKind,
-            Self::MarketDataType(_) => DataTypeId::MarketDataType,
-            Self::TimeInForce(_) => DataTypeId::TimeInForce,
-            Self::PluginSide(_) => DataTypeId::PluginSide,
             Self::Isin(_) => DataTypeId::Isin,
             Self::Cusip(_) => DataTypeId::Cusip,
             Self::Sedol(_) => DataTypeId::Sedol,
@@ -1681,31 +1843,27 @@ impl Scalar {
             // is its name.
             string_scalars!(_) => match self {
                 Self::Utf8String(_) => "string",
-                _ => self.id().as_str(),
+                _ => self.id().core_str(),
             },
-            Self::Country(_) => DataTypeId::Country.as_str(),
-            Self::Ccy(_) => DataTypeId::Ccy.as_str(),
-            Self::Mic(_) => DataTypeId::Mic.as_str(),
-            Self::Cfi(_) => DataTypeId::Cfi.as_str(),
-            Self::Side(_) => DataTypeId::Side.as_str(),
-            Self::State(_) => DataTypeId::State.as_str(),
-            Self::MarketDataKind(_) => DataTypeId::MarketDataKind.as_str(),
-            Self::MarketDataType(_) => DataTypeId::MarketDataType.as_str(),
-            Self::TimeInForce(_) => DataTypeId::TimeInForce.as_str(),
-            Self::PluginSide(_) => DataTypeId::PluginSide.as_str(),
-            Self::Isin(_) => DataTypeId::Isin.as_str(),
-            Self::Cusip(_) => DataTypeId::Cusip.as_str(),
-            Self::Sedol(_) => DataTypeId::Sedol.as_str(),
-            Self::Bbg(_) => DataTypeId::Bbg.as_str(),
-            Self::Ric(_) => DataTypeId::Ric.as_str(),
-            Self::Forex(_) => DataTypeId::Forex.as_str(),
-            Self::Lei(_) => DataTypeId::Lei.as_str(),
-            Self::Bic(_) => DataTypeId::Bic.as_str(),
-            Self::Elf(_) => DataTypeId::Elf.as_str(),
-            Self::Dti(_) => DataTypeId::Dti.as_str(),
-            Self::Fisn(_) => DataTypeId::Fisn.as_str(),
-            Self::Figi(_) => DataTypeId::Figi.as_str(),
-            Self::Unit(_) => DataTypeId::Unit.as_str(),
+            Self::Country(_) => DataTypeId::Country.core_str(),
+            Self::Ccy(_) => DataTypeId::Ccy.core_str(),
+            Self::Mic(_) => DataTypeId::Mic.core_str(),
+            Self::Cfi(_) => DataTypeId::Cfi.core_str(),
+            Self::State(_) => DataTypeId::State.core_str(),
+            Self::Market(held) => held.kind().name,
+            Self::Isin(_) => DataTypeId::Isin.core_str(),
+            Self::Cusip(_) => DataTypeId::Cusip.core_str(),
+            Self::Sedol(_) => DataTypeId::Sedol.core_str(),
+            Self::Bbg(_) => DataTypeId::Bbg.core_str(),
+            Self::Ric(_) => DataTypeId::Ric.core_str(),
+            Self::Forex(_) => DataTypeId::Forex.core_str(),
+            Self::Lei(_) => DataTypeId::Lei.core_str(),
+            Self::Bic(_) => DataTypeId::Bic.core_str(),
+            Self::Elf(_) => DataTypeId::Elf.core_str(),
+            Self::Dti(_) => DataTypeId::Dti.core_str(),
+            Self::Fisn(_) => DataTypeId::Fisn.core_str(),
+            Self::Figi(_) => DataTypeId::Figi.core_str(),
+            Self::Unit(_) => DataTypeId::Unit.core_str(),
             Self::Uuid(_) => "uuid",
             Self::Version(_) => "version",
             Self::Timezone(_) => "timezone",
@@ -1715,7 +1873,7 @@ impl Scalar {
             Self::Urn(_) => "urn",
             bytes_scalars!(_) => match self {
                 Self::Binary(_) => "bytes",
-                _ => self.id().as_str(),
+                _ => self.id().core_str(),
             },
             Self::Geometry(_) => "geometry",
             Self::Geography(_) => "geography",
@@ -1989,7 +2147,8 @@ impl Scalar {
     pub fn as_str(&self) -> Option<&str> {
         match self {
             string_scalars!(value) => Some(value.as_str()),
-            enum_scalars!() => self.enum_name(),
+            Self::State(held) => Some(held.as_str()),
+            Self::Market(held) => Some(held.as_str()),
             value => value.code_storage().map(SmolStr::as_str),
         }
     }
@@ -1997,32 +2156,23 @@ impl Scalar {
     /// The code an enum member stores, widened to `u16` - the widest any
     /// leaf holds - and `None` for every other value.
     ///
-    /// Each enum leaf is a variant of its own, but every question but
-    /// "which one" has the same answer for all of them; this is where they
-    /// are written out and [`Self::id`] is the other half.
+    /// A state and a registered enum kind's member answer it alike, and
+    /// [`Self::id`] is the other half: which enum the code is one of.
     #[must_use]
     pub fn enum_code(&self) -> Option<u16> {
         match self {
             Self::State(held) => Some(held.code()),
-            Self::MarketDataKind(held) => Some(u16::from(held.code())),
-            Self::MarketDataType(held) => Some(held.code()),
-            Self::Side(held) => Some(u16::from(held.code())),
-            Self::TimeInForce(held) => Some(u16::from(held.code())),
-            Self::PluginSide(held) => Some(u16::from(held.code())),
+            Self::Market(held) => Some(held.code()),
             _ => None,
         }
     }
 
     /// The stored name of an enum member, `None` for every other value.
     #[must_use]
-    pub const fn enum_name(&self) -> Option<&'static str> {
+    pub fn enum_name(&self) -> Option<&'static str> {
         match self {
             Self::State(held) => Some(held.as_str()),
-            Self::MarketDataKind(held) => Some(held.as_str()),
-            Self::MarketDataType(held) => Some(held.as_str()),
-            Self::Side(held) => Some(held.as_str()),
-            Self::TimeInForce(held) => Some(held.as_str()),
-            Self::PluginSide(held) => Some(held.as_str()),
+            Self::Market(held) => Some(held.as_str()),
             _ => None,
         }
     }
@@ -2306,12 +2456,8 @@ impl Scalar {
             | Self::Ccy(_)
             | Self::Mic(_)
             | Self::Cfi(_)
-            | Self::Side(_)
             | Self::State(_)
-            | Self::MarketDataKind(_)
-            | Self::TimeInForce(_)
-            | Self::PluginSide(_)
-            | Self::MarketDataType(_)
+            | Self::Market(_)
             | Self::Isin(_)
             | Self::Cusip(_)
             | Self::Sedol(_)
@@ -2627,7 +2773,6 @@ fn duplicate_key_error(index: usize) -> Error {
 
 pub(crate) use bytes_scalars;
 pub(crate) use code_scalars;
-pub(crate) use enum_scalars;
 pub(crate) use string_scalars;
 pub(crate) use text_leaf_value;
 

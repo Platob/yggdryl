@@ -5,8 +5,9 @@ description: Routes yggdryl work to the right layer and states the conventions e
 
 # Yggdryl
 
-One Rust core owns every type, parser, codec and storage backend; the Python
-and Node.js packages are native views of the same values and implement
+One Rust core owns every type, parser, codec and storage backend, and two
+crates over it own market data (`yggdryl-market`) and FIX (`yggdryl-fix`); the
+Python and Node.js packages are native views of the same values and implement
 nothing of their own. So a behaviour, an error message and a default are the
 same in all three languages - only the spelling changes (`snake_case` in Rust
 and Python, `camelCase` in JavaScript).
@@ -16,6 +17,7 @@ and Python, `camelCase` in JavaScript).
 | | Rust | Python | Node.js |
 | --- | --- | --- | --- |
 | package | `yggdryl = "0.1"` in `Cargo.toml` | `pip install yggdryl` | `npm install yggdryl` |
+| market data, FIX | `yggdryl-market = "0.1"`, `yggdryl-fix = "0.1"`, and `yggdryl_market::install()?` or `yggdryl_fix::install()?` (which installs the market crate too) once, before anything reads a market kind or a FIX datatype name | built in, installed on import | built in, installed on load |
 | minimum | Rust 1.94 | Python 3.10, `pyarrow>=18` | Node 18, `apache-arrow` (a dependency) |
 | wheels | - | `cp310` version-specific; `cp311-abi3` for every GIL-enabled CPython from 3.11; `cp314-cp314t` for free-threaded 3.14, which has no stable ABI (free threading starts there: PyO3 0.29 builds for no free-threaded CPython below 3.14, and a GIL-enabled 3.12 or 3.13 loads `cp311-abi3`); `cp315-abi3.abi3t` for GIL-enabled and free-threaded 3.15 and later; importing never re-enables the GIL | one `.node` per platform |
 | optional parts | features, all off by default: `parquet`, `iceberg` (implies `parquet`), `http`, `http2` (implies `http`), `http3` (implies `http2`), `aws` (implies `http`), `s3` (implies `aws`) | everything built in | everything built in |
@@ -62,7 +64,7 @@ answers the task.
 | filters, selections, SQL-like plans, predicate pushdown, field paths | `yggdryl-expressions` |
 | xxHash digests, stable hashes, row digests, TxHash | `yggdryl-hashing` |
 | FIX messages, dictionaries, captures, the `yggdryl fix` CLI | `yggdryl-fix` |
-| orders, quotes, executions, order books, candles, market data, the book display (`yggdryl market serve`) | `yggdryl-market-data` |
+| orders, quotes, executions, order books, candles, market data | `yggdryl-market-data` |
 
 ## Cross-language conventions
 

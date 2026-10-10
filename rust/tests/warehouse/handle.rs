@@ -156,7 +156,7 @@ AAPL,1
         .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI"));
     let catalog = Catalog::Folder(Box::new(FolderCatalog::bound(
         "market",
-        Holder::S3Folder(s3::folder_with("s3://market/lake", options).expect("a folder")),
+        Holder::from(s3::folder_with("s3://market/lake", options).expect("a folder")),
     )));
     let table = catalog.table("eu.trades").expect("the table");
     store.clear_requests();

@@ -3,7 +3,7 @@
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use yggdryl::MarketDataType;
+use yggdryl_market::MarketDataType;
 
 use crate::napi_error;
 

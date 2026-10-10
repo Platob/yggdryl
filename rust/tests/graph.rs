@@ -1,37 +1,11 @@
-//! Graph vocabulary integration tests.
+//! Graph vocabulary integration tests: the core's half of `rust/src/graph/`,
+//! the element and event vocabulary every holder - a text line, a market
+//! leaf - answers through, each pinned over the core's own event, a text
+//! line.
 
-#[path = "graph/arrow.rs"]
-mod arrow;
-#[path = "graph/book.rs"]
-mod book;
-#[path = "graph/candle.rs"]
-mod candle;
 #[path = "graph/column.rs"]
 mod column;
 #[path = "graph/element.rs"]
 mod element;
 #[path = "graph/element_column.rs"]
 mod element_column;
-#[path = "graph/facts.rs"]
-mod facts;
-#[path = "graph/iterator.rs"]
-mod iterator;
-#[path = "graph/kind.rs"]
-mod kind;
-#[path = "graph/market.rs"]
-mod market;
-#[path = "graph/market_column.rs"]
-mod market_column;
-#[path = "graph/market_data.rs"]
-mod market_data;
-#[path = "graph/operation.rs"]
-mod operation;
-#[path = "graph/operation_column.rs"]
-mod operation_column;
-#[cfg(feature = "http")]
-#[path = "graph/serve.rs"]
-mod serve;
-#[path = "graph/trade.rs"]
-mod trade;
-#[path = "graph/view.rs"]
-mod view;

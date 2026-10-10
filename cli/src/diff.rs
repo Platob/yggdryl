@@ -6,7 +6,8 @@
 //! what it became, a membership change shows as metadata, and a renamed field
 //! is what it is under the identity: a removal beside an addition.
 
-use yggdryl::{Field, FixCategory, FixRegistry};
+use yggdryl::Field;
+use yggdryl_fix::{FixCategory, FixField, FixRegistry};
 
 use crate::style;
 
@@ -77,7 +78,7 @@ fn previous<'registry>(
     field: &Field,
 ) -> Option<&'registry Field> {
     if category == FixCategory::Fields
-        && let Some(id) = field.as_fix().id().ok().flatten()
+        && let Some(id) = FixField::new(field).id().ok().flatten()
     {
         return registry.get_field_by_id(id);
     }
@@ -89,8 +90,7 @@ fn previous<'registry>(
 /// otherwise.
 fn key_of(category: FixCategory, field: &Field) -> String {
     if category == FixCategory::Fields {
-        let tag = field
-            .as_fix()
+        let tag = FixField::new(field)
             .tag()
             .ok()
             .flatten()

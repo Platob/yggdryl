@@ -9,63 +9,57 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::{Properties, path_text};
 use crate::fs::BoundLocation;
-use crate::holder::Holder;
+use crate::holder::{Holder, backend_for};
 use crate::{Error, IOBase, IOMedia, Result, Uri, Url};
 
+/// What opens a [`Site::Opened`] location: called with the object's
+/// effective properties on every resolution, answering the handle and
+/// sending nothing.
+pub(crate) type Opener = Arc<dyn Fn(&Properties) -> Result<Holder> + Send + Sync>;
+
 /// Where an object's storage is, as it was given: a location every backend
-/// is reached by, a native handle a caller built over a store, or a binding
-/// to a foreign filesystem a caller supplied.
+/// is reached by, a native handle a caller built over a store, a binding to
+/// a foreign filesystem a caller supplied, or a location its owner opens.
 #[derive(Clone)]
 pub(crate) enum Site {
     /// A location, opened through [`Holder::from_url`] with the object's
     /// effective properties: a local one, or one named rather than handed
     /// over as a handle.
     Url(Url),
-    /// A native object-store or HTTP role a caller handed over, held as its
-    /// own reopen ([`Holder::from_handle`]) and opened again from it by
-    /// every resolution: the endpoint, the credentials, the session and the
-    /// pool the caller built it with reach every clone, which a location
-    /// would open under default options instead.
+    /// A native role of a claimed backend or of HTTP a caller handed over,
+    /// held as its own reopen ([`Holder::from_handle`]) and opened again
+    /// from it by every resolution: the endpoint, the credentials, the
+    /// session and the pool the caller built it with reach every clone,
+    /// which a location would open under default options instead.
     Native { url: Url, held: Arc<Holder> },
     /// A caller's filesystem and a path on it, re-held as it was bound.
     Bound(BoundLocation),
-    /// An object-store location opened under the session its owner signs
-    /// with - a catalog service's warehouse, reached as the catalog is - in
-    /// the region the owner knows it is in, and under the store's own knobs
-    /// the owner was given (`store`: where the store is, how it is
-    /// addressed, a key pair stated for it - what the store's reader takes
-    /// and the session does not), the object's effective properties read
-    /// over all of it. The knobs are the site's and never the object's:
-    /// nothing lists or prints them, and a bag stated on the object later
-    /// leaves them in place.
-    #[cfg(feature = "s3tables")]
-    Store {
-        url: Url,
-        session: crate::aws::Session,
-        region: String,
-        store: Properties,
-    },
+    /// A location its owner opens - a catalog service's warehouse, reached
+    /// as the catalog is - through the opener it built: the opener holds
+    /// what the owner reaches the store under (the session it signs with,
+    /// the region it knows the store is in, the store's own knobs it was
+    /// given: where the store is, how it is addressed, a key pair stated for
+    /// it) and reads the object's effective properties over it, so one
+    /// stated on the object wins. What the opener holds is the site's and
+    /// never the object's: nothing lists or prints it, and a bag stated on
+    /// the object later leaves it in place.
+    ///
+    /// A catalog service's implementation builds it - the core's own under
+    /// `s3tables` - and a build with no such implementation never does.
+    #[cfg_attr(not(feature = "s3tables"), allow(dead_code))]
+    Opened { url: Url, open: Opener },
 }
 
 impl fmt::Debug for Site {
-    /// The location - and for a store site its session and its region: the
-    /// store's knobs are printed by nothing.
+    /// The location alone: what an opener holds is printed by nothing.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Url(url) => formatter.debug_tuple("Url").field(url).finish(),
             Self::Native { url, .. } => formatter.debug_tuple("Native").field(url).finish(),
             Self::Bound(bound) => formatter.debug_tuple("Bound").field(bound).finish(),
-            #[cfg(feature = "s3tables")]
-            Self::Store {
-                url,
-                session,
-                region,
-                store: _,
-            } => formatter
-                .debug_struct("Store")
+            Self::Opened { url, .. } => formatter
+                .debug_struct("Opened")
                 .field("url", url)
-                .field("session", session)
-                .field("region", region)
                 .finish_non_exhaustive(),
         }
     }
@@ -73,11 +67,12 @@ impl fmt::Debug for Site {
 
 impl Site {
     /// The site a handle was built from, when it has one to rebuild from: a
-    /// binding; a native object-store or HTTP role, held as its own reopen
-    /// on the client it was built with - one HTTP answer, which has no
-    /// client to reopen on, is held by its location alone; or a local
-    /// location. An in-memory buffer spells a `mem:` identity nothing opens,
-    /// so it has none. Building a site sends no request.
+    /// binding; a native role of a claimed backend ([`backend_for`]) or of
+    /// HTTP, held as its own reopen on the client it was built with - one
+    /// HTTP answer, which has no client to reopen on, is held by its
+    /// location alone; or a local location. An in-memory buffer spells a
+    /// `mem:` identity nothing opens, so it has none. Building a site sends
+    /// no request.
     pub(crate) fn of(holder: &Holder) -> Option<Self> {
         if let Some(bound) = holder.bound_location() {
             return Some(Self::Bound(bound.clone()));
@@ -87,7 +82,7 @@ impl Site {
             return Some(Self::Url(url.clone()));
         }
         let scheme = url.scheme();
-        if !(scheme.is_object_store() || scheme.is_http()) {
+        if !(backend_for(scheme).is_some() || scheme.is_http()) {
             return None;
         }
         Some(match Holder::from_handle(holder) {
@@ -102,10 +97,8 @@ impl Site {
     /// The location, as a URL: a bound site's diagnostic one.
     pub(crate) fn url(&self) -> &Url {
         match self {
-            Self::Url(url) | Self::Native { url, .. } => url,
+            Self::Url(url) | Self::Native { url, .. } | Self::Opened { url, .. } => url,
             Self::Bound(bound) => bound.diagnostic_url(),
-            #[cfg(feature = "s3tables")]
-            Self::Store { url, .. } => url,
         }
     }
 
@@ -121,35 +114,20 @@ impl Site {
                 Holder::from_handle_with(held, &properties)
             }
             Self::Bound(bound) => Ok(crate::fs::located(bound.clone())),
-            #[cfg(feature = "s3tables")]
-            Self::Store {
-                url,
-                session,
-                region,
-                store,
-            } => {
-                // A session that consults nothing outside itself seals the
-                // store's own options too; the object's properties are read
-                // over the store's knobs, so one stated on the object wins.
-                let options = crate::s3::S3Options::default()
-                    .with_environment(session.reads_environment())
-                    .with_session(session.clone())
-                    .with_region(region.clone())
-                    .with_properties(store.iter().chain(properties.iter()))?;
-                crate::s3::located_with(&url.to_string(), options)
-            }
+            Self::Opened { open, .. } => open(properties),
         }
     }
 }
 
 impl PartialEq for Site {
+    /// The location: two sites opening one location under two openers are
+    /// one site, as two handles on one location are.
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Url(left), Self::Url(right))
-            | (Self::Native { url: left, .. }, Self::Native { url: right, .. }) => left == right,
+            | (Self::Native { url: left, .. }, Self::Native { url: right, .. })
+            | (Self::Opened { url: left, .. }, Self::Opened { url: right, .. }) => left == right,
             (Self::Bound(left), Self::Bound(right)) => left.same_location(right),
-            #[cfg(feature = "s3tables")]
-            (Self::Store { url: left, .. }, Self::Store { url: right, .. }) => left == right,
             _ => false,
         }
     }
@@ -160,13 +138,11 @@ impl Eq for Site {}
 impl Hash for Site {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            Self::Url(url) | Self::Native { url, .. } => url.hash(state),
+            Self::Url(url) | Self::Native { url, .. } | Self::Opened { url, .. } => url.hash(state),
             Self::Bound(bound) => {
                 bound.diagnostic_url().hash(state);
                 bound.path().hash(state);
             }
-            #[cfg(feature = "s3tables")]
-            Self::Store { url, .. } => url.hash(state),
         }
     }
 }

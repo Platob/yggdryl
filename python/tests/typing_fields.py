@@ -20,8 +20,6 @@ from yggdryl import (
     MarketDataTypeField,
     MediaTypeField,
     MimeTypeField,
-    PluginSide,
-    PluginSideField,
     ProtocolField,
     PythonMetadata,
     RicField,
@@ -97,8 +95,8 @@ typed_member: MarketDataType | None = MarketDataType.from_fix(40, "2")
 typed_tags: tuple[int, ...] = MarketDataType.fix_tags_of("AE", MarketDataKind.TRAD)
 standing: TimeInForceField = yggdryl.timeinforce("timeinforce")
 standing_member: TimeInForce = TimeInForce.from_fix("1")
-role: PluginSideField = yggdryl.pluginside("pluginside")
-role_member: PluginSide = PluginSide.from_plugin_type("x.SellSideFIXCPluginCBlock")
+role: SideField = yggdryl.side("pluginside")
+role_member: Side = yggdryl.fix.plugin_side("x.SellSideFIXCPluginCBlock")
 version: VersionField = yggdryl.version("version", nullable=False)
 version_default_scalar: Scalar = version.default_scalar()
 location: UrlField = yggdryl.url("url")
@@ -139,8 +137,8 @@ assert MarketDataType.ORDLIMIT.fix_code == (40, "2")
 assert typed_tags == (856, 828, 40)
 assert standing.dtype == DataType("timeinforce")
 assert standing_member is TimeInForce.GTC
-assert role.dtype == DataType("pluginside")
-assert role_member is PluginSide.SELL
+assert role.dtype == DataType("side")
+assert role_member is Side.SELL
 assert canonical_text_dtypes == (
     DataType("timezone"),
     DataType("mimetype"),

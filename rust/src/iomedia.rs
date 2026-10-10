@@ -9,44 +9,30 @@ use crate::IOBase;
 use crate::Result;
 use crate::media::RecordOptions;
 
-/// What a handle opens as under `options`: a located table format, or the
-/// reader over a folder of leaves or over one leaf.
-enum Opened {
-    // Boxed: a located table carries its whole metadata, a reader a pointer.
-    #[cfg(feature = "iceberg")]
-    Table(Box<crate::iceberg::Located>),
-    Reader(crate::arrow::BatchReader),
-}
-
-/// What a handle already known to be a container opens as: the table format
-/// located in it, or the reader over its leaves.
-fn open_container(handle: &dyn IOBase, options: &RecordOptions) -> Result<Opened> {
-    #[cfg(feature = "iceberg")]
-    if let Some(table) = crate::iceberg::located(handle)? {
-        return Ok(Opened::Table(Box::new(table)));
+/// The root field a container reports under `options`: a located table
+/// answers from its metadata, a folder of leaves as [`folder_field`] does.
+fn opened_field(handle: &dyn IOBase, options: &RecordOptions) -> Result<crate::Field> {
+    // A table format states its schema in its metadata: the table answers it
+    // as the table it is, and no scan is planned to learn it.
+    if let Some(table) = crate::media::format::locate(handle)? {
+        return table.read_arrow_field(options);
     }
-    Ok(Opened::Reader(crate::media::partition::folder_reader(
-        handle, options,
-    )?))
+    folder_field(handle, options)
 }
 
-/// The root field an opened resource reports under `options`: a table
-/// answers from its metadata, a reader with the schema its clauses publish.
-fn opened_field(opened: Opened, options: &RecordOptions) -> Result<crate::Field> {
+/// The root field a folder of leaves reports under `options`: the schema
+/// its clauses publish over the leaves' rows - the composed read's own
+/// reader, so the schema and the batches never disagree.
+fn folder_field(handle: &dyn IOBase, options: &RecordOptions) -> Result<crate::Field> {
     use crate::media::IORecordOptions;
 
-    let schema = match opened {
-        // A table format states its schema in its metadata: the table
-        // answers it as the table it is, and no scan is planned to learn it.
-        #[cfg(feature = "iceberg")]
-        Opened::Table(table) => return table.read_arrow_field(options),
-        Opened::Reader(reader) => options
-            .limit_arrow_reader(options.apply_arrow_expressions(reader)?)?
-            .schema(),
-    };
+    let composed =
+        crate::media_serie::compose(options, &crate::media_serie::Scan::default(), None, &[])?;
+    let leaves = crate::media::partition::folder_reader(handle, &composed.handed)?;
+    let reader = composed.residual.over_units().apply_reader(leaves)?;
     Ok(crate::arrow::field_from_arrow_schema(
         options.name(),
-        schema.as_ref(),
+        reader.schema().as_ref(),
     )?)
 }
 
@@ -64,7 +50,150 @@ pub(crate) fn container_field(
     if let Some(field) = options.field() {
         return Ok(field.clone());
     }
-    opened_field(open_container(handle, options)?, options)
+    opened_field(handle, options)
+}
+
+/// The one schema answer: `root` - the declared field, else the origin -
+/// narrowed by the options' `where` and `select` in the phases a read runs
+/// them in, so a `where` that does not bind fails here and one over a
+/// column the `select` builds is typed after it. A `SORT:by` the root
+/// declares is kept only where the selection publishes every column its
+/// keys read unchanged: the order of rows is a fact about columns the read
+/// still answers.
+///
+/// What [`IOMedia::read_arrow_field`] answers for every medium, and what a
+/// media serie binds its field through.
+pub(crate) fn field_under(options: &RecordOptions, root: &crate::Field) -> Result<crate::Field> {
+    use crate::media::IORecordOptions;
+
+    let mut plan = crate::expression::Plan::new();
+    plan.set_filter(options.filter().clone());
+    plan.set_selector(options.select().clone());
+    let field = plan.field_from(root)?;
+    let select = options.select();
+    if select.is_all() {
+        return Ok(field);
+    }
+    Ok(keeping_order(field, |column| keeps_column(select, column)))
+}
+
+/// `root` with its `SORT:by` taken off where a key reads a column `kept`
+/// refuses; a malformed declaration is left to the reader that parses it.
+pub(crate) fn keeping_order(root: crate::Field, kept: impl Fn(&str) -> bool) -> crate::Field {
+    let keeps = match root.as_sort().by() {
+        Ok(Some(keys)) => keys.iter().all(|key| {
+            key.term()
+                .columns()
+                .iter()
+                .all(|column| kept(column.as_str()))
+        }),
+        _ => true,
+    };
+    if keeps {
+        root
+    } else {
+        root.with_metadata_removed(crate::metadata::SORT_BY_KEY)
+    }
+}
+
+/// Whether `select` publishes the stored column `column` unchanged: a `*`
+/// that does not exclude it and no projection naming it otherwise, or a
+/// projection of the bare column under its own name.
+fn keeps_column(select: &crate::Selector, column: &str) -> bool {
+    let mut named = select
+        .projections()
+        .iter()
+        .filter(|projection| projection.name().eq_ignore_ascii_case(column));
+    if select.has_star()
+        && !select
+            .excluded()
+            .iter()
+            .any(|excluded| excluded.eq_ignore_ascii_case(column))
+    {
+        return named.all(crate::expression::Projection::is_column);
+    }
+    named.any(crate::expression::Projection::is_column)
+}
+
+/// The options a medium's origin is read under: its own, the declared field
+/// and the clauses that narrow a read taken off, so a CSV's dialect and a
+/// workbook's sheet still say how the store is read.
+pub(crate) fn origin_options(options: RecordOptions) -> RecordOptions {
+    use crate::media::IORecordOptions;
+
+    let mut options = dimensions(options);
+    options.set_declared(None);
+    options
+}
+
+/// The refusal of a schema asked of a medium whose origin states none,
+/// under options declaring none: an empty resource, a document carrying no
+/// schema.
+pub(crate) fn no_schema() -> crate::Error {
+    crate::Error::InvalidRecord {
+        path: smol_str::SmolStr::new_static("$.field"),
+        reason: smol_str::SmolStr::new_static("the medium states no schema and none is declared"),
+    }
+}
+
+/// [`IOMedia::read_arrow_field`] of a medium that serves its origin from its
+/// own cache: the declared root, else the origin `origin` answers under the
+/// call's [`cache_ttl`](crate::media::IORecordOptions::cache_ttl), renamed to
+/// the options' root name - refused where neither states a shape - then
+/// [`field_under`]. A media wrapper answers its schema through here, so an
+/// open handle, or a closed one under a TTL, reads no byte to answer it.
+///
+/// # Errors
+///
+/// Returns the origin's read failure, [`no_schema`], or a clause that does
+/// not bind.
+pub(crate) fn held_arrow_field(
+    options: &RecordOptions,
+    origin: impl FnOnce(crate::media::CacheTtl) -> Result<Option<crate::Field>>,
+) -> Result<crate::Field> {
+    use crate::media::IORecordOptions;
+
+    let root = match options.declared() {
+        Some(declared) => declared.clone(),
+        None => origin(options.cache_ttl())?
+            .ok_or_else(no_schema)?
+            .with_name(options.name()),
+    };
+    field_under(options, &root)
+}
+
+/// The rows a records write pulls off its iterator at most: its row skip
+/// plus its row bound, where every row pulled is a row the bound counts - no
+/// `where` keeping rows out, no `unnest` multiplying them - so no row past
+/// the bound is pulled or converted. A fetch bound only: the write's limit
+/// state, where it shapes its rows, is the one owner of the exact trim.
+fn records_pull_bound(options: &RecordOptions) -> Option<u64> {
+    use crate::media::IORecordOptions;
+
+    if !options.filter().is_always_true() || options.select().unnests() {
+        return None;
+    }
+    options
+        .max_row_size()
+        .map(|rows| rows.saturating_add(options.row_offset().unwrap_or(0)))
+}
+
+/// The root the leaves of the container `handle` state under `options`,
+/// their declaration taken off: what a media wrapper over a container
+/// answers as its origin, never cached, since a leaf written beneath it
+/// since changes it.
+///
+/// # Errors
+///
+/// Returns what [`container_field`] returns.
+pub(crate) fn container_origin(
+    handle: &dyn IOBase,
+    mut options: RecordOptions,
+) -> Result<Option<crate::Field>> {
+    use crate::media::IORecordOptions;
+
+    options.take_field();
+    container_field(handle, &options).map(Some)
 }
 
 /// `options`, or the handle's own where none were given: the one place an
@@ -82,7 +211,11 @@ pub(crate) fn own_options<'o, M: IOMedia + ?Sized>(
 /// A stream of batches as the serie it is: read as transport, so a write of
 /// it through the serie doors hands the batches on untouched - over an
 /// identity plan the reader itself.
-pub(crate) fn arrow_serie(batches: crate::arrow::BatchReader) -> Result<crate::Serie> {
+///
+/// # Errors
+///
+/// Returns an error when the reader's schema cannot form a record root.
+pub fn arrow_serie(batches: crate::arrow::BatchReader) -> Result<crate::Serie> {
     Ok(crate::Serie::from(landed(batches)?))
 }
 
@@ -207,11 +340,14 @@ pub trait IOMedia: Send {
     /// The answer ignores transient selection, partition-filter, and read-limit
     /// settings held by a stateful media wrapper. Implementations whose format
     /// records row counts in metadata override this default so no row arrays
-    /// are decoded. An explicitly opened media caches that metadata until
-    /// [`IOBase::close`]; a closed handle computes a fresh answer on each call.
-    /// Text extraction is the unavoidable exception: record boundaries can
-    /// depend on multiline expressions, so counting streams the extractor
-    /// without materializing Arrow batches.
+    /// are decoded. A media wrapper serves the count from its
+    /// [`MediaCache`](crate::media::MediaCache): while the handle is open, and
+    /// on a closed handle while the entry is younger than the options'
+    /// [`cache_ttl`](crate::media::IORecordOptions::cache_ttl) - `0`, the
+    /// default, a fresh answer on every call - and a write through the
+    /// handle refreshes or drops it. Text extraction is the unavoidable
+    /// exception: record boundaries can depend on multiline expressions, so
+    /// counting streams the extractor without materializing Arrow batches.
     ///
     /// # Errors
     ///
@@ -246,8 +382,7 @@ pub trait IOMedia: Send {
         // Asked once and reused: on a store an unresolved location answers
         // this with a listing, and the two routes below want the same answer.
         let container = handle.is_container();
-        #[cfg(feature = "iceberg")]
-        if container && let Some(table) = crate::iceberg::located(handle)? {
+        if container && let Some(table) = crate::media::format::locate(handle)? {
             return table.column_size();
         }
         // Preserve the container route: its canonical field may include Hive
@@ -278,8 +413,7 @@ pub trait IOMedia: Send {
     fn record_options(&self) -> Result<RecordOptions> {
         let handle = self.as_io_base();
         if handle.is_container() {
-            #[cfg(feature = "iceberg")]
-            if let Some(table) = crate::iceberg::located(handle)? {
+            if let Some(table) = crate::media::format::locate(handle)? {
                 return table.record_options();
             }
             // The listing is lazy, so a lake costs the walk to its first
@@ -366,61 +500,72 @@ pub trait IOMedia: Send {
         Ok(std::borrow::Cow::Borrowed(options))
     }
 
-    /// Read this Parquet leaf's footer statistics without decoding rows.
-    ///
-    /// The handle's media type selects the encoding first. This refuses an
-    /// IPC, Avro, text, or container handle with a typed record error instead
-    /// of trying to parse unrelated bytes as a Parquet footer.
-    ///
-    /// # Errors
-    ///
-    /// Returns an encoding, footer, or positional-read failure.
-    #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        let handle = parquet_leaf(self)?;
-        Ok(crate::parquet::read_statistics(handle)?)
-    }
-
-    /// Recompute one Parquet geospatial column's statistics from stored WKB.
-    ///
-    /// Unlike [`Self::read_parquet_statistics`], this is a projected column
-    /// scan: it decodes only the named top-level binary column and folds its
-    /// geometries without materializing them.
-    ///
-    /// # Errors
-    ///
-    /// Returns an encoding or read failure, an unknown/non-binary column, or
-    /// malformed WKB.
-    #[cfg(feature = "parquet")]
-    fn read_parquet_geospatial_statistics(
-        &self,
-        column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
-        let handle = parquet_leaf(self)?;
-        Ok(crate::parquet::read_geospatial_statistics(handle, column)?)
-    }
-
-    /// The decoded footer this handle already holds for the Parquet file it
-    /// is, so a record read of it reads no byte of the file's end again: an
-    /// opened [`Parquet`](crate::parquet::Parquet) answers the footer its
-    /// `open` read; every other handle, and a closed one, `None`.
-    #[cfg(feature = "parquet")]
-    #[doc(hidden)]
-    fn parquet_footer(&self) -> Option<std::sync::Arc<::parquet::file::metadata::ParquetMetaData>> {
+    /// The medium's own state, which a caller who knows the medium
+    /// downcasts: what no verb answers. A Parquet wrapper answers its
+    /// `ParquetFooter`, the footer its `open` read, so a record read of it
+    /// reads no byte of the file's end again; a wrapper forwards its inner
+    /// handle's, and every other handle answers `None`.
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
         None
+    }
+
+    /// Read the whole root this resource's origin holds: what the store
+    /// states, its metadata whole, with no declaration and no clause
+    /// applied - `None` where it states no shape: an empty resource, a
+    /// document carrying no schema, plain text, whose lines state no record
+    /// shape of their own.
+    ///
+    /// A leaf answers through its codec's
+    /// [`stated_field`](crate::media::MediaCodec::stated_field) under the
+    /// medium's own options, their declared field and their clauses taken
+    /// off - so a CSV's dialect and a workbook's sheet still say how the
+    /// store is read. A container answers what the table located in it
+    /// states, or the root its leaves report, afresh on every ask. A media
+    /// wrapper - Arrow IPC, Parquet, Avro, CSV, text, XMLA, a workbook -
+    /// serves it from its [`MediaCache`](crate::media::MediaCache): while
+    /// the handle is open, and on a closed handle while the entry is younger
+    /// than its options'
+    /// [`cache_ttl`](crate::media::IORecordOptions::cache_ttl); a write
+    /// through the wrapper refreshes the entry with the root it published,
+    /// or drops it.
+    ///
+    /// # Errors
+    ///
+    /// Returns a listing, read or metadata failure, or the refusal of a
+    /// media type no medium claims.
+    fn read_origin_field(&self) -> Result<Option<crate::Field>> {
+        let handle = self.as_io_base();
+        if handle.is_container() {
+            if let Some(table) = crate::media::format::locate(handle)? {
+                return table.read_origin_field();
+            }
+            return folder_field(handle, &origin_options(self.record_options()?)).map(Some);
+        }
+        // Per the laziness contract a resource holding nothing states
+        // nothing, which no codec is asked to decode.
+        if handle.is_empty() {
+            return Ok(None);
+        }
+        let options = origin_options(self.record_options()?);
+        options.codec().stated_field(handle, &options)
     }
 
     /// Read the canonical non-null Struct root Field of this resource.
     ///
-    /// A declared schema is returned as it stands; otherwise this is the shape
-    /// [`Self::read_arrow_reader`] reports, so the schema a caller reads
-    /// and the batches a caller gets can never disagree. A leaf answers from
-    /// its encoding's header or footer - an Arrow IPC schema message, an Avro
-    /// header, a Parquet footer - typed by the plan its options state, the
-    /// filter and the selection in the phases a read runs them in, so a
-    /// `where` that does not bind still fails here and one over a column the
-    /// `select` builds is typed after it; no reader is built and no row is
-    /// read. A container answers as the table located in it or its leaves.
+    /// One rule, whatever the medium: the declared root, else the origin's,
+    /// narrowed by the options' `where` and `select` in the phases a read
+    /// runs them in - so a `where` that does not bind fails here, one over a
+    /// column the `select` builds is typed after it, and the field is the
+    /// shape [`Self::read_arrow_reader`] reports: the schema a caller reads
+    /// and the batches a caller gets can never disagree. A `SORT:by` the
+    /// root declares is kept only where the selection publishes every
+    /// column its keys read unchanged. A leaf with nothing declared answers
+    /// from its encoding's header or footer - an Arrow IPC schema message,
+    /// an Avro header, a Parquet footer - read under these options'
+    /// encoding, no reader built and no row read; a media wrapper answers
+    /// the same rule over its cached origin
+    /// ([`read_origin_field`](Self::read_origin_field)). A container answers
+    /// as the table located in it or its leaves.
     ///
     /// # Errors
     ///
@@ -428,16 +573,15 @@ pub trait IOMedia: Send {
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field> {
         use crate::media::IORecordOptions;
 
-        if let Some(field) = options.field() {
-            return Ok(field.clone());
-        }
         let handle = self.as_io_base();
-        if handle.is_container() {
-            return opened_field(open_container(handle, options)?, options);
-        }
-        options
-            .plan()
-            .field_from(&crate::iobase::leaf_field(handle, options)?.with_name(options.name()))
+        let root = match options.declared() {
+            Some(declared) => declared.clone(),
+            None if handle.is_container() => return opened_field(handle, options),
+            // Read under these options' encoding: the medium is not asked for
+            // its own, which on a bare handle is two questions more.
+            None => crate::iobase::leaf_field(handle, options)?.with_name(options.name()),
+        };
+        field_under(options, &root)
     }
 
     /// Read this resource's rows as a [`StreamChunkedSerie`](crate::StreamChunkedSerie):
@@ -458,17 +602,20 @@ pub trait IOMedia: Send {
     /// as the table its leaves hold, under the encoding
     /// [`record_options`](Self::record_options) finds beneath it.
     ///
-    /// **A declared schema selects and casts during the read.** The columns it
-    /// names that the resource stores become the encoding's own projection - a
-    /// Parquet projection mask, an Arrow IPC projection - so the rest are
-    /// skipped rather than read and discarded, and what comes back is then cast
-    /// to the declared shape as each batch arrives. Ordering, conversion, and a
-    /// column the resource does not hold are the cast's business, because a
-    /// projection can only drop columns, never reorder or invent them. Say
-    /// plainly what each encoding's projection saves: Parquet skips locating and
-    /// decoding a column chunk, while an Arrow IPC record batch is one
-    /// contiguous message, so its projection saves the decode and the
-    /// allocation but not the bytes. With no declared schema the stored shape is
+    /// **A read decodes the columns its clauses read, and casts once.** What
+    /// the encoding is asked for is the declared root's children - else the
+    /// stored ones - that the `select` reads or the `where` reads before it,
+    /// so a declared column outside the selection is never asked for: the
+    /// declared root is handed narrowed to them and becomes the encoding's own
+    /// projection - a Parquet projection mask, an Arrow IPC projection - and
+    /// what comes back is cast to that narrowed shape as each batch arrives. A
+    /// `*` reads every column. Ordering, conversion, and a column the resource
+    /// does not hold are the cast's business, because a projection can only
+    /// drop columns, never reorder or invent them. Say plainly what each
+    /// encoding's projection saves: Parquet skips locating and decoding a
+    /// column chunk, while an Arrow IPC record batch is one contiguous message,
+    /// so its projection saves the decode and the allocation but not the
+    /// bytes. With no declared schema and no clause the stored shape is
     /// preserved exactly.
     ///
     /// **A folder reads as the table beneath it.** When this handle addresses a
@@ -489,8 +636,10 @@ pub trait IOMedia: Send {
     /// [`max_row_size`](crate::media::IORecordOptions::max_row_size) and
     /// [`max_byte_size`](crate::media::IORecordOptions::max_byte_size)
     /// last - so a limit counts result rows, and a limit of ten with a filter
-    /// means the first ten matching rows. A satisfied limit stops pulling, so
-    /// the rest of the resource is never decoded.
+    /// means the first ten matching rows. Each runs once: what the encoding
+    /// and a folder's paths settle is pushed down, and the rest runs once
+    /// over what they answer. A satisfied limit stops pulling, so the rest of
+    /// the resource is never decoded.
     ///
     /// ```
     /// use yggdryl::{IOMedia, IOBase, Serie, Url, holder::Buffer};
@@ -978,7 +1127,7 @@ pub trait IOMedia: Send {
             records,
             options.batch_row_size(),
             options.batch_byte_size(),
-            options.max_row_size(),
+            records_pull_bound(&options),
         )?;
         self.overwrite_arrow_reader(batches, &options)
     }
@@ -1018,7 +1167,7 @@ pub trait IOMedia: Send {
             records,
             options.batch_row_size(),
             options.batch_byte_size(),
-            options.max_row_size(),
+            records_pull_bound(&options),
         )?;
         self.append_arrow_reader(batches, &options)
     }
@@ -1059,7 +1208,7 @@ pub trait IOMedia: Send {
             records,
             options.batch_row_size(),
             options.batch_byte_size(),
-            options.max_row_size(),
+            records_pull_bound(&options),
         )?;
         self.merge_arrow_reader(batches, &options)
     }
@@ -1105,15 +1254,22 @@ pub trait IOMedia: Send {
 
 /// Remove settings that narrow a read before computing whole-media dimensions.
 pub(crate) fn dimension_options<M: IOMedia + ?Sized>(media: &M) -> Result<RecordOptions> {
+    media.record_options().map(dimensions)
+}
+
+/// `options` with the five clauses that narrow a read taken off - the
+/// filter, the selection, the row bound, the row offset and the byte bound -
+/// the one owner of that list, which a dimension and an edited media serie
+/// read under.
+pub(crate) fn dimensions(mut options: RecordOptions) -> RecordOptions {
     use crate::media::IORecordOptions;
 
-    let mut options = media.record_options()?;
     options.set_filter(crate::Filter::always_true());
     options.set_select(crate::Selector::all());
     options.set_max_row_size(None);
     options.set_row_offset(None);
     options.set_max_byte_size(None);
-    Ok(options)
+    options
 }
 
 /// Count a container's rows: a located table format answers from its
@@ -1123,8 +1279,7 @@ pub(crate) fn dimension_options<M: IOMedia + ?Sized>(media: &M) -> Result<Record
 /// The one container count, shared by the [`IOMedia::row_size`] default and
 /// the media wrappers whose own count reads one leaf's bytes.
 pub(crate) fn container_row_size(handle: &dyn IOBase, options: &RecordOptions) -> Result<u64> {
-    #[cfg(feature = "iceberg")]
-    if let Some(table) = crate::iceberg::located(handle)? {
+    if let Some(table) = crate::media::format::locate(handle)? {
         return table.row_size();
     }
     let mut rows = 0_u64;
@@ -1142,31 +1297,6 @@ fn add_rows(total: u64, rows: u64) -> Result<u64> {
             path: smol_str::SmolStr::new_static("$"),
             reason: smol_str::SmolStr::new_static("logical row count exceeds u64::MAX"),
         })
-}
-
-/// Resolve one media value as a Parquet leaf before a footer or column read.
-#[cfg(feature = "parquet")]
-fn parquet_leaf<M: IOMedia + ?Sized>(media: &M) -> Result<&dyn IOBase> {
-    let options = media.record_options()?;
-    if !matches!(options, RecordOptions::Parquet(_)) {
-        return Err(crate::Error::InvalidRecord {
-            path: smol_str::SmolStr::new_static("$.encoding"),
-            reason: smol_str::format_smolstr!(
-                "expected Parquet media, got {}",
-                options.mime_type()
-            ),
-        });
-    }
-    let handle = media.as_io_base();
-    if handle.is_container() {
-        return Err(crate::Error::InvalidRecord {
-            path: smol_str::SmolStr::new_static("$"),
-            reason: smol_str::SmolStr::new_static(
-                "expected one Parquet leaf for file statistics, got a container",
-            ),
-        });
-    }
-    Ok(handle)
 }
 
 /// Implement the default media contract for an [`IOBase`] value.
@@ -1195,7 +1325,7 @@ macro_rules! impl_default_iomedia {
     };
 }
 
-/// Feature-selected media forwarding bodies used by [`delegate_iomedia!`].
+/// The media forwarding bodies used by [`delegate_iomedia!`].
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __delegate_iomedia_arrow {
@@ -1214,6 +1344,10 @@ macro_rules! __delegate_iomedia_arrow {
 
         fn merge_by(&self) -> $crate::Result<$crate::Selector> {
             $crate::IOMedia::merge_by(&self.$handle)
+        }
+
+        fn read_origin_field(&self) -> $crate::Result<Option<$crate::Field>> {
+            $crate::IOMedia::read_origin_field(&self.$handle)
         }
 
         fn read_arrow_field(
@@ -1311,33 +1445,6 @@ macro_rules! __delegate_iomedia_arrow {
     };
 }
 
-/// Parquet-selected media forwarding bodies used by [`delegate_iomedia!`].
-#[cfg(feature = "parquet")]
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __delegate_iomedia_parquet {
-    ($handle:ident) => {
-        fn read_parquet_statistics(&self) -> $crate::Result<$crate::parquet::FileStatistics> {
-            $crate::IOMedia::read_parquet_statistics(&self.$handle)
-        }
-
-        fn read_parquet_geospatial_statistics(
-            &self,
-            column: &str,
-        ) -> $crate::Result<$crate::parquet::GeospatialStatistics> {
-            $crate::IOMedia::read_parquet_geospatial_statistics(&self.$handle, column)
-        }
-    };
-}
-
-/// Parquet-free media forwarding bodies.
-#[cfg(not(feature = "parquet"))]
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __delegate_iomedia_parquet {
-    ($handle:ident) => {};
-}
-
 /// Every [`IOMedia`] verb forwarded to a handle resolved on the first call
 /// that needs one, as `__delegate_resolved_iobase!` forwards the byte verbs;
 /// the two `as_io_base` doors answer `self`.
@@ -1369,17 +1476,16 @@ macro_rules! __delegate_resolved_iomedia {
             $crate::IOMedia::merge_by(self.$get()?)
         }
 
-        #[cfg(feature = "parquet")]
-        fn read_parquet_statistics(&self) -> $crate::Result<$crate::parquet::FileStatistics> {
-            $crate::IOMedia::read_parquet_statistics(self.$get()?)
+        // A handle that cannot resolve holds no medium's state; the verb
+        // that reads it next reports why.
+        fn as_any(&self) -> Option<&dyn ::std::any::Any> {
+            self.$get()
+                .ok()
+                .and_then(|held| $crate::IOMedia::as_any(held))
         }
 
-        #[cfg(feature = "parquet")]
-        fn read_parquet_geospatial_statistics(
-            &self,
-            column: &str,
-        ) -> $crate::Result<$crate::parquet::GeospatialStatistics> {
-            $crate::IOMedia::read_parquet_geospatial_statistics(self.$get()?, column)
+        fn read_origin_field(&self) -> $crate::Result<Option<$crate::Field>> {
+            $crate::IOMedia::read_origin_field(self.$get()?)
         }
 
         fn read_arrow_field(
@@ -1446,7 +1552,10 @@ macro_rules! delegate_iomedia {
         }
 
         $crate::__delegate_iomedia_arrow!($handle);
-        $crate::__delegate_iomedia_parquet!($handle);
+
+        fn as_any(&self) -> Option<&dyn ::std::any::Any> {
+            $crate::IOMedia::as_any(&self.$handle)
+        }
     };
 }
 
@@ -1467,6 +1576,16 @@ pub(crate) fn read_serie_default<M: IOMedia + ?Sized>(
 }
 
 /// Read a retained record encoding, whose owner already chose its format.
+///
+/// A located table format reads its own scan, the clauses pushed into its
+/// plan: its reader is complete. Anything else is read through one
+/// [`compose`](crate::media_serie::compose): the medium's native reader is
+/// handed what it pushes down - the projection, the `where` it prunes by,
+/// the bounds where it plans a fetch by them - and the residual runs once
+/// over what it answers. A folder's leaves are its units: each runs the
+/// conjuncts over its stored columns, those its path settles left out, and
+/// the selection, the conjuncts after it and the bounds run once over every
+/// leaf.
 pub(crate) fn read_record_serie<M: IOMedia + ?Sized>(
     media: &M,
     options: Option<&RecordOptions>,
@@ -1476,41 +1595,32 @@ pub(crate) fn read_record_serie<M: IOMedia + ?Sized>(
     let handle = media.as_io_base();
     let options = own_options(media, options)?;
     let container = handle.is_container();
-    if !container {
-        let rows = match options.as_ref() {
-            RecordOptions::Csv(csv) => Some(crate::csv::read_stream(
-                handle,
-                options.field().as_ref(),
-                csv,
-            )?),
-            RecordOptions::Text(text) => Some(crate::text::arrow::read_leaf_stream(handle, text)?),
-            RecordOptions::Avro(avro) => Some(crate::avro::read_stream(handle, avro)?),
-            _ => None,
-        };
-        if let Some(rows) = rows {
-            let rows = options.apply_stream(rows)?;
-            if options.batch_row_size().is_some() || options.batch_byte_size().is_some() {
-                return rows
-                    .into_chunked_stream(options.batch_row_size(), options.batch_byte_size())
-                    .map(crate::Serie::from)
-                    .map_err(Into::into);
-            }
-            return Ok(crate::Serie::from(rows));
-        }
+    if container && let Some(table) = crate::media::format::locate(handle)? {
+        return landed_options(table.read(&options)?, &options).map(crate::Serie::from);
     }
-    let opened = if container {
-        open_container(handle, &options)?
-    } else {
-        Opened::Reader(crate::iobase::leaf_reader(handle, &options)?)
-    };
-    let reader = match opened {
-        // The table pushes the clauses into its scan plan and wraps the
-        // selector and the limit itself: the reader is complete.
-        #[cfg(feature = "iceberg")]
-        Opened::Table(table) => table.read(&options)?,
-        Opened::Reader(reader) => {
-            options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)?
+    let composed =
+        crate::media_serie::compose(&options, &crate::media_serie::Scan::default(), None, &[])?;
+    let handed = &composed.handed;
+    if container {
+        // Each leaf runs the conjuncts over its stored columns, the ones its
+        // path settles left out; the rest runs once over every leaf.
+        let leaves = crate::media::partition::folder_reader(handle, handed)?;
+        let rows = composed.residual.over_units().apply_reader(leaves)?;
+        return landed_options(rows, &options).map(crate::Serie::from);
+    }
+    if let Some(rows) = handed
+        .codec()
+        .read_stream(handle, handed.declared(), handed)?
+    {
+        let rows = composed.residual.apply_stream(rows)?;
+        if options.batch_row_size().is_some() || options.batch_byte_size().is_some() {
+            return rows
+                .into_chunked_stream(options.batch_row_size(), options.batch_byte_size())
+                .map(crate::Serie::from)
+                .map_err(Into::into);
         }
-    };
-    landed_options(reader, &options).map(crate::Serie::from)
+        return Ok(crate::Serie::from(rows));
+    }
+    let reader = crate::iobase::leaf_reader(handle, handed)?;
+    landed_options(composed.residual.apply_reader(reader)?, &options).map(crate::Serie::from)
 }

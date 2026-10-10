@@ -467,6 +467,10 @@ impl<H: IOBase> crate::IOMedia for Buffered<H> {
         crate::IOMedia::merge_by(&self.handle)
     }
 
+    fn read_origin_field(&self) -> Result<Option<crate::Field>> {
+        crate::IOMedia::read_origin_field(&self.handle)
+    }
+
     fn read_arrow_field(&self, options: &crate::media::RecordOptions) -> Result<crate::Field> {
         crate::IOMedia::read_arrow_field(&self.handle, options)
     }
@@ -475,17 +479,8 @@ impl<H: IOBase> crate::IOMedia for Buffered<H> {
         crate::IOMedia::read_serie(&self.handle, options)
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        crate::IOMedia::read_parquet_statistics(&self.handle)
-    }
-
-    #[cfg(feature = "parquet")]
-    fn read_parquet_geospatial_statistics(
-        &self,
-        column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
-        crate::IOMedia::read_parquet_geospatial_statistics(&self.handle, column)
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        crate::IOMedia::as_any(&self.handle)
     }
 }
 
@@ -493,13 +488,13 @@ impl<H: IOBase> IOBase for Buffered<H> {
     // Everything the cache does not change is the wrapped handle's answer,
     // expanded from the one delegation macro. What the list leaves out is
     // exactly what this wrapper owns: the two positional primitives, the
-    // resize that invalidates, the whole-value write and the create, the
-    // open/close pair that holds the cache, and the `clear`/`remove` pair -
-    // a cache that outlived any of them would answer a later read with bytes
-    // that are gone.
-    crate::delegate_iobase!(handle: pstream_bytes, size, capacity, reserve, uri, url, bound_location,
-        mtime, media_type, set_media_type, applied_codec, flush, parent, child_by_path, ls, kind, is_container, is_atomic,
-        is_tabular);
+    // resize that invalidates, the whole-value write, the upload and the
+    // create, the open/close pair that holds the cache, the `clear`/`remove`
+    // pair and the discard - a cache that outlived any of them would answer a
+    // later read with bytes that are gone.
+    crate::delegate_iobase!(handle: pstream_bytes, size, set_known_size, capacity, reserve, uri, url,
+        bound_location, mtime, media_type, set_media_type, applied_codec, flush, parent, child_by_path, as_leaf,
+        as_container, ls, kind, is_container, is_atomic, is_tabular);
 
     /// Serve the range from the pages holding it, fetching what is missing.
     ///
@@ -599,6 +594,17 @@ impl<H: IOBase> IOBase for Buffered<H> {
         Ok(())
     }
 
+    /// Replace the value through the inner handle's own upload, dropping
+    /// every page first and keeping the length it wrote, as
+    /// [`IOBase::write_all_bytes`] does: a store that takes an upload in
+    /// parts is reached by it.
+    fn upload_from(&mut self, source: &mut dyn std::io::Read, length: u64) -> Result<()> {
+        self.table().clear();
+        self.handle.upload_from(source, length)?;
+        self.table().set_size(length);
+        Ok(())
+    }
+
     /// Resize the inner value and drop every page at or past the new size.
     fn truncate(&mut self, size: u64) -> Result<()> {
         let mut table = self.pages.lock().unwrap_or_else(PoisonError::into_inner);
@@ -651,6 +657,13 @@ impl<H: IOBase> IOBase for Buffered<H> {
     fn remove(&mut self, recursive: bool) -> Result<()> {
         self.table().clear();
         self.handle.remove(recursive)
+    }
+
+    /// Drop the inner handle's stage, and every page with it: a page a
+    /// write patched describes bytes the store now never holds.
+    fn discard(&self) -> Result<bool> {
+        self.table().clear();
+        self.handle.discard()
     }
 }
 

@@ -18,7 +18,7 @@ use super::size::scalar_memory_size;
 use super::{BatchReader, Error, Result, arrow_schema_from_field};
 
 /// Default number of row values materialized into one Arrow batch.
-pub(crate) const DEFAULT_BATCH_ROW_SIZE: usize = crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE;
+pub const DEFAULT_BATCH_ROW_SIZE: usize = crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE;
 
 /// Widen native row values into a lazy Arrow reader.
 ///
@@ -27,7 +27,12 @@ pub(crate) const DEFAULT_BATCH_ROW_SIZE: usize = crate::media::DEFAULT_RECORD_BA
 /// A conversion or validation failure after completed rows yields that bounded
 /// prefix first, then the error, and fuses the reader. A materialization
 /// failure is immediate because no prefix batch exists yet.
-pub(crate) fn reader<I, R>(
+///
+/// # Errors
+///
+/// Returns an error when `field` has no Arrow schema; a row's refusal is
+/// yielded by the reader after the rows before it.
+pub fn reader<I, R>(
     field: &Field,
     rows: I,
     batch_row_size: Option<usize>,
@@ -143,7 +148,14 @@ where
     )
 }
 
-pub(crate) fn result_reader<I>(
+/// Widen a fallible stream of core scalar rows into Arrow batches: the rows
+/// read under `field` as [`reader`] reads them, an error item yielded after
+/// the completed prefix and fusing the reader.
+///
+/// # Errors
+///
+/// Returns an error when `field` has no Arrow schema.
+pub fn result_reader<I>(
     field: &Field,
     rows: I,
     batch_row_size: Option<usize>,
@@ -181,7 +193,11 @@ where
 /// so decides the cut itself. The one bound kept is the one every reader
 /// has: an error item yields the completed prefix first, then the error,
 /// and fuses the reader.
-pub(crate) fn canonical_closing_reader<I>(field: &Field, rows: I) -> Result<BatchReader>
+///
+/// # Errors
+///
+/// Returns an error when `field` has no Arrow schema.
+pub fn canonical_closing_reader<I>(field: &Field, rows: I) -> Result<BatchReader>
 where
     I: IntoIterator<Item = Closing>,
     I::IntoIter: Send + 'static,
@@ -208,7 +224,12 @@ impl TryFrom<FallibleScalar> for Scalar {
 }
 
 /// One row beside whether the batch closes after it.
-pub(crate) struct Closing(pub(crate) crate::Result<Scalar>, pub(crate) bool);
+pub struct Closing(
+    /// The row, or the refusal the reader yields in its place.
+    pub crate::Result<Scalar>,
+    /// Whether the batch closes after this row.
+    pub bool,
+);
 
 impl TryFrom<Closing> for Scalar {
     type Error = crate::Error;

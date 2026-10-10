@@ -11,9 +11,12 @@
 //! caller sees belong to [`crate::IOMedia`]'s record methods above them.
 //!
 //! [`Ipc`] is the stateful form of the same thing: it owns the handle and the
-//! options, and caches the stream's schema and dimensions between calls.
-//! [`IOBase::open`] fills those caches and [`IOBase::close`] releases them,
-//! which is what a scoped context binds to in the bindings.
+//! options, and holds the stream's schema and dimensions in its
+//! [`MediaCache`]. [`IOBase::open`] fills it and [`IOBase::close`] releases
+//! it, which is what a scoped context binds to in the bindings; a closed
+//! stream serves what it read for the options'
+//! [`cache_ttl`](crate::media::IORecordOptions::cache_ttl), and re-reads on
+//! every ask under the default `0`.
 //!
 //! Content coding comes from the handle's media type, so a handle named
 //! `trades.arrows.gz` round-trips compressed with no extra argument.
@@ -52,7 +55,7 @@
 //! ```
 
 use std::io::{BufRead, BufReader, Read};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use arrow_array::RecordBatchIterator;
 use arrow_ipc::MessageHeader;
@@ -60,14 +63,15 @@ use arrow_ipc::reader::StreamReader;
 use arrow_ipc::writer::StreamWriter;
 use arrow_schema::{ArrowError, Schema};
 
-use crate::Field;
-use crate::IOBase;
-use crate::Level;
 use crate::arrow::{
     BatchReader, Result, arrow_schema_from_field, field_from_arrow_schema, from_reader_error,
     projection_indices,
 };
-use crate::media::{IORecordOptions, RecordOptions};
+use crate::holder::Holder;
+use crate::media::{
+    CacheTtl, Entry, IORecordOptions, Media, MediaCache, MediaCodec, MediumSettings, RecordOptions,
+};
+use crate::{Field, IOBase, Level, MimeType};
 use smol_str::SmolStr;
 
 /// The settings an Arrow IPC read or write takes.
@@ -117,6 +121,12 @@ pub struct IpcOptions {
     /// The threads a write of several parts runs on at once; `None` is the
     /// destination's own answer.
     pub num_threads: Option<usize>,
+    /// How long a closed handle serves the metadata it read - the origin's
+    /// field, its counts - in milliseconds; `0`, the default, reads afresh on
+    /// every ask, and an open handle serves what it holds until it closes.
+    /// Outside the options' identity: it changes when a change is seen,
+    /// never what is.
+    pub cache_ttl: crate::media::CacheTtl,
     /// Compression level applied when the handle declares a coding.
     pub level: Level,
 }
@@ -138,6 +148,7 @@ impl IpcOptions {
             max_byte_size: None,
             commit_batch_num: None,
             num_threads: None,
+            cache_ttl: crate::media::CacheTtl::REALTIME,
             level: Level::DEFAULT,
         }
     }
@@ -151,6 +162,12 @@ impl Default for IpcOptions {
 
 impl IORecordOptions for IpcOptions {
     crate::record_options_fields!();
+}
+
+impl MediumSettings for IpcOptions {
+    fn medium() -> &'static dyn MediaCodec {
+        &IPC_CODEC
+    }
 }
 
 /// Read the schema of the stream `handle` holds.
@@ -600,22 +617,39 @@ pub fn overwrite_arrow_reader<H>(
 where
     H: IOBase + ?Sized,
 {
+    overwrite_counted(handle, batches, options).map(|_| ())
+}
+
+/// [`overwrite_arrow_reader`], answering the rows the stream now holds: what
+/// a write knows is recorded rather than read back.
+///
+/// # Errors
+///
+/// Returns what [`overwrite_arrow_reader`] returns.
+fn overwrite_counted<H>(handle: &mut H, batches: BatchReader, options: &IpcOptions) -> Result<u64>
+where
+    H: IOBase + ?Sized,
+{
     let schema = batches.schema();
     let mut encoded = Vec::new();
+    let mut rows = 0_u64;
     {
         let encoder = handle
             .codec()
             .writer_with_level(&mut encoded, options.level());
         let mut writer = StreamWriter::try_new(encoder, schema.as_ref())?;
         for batch in batches {
-            writer.write(&batch.map_err(from_reader_error)?)?;
+            let batch = batch.map_err(from_reader_error)?;
+            rows = rows.saturating_add(batch.num_rows() as u64);
+            writer.write(&batch)?;
         }
         // Arrow finishes its EOS marker and returns the codec writer; the
         // codec then writes its own trailer. The encoded value is still staged
         // whole, so a failed batch never publishes a partial IPC resource.
         writer.into_inner()?.finish()?;
     }
-    Ok(handle.write_all_bytes(&encoded)?)
+    handle.write_all_bytes(&encoded)?;
+    Ok(rows)
 }
 
 /// Own a decoded stream so the returned Arrow reader can outlive this call.
@@ -741,23 +775,87 @@ impl<R: Read + Send + 'static> Read for EmptySafeDecoder<R> {
     }
 }
 
+/// The MIME types Arrow IPC answers, the stream format first.
+static IPC_TYPES: [MimeType; 2] = [MimeType::ARROW_STREAM, MimeType::ARROW_FILE];
+
+/// Arrow IPC as a record medium: [`read_batch_reader`], [`read_field`] and
+/// [`overwrite_arrow_reader`] behind the one contract every medium answers.
+#[derive(Debug)]
+pub struct IpcCodec;
+
+/// The Arrow IPC medium, claimed by the core under its two MIME types.
+pub static IPC_CODEC: IpcCodec = IpcCodec;
+
+impl MediaCodec for IpcCodec {
+    fn name(&self) -> &'static str {
+        "ipc"
+    }
+
+    fn title(&self) -> &'static str {
+        "Arrow IPC"
+    }
+
+    fn rank(&self) -> u8 {
+        0
+    }
+
+    fn mime_types(&self) -> &'static [MimeType] {
+        &IPC_TYPES
+    }
+
+    fn default_options(&self, _base: &MimeType) -> RecordOptions {
+        RecordOptions::Ipc(IpcOptions::new())
+    }
+
+    fn read_batch_reader(
+        &self,
+        handle: &dyn IOBase,
+        declared: Option<&Field>,
+        options: &RecordOptions,
+    ) -> crate::Result<BatchReader> {
+        let ipc = options.require_settings::<IpcOptions>()?;
+        Ok(read_batch_reader(handle, declared, ipc)?)
+    }
+
+    fn row_size(&self, handle: &dyn IOBase, options: &RecordOptions) -> crate::Result<u64> {
+        row_size(handle, options.require_settings::<IpcOptions>()?)
+    }
+
+    fn read_field(&self, handle: &dyn IOBase, options: &RecordOptions) -> crate::Result<Field> {
+        Ok(read_field(
+            handle,
+            options.require_settings::<IpcOptions>()?,
+        )?)
+    }
+
+    fn overwrite_arrow_reader(
+        &self,
+        handle: &mut dyn IOBase,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> crate::Result<()> {
+        let ipc = options.require_settings::<IpcOptions>()?;
+        Ok(overwrite_arrow_reader(handle, batches, ipc)?)
+    }
+
+    fn open(&self, handle: Holder) -> Media {
+        Media::Ipc(Ipc::new(handle))
+    }
+}
+
 /// An Arrow IPC stream bound to one [`IOBase`] handle.
 ///
 /// Every read and write goes through this type, so the handle, the options,
-/// and the opened-session metadata caches live in one place rather than being
+/// and the stream's metadata cache live in one place rather than being
 /// repeated at each call.
 #[derive(Debug)]
 pub struct Ipc<H: IOBase> {
     handle: H,
     options: IpcOptions,
-    /// Whether the caller explicitly opened this media, including when empty.
-    opened: bool,
-    /// Schema cached only for an explicitly opened session.
-    cached_schema: OnceLock<Field>,
-    /// Metadata-only row count cached only for an explicitly opened session.
-    cached_row_size: OnceLock<u64>,
-    /// Canonical column count cached only for an explicitly opened session.
-    cached_column_size: OnceLock<usize>,
+    /// The stream's schema and both counts: served while open, or for the
+    /// options' `cache_ttl` once read, and never held for a container, whose
+    /// leaves answer for it on every ask.
+    cache: MediaCache,
 }
 
 impl<H: IOBase> Ipc<H> {
@@ -766,18 +864,17 @@ impl<H: IOBase> Ipc<H> {
         Self {
             handle,
             options: IpcOptions::new(),
-            opened: false,
-            cached_schema: OnceLock::new(),
-            cached_row_size: OnceLock::new(),
-            cached_column_size: OnceLock::new(),
+            cache: MediaCache::new(),
         }
     }
 
     /// Return this stream with different options.
+    ///
+    /// The stream's metadata does not depend on them - its root is renamed
+    /// as it is served - so the cache holds.
     #[must_use]
     pub fn with_options(mut self, options: IpcOptions) -> Self {
         self.options = options;
-        self.invalidate_cached_metadata();
         self
     }
 
@@ -787,7 +884,6 @@ impl<H: IOBase> Ipc<H> {
     #[must_use]
     pub fn with_field(mut self, field: Field) -> Self {
         self.options.set_field(field);
-        self.invalidate_cached_metadata();
         self
     }
 
@@ -795,7 +891,6 @@ impl<H: IOBase> Ipc<H> {
     #[must_use]
     pub fn with_name(mut self, name: impl Into<smol_str::SmolStr>) -> Self {
         self.options.set_name(name.into());
-        self.invalidate_cached_metadata();
         self
     }
 
@@ -803,7 +898,6 @@ impl<H: IOBase> Ipc<H> {
     #[must_use]
     pub fn with_level(mut self, level: Level) -> Self {
         self.options.set_level(level);
-        self.invalidate_cached_metadata();
         self
     }
 
@@ -812,9 +906,8 @@ impl<H: IOBase> Ipc<H> {
         &self.options
     }
 
-    /// Borrow the options mutably, invalidating opened-session metadata first.
+    /// Borrow the options mutably.
     pub fn options_mut(&mut self) -> &mut IpcOptions {
-        self.invalidate_cached_metadata();
         &mut self.options
     }
 
@@ -838,10 +931,10 @@ impl<H: IOBase> Ipc<H> {
         &self.handle
     }
 
-    /// Borrow the underlying handle mutably, invalidating opened-session
-    /// metadata before any byte mutation can occur.
+    /// Borrow the underlying handle mutably, invalidating the metadata cache
+    /// before any byte mutation can occur.
     pub fn handle_mut(&mut self) -> &mut H {
-        self.invalidate_cached_metadata();
+        self.cache.invalidate();
         &mut self.handle
     }
 
@@ -850,33 +943,65 @@ impl<H: IOBase> Ipc<H> {
         self.handle
     }
 
-    /// Drop metadata derived from bytes or options without closing the handle.
-    fn invalidate_cached_metadata(&mut self) {
-        self.cached_schema.take();
-        self.cached_row_size.take();
-        self.cached_column_size.take();
-    }
-
-    /// Read schema and dimensions in one metadata pass for `open`.
-    fn fresh_metadata(&self) -> Result<(Option<Field>, u64, usize)> {
+    /// One metadata pass over the leaf: the stream's schema as its root and
+    /// both counts, no batch body read.
+    fn read_entry(&self) -> crate::Result<Entry> {
         let metadata = read_metadata(&self.handle)?;
-        let rows = metadata.rows;
-        let field = match (self.options.field(), metadata.schema) {
-            (Some(field), _) => Some(field.clone()),
-            (None, Some(schema)) => Some(field_from_arrow_schema(self.options.name(), &schema)?),
-            (None, None) => None,
-        };
-        let columns = field.as_ref().map_or(0, Field::field_len);
-        Ok((field, rows, columns))
+        let origin = metadata
+            .schema
+            .as_ref()
+            .map(|schema| field_from_arrow_schema(self.options.name(), schema))
+            .transpose()?;
+        let columns = origin.as_ref().map_or(0, Field::field_len);
+        Ok(Entry {
+            origin,
+            rows: Some(metadata.rows),
+            columns: Some(columns),
+            state: None,
+        })
     }
 
-    /// Populate every opened-session metadata cache atomically after parsing.
-    fn cache_metadata(&self, field: Option<Field>, rows: u64, columns: usize) {
-        if let Some(field) = field {
-            let _ = self.cached_schema.set(field);
+    /// The leaf's metadata entry under `ttl`, `served` where the cache had
+    /// one: the cache's, read whole and kept where the cache keeps.
+    fn entry(&self, ttl: CacheTtl, served: Option<Entry>) -> crate::Result<Entry> {
+        match served {
+            Some(entry) => Ok(entry),
+            None => self
+                .cache
+                .get_or_fill(ttl, crate::media::cache::now(), || self.read_entry()),
         }
-        let _ = self.cached_row_size.set(rows);
-        let _ = self.cached_column_size.set(columns);
+    }
+
+    /// Keep what a publication wrote, where the cache keeps; drop the entry
+    /// otherwise, so nothing from before the write is ever answered.
+    fn record(&self, ttl: CacheTtl, entry: Entry) {
+        if self.cache.keeps(ttl) {
+            self.cache.fill(crate::media::cache::now(), entry);
+        } else {
+            self.cache.invalidate();
+        }
+    }
+
+    /// The stream's schema message as its root under `ttl`, named as the
+    /// options name it: from the cache where it serves, else read - the
+    /// schema message alone on a closed stream under a realtime TTL, the
+    /// whole metadata pass, kept, otherwise.
+    fn origin(&self, ttl: CacheTtl) -> crate::Result<Option<Field>> {
+        let served = self.cache.entry(ttl, crate::media::cache::now());
+        if served.is_none() && self.handle.is_container() {
+            return crate::iomedia::container_origin(
+                &self.handle,
+                crate::iomedia::dimension_options(self)?,
+            );
+        }
+        let origin = if served.is_none() && !self.cache.keeps(ttl) {
+            read_schema(&self.handle)?
+                .map(|schema| field_from_arrow_schema(self.options.name(), &schema))
+                .transpose()?
+        } else {
+            self.entry(ttl, served)?.origin
+        };
+        Ok(origin.map(|origin| origin.with_name(self.options.name())))
     }
 }
 
@@ -884,8 +1009,9 @@ impl<H: IOBase> Ipc<H> {
 /// raw stream - to copy it, compress it, or hand it to another reader - without
 /// unwrapping the media type first.
 ///
-/// [`IOBase::open`] additionally caches the stream's schema and dimensions;
-/// [`IOBase::close`] releases them.
+/// [`IOBase::open`] additionally holds the stream's schema and dimensions
+/// until [`IOBase::close`]; a closed stream holds them for the options'
+/// `cache_ttl`.
 impl<H: IOBase> crate::IOMedia for Ipc<H> {
     fn as_io_base(&self) -> &dyn IOBase {
         self
@@ -896,53 +1022,47 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
     }
 
     fn row_size(&self) -> crate::Result<u64> {
-        if self.opened
-            && let Some(rows) = self.cached_row_size.get()
-        {
-            return Ok(*rows);
+        let ttl = self.options.cache_ttl;
+        let served = self.cache.entry(ttl, crate::media::cache::now());
+        if let Some(rows) = served.as_ref().and_then(|entry| entry.rows) {
+            return Ok(rows);
         }
-        // Past the session's cache, which only a leaf ever fills.
-        if self.handle.is_container() {
+        // Past the cache, which only a leaf ever fills.
+        if served.is_none() && self.handle.is_container() {
             return crate::iomedia::container_row_size(
                 &self.handle,
                 &crate::iomedia::dimension_options(self)?,
             );
         }
-        let rows = row_size(&self.handle, &self.options)?;
-        if self.opened {
-            let _ = self.cached_row_size.set(rows);
-            return Ok(*self.cached_row_size.get().unwrap_or(&rows));
+        if !self.cache.keeps(ttl) {
+            return row_size(&self.handle, &self.options);
         }
-        Ok(rows)
+        Ok(self.entry(ttl, served)?.rows.unwrap_or_default())
     }
 
     fn column_size(&self) -> crate::Result<usize> {
-        if self.opened
-            && let Some(columns) = self.cached_column_size.get()
-        {
-            return Ok(*columns);
+        if let Some(field) = self.options.field() {
+            return Ok(field.field_len());
         }
-        let columns = if let Some(field) = self.options.field() {
-            field.field_len()
-        } else if self.handle.is_container() {
-            // Answered by the leaves on every ask, never cached: a leaf
-            // written beneath the container since changes it.
-            return Ok(crate::iomedia::container_field(
+        let ttl = self.options.cache_ttl;
+        let served = self.cache.entry(ttl, crate::media::cache::now());
+        if let Some(columns) = served.as_ref().and_then(|entry| entry.columns) {
+            return Ok(columns);
+        }
+        if served.is_none() && self.handle.is_container() {
+            return Ok(crate::iomedia::container_origin(
                 &self.handle,
-                &crate::iomedia::dimension_options(self)?,
+                crate::iomedia::dimension_options(self)?,
             )?
-            .field_len());
-        } else if self.handle.is_empty() {
-            0
-        } else {
-            let options = RecordOptions::Ipc(self.options.clone());
-            crate::IOMedia::read_arrow_field(self, &options)?.field_len()
-        };
-        if self.opened {
-            let _ = self.cached_column_size.set(columns);
-            return Ok(*self.cached_column_size.get().unwrap_or(&columns));
+            .map_or(0, |field| field.field_len()));
         }
-        Ok(columns)
+        if !self.cache.keeps(ttl) {
+            if self.handle.is_empty() {
+                return Ok(0);
+            }
+            return Ok(read_field(&self.handle, &self.options)?.field_len());
+        }
+        Ok(self.entry(ttl, served)?.columns.unwrap_or_default())
     }
 
     /// Return this wrapper's IPC options even when the wrapped byte handle has
@@ -951,29 +1071,17 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         Ok(RecordOptions::Ipc(self.options.clone()))
     }
 
+    /// The stream's schema message as its root, under the options' TTL.
+    fn read_origin_field(&self) -> crate::Result<Option<Field>> {
+        self.origin(self.options.cache_ttl)
+    }
+
+    /// The one schema answer, the declared root else the origin as `options`'
+    /// TTL serves it, narrowed by their `where` and `select`: an open stream,
+    /// or a closed one under a TTL, reads no byte to answer it.
     fn read_arrow_field(&self, options: &RecordOptions) -> crate::Result<Field> {
-        let options = self.require_record_options(options)?;
-        if let Some(field) = options.field() {
-            return Ok(field.clone());
-        }
-        // An explicit held Field makes the opened cache a logical declaration,
-        // not the stored schema. A caller supplying different options must then
-        // derive the bytes afresh rather than receive that unrelated Field.
-        if self.opened
-            && self.options.field().is_none()
-            && let Some(cached) = self.cached_schema.get()
-        {
-            return Ok(cached.clone().with_name(options.name()));
-        }
-        if self.handle.is_container() {
-            return crate::iomedia::container_field(&self.handle, &options.clone().into());
-        }
-        let field = read_field(&self.handle, options)?;
-        if self.opened && self.options.field().is_none() {
-            let cached = field.clone().with_name(self.options.name());
-            let _ = self.cached_schema.set(cached);
-        }
-        Ok(field)
+        self.require_record_options(options)?;
+        crate::iomedia::held_arrow_field(options, |ttl| self.origin(ttl))
     }
 
     fn overwrite_serie(
@@ -985,57 +1093,44 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         let options = options.as_ref();
         let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
-        let opened = self.opened;
-        match crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options) {
-            Ok((published, result)) => {
-                // Closed media never begin caching as a side effect of a
-                // write. An already-open one keeps its cache coherent with the
-                // final field after all shaping and stored completion.
-                self.invalidate_cached_metadata();
-                if opened && let Some(published) = published {
-                    let _ = self.cached_schema.set(published);
-                }
-                Ok(result)
-            }
-            Err(error) => {
-                // A later cadence may already be visible. The old cached field
-                // is therefore never retained after a failed publication. If
-                // this handle was open, keep that lifecycle state only when
-                // the visible prefix still answers a valid fresh field; never
-                // mask the original write error when it does not.
-                self.invalidate_cached_metadata();
-                Err(error)
-            }
+        // Every publication passes through `overwrite_prepared_serie`, which
+        // records what it wrote. A failure may follow a published cadence,
+        // so nothing held from before the attempt is answered after it.
+        let result =
+            crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options)
+                .map(|(_, result)| result);
+        if result.is_err() {
+            self.cache.invalidate();
         }
+        result
     }
 
+    /// Encode the prepared rows as the whole stream and record what was
+    /// written - its schema, the rows encoded - as the cache entry, where the
+    /// cache keeps: an append or a merge rewrites the stream through here, so
+    /// the rows counted are every row it now holds.
     fn overwrite_prepared_serie(
         &mut self,
         value: crate::StreamChunkedSerie,
         options: &RecordOptions,
     ) -> crate::Result<()> {
         let batches = value.into_arrow_reader();
-        self.require_record_options(options)?;
-        let opened = self.opened;
-        let published = if opened {
-            Some(field_from_arrow_schema(
-                options.name(),
-                batches.schema().as_ref(),
-            )?)
-        } else {
-            None
-        };
-        match crate::iobase::leaf_writer(self, batches, options) {
-            Ok(()) => {
-                self.invalidate_cached_metadata();
-                if let Some(published) = published {
-                    let _ = self.cached_schema.set(published);
-                }
+        let ipc = self.require_record_options(options)?;
+        let origin = field_from_arrow_schema(options.name(), batches.schema().as_ref())?;
+        match overwrite_counted(self, batches, ipc) {
+            Ok(rows) => {
+                let entry = Entry {
+                    columns: Some(origin.field_len()),
+                    origin: Some(origin),
+                    rows: Some(rows),
+                    state: None,
+                };
+                self.record(ipc.cache_ttl, entry);
                 Ok(())
             }
             Err(error) => {
-                self.invalidate_cached_metadata();
-                Err(error)
+                self.cache.invalidate();
+                Err(error.into())
             }
         }
     }
@@ -1049,7 +1144,11 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         let options = options.as_ref();
         let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
-        crate::iobase::append_arrow_reader_default(self, batches, options)
+        let result = crate::iobase::append_arrow_reader_default(self, batches, options);
+        if result.is_err() {
+            self.cache.invalidate();
+        }
+        result
     }
 
     fn merge_serie(
@@ -1061,33 +1160,37 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         let options = options.as_ref();
         let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_record_options(options)?;
-        crate::iobase::merge_arrow_reader_default(self, batches, options)
+        let result = crate::iobase::merge_arrow_reader_default(self, batches, options);
+        if result.is_err() {
+            self.cache.invalidate();
+        }
+        result
     }
 }
 
 impl<H: IOBase> IOBase for Ipc<H> {
     crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, read_tail_bytes,
         pstream_bytes,
-        size, capacity, reserve, uri, url,
+        size, set_known_size, capacity, reserve, uri, url,
         bound_location, mtime, media_type, applied_codec, flush, parent, child_by_path, ls, kind, is_container);
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {
-        self.invalidate_cached_metadata();
+        self.cache.invalidate();
         self.handle.pwrite(offset, bytes)
     }
 
     fn truncate(&mut self, size: u64) -> crate::Result<()> {
-        self.invalidate_cached_metadata();
+        self.cache.invalidate();
         self.handle.truncate(size)
     }
 
     fn create_bytes(&mut self, bytes: &[u8]) -> crate::Result<()> {
-        self.invalidate_cached_metadata();
+        self.cache.invalidate();
         self.handle.create_bytes(bytes)
     }
 
     fn set_media_type(&mut self, media_type: crate::MediaType) {
-        self.invalidate_cached_metadata();
+        self.cache.invalidate();
         self.handle.set_media_type(media_type);
     }
 
@@ -1103,55 +1206,70 @@ impl<H: IOBase> IOBase for Ipc<H> {
         false
     }
 
-    /// Materialize the handle and cache the stream's schema.
+    /// Materialize the handle and hold the stream's schema and dimensions,
+    /// read in one metadata pass, until [`close`](IOBase::close).
     ///
-    /// Repeated reads then reuse the cached schema instead of re-deriving it.
-    /// Opening an empty or missing stream succeeds and caches zero dimensions.
+    /// Opening an empty or missing stream succeeds and holds zero dimensions.
     fn open(&mut self) -> crate::Result<()> {
-        if self.opened {
+        if self.cache.is_open() {
             return Ok(());
         }
         self.handle.open()?;
-        self.invalidate_cached_metadata();
+        self.cache.open();
         // A container's leaves answer for it on every ask, so its session
-        // caches nothing one leaf's metadata would answer.
+        // holds nothing one leaf's metadata would answer.
         if !self.handle.is_container() {
-            let (field, rows, columns) = self.fresh_metadata()?;
-            self.cache_metadata(field, rows, columns);
+            match self.read_entry() {
+                Ok(entry) => self.cache.fill(crate::media::cache::now(), entry),
+                Err(error) => {
+                    // A session that could not read what it holds is not open.
+                    self.cache.close();
+                    return Err(error);
+                }
+            }
         }
-        self.opened = true;
         Ok(())
     }
 
-    /// Return whether a schema is currently cached.
+    /// Return whether the session is open.
     fn opened(&self) -> bool {
-        self.opened
+        self.cache.is_open()
     }
 
-    /// Flush the handle and drop the cached schema.
+    /// Flush the handle and drop the held metadata with the session.
     fn close(&mut self) -> crate::Result<()> {
-        self.invalidate_cached_metadata();
-        self.opened = false;
+        self.cache.close();
         self.handle.close()
     }
 
-    /// Empty the encoded resource and drop the cached schema with it.
+    /// Empty the encoded resource; the cache then holds what an empty stream
+    /// states - no schema, no row, no column - where it keeps.
     ///
-    /// Invalidation is part of the call, not deferred to the next `open`: a
-    /// cached schema describing bytes that are gone is a stale answer, and a
-    /// stale answer after an emptying is a bug.
+    /// The held metadata goes with the bytes, not at the next `open`: a
+    /// schema describing bytes that are gone is a stale answer, and a stale
+    /// answer after an emptying is a bug.
     fn clear(&mut self) -> crate::Result<()> {
-        self.invalidate_cached_metadata();
-        self.handle.clear()
+        self.cache.invalidate();
+        self.handle.clear()?;
+        // A container caches nothing: its leaves answer for it on every ask.
+        if self.cache.keeps(self.options.cache_ttl) && !self.handle.is_container() {
+            self.cache.update(crate::media::cache::now(), |entry| {
+                entry.origin = None;
+                entry.rows = Some(0);
+                entry.columns = Some(0);
+                entry.state = None;
+            });
+        }
+        Ok(())
     }
 
-    /// Delete the encoded resource, and every cached schema it filled.
+    /// Delete the encoded resource, and end the session with every answer it
+    /// held.
     ///
     /// A media handle removes what it wraps, not merely its own view: the
-    /// resource behind the handle goes, and the schema cache goes with it.
+    /// resource behind the handle goes, and the metadata cache goes with it.
     fn remove(&mut self, recursive: bool) -> crate::Result<()> {
-        self.invalidate_cached_metadata();
-        self.opened = false;
+        self.cache.close();
         self.handle.remove(recursive)
     }
 }
@@ -1162,10 +1280,10 @@ pub mod internals {
     //! What `rust/tests/ipc/mod_.rs` pins and a caller cannot reach.
     //!
     //! The handle a stream wraps is private, and every public door to it
-    //! invalidates the schema cache on the way through. Telling a closed
-    //! stream's fresh read from an open one's retained answer needs the bytes
-    //! to change *without* that invalidation, which models a second storage
-    //! client - so this forwards the field itself, and changes no visibility.
+    //! invalidates the metadata cache on the way through. Telling a fresh
+    //! read from a retained answer needs the bytes to change *without* that
+    //! invalidation, which models a second storage client - so this forwards
+    //! the field itself, and changes no visibility.
 
     use super::Ipc;
     use crate::IOBase;
@@ -1176,4 +1294,10 @@ pub mod internals {
     }
 }
 
-crate::media_serie::media_serie!(IpcSerie, Ipc, as_ipc, get_ipc_mut);
+crate::media_serie::media_serie!(
+    IpcSerie,
+    Ipc,
+    as_ipc,
+    get_ipc_mut,
+    accepts = Some(&IPC_TYPES)
+);

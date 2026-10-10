@@ -3,7 +3,6 @@ use std::str::FromStr;
 
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use smol_str::format_smolstr;
 
 use crate::DataTypeKind;
 use crate::{Error, Result};
@@ -26,248 +25,232 @@ use crate::{Error, Result};
 /// [`Self::from_u8`] reads it back.
 ///
 /// Use [`DataTypeKind`] through [`Self::kind`] when only the family matters.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[non_exhaustive]
-#[repr(u8)]
-pub enum DataTypeId {
+#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct DataTypeId(u8);
+
+#[allow(non_upper_case_globals)]
+impl DataTypeId {
     // Null: 0x00..0x07
     /// Null values.
-    Null = 0x00,
+    pub const Null: Self = Self(0x00);
     // Boolean: 0x08..0x0f
     /// Boolean values.
-    Boolean = 0x09,
+    pub const Boolean: Self = Self(0x09);
     // Integer: 0x10..0x1f
     /// Signed 8-bit integers.
-    Int8 = 0x11,
+    pub const Int8: Self = Self(0x11);
     /// Signed 16-bit integers.
-    Int16 = 0x12,
+    pub const Int16: Self = Self(0x12);
     /// Signed 32-bit integers.
-    Int32 = 0x13,
+    pub const Int32: Self = Self(0x13);
     /// Signed 64-bit integers.
-    Int64 = 0x14,
+    pub const Int64: Self = Self(0x14);
     /// Signed 128-bit integers.
     ///
     /// Arrow has no 128-bit integer layout, so no [`crate::DataType`] answers
     /// this identifier. It names the width [`crate::integer::Int128`] stores and
     /// the canonical identity a negative integer of any width carries into
     /// [`crate::Scalar::write_bytes`].
-    Int128 = 0x15,
+    pub const Int128: Self = Self(0x15);
     /// Unsigned 8-bit integers.
-    UInt8 = 0x19,
+    pub const UInt8: Self = Self(0x19);
     /// Unsigned 16-bit integers.
-    UInt16 = 0x1a,
+    pub const UInt16: Self = Self(0x1a);
     /// Unsigned 32-bit integers.
-    UInt32 = 0x1b,
+    pub const UInt32: Self = Self(0x1b);
     /// Unsigned 64-bit integers.
-    UInt64 = 0x1c,
+    pub const UInt64: Self = Self(0x1c);
     /// Unsigned 128-bit integers.
     ///
     /// The unsigned half of the pair [`Self::Int128`] documents.
-    UInt128 = 0x1d,
+    pub const UInt128: Self = Self(0x1d);
     // Floating: 0x20..0x27
     /// IEEE 16-bit floating point.
-    Float16 = 0x21,
+    pub const Float16: Self = Self(0x21);
     /// IEEE 32-bit floating point.
-    Float32 = 0x22,
+    pub const Float32: Self = Self(0x22);
     /// IEEE 64-bit floating point.
-    Float64 = 0x23,
+    pub const Float64: Self = Self(0x23);
     // Decimal: 0x28..0x2f
     /// Exact decimal backed by 32 bits.
-    Decimal32 = 0x29,
+    pub const Decimal32: Self = Self(0x29);
     /// Exact decimal backed by 64 bits.
-    Decimal64 = 0x2a,
+    pub const Decimal64: Self = Self(0x2a);
     /// Exact decimal backed by 128 bits.
-    Decimal128 = 0x2b,
+    pub const Decimal128: Self = Self(0x2b);
     /// Exact decimal backed by 256 bits.
-    Decimal256 = 0x2c,
+    pub const Decimal256: Self = Self(0x2c);
     /// The fixed `decimal128(38, 18)` leaf: eighteen fractional digits, always.
-    Decimal = 0x2d,
+    pub const Decimal: Self = Self(0x2d);
     /// The fixed `decimal256(76, 18)` leaf: the wide twin of `decimal`.
-    BigDecimal = 0x2e,
+    pub const BigDecimal: Self = Self(0x2e);
     // Temporal: 0x30..0x3f
     /// A 64-bit datetime with a resolution and explicit timezone marker.
-    DateTime64 = 0x31,
+    pub const DateTime64: Self = Self(0x31);
     /// Days since the Unix epoch.
-    Date32 = 0x32,
+    pub const Date32: Self = Self(0x32);
     /// Milliseconds since the Unix epoch representing whole days.
-    Date64 = 0x33,
+    pub const Date64: Self = Self(0x33);
     /// 32-bit time of day.
-    Time32 = 0x34,
+    pub const Time32: Self = Self(0x34);
     /// 64-bit time of day.
-    Time64 = 0x35,
+    pub const Time64: Self = Self(0x35);
     /// 32-bit elapsed time.
-    Duration32 = 0x36,
+    pub const Duration32: Self = Self(0x36);
     /// 64-bit elapsed time.
-    Duration64 = 0x37,
+    pub const Duration64: Self = Self(0x37);
     /// Calendar interval.
-    Interval = 0x38,
+    pub const Interval: Self = Self(0x38);
     // Bytes: 0x40..0x4f
     /// Bytes with 32-bit offsets, under any bound.
-    Binary = 0x41,
+    pub const Binary: Self = Self(0x41);
     /// Bytes with 64-bit offsets.
-    LargeBinary = 0x42,
+    pub const LargeBinary: Self = Self(0x42);
     /// Bytes in the view layout.
-    BinaryView = 0x43,
+    pub const BinaryView: Self = Self(0x43);
     /// The viewed byte layout over 64-bit offsets.
-    LargeBinaryView = 0x44,
+    pub const LargeBinaryView: Self = Self(0x44);
     /// Bytes of one fixed width.
-    FixedBinary = 0x45,
+    pub const FixedBinary: Self = Self(0x45);
     /// Bytes under a declared maximum.
-    SizedBinary = 0x46,
+    pub const SizedBinary: Self = Self(0x46);
     // Text: 0x50..0x69
     /// Any length of UTF-8 with 32-bit offsets.
-    Utf8String = 0x51,
+    pub const Utf8String: Self = Self(0x51);
     /// UTF-8 with 64-bit offsets.
-    LargeUtf8String = 0x52,
+    pub const LargeUtf8String: Self = Self(0x52);
     /// UTF-8 in the view layout.
-    Utf8StringView = 0x53,
+    pub const Utf8StringView: Self = Self(0x53);
     /// UTF-8 in the view layout, declared large.
-    LargeUtf8StringView = 0x54,
+    pub const LargeUtf8StringView: Self = Self(0x54);
     /// UTF-8 of one fixed, padded byte width.
-    FixedUtf8String = 0x55,
+    pub const FixedUtf8String: Self = Self(0x55);
     /// UTF-8 under a declared maximum.
-    SizedUtf8String = 0x56,
+    pub const SizedUtf8String: Self = Self(0x56);
     /// Any length of US-ASCII with 32-bit offsets.
-    AsciiString = 0x57,
+    pub const AsciiString: Self = Self(0x57);
     /// US-ASCII with 64-bit offsets.
-    LargeAsciiString = 0x58,
+    pub const LargeAsciiString: Self = Self(0x58);
     /// US-ASCII in the view layout.
-    AsciiStringView = 0x59,
+    pub const AsciiStringView: Self = Self(0x59);
     /// US-ASCII in the view layout, declared large.
-    LargeAsciiStringView = 0x5a,
+    pub const LargeAsciiStringView: Self = Self(0x5a);
     /// US-ASCII of one fixed, padded byte width.
-    FixedAsciiString = 0x5b,
+    pub const FixedAsciiString: Self = Self(0x5b);
     /// US-ASCII under a declared maximum.
-    SizedAsciiString = 0x5c,
+    pub const SizedAsciiString: Self = Self(0x5c);
     /// Any length of windows-1252 with 32-bit offsets.
-    Cp1252String = 0x5d,
+    pub const Cp1252String: Self = Self(0x5d);
     /// Windows-1252 with 64-bit offsets.
-    LargeCp1252String = 0x5e,
+    pub const LargeCp1252String: Self = Self(0x5e);
     /// Windows-1252 in the view layout.
-    Cp1252StringView = 0x5f,
+    pub const Cp1252StringView: Self = Self(0x5f);
     /// Windows-1252 in the view layout, declared large.
-    LargeCp1252StringView = 0x60,
+    pub const LargeCp1252StringView: Self = Self(0x60);
     /// Windows-1252 of one fixed, padded byte width.
-    FixedCp1252String = 0x61,
+    pub const FixedCp1252String: Self = Self(0x61);
     /// Windows-1252 under a declared maximum.
-    SizedCp1252String = 0x62,
+    pub const SizedCp1252String: Self = Self(0x62);
     /// A canonical software or protocol version - a sixteen-bit major and
     /// minor and an optional text patch - ordered by its numbers, not its text.
-    Version = 0x63,
+    pub const Version: Self = Self(0x63);
     /// A validated, canonical location.
-    Url = 0x64,
+    pub const Url: Self = Self(0x64);
     /// A validated, canonical resource name.
-    Urn = 0x65,
+    pub const Urn: Self = Self(0x65);
     /// A canonical time zone name, a fixed offset, or the zone-free marker.
-    Timezone = 0x66,
+    pub const Timezone: Self = Self(0x66);
     /// A validated, canonical MIME type.
-    MimeType = 0x67,
+    pub const MimeType: Self = Self(0x67);
     /// A MIME type with its charset and content codings.
-    MediaType = 0x68,
-    // Code: 0x6a..0x7f. The family opened at 0x70 and took the text range's
-    // tail, 0x6a..0x6f, which no leaf ever held, when its own bytes ran out;
-    // no leaf moved.
+    pub const MediaType: Self = Self(0x68);
+    // Code: 0x6a..0x7f, the registered codes - the core's own, flat variants
+    // of every root enum; 0x70 is spare and 0x75..=0x77 retired.
     /// ISO 17442: a legal entity identifier, twenty ASCII bytes closed by
     /// two ISO 7064 MOD 97-10 check digits.
-    Lei = 0x6b,
+    pub const Lei: Self = Self(0x6b);
     /// ISO 9362: a business identifier code, eight or eleven ASCII bytes.
-    Bic = 0x6c,
+    pub const Bic: Self = Self(0x6c);
     /// ISO 20275: an entity legal form code, four ASCII bytes.
-    Elf = 0x6d,
+    pub const Elf: Self = Self(0x6d);
     /// ISO 24165: a digital token identifier, nine ASCII bytes closed by an
     /// ISO 7064 MOD 31,30 check character.
-    Dti = 0x6e,
+    pub const Dti: Self = Self(0x6e);
     /// ISO 18774: a financial instrument short name, an issuer and an
     /// instrument description, at most thirty-five ASCII bytes.
-    Fisn = 0x6f,
+    pub const Fisn: Self = Self(0x6f);
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
-    Country = 0x71,
+    pub const Country: Self = Self(0x71);
     /// A currency code: ISO 4217's three letters or a digital-asset ticker,
     /// at most eight ASCII bytes.
-    Ccy = 0x72,
+    pub const Ccy: Self = Self(0x72);
     /// ISO 10383: a market identifier code, four ASCII bytes.
-    Mic = 0x73,
+    pub const Mic: Self = Self(0x73);
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
-    Cfi = 0x74,
-    // 0x75 was `side`, 0x76 `state` and 0x77 `timeinforce` while each was a
-    // code; each is an enum leaf now, at 0xc3, 0xc1 and 0xc5, and a retired
-    // number is never reused.
+    pub const Cfi: Self = Self(0x74);
     /// ISO 6166: a securities identification number, twelve ASCII bytes.
-    Isin = 0x78,
+    pub const Isin: Self = Self(0x78);
     /// CUSIP: a North American securities identifier, nine ASCII bytes.
-    Cusip = 0x79,
+    pub const Cusip: Self = Self(0x79);
     /// SEDOL: a London Stock Exchange securities identifier, seven ASCII
     /// bytes.
-    Sedol = 0x7a,
+    pub const Sedol: Self = Self(0x7a);
     /// A Bloomberg identifier: ticker, market and yellow key, up to thirty-two
     /// ASCII bytes.
-    Bbg = 0x7b,
+    pub const Bbg: Self = Self(0x7b);
     /// ANSI X9.145 Financial Instrument Global Identifier, twelve ASCII bytes.
-    Figi = 0x7c,
+    pub const Figi: Self = Self(0x7c);
     /// The unit a quantity is stated in - FIX's `UnitOfMeasure(996)` - up to
     /// thirty-two ASCII bytes.
-    Unit = 0x7d,
+    pub const Unit: Self = Self(0x7d);
     /// A Refinitiv Identification Code: a ticker and an exchange mnemonic,
     /// up to thirty-two ASCII bytes.
-    Ric = 0x7e,
+    pub const Ric: Self = Self(0x7e);
     /// ISO 4217 currency pair: `CCY/CCY`, seven ASCII bytes.
-    Forex = 0x7f,
+    pub const Forex: Self = Self(0x7f);
     // Uuid: 0x80..0x8f
     /// One 128-bit universally unique identifier.
-    Uuid = 0x81,
+    pub const Uuid: Self = Self(0x81);
     // Nested: 0x90..0xaf
     /// A serie of items behind 32-bit offsets.
-    Serie = 0x91,
+    pub const Serie: Self = Self(0x91);
     /// A serie of items behind 64-bit offsets.
-    LargeSerie = 0x92,
+    pub const LargeSerie: Self = Self(0x92);
     /// A serie of items behind 32-bit offsets and sizes.
-    SerieView = 0x93,
+    pub const SerieView: Self = Self(0x93);
     /// A serie of items behind 64-bit offsets and sizes.
-    LargeSerieView = 0x94,
+    pub const LargeSerieView: Self = Self(0x94);
     /// A serie of exactly one length of items.
-    FixedSizeSerie = 0x95,
+    pub const FixedSizeSerie: Self = Self(0x95);
     /// Ordered struct fields.
-    Struct = 0x96,
+    pub const Struct: Self = Self(0x96);
     /// Arrow map entries.
-    Map = 0x97,
+    pub const Map: Self = Self(0x97);
     /// Arrow map entries whose keys are ordered within each row.
-    SortedMap = 0x98,
+    pub const SortedMap: Self = Self(0x98);
     /// Tagged union fields.
-    Union = 0x99,
+    pub const Union: Self = Self(0x99);
     /// Dictionary-encoded values.
-    Dictionary = 0x9a,
+    pub const Dictionary: Self = Self(0x9a);
     /// Run-end encoded values.
-    RunEndEncoded = 0x9b,
+    pub const RunEndEncoded: Self = Self(0x9b);
     /// Self-describing semi-structured values.
-    Variant = 0x9c,
+    pub const Variant: Self = Self(0x9c);
     // Geospatial: 0xb0..0xbf
     /// Geospatial features on a planar coordinate system.
-    Geometry = 0xb1,
+    pub const Geometry: Self = Self(0xb1);
     /// Geospatial features on the surface of a sphere or spheroid.
-    Geography = 0xb2,
+    pub const Geography: Self = Self(0xb2);
     // Enum: 0xc0..0xcf
     /// What state one thing is in: a lifecycle-sorted enum, stored as the
     /// `uint16` code of its member.
-    State = 0xc1,
-    /// What kind of market data an element is: FIX's MsgCat code set, stored
-    /// as the `uint8` code of its member.
-    MarketDataKind = 0xc2,
-    /// FIX's side of a trade, stored as the `uint8` code of its member.
-    Side = 0xc3,
-    /// What type of its kind a market element is - an order, quote, trade
-    /// or book entry type - stored as the `uint16` code of its member.
-    MarketDataType = 0xc4,
-    /// How long an order stands: FIX's `TimeInForce(59)` code set, stored
-    /// as the `uint8` code of its member.
-    TimeInForce = 0xc5,
-    /// The role of a FIX plugin - Buy-Side, Sell-Side or none stated -
-    /// stored as the `uint8` code of its member.
-    PluginSide = 0xc6,
-}
+    pub const State: Self = Self(0xc1);
 
-impl DataTypeId {
-    /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 97] = [
+    /// Every identifier of the core's own datatypes, in canonical
+    /// declaration order - the seventeen registered codes among them, after
+    /// the text family - what [`Self::all`] opens with before the
+    /// registered kinds are spliced in after the core's own enum.
+    pub const ALL: [Self; 92] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -360,12 +343,182 @@ impl DataTypeId {
         Self::Geometry,
         Self::Geography,
         Self::State,
-        Self::MarketDataKind,
-        Self::Side,
-        Self::MarketDataType,
-        Self::TimeInForce,
-        Self::PluginSide,
     ];
+
+    /// The identifier a registered kind states: `byte` in the Enum family's
+    /// range, which is what a claim may take.
+    ///
+    /// Refused at compile time outside that range, so a kind's `const ID`
+    /// is never a byte another family owns; whether the byte is free is the
+    /// register's question, asked at the claim.
+    ///
+    /// ```
+    /// use yggdryl::{DataTypeId, DataTypeKind};
+    ///
+    /// let id = DataTypeId::market(0xc7);
+    /// assert_eq!(id.as_u8(), 0xc7);
+    /// assert_eq!(id.kind(), DataTypeKind::Enum);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// For a byte outside `0xc0..=0xcf`: at compile time where a kind's
+    /// `const ID` states it, at run time where a caller computes one.
+    #[must_use]
+    pub const fn market(byte: u8) -> Self {
+        assert!(
+            byte >= DataTypeKind::Enum.id() && byte <= DataTypeKind::Enum.last(),
+            "a registered kind's byte sits in the enum family's range"
+        );
+        Self(byte)
+    }
+
+    /// Every identifier a value can carry, in the canonical order: the
+    /// core's own ([`Self::ALL`]) with every registered kind spliced in
+    /// after the core's own enum, in byte order. What a binding lists its
+    /// datatype names from.
+    #[must_use]
+    pub fn all() -> Vec<Self> {
+        let claimed = crate::market::kinds();
+        let mut all = Vec::with_capacity(Self::ALL.len() + claimed.len());
+        for id in Self::ALL {
+            all.push(id);
+            if id.kind() == DataTypeKind::Enum {
+                all.extend(claimed.iter().map(|kind| kind.id));
+            }
+        }
+        all
+    }
+
+    /// The canonical lowercase name of a core identifier, `None` for a
+    /// byte the core does not own: a registered kind's name is the kind's,
+    /// which [`Self::as_str`] reads off the register.
+    #[must_use]
+    pub const fn core_name(self) -> Option<&'static str> {
+        match self {
+            Self::Null => Some("null"),
+            Self::Boolean => Some("boolean"),
+            Self::Int8 => Some("int8"),
+            Self::Int16 => Some("int16"),
+            Self::Int32 => Some("int32"),
+            Self::Int64 => Some("int64"),
+            Self::Int128 => Some("int128"),
+            Self::UInt8 => Some("uint8"),
+            Self::UInt16 => Some("uint16"),
+            Self::UInt32 => Some("uint32"),
+            Self::UInt64 => Some("uint64"),
+            Self::UInt128 => Some("uint128"),
+            Self::Float16 => Some("float16"),
+            Self::Float32 => Some("float32"),
+            Self::Float64 => Some("float64"),
+            Self::Decimal32 => Some("decimal32"),
+            Self::Decimal64 => Some("decimal64"),
+            Self::Decimal128 => Some("decimal128"),
+            Self::Decimal256 => Some("decimal256"),
+            Self::Decimal => Some("decimal"),
+            Self::BigDecimal => Some("bigdecimal"),
+            Self::DateTime64 => Some("datetime64"),
+            Self::Date32 => Some("date32"),
+            Self::Date64 => Some("date64"),
+            Self::Time32 => Some("time32"),
+            Self::Time64 => Some("time64"),
+            Self::Duration32 => Some("duration32"),
+            Self::Duration64 => Some("duration64"),
+            Self::Interval => Some("interval"),
+            Self::Binary => Some("binary"),
+            Self::LargeBinary => Some("large_binary"),
+            Self::BinaryView => Some("binary_view"),
+            Self::LargeBinaryView => Some("large_binary_view"),
+            Self::FixedBinary => Some("fixed_binary"),
+            Self::SizedBinary => Some("sized_binary"),
+            Self::Utf8String => Some("utf8"),
+            Self::LargeUtf8String => Some("large_utf8"),
+            Self::Utf8StringView => Some("utf8_view"),
+            Self::LargeUtf8StringView => Some("large_utf8_view"),
+            Self::FixedUtf8String => Some("fixed_utf8"),
+            Self::SizedUtf8String => Some("sized_utf8"),
+            Self::AsciiString => Some("ascii"),
+            Self::LargeAsciiString => Some("large_ascii"),
+            Self::AsciiStringView => Some("ascii_view"),
+            Self::LargeAsciiStringView => Some("large_ascii_view"),
+            Self::FixedAsciiString => Some("fixed_ascii"),
+            Self::SizedAsciiString => Some("sized_ascii"),
+            Self::Cp1252String => Some("cp1252"),
+            Self::LargeCp1252String => Some("large_cp1252"),
+            Self::Cp1252StringView => Some("cp1252_view"),
+            Self::LargeCp1252StringView => Some("large_cp1252_view"),
+            Self::FixedCp1252String => Some("fixed_cp1252"),
+            Self::SizedCp1252String => Some("sized_cp1252"),
+            Self::Version => Some("version"),
+            Self::Url => Some("url"),
+            Self::Urn => Some("urn"),
+            Self::Timezone => Some("timezone"),
+            Self::MimeType => Some("mimetype"),
+            Self::MediaType => Some("mediatype"),
+            Self::Lei => Some("lei"),
+            Self::Bic => Some("bic"),
+            Self::Elf => Some("elf"),
+            Self::Dti => Some("dti"),
+            Self::Fisn => Some("fisn"),
+            Self::Country => Some("country"),
+            Self::Ccy => Some("ccy"),
+            Self::Mic => Some("mic"),
+            Self::Cfi => Some("cfi"),
+            Self::Isin => Some("isin"),
+            Self::Cusip => Some("cusip"),
+            Self::Sedol => Some("sedol"),
+            Self::Bbg => Some("bbg"),
+            Self::Figi => Some("figi"),
+            Self::Unit => Some("unit"),
+            Self::Ric => Some("ric"),
+            Self::Forex => Some("forex"),
+            Self::Uuid => Some("uuid"),
+            Self::Serie => Some("serie"),
+            Self::LargeSerie => Some("large_serie"),
+            Self::SerieView => Some("serie_view"),
+            Self::LargeSerieView => Some("large_serie_view"),
+            Self::FixedSizeSerie => Some("fixed_size_serie"),
+            Self::Struct => Some("struct"),
+            Self::Map => Some("map"),
+            Self::SortedMap => Some("sorted_map"),
+            Self::Union => Some("union"),
+            Self::Dictionary => Some("dictionary"),
+            Self::RunEndEncoded => Some("run_end_encoded"),
+            Self::Variant => Some("variant"),
+            Self::Geometry => Some("geometry"),
+            Self::Geography => Some("geography"),
+            Self::State => Some("state"),
+            _ => None,
+        }
+    }
+
+    /// Whether this is one of the core's own identifiers.
+    #[must_use]
+    pub const fn is_core(self) -> bool {
+        self.core_name().is_some()
+    }
+
+    /// The canonical name of a core identifier, in a `const` context: what
+    /// a core datatype's marker and family name read at compile time.
+    ///
+    /// # Panics
+    ///
+    /// At compile time for a byte the core does not own: a registered
+    /// kind's name is read at run time through [`Self::as_str`].
+    #[must_use]
+    pub(crate) const fn core_str(self) -> &'static str {
+        match self.core_name() {
+            Some(name) => name,
+            None => panic!("a registered kind's name is read at run time"),
+        }
+    }
+
+    /// Whether this identifier is a registered kind's: a byte the core does
+    /// not own that a claim holds.
+    #[must_use]
+    pub fn is_registered(self) -> bool {
+        !self.is_core() && crate::market::kind_of(self).is_some()
+    }
 
     /// Parse a canonical lowercase datatype name.
     ///
@@ -381,106 +534,14 @@ impl DataTypeId {
         <Self as FromStr>::from_str(value)
     }
 
-    /// Return the canonical lowercase name without allocating.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Null => "null",
-            Self::Boolean => "boolean",
-            Self::Int8 => "int8",
-            Self::Int16 => "int16",
-            Self::Int32 => "int32",
-            Self::Int64 => "int64",
-            Self::UInt8 => "uint8",
-            Self::UInt16 => "uint16",
-            Self::UInt32 => "uint32",
-            Self::UInt64 => "uint64",
-            Self::Int128 => "int128",
-            Self::UInt128 => "uint128",
-            Self::Float16 => "float16",
-            Self::Float32 => "float32",
-            Self::Float64 => "float64",
-            Self::DateTime64 => "datetime64",
-            Self::Date32 => "date32",
-            Self::Date64 => "date64",
-            Self::Time32 => "time32",
-            Self::Time64 => "time64",
-            Self::Duration32 => "duration32",
-            Self::Duration64 => "duration64",
-            Self::Interval => "interval",
-            Self::Binary => "binary",
-            Self::FixedBinary => "fixed_binary",
-            Self::LargeBinary => "large_binary",
-            Self::BinaryView => "binary_view",
-            Self::Country => "country",
-            Self::Ccy => "ccy",
-            Self::Mic => "mic",
-            Self::Cfi => "cfi",
-            Self::Isin => "isin",
-            Self::Cusip => "cusip",
-            Self::Sedol => "sedol",
-            Self::Bbg => "bbg",
-            Self::Ric => "ric",
-            Self::Forex => "forex",
-            Self::Lei => "lei",
-            Self::Bic => "bic",
-            Self::Elf => "elf",
-            Self::Dti => "dti",
-            Self::Fisn => "fisn",
-            Self::Figi => "figi",
-            Self::Side => "side",
-            Self::State => "state",
-            Self::MarketDataKind => "marketdatakind",
-            Self::MarketDataType => "marketdatatype",
-            Self::TimeInForce => "timeinforce",
-            Self::PluginSide => "pluginside",
-            Self::Unit => "unit",
-            Self::Uuid => "uuid",
-            Self::LargeBinaryView => "large_binary_view",
-            Self::SizedBinary => "sized_binary",
-            Self::Serie => "serie",
-            Self::SerieView => "serie_view",
-            Self::FixedSizeSerie => "fixed_size_serie",
-            Self::LargeSerie => "large_serie",
-            Self::LargeSerieView => "large_serie_view",
-            Self::Struct => "struct",
-            Self::Union => "union",
-            Self::Dictionary => "dictionary",
-            Self::Decimal32 => "decimal32",
-            Self::Decimal64 => "decimal64",
-            Self::Decimal128 => "decimal128",
-            Self::Decimal256 => "decimal256",
-            Self::Decimal => "decimal",
-            Self::BigDecimal => "bigdecimal",
-            Self::Map => "map",
-            Self::SortedMap => "sorted_map",
-            Self::RunEndEncoded => "run_end_encoded",
-            Self::Variant => "variant",
-            Self::Geometry => "geometry",
-            Self::Geography => "geography",
-            Self::Version => "version",
-            Self::Url => "url",
-            Self::Urn => "urn",
-            Self::Timezone => "timezone",
-            Self::MimeType => "mimetype",
-            Self::MediaType => "mediatype",
-            Self::Utf8String => "utf8",
-            Self::FixedUtf8String => "fixed_utf8",
-            Self::Utf8StringView => "utf8_view",
-            Self::LargeUtf8String => "large_utf8",
-            Self::LargeUtf8StringView => "large_utf8_view",
-            Self::SizedUtf8String => "sized_utf8",
-            Self::AsciiString => "ascii",
-            Self::LargeAsciiString => "large_ascii",
-            Self::AsciiStringView => "ascii_view",
-            Self::LargeAsciiStringView => "large_ascii_view",
-            Self::FixedAsciiString => "fixed_ascii",
-            Self::SizedAsciiString => "sized_ascii",
-            Self::Cp1252String => "cp1252",
-            Self::LargeCp1252String => "large_cp1252",
-            Self::Cp1252StringView => "cp1252_view",
-            Self::LargeCp1252StringView => "large_cp1252_view",
-            Self::FixedCp1252String => "fixed_cp1252",
-            Self::SizedCp1252String => "sized_cp1252",
+    /// Return the canonical lowercase name without allocating: a core
+    /// identifier's own, a registered kind's, and `unregistered` for a byte
+    /// no claim holds, which no door hands out.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self.core_name() {
+            Some(name) => name,
+            None => crate::market::kind_of(self).map_or("unregistered", |kind| kind.name),
         }
     }
 
@@ -506,14 +567,17 @@ impl DataTypeId {
     /// assert_eq!(DataTypeId::from_u8(0x10), None, "a family's own number names no leaf");
     /// ```
     pub const fn as_u8(self) -> u8 {
-        self as u8
+        self.0
     }
 
     /// The identifier one byte names, or nothing for a byte no variant
     /// states: a family's own number, a placeholder in a family's range, or
     /// a byte past every family.
-    pub const fn from_u8(byte: u8) -> Option<Self> {
-        FROM_U8[byte as usize]
+    pub fn from_u8(byte: u8) -> Option<Self> {
+        match FROM_U8[byte as usize] {
+            Some(id) => Some(id),
+            None => crate::market::kind_of(Self(byte)).map(|kind| kind.id),
+        }
     }
 
     /// Return the coarse family this identifier belongs to: the family whose
@@ -562,7 +626,18 @@ impl DataTypeId {
     /// assert_eq!(DataTypeId::FixedAsciiString.arrow_extension_name(), Some("yggdryl.string"));
     /// assert_eq!(DataTypeId::Utf8String.arrow_extension_name(), None);
     /// ```
-    pub const fn arrow_extension_name(self) -> Option<&'static str> {
+    pub fn arrow_extension_name(self) -> Option<&'static str> {
+        if self.is_core() {
+            return self.core_arrow_extension_name();
+        }
+        crate::market::kind_of(self).map(|kind| kind.extension_name)
+    }
+
+    /// The Arrow extension name of a core identifier, in a `const`
+    /// context; `None` for one Arrow states alone and for every byte the
+    /// core does not own, whose name is the kind's.
+    #[must_use]
+    pub(crate) const fn core_arrow_extension_name(self) -> Option<&'static str> {
         Some(match self {
             Self::Uuid => crate::UUID_EXTENSION_NAME,
             Self::Variant => crate::VARIANT_EXTENSION_NAME,
@@ -595,12 +670,11 @@ impl DataTypeId {
             Self::Timezone => crate::TIMEZONE_EXTENSION_NAME,
             Self::MimeType => crate::MIMETYPE_EXTENSION_NAME,
             Self::MediaType => crate::MEDIATYPE_EXTENSION_NAME,
-            Self::State => crate::STATE_EXTENSION_NAME,
-            Self::MarketDataKind => crate::MARKETDATAKIND_EXTENSION_NAME,
-            Self::MarketDataType => crate::MARKETDATATYPE_EXTENSION_NAME,
-            Self::Side => crate::SIDE_EXTENSION_NAME,
-            Self::TimeInForce => crate::TIMEINFORCE_EXTENSION_NAME,
-            Self::PluginSide => crate::PLUGINSIDE_EXTENSION_NAME,
+            Self::Lei => crate::LEI_EXTENSION_NAME,
+            Self::Bic => crate::BIC_EXTENSION_NAME,
+            Self::Elf => crate::ELF_EXTENSION_NAME,
+            Self::Dti => crate::DTI_EXTENSION_NAME,
+            Self::Fisn => crate::FISN_EXTENSION_NAME,
             Self::Country => crate::COUNTRY_EXTENSION_NAME,
             Self::Ccy => crate::CCY_EXTENSION_NAME,
             Self::Mic => crate::MIC_EXTENSION_NAME,
@@ -608,16 +682,12 @@ impl DataTypeId {
             Self::Isin => crate::ISIN_EXTENSION_NAME,
             Self::Cusip => crate::CUSIP_EXTENSION_NAME,
             Self::Sedol => crate::SEDOL_EXTENSION_NAME,
-            Self::Figi => crate::FIGI_EXTENSION_NAME,
-            Self::Ric => crate::RIC_EXTENSION_NAME,
             Self::Bbg => crate::BBG_EXTENSION_NAME,
+            Self::Figi => crate::FIGI_EXTENSION_NAME,
             Self::Unit => crate::UNIT_EXTENSION_NAME,
+            Self::Ric => crate::RIC_EXTENSION_NAME,
             Self::Forex => crate::FOREX_EXTENSION_NAME,
-            Self::Lei => crate::LEI_EXTENSION_NAME,
-            Self::Bic => crate::BIC_EXTENSION_NAME,
-            Self::Elf => crate::ELF_EXTENSION_NAME,
-            Self::Dti => crate::DTI_EXTENSION_NAME,
-            Self::Fisn => crate::FISN_EXTENSION_NAME,
+            Self::State => crate::State::EXTENSION_NAME,
             _ => return None,
         })
     }
@@ -637,7 +707,7 @@ impl DataTypeId {
         // One name's identifiers are neighbours in `ALL` once the ones naming
         // none are passed, so a repeat is always the name just answered.
         let mut last = None;
-        Self::ALL
+        Self::all()
             .into_iter()
             .filter_map(Self::arrow_extension_name)
             .filter(move |name| last.replace(*name) != Some(*name))
@@ -914,13 +984,25 @@ impl FromStr for DataTypeId {
             .into_iter()
             .find(|id| value.eq_ignore_ascii_case(id.as_str()))
             .or_else(|| Self::from_legacy_name(value))
-            .ok_or_else(|| Error::UnknownDataType(format_smolstr!("{value}")))
+            .or_else(|| {
+                crate::market::kinds()
+                    .into_iter()
+                    .find(|kind| value.eq_ignore_ascii_case(kind.name))
+                    .map(|kind| kind.id)
+            })
+            .ok_or_else(|| crate::market::unregistered(format_args!("{value}")))
     }
 }
 
 impl From<DataTypeId> for DataTypeKind {
     fn from(value: DataTypeId) -> Self {
         value.kind()
+    }
+}
+
+impl fmt::Debug for DataTypeId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
     }
 }
 

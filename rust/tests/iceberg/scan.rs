@@ -74,7 +74,12 @@ mod internal {
         }
 
         fn assert_unsupported(error: Error, kind: &str) {
-            let Error::Iceberg { reason, source } = error else {
+            let Error::External {
+                origin: "Iceberg",
+                reason,
+                source,
+            } = error
+            else {
                 panic!("expected a typed Iceberg unsupported error, got {error}");
             };
             assert!(source.is_none());

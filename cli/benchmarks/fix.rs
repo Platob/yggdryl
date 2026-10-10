@@ -6,7 +6,8 @@ use std::process::Command;
 use std::time::Instant;
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{DataType, FixCategory, FixCode, FixRegistry, StructType};
+use yggdryl::{DataType, StructType};
+use yggdryl_fix::{FixCategory, FixCode, FixFieldMut, FixRegistry};
 
 struct Fixture(PathBuf, PathBuf);
 
@@ -19,13 +20,13 @@ impl Fixture {
         let mut registry = FixRegistry::new();
         for tag in 1..=100 {
             let mut field = DataType::Int32.nullable_field(format!("Field{tag}"));
-            field.as_fix_mut().set_tag(tag)?;
+            FixFieldMut::new(&mut field).set_tag(tag)?;
             if tag == 54 {
                 registry.set_codeset(
                     "sidecodeset",
                     &[FixCode::new("Buy", "1"), FixCode::new("Sell", "2")],
                 )?;
-                field.as_fix_mut().set_codeset("sidecodeset")?;
+                FixFieldMut::new(&mut field).set_codeset("sidecodeset")?;
             }
             registry.create_definition(FixCategory::Fields, field)?;
         }
@@ -35,14 +36,14 @@ impl Fixture {
         .required_field("Party");
         registry.create_definition(FixCategory::Components, party.clone())?;
         let mut group = DataType::serie(party).nullable_field("Parties");
-        group.as_fix_mut().set_counter(1)?;
-        group.as_fix_mut().set_component("Party")?;
+        FixFieldMut::new(&mut group).set_counter(1)?;
+        FixFieldMut::new(&mut group).set_component("Party")?;
         registry.create_definition(FixCategory::Groups, group)?;
         let mut message = DataType::from(StructType::from_fields([
             DataType::utf8().nullable_field("ClOrdID")
         ])?)
         .required_field("Order");
-        message.as_fix_mut().set_msgtype("D")?;
+        FixFieldMut::new(&mut message).set_msgtype("D")?;
         registry.create_definition(FixCategory::Components, message)?;
         registry.write_into(&mut LocalFolder::new(fixture.0.clone())?)?;
         Ok(fixture)
@@ -87,6 +88,10 @@ impl Drop for Fixture {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // What the command links is claimed before the registry is built, as
+    // its `main` claims it.
+    yggdryl_market::install()?;
+    yggdryl_fix::install()?;
     let fixture = Fixture::new()?;
     fixture.measure("help baseline", &["--help"])?;
     for (category, name) in [

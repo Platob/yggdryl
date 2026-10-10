@@ -101,8 +101,6 @@ mod internal {
 
     #[test]
     fn the_value_rank_sweep_is_unchanged() {
-        use yggdryl::Side;
-
         let point = yggdryl::Geometry::new(point_empty_wkb()).unwrap();
         // One value of every variant, in declaration order, with the rank it has
         // always had. The rank is wire-visible: it orders dictionary values.
@@ -147,7 +145,6 @@ mod internal {
                 16,
             ),
             (Scalar::from("a"), 5),
-            (Scalar::from(Side::new("1").unwrap()), 29),
             (
                 Scalar::Uuid(
                     yggdryl::uuid::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000")
@@ -171,7 +168,7 @@ mod internal {
                 13,
             ),
         ];
-        assert_eq!(values.len(), 38);
+        assert_eq!(values.len(), 37);
         for (value, rank) in &values {
             assert_eq!(value_rank(value), *rank, "{value:?}");
         }
@@ -1567,12 +1564,12 @@ fn width_variants_keep_exact_members_and_logical_identity() {
 
     // A code carries its identity: two values whose text agrees are two
     // values, and neither is the string spelling the same bytes.
-    let side = Scalar::Side(yggdryl::Side::new("BUYS").unwrap());
-    let unit = Scalar::Unit(yggdryl::Unit::new("BUYS").unwrap());
-    assert_ne!(side, unit);
-    assert_eq!(side.as_str(), unit.as_str());
-    assert_ne!(side, Scalar::from("BUYS"));
-    assert_ne!(side, Scalar::from(1_i32));
+    let ccy = Scalar::Ccy(yggdryl::Ccy::new("USD").unwrap());
+    let unit = Scalar::Unit(yggdryl::Unit::new("USD").unwrap());
+    assert_ne!(ccy, unit);
+    assert_eq!(ccy.as_str(), unit.as_str());
+    assert_ne!(ccy, Scalar::from("USD"));
+    assert_ne!(ccy, Scalar::from(1_i32));
 
     let mut point = vec![1, 1, 0, 0, 0];
     point.extend_from_slice(&1.5_f64.to_le_bytes());

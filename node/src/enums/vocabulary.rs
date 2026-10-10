@@ -3,13 +3,13 @@
 use std::collections::HashMap;
 
 use napi_derive::napi;
-use yggdryl::graph::{
-    ElementColumn, EventColumn, MarketColumn, MarketKind, MarketView, MdUpdateAction,
-    OperationColumn,
-};
+use yggdryl::graph::{ElementColumn, EventColumn};
 use yggdryl::{
     Charset, Codec, DataTypeId, DataTypeKind, DigestAlgorithm, IOKind, IOMode, Level, PythonKind,
     Scheme, TimeUnit, UnionMode,
+};
+use yggdryl_market::graph::{
+    MarketColumn, MarketKind, MarketView, MdUpdateAction, OperationColumn,
 };
 
 /// Every static enum vocabulary of the core, as canonical spellings.
@@ -24,7 +24,14 @@ pub fn enum_values_native() -> HashMap<String, Vec<String>> {
     HashMap::from([
         (
             "dataTypeIds".to_owned(),
-            spell(&DataTypeId::ALL.map(DataTypeId::as_str)),
+            // The core's identifiers with every registered kind at its
+            // family's place, so a kind claimed later is listed too.
+            spell(
+                &DataTypeId::all()
+                    .into_iter()
+                    .map(DataTypeId::as_str)
+                    .collect::<Vec<_>>(),
+            ),
         ),
         (
             "dataTypeKinds".to_owned(),

@@ -1,8 +1,10 @@
 # yggdryl-fix in Rust
 
-Everything is at the crate root (`yggdryl::{FixCodec, FixRegistry, FixMsg, fix_schema, ...}`),
-no feature flag needed; the market traits (`get_side`, `get_crosscode`) need
-`use yggdryl::graph::{Element, Event, Market}`. The dictionary path below is the
+Everything is at the `yggdryl-fix` crate's root
+(`yggdryl_fix::{FixCodec, FixRegistry, FixMsg, fix_schema, ...}`), no feature
+flag needed; the graph getters are trait methods - `get_crosscode` and
+`get_transunix` need `use yggdryl::graph::{Element, Event}`, `get_side`
+`use yggdryl_market::graph::Market`. The dictionary path below is the
 `config/fix` folder of a yggdryl checkout - point it at your own copy.
 
 ## Load the committed dictionary once and share it
@@ -14,7 +16,8 @@ no feature flag needed; the market traits (`get_side`, `get_crosscode`) need
 use std::sync::Arc;
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixRegistry};
+use yggdryl_fix::{FixCodec, FixRegistry};
+yggdryl_fix::install()?;
 
 // `config/fix` of a yggdryl checkout: the dictionary is not shipped in the crate.
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -46,23 +49,25 @@ ever travels as `FixKey::Id` / `field_by_id`.
 
 ```rust
 use yggdryl::local::LocalFolder;
-use yggdryl::{DataType, FieldPath, FixId, FixKey, FixRegistry};
+use yggdryl::{DataType, FieldPath};
+use yggdryl_fix::{FixField, FixId, FixKey, FixRegistry};
+yggdryl_fix::install()?;
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?;
 
 assert_eq!(registry.field(55)?.name(), "symbol");
-assert_eq!(registry.field_by_name("Sym_Bol")?.as_fix().tag()?, Some(55));
+assert_eq!(FixField::new(registry.field_by_name("Sym_Bol")?).tag()?, Some(55));
 assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
 // The counter names the group it opens; a path reaches through the group.
 assert_eq!(registry.field_by_counter(453)?.name(), "parties");
-assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
+assert_eq!(FixField::new(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?).tag()?, Some(448));
 // A name reads four word pairs either way: offer/ask, size/qty, bid/demand, px/price.
-assert_eq!(registry.field_by_name("AskPrice")?.as_fix().tag()?, Some(133));
-assert_eq!(registry.field_by_name("DemandQty")?.as_fix().tag()?, Some(134));
+assert_eq!(FixField::new(registry.field_by_name("AskPrice")?).tag()?, Some(133));
+assert_eq!(FixField::new(registry.field_by_name("DemandQty")?).tag()?, Some(134));
 
 // The identity is the tag and the folded name; a bare integer is never one.
-let id = registry.field(55)?.as_fix().id()?.expect("a tagged field");
+let id = FixField::new(registry.field(55)?).id()?.expect("a tagged field");
 assert_eq!(id, FixId::of(55, "Symbol")?);
 assert_eq!(registry.field(FixKey::Id(id))?.name(), "symbol");
 assert!(registry.get_field(id.digest()).is_none());
@@ -77,29 +82,32 @@ assert_eq!(codes.code_value("Sell"), Some("2"));
 
 ## Put FIX facts on a field
 
-The `FIX:` vocabulary is metadata on an ordinary `Field`, read with `as_fix()`
-and written atomically with `as_fix_mut()`.
+The `FIX:` vocabulary is metadata on an ordinary `Field`, read through
+`FixField::new(&field)` and written atomically through
+`FixFieldMut::new(&mut field)`.
 
 ```rust
-use yggdryl::{DataType, FixId};
+use yggdryl::DataType;
+use yggdryl_fix::{FixField, FixFieldMut, FixId};
+yggdryl_fix::install()?;
 
 let mut field = DataType::decimal128(20, 8)?.nullable_field("OrderQty");
-field.as_fix_mut().set_tag(38)?;
-field.as_fix_mut().set_names(["Qty", "Quantity"])?;
-field.as_fix_mut().set_sources(["Venue", "desk"])?;
+FixFieldMut::new(&mut field).set_tag(38)?;
+FixFieldMut::new(&mut field).set_names(["Qty", "Quantity"])?;
+FixFieldMut::new(&mut field).set_sources(["Venue", "desk"])?;
 
-assert_eq!(field.as_fix().tag()?, Some(38));
+assert_eq!(FixField::new(&field).tag()?, Some(38));
 assert_eq!(field.get_metadata("FIX:names"), Some("[\"Qty\",\"Quantity\"]"));
-assert_eq!(field.as_fix().sources().collect::<Vec<_>>(), ["desk", "venue"]);
+assert_eq!(FixField::new(&field).sources().collect::<Vec<_>>(), ["desk", "venue"]);
 assert_eq!(field.get_metadata("FIX:sources"), Some(r#"["desk","venue"]"#));
 // Derived on every read, never stored; a folded rename keeps it.
-assert_eq!(field.as_fix().id()?, Some(FixId::of(38, "order_qty")?));
+assert_eq!(FixField::new(&field).id()?, Some(FixId::of(38, "order_qty")?));
 assert!(!field.has_metadata("FIX:id"));
 
 // A refusal names the key and leaves the field unchanged.
-let error = field.as_fix_mut().set_tag(0).unwrap_err();
+let error = FixFieldMut::new(&mut field).set_tag(0).unwrap_err();
 assert!(error.to_string().contains("FIX:tag"), "{error}");
-assert_eq!(field.as_fix().tag()?, Some(38));
+assert_eq!(FixField::new(&field).tag()?, Some(38));
 ```
 
 ## Decode one captured line
@@ -111,7 +119,9 @@ answers a lazy iterator of every message it carries.
 use std::sync::Arc;
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{FieldPath, FixCodec, FixRegistry, Scalar};
+use yggdryl::{FieldPath, Scalar};
+use yggdryl_fix::{FixCodec, FixRegistry};
+yggdryl_fix::install()?;
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?));
@@ -140,7 +150,8 @@ so a refused keepalive costs one look.
 use std::sync::Arc;
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{DEFAULT_REFUSED_MSGTYPES, FixCodec, FixRegistry};
+use yggdryl_fix::{DEFAULT_REFUSED_MSGTYPES, FixCodec, FixRegistry};
+yggdryl_fix::install()?;
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
@@ -176,9 +187,13 @@ the graph traits, everything else in the content row the dictionary typed.
 ```rust
 use std::sync::Arc;
 
-use yggdryl::graph::{Element, Event, Market};
+use yggdryl::graph::{Element, Event};
+use yggdryl_market::graph::Market;
 use yggdryl::local::LocalFolder;
-use yggdryl::{Decimal, FixCodec, FixRegistry, MarketDataKind, Scalar};
+use yggdryl::{Decimal, Scalar};
+use yggdryl_fix::{FixCodec, FixRegistry};
+use yggdryl_market::MarketDataKind;
+yggdryl_fix::install()?;
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?));
@@ -196,9 +211,9 @@ assert_eq!(message.by_name("symbol")?, Scalar::from("AAPL"));
 // The first stated OrderID, ClOrdID, ... names the order's chain, stored under its side.
 assert_eq!(message.get_crosscode(), "10:1:A1");
 // Instants are i64 nanoseconds since the epoch, UTC.
-assert_eq!(message.get_currunix(), 1_767_348_930_000_000_000);
+assert_eq!(message.get_transunix(), 1_767_348_930_000_000_000);
 // The entries are the content row as a tree; the lifted 11, 38 and 44 are not in it.
-let names: Vec<&str> = message.entries().iter().map(yggdryl::FixEntry::name).collect();
+let names: Vec<&str> = message.entries().iter().map(yggdryl_fix::FixEntry::name).collect();
 assert_eq!(names, ["symbol", "side", "strikeprice", "timeinforce"]);
 ```
 
@@ -212,11 +227,13 @@ identity again.
 use std::sync::Arc;
 
 use yggdryl::graph::Element;
-use yggdryl::{DataType, Field, FixMsg, FixRegistry, Scalar, StructType};
+use yggdryl::{DataType, Field, Scalar, StructType};
+use yggdryl_fix::{FixFieldMut, FixMsg, FixRegistry};
+yggdryl_fix::install()?;
 
 let tagged = |name: &str, tag: i32| -> yggdryl::Result<Field> {
     let mut field = DataType::utf8().nullable_field(name);
-    field.as_fix_mut().set_tag(tag)?;
+    FixFieldMut::new(&mut field).set_tag(tag)?;
     Ok(field)
 };
 let (msgtype, clordid, symbol) = (tagged("MsgType", 35)?, tagged("ClOrdID", 11)?, tagged("Symbol", 55)?);
@@ -232,10 +249,10 @@ let mut message = FixMsg::with_registry(Arc::clone(&registry), root, value)?;
 assert_eq!(message.header().msgtype(), "D");
 assert_eq!(message.get_crosscode(), "10:0:A1");
 
-let before = message.get_currhashcode();
+let before = message.get_hashcode();
 message.set("Symbol", Scalar::from("MSFT"))?;
 assert_eq!(message.by_tag(55)?, Scalar::from("MSFT"));
-assert_ne!(message.get_currhashcode(), before, "a write settles the identity again");
+assert_ne!(message.get_hashcode(), before, "a write settles the identity again");
 assert_eq!(message.remove(55)?, Some(Scalar::from("MSFT")));
 assert!(message.get_by_tag(55).is_none());
 ```
@@ -250,7 +267,8 @@ bytes whatever the separator.
 use std::sync::Arc;
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixRegistry, SOH};
+use yggdryl_fix::{FixCodec, FixRegistry, SOH};
+yggdryl_fix::install()?;
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?));
@@ -278,7 +296,9 @@ own columns following the shared ones; parsing is pooled across `threads`.
 use std::sync::Arc;
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{DataType, FixCodec, FixRegistry, Scalar, Serie, StructType};
+use yggdryl::{DataType, Scalar, Serie, StructType};
+use yggdryl_fix::{FixCodec, FixRegistry};
+yggdryl_fix::install()?;
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
@@ -302,7 +322,7 @@ let read = FixCodec::new(registry)
     .parse_text_arrow_reader(source)?;
 // The schema is decided before a row is read: the shared columns lead, the capture follows them, `fixentries` closes.
 let schema = read.schema();
-assert_eq!(schema.field(0).name(), "curruuid");
+assert_eq!(schema.field(0).name(), "uuid");
 let at = schema.index_of("url")?;
 assert_eq!(schema.field(at - 1).name(), "partyids");
 assert_eq!(schema.field(at + 2).name(), "body");
@@ -327,7 +347,9 @@ use yggdryl::local::LocalFolder;
 use yggdryl::media::IORecordOptions as _;
 use yggdryl::graph::Event;
 use yggdryl::text::TextOptions;
-use yggdryl::{FixCodec, FixMsg, FixRegistry, IOBase as _, IOMedia as _, Timezone, Url};
+use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
+use yggdryl::{IOBase as _, IOMedia as _, Timezone, Url};
+yggdryl_fix::install()?;
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
@@ -351,14 +373,14 @@ let batch = &batches[0];
 assert_eq!(batch.num_rows(), 2, "the heartbeat is refused by default");
 assert!(batch.schema().index_of("level").is_ok(), "an unnamed capture is a column of the row");
 // The line's clock became each message's instant; no SendingTime was invented.
-assert_eq!(batch.column_by_name("currunix").expect("currunix").null_count(), 0);
+assert_eq!(batch.column_by_name("transunix").expect("transunix").null_count(), 0);
 assert_eq!(batch.column_by_name("sendingtime").expect("sendingtime").null_count(), 2);
 
 // Line by line: tell the codec what the captures are called, once.
 let codec = FixCodec::new(registry).with_capture_names(["mtime", "level"]);
 let messages: Vec<FixMsg> = codec.parse_text_lines(handle.read_text_lines()?).collect::<yggdryl::Result<_>>()?;
-let recorded: Vec<Option<i64>> = messages.iter().map(Event::get_recdunix).collect();
-assert_eq!(recorded, [Some(1_767_348_930_250_000_000), Some(1_767_348_930_500_000_000)]);
+let sent: Vec<Option<i64>> = messages.iter().map(Event::get_sendunix).collect();
+assert_eq!(sent, [Some(1_767_348_930_250_000_000), Some(1_767_348_930_500_000_000)]);
 ```
 
 ## Land messages in the fixed row and back
@@ -372,9 +394,12 @@ unless it names an identifier the message captures - then it rides
 ```rust
 use std::sync::Arc;
 
-use yggdryl::graph::Market;
+use yggdryl_market::graph::Market;
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixMsg, FixRegistry, IdType, Scalar, fix_column_of, fix_schema};
+use yggdryl_fix::{FixCodec, FixMsg, FixRegistry, fix_column_of, fix_schema};
+use yggdryl_market::IdType;
+use yggdryl::Scalar;
+yggdryl_fix::install()?;
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
@@ -421,9 +446,10 @@ assert!(String::from_utf8(sink)?.starts_with("8=FIX.4.4|35=D|11=ORDER-1|18=G|999
 `lifecycle` is the one cross-message stage: it collects the finite capture,
 sorts it, folds repeated deliveries and chains each message to the live one of
 its order and side under one `crossuuid`, within one market data kind (`marketdatakind`); a
-report stating no side joins the one side alive under its identifiers - its
-chain identities (`orderid`, `clordid`, `quoteid`, `tradeid`, `tradereportid`,
-never `execid`, `trdmatchid` or `quotereqid`) and the first value a lineage
+report stating no side joins the one side alive under its identifiers - a
+message joins the live one of its kind, side and instrument sharing one identifier
+of the same type and value, every type of its `identifiers` but a shared one
+(`trdmatchid`, `quotereqid`, `mdreqid`, a parent slot), and the first value a lineage
 field names - and every message of a chain carries the chain's first
 `crosscode`, a replace under a new `ClOrdID` included. A message citing two
 live chains is joined to neither: it stands under its own identity and carries
@@ -431,17 +457,30 @@ a `FixAnomaly` under `crosscode` naming both, warned once per kind. A fill's
 execution, split off at the parse, is a chain of its own and never restates,
 follows or ends its order. A codec pinned `with_sorted_lifecycle(true)` reads a source already in
 instant order as it comes, one epoch hour at a time, and answers the same walk. The walk yields
-each `curruuid` once within `dedup_window_ms` of event time, one minute unless
+each `uuid` once within `dedup_window_ms` of event time, one minute unless
 the codec says otherwise; `with_dedup_window_ms(0)` yields every restated twin too.
 A snapshot grid's view is the live message as of its tick: dated at it, so its
-`curruuid` is that instant's, with the live message's content and place.
+`uuid` is that instant's, with the live message's content and place.
+An order's chain counts its fills once each by `ExecID(17)` - or
+`SecondaryExecID(527)` - over its first stated `CumQty(14)`: `cumqty` and
+`leavesqty` are the count's, a fill delivered again, a status reply (`150=I`,
+`17=0`) and a leg's report (`442=2`) count nothing, a bust (`150=H` with
+`ExecRefID(19)`) takes the fill it names back, a correction (`150=G`)
+replaces it, and a partial fill whose count reaches the order quantity reads
+`FILLED`; a stated total that disagrees is warned, never adopted, and an ended
+chain's fills are remembered for the window, so a late copy starts no chain
+([lifecycle](https://platob.github.io/yggdryl/fix/lifecycle/#an-orders-fills-are-counted-once)).
 
 ```rust
 use std::sync::Arc;
 
-use yggdryl::graph::{Element, Event, Market};
+use yggdryl::graph::{Element, Event};
+use yggdryl_market::graph::Market;
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind, Side, State, fix_schema};
+use yggdryl_fix::{FixCodec, FixMsg, FixRegistry, fix_schema};
+use yggdryl_market::{MarketDataKind, Side};
+use yggdryl::State;
+yggdryl_fix::install()?;
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
@@ -465,14 +504,14 @@ let [order, ack, fill, execution] = codec.lifecycle(parsed).collect::<yggdryl::R
 // Sorted by event time, joined by the identifiers each message went by; each
 // follows one of an earlier instant, so each keeps its own place.
 assert_eq!((order.get_seqnum(), ack.get_seqnum(), fill.get_seqnum()), (0, 0, 0));
-assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
-assert_eq!(fill.get_prevuuid(), Some(ack.get_curruuid()));
+assert_eq!(ack.get_prevuuid(), Some(order.get_uuid()));
+assert_eq!(fill.get_prevuuid(), Some(ack.get_uuid()));
 assert!([&ack, &fill].iter().all(|held| held.get_crossuuid() == order.get_crossuuid()));
 // The reports stated no side: they joined the buy alive under A1 and O1.
 assert!([&ack, &fill].iter().all(|held| held.get_side() == Side::Buy && held.get_crosscode() == "10:1:A1"));
 assert_eq!((fill.marketdatakind(), *fill.get_state()), (MarketDataKind::Order, State::Filled));
 // Every walked message states when its chain began.
-assert!([&ack, &fill].iter().all(|held| held.get_creaunix() == Some(order.get_currunix())));
+assert!([&ack, &fill].iter().all(|held| held.get_creaunix() == Some(order.get_transunix())));
 assert_eq!((execution.marketdatakind(), *execution.get_state()), (MarketDataKind::Execution, State::Filled));
 assert_eq!((execution.get_seqnum(), execution.get_prevuuid()), (1, None));
 
@@ -485,46 +524,50 @@ assert_eq!(chained, 4);
 
 ## Share what lifecycles learn about instruments
 
-A lifecycle learns each message's ISIN - the one key - its CFI code, country,
-market, ticker, currency, pair and security codes into an `IsinRegistry`, and
-fills what later messages of that instrument leave unsaid, as `derived`
-identifiers and the ticker, CFI and currency facts, never the wire; a parse
-through the same codec fills derived identifiers from the table its door
-fixed. A codec without one learns into a registry of each walk's own;
-`with_isin_registry` shares one across walks run one after another, bound to
-a store with `from_url` and written back with `commit` only where it moved;
-`IsinRegistry::from_env` lays its store over the embedded common instruments
-`IsinRegistry::seeded()` holds. A row carries the national number its ISIN
-embeds - Holcim's Valor below - and its market's country's currency where it
-states none.
-A structured product's EUSIPA category is learned off a bridge's own key
-(`EUSIPACode`, `OMS_SSPACategory`, ...) as the row's `eusipacode`, an
-`Eusipa`; the key is lifted into no identifier map.
+A lifecycle learns each message's instrument into an `Instruments`, keyed by
+its cross code - a real ISIN for a security, `class:body` for an FX pair or a
+derivative, its `QY` number minted - with its CFI code, country, market,
+ticker, currency, pair and security codes, and fills what later messages of
+that instrument leave unsaid, as `derived` identifiers, the ticker, CFI and
+currency facts and the instrument's cross code as `instcode`, never the wire;
+a parse through the same codec fills derived identifiers from the table its
+door fixed. A codec without one learns into a collection of each walk's own;
+`with_instruments` shares one across walks run one after another, bound to a
+store with `from_url` and written back with `commit` only where it moved;
+`Instruments::from_env` lays its store over the embedded common instruments
+`Instruments::seeded()` holds. An instrument carries the national number its
+ISIN embeds - Holcim's Valor below - and each listing its market's country's
+currency where it states none. A structured product's EUSIPA category is
+learned off a bridge's own key (`EUSIPACode`, `OMS_SSPACategory`, ...) as the
+instrument's `eusipacode`, an `Eusipa`; the key is lifted into no identifier
+map. A row's `instcode` joins the instruments table on `crosscode`.
 
 ```rust
 use std::sync::{Arc, Mutex};
 
-use yggdryl::graph::Market;
+use yggdryl_market::graph::Market;
 use yggdryl::local::LocalFolder;
-use yggdryl::{Eusipa, FixCodec, FixMsg, FixRegistry, IsinEntry, IsinRegistry};
+use yggdryl_market::{Eusipa, Instrument, Instruments};
+use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
+yggdryl_fix::install()?;
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
-let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
-let codec = FixCodec::new(registry).with_isin_registry(Arc::clone(&instruments));
+let instruments = Arc::new(Mutex::new(Instruments::new()));
+let codec = FixCodec::new(registry).with_instruments(Arc::clone(&instruments));
 
 // The first walk states Holcim's ISIN, RIC, CFI code, ticker and market.
 let stated = ["8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|207=XSWX|10=0|"];
 let parsed: Vec<FixMsg> = codec.parse_lines(stated).collect::<yggdryl::Result<_>>()?;
 codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?;
-assert_eq!(instruments.lock().unwrap().get("CH0012214059").and_then(|row| row.get(&yggdryl::IdType::Ric)), Some("HOLN.S"));
-assert_eq!(instruments.lock().unwrap().get("CH0012214059").and_then(|row| row.get(&yggdryl::IdType::Valor)), Some("1221405"));
+assert_eq!(instruments.lock().unwrap().get("CH0012214059").and_then(|row| row.get(&yggdryl_market::IdType::Ric)), Some("HOLN.S"));
+assert_eq!(instruments.lock().unwrap().get("CH0012214059").and_then(|row| row.get(&yggdryl_market::IdType::Valor)), Some("1221405"));
 
 // A bridge key states a structured product's category beside its ISIN.
 let product = ["8=FIX.4.4|35=D|11=C|22=4|48=CH0123456789|55=ACMEL|207=XSWX|OMS_SSPACategory=2300|10=0|"];
 let parsed: Vec<FixMsg> = codec.parse_lines(product).collect::<yggdryl::Result<_>>()?;
 codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?;
-let category = instruments.lock().unwrap().get("CH0123456789").and_then(IsinEntry::eusipacode);
+let category = instruments.lock().unwrap().get("CH0123456789").and_then(Instrument::eusipacode);
 assert_eq!(category, Some(Eusipa::new(2300)?));
 assert_eq!(category.and_then(|code| code.name()), Some("Constant Leverage Certificate"));
 
@@ -535,7 +578,16 @@ let parsed: Vec<FixMsg> = codec.parse_lines(later).collect::<yggdryl::Result<_>>
 assert_eq!(parsed[0].get_isincode(), Some("CH0012214059"));
 let walked = codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?;
 assert_eq!(walked[0].get_cficode().map(|code| code.as_str()), Some("ESVUFR"));
-assert_eq!(walked[0].get_cficode().map(|code| code.as_str()), Some("ESVUFR"));
+assert_eq!(walked[0].get_instcode(), Some("CH0012214059"), "the instrument's cross code");
+
+// An FX pair no agency numbers: its code and its minted number are spelled
+// from the message alone, and the walk learns its instrument.
+let pair = ["8=FIX.4.4|35=D|11=F|55=EUR/USD|54=1|38=1000000|10=0|"];
+let parsed: Vec<FixMsg> = codec.parse_lines(pair).collect::<yggdryl::Result<_>>()?;
+assert_eq!((parsed[0].get_instcode(), parsed[0].get_isincode()), (Some("IF:EUR/USD"), Some("QYLTVIRYHNX5")));
+codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?;
+assert_eq!(Instrument::minted_number("IF:EUR/USD").as_str(), "QYLTVIRYHNX5");
+assert!(instruments.lock().unwrap().get("IF:EUR/USD").is_some());
 ```
 
 ## Follow a replace chain's parents
@@ -552,9 +604,12 @@ the base; only a chain identity has parents, so an `ExecID(17)` carries none.
 ```rust
 use std::sync::Arc;
 
-use yggdryl::graph::{Element, Operation};
+use yggdryl::graph::Element;
+use yggdryl_market::graph::Operation;
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixMsg, FixRegistry, IdType};
+use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
+use yggdryl_market::IdType;
+yggdryl_fix::install()?;
 
 let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -602,9 +657,13 @@ legs of one message, stored under side `0`. An acknowledgement of an execution
 ```rust
 use std::sync::Arc;
 
-use yggdryl::graph::{Element, Event, Market};
+use yggdryl::graph::{Element, Event};
+use yggdryl_market::graph::Market;
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind, Side, State};
+use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
+use yggdryl_market::{MarketDataKind, Side};
+use yggdryl::State;
+yggdryl_fix::install()?;
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?));
@@ -613,7 +672,7 @@ let fill = b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=F
 let [report, execution]: [FixMsg; 2] = codec.parse_line(fill)?.collect::<yggdryl::Result<Vec<_>>>()?.try_into().expect("two");
 assert_eq!((report.marketdatakind(), *report.get_state()), (MarketDataKind::Order, State::PartiallyFilled));
 assert_eq!((execution.marketdatakind(), *execution.get_state()), (MarketDataKind::Execution, State::Filled));
-assert!(execution.get_srcuuids().contains(&report.get_curruuid()));
+assert!(execution.get_srcuuids().contains(&report.get_uuid()));
 // An order or an execution message stores its cross code under its side; the fill is a chain of its own.
 assert_eq!((report.get_crosscode(), execution.get_crosscode()), ("10:1:O-9", "8:1:E-1"));
 
@@ -636,8 +695,9 @@ assert!(ack.market_data()?.is_empty());
 trade as the executions its parse split off - reads each as its one graph
 leaf (a book message one per entry) and sorts them by the instant a book folds
 them at; `BookIterator` then walks them, pruning the executions.
-`book_arrow_reader` folds the same messages into book rows, one book per book
-key, and takes a `Filter` over the `marketdata` row to narrow what folds. Compose `lifecycle` in front when predecessor state matters.
+`book_arrow_reader` folds the same messages into book rows, one book per
+instrument cross code (`instcode`; a message stating none is pruned), and
+takes a `Filter` over the `marketdata` row to narrow what folds. Compose `lifecycle` in front when predecessor state matters.
 `market_arrow_reader` writes the sorted leaves as `marketdata` rows, and
 `market_data_arrow_reader` is its twin over batches of FIX rows already in
 Arrow.
@@ -645,17 +705,19 @@ Arrow.
 ```rust
 use std::sync::Arc;
 
-use yggdryl::graph::{BookIterator, Market, MarketData, MarketKind};
+use yggdryl_market::graph::{BookIterator, Market, MarketData, MarketKind};
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind, Side, fix_schema};
+use yggdryl_fix::{FixCodec, FixMsg, FixRegistry, fix_schema};
+use yggdryl_market::{MarketDataKind, Side};
+yggdryl_fix::install()?;
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
 let codec = FixCodec::new(registry.clone());
 // The update arrives before the snapshot it follows.
 let lines = [
-    "8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|",
-    "8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|",
+    "8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|",
+    "8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|",
 ];
 let capture: Vec<FixMsg> = codec.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
 assert!(capture.iter().all(|message| message.marketdatakind() == MarketDataKind::Book));
@@ -687,7 +749,9 @@ back whole.
 
 ```rust
 use yggdryl::local::LocalFolder;
-use yggdryl::{DataType, FieldPath, FixCode, FixRegistry, IOBase, StructType};
+use yggdryl::{DataType, FieldPath, IOBase, StructType};
+use yggdryl_fix::{FixCode, FixField, FixFieldMut, FixRegistry};
+yggdryl_fix::install()?;
 
 let path = std::env::temp_dir().join(format!("ygg-skill-fix-store-{}", std::process::id()));
 let mut root = LocalFolder::new(&path)?;
@@ -695,26 +759,26 @@ let mut root = LocalFolder::new(&path)?;
 // The counter is a field of the dictionary; no component or message lists it
 // beside the group, whose length is its count.
 let mut count = DataType::Int32.nullable_field("NoPartyIDs");
-count.as_fix_mut().set_tag(453)?;
+FixFieldMut::new(&mut count).set_tag(453)?;
 let mut party_id = DataType::utf8().nullable_field("PartyID");
-party_id.as_fix_mut().set_tag(448)?;
+FixFieldMut::new(&mut party_id).set_tag(448)?;
 let mut registry = FixRegistry::from_fields([count, party_id])?;
 
 // A Struct files as a component, a Serie of one as a group.
 let mut member = registry.field(448)?.clone();
-member.as_fix_mut().set_field_ref("PartyID")?;
+FixFieldMut::new(&mut member).set_field_ref("PartyID")?;
 let party = DataType::from(StructType::from_fields([member])?).required_field("Party");
 registry.insert(party.clone())?;
 let mut parties = DataType::serie(party).nullable_field("Parties");
-parties.as_fix_mut().set_counter(453)?;
-parties.as_fix_mut().set_component("Party")?;
+FixFieldMut::new(&mut parties).set_counter(453)?;
+FixFieldMut::new(&mut parties).set_component("Party")?;
 registry.insert(parties)?;
 
 // The vocabulary first, then the field that reads by it.
 registry.set_codeset("sidecodeset", &[FixCode::new("Buy", "1"), FixCode::new("Sell", "2")])?;
 let mut side = DataType::utf8().nullable_field("Side");
-side.as_fix_mut().set_tag(54)?;
-side.as_fix_mut().set_codeset("sidecodeset")?;
+FixFieldMut::new(&mut side).set_tag(54)?;
+FixFieldMut::new(&mut side).set_codeset("sidecodeset")?;
 registry.insert(side)?;
 
 let report = registry.commit(&mut root)?;
@@ -722,7 +786,7 @@ assert!(!report.written.is_empty() && report.removed.is_empty());
 assert!(path.join("codesets/sidecodeset.json").is_file());
 let reloaded = FixRegistry::from_handle(&root)?;
 assert_eq!(reloaded, registry);
-assert_eq!(reloaded.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
+assert_eq!(FixField::new(reloaded.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?).tag()?, Some(448));
 root.remove(true)?;
 ```
 
@@ -731,7 +795,7 @@ root.remove(true)?;
 `FixRegistry::from_cfb_file` reads one Ullink CBlock (`.cfb`) into a registry
 and its declared roots, stamping the dialect in `FIX:sources` on everything it
 produced and recording the dialect's entry in the registry's sources catalog -
-the file's name and the `PluginSide` its root's `type` names;
+the file's name and the `Side` its root's `type` names, read by `yggdryl_fix::plugin_side`;
 `add_cfb_file` folds one into a held registry, `add_cfb_files` folds what the
 locations it is handed hold - a glob every file it matches, a folder the `.cfb`
 files directly inside it, a file itself, a file reached twice folding once -
@@ -753,7 +817,9 @@ the reader did instead.
 ```rust
 use yggdryl::holder::Holder;
 use yggdryl::local::LocalFile;
-use yggdryl::{FixRegistry, FixSource, PluginSide};
+use yggdryl_fix::{FixField, FixRegistry, FixSource};
+use yggdryl_market::Side;
+yggdryl_fix::install()?;
 
 let path = std::env::temp_dir().join(format!("ygg-skill-fix-cfb-{}", std::process::id()));
 std::fs::create_dir_all(&path)?;
@@ -768,10 +834,10 @@ std::fs::write(path.join("beta.cfb"), cblock("venue_buy"))?;
 std::fs::write(path.join("broken.cfb"), "<cplugin-configuration><vocabulary>")?;
 
 let (venue, roots) = FixRegistry::from_cfb_file(&LocalFile::new(path.join("alpha.cfb"))?, Some("venue"))?;
-assert_eq!(venue.field(4)?.as_fix().sources().collect::<Vec<_>>(), ["venue"]);
+assert_eq!(FixField::new(venue.field(4)?).sources().collect::<Vec<_>>(), ["venue"]);
 // The catalog records the source once: its file and its plugin's role.
 let entry = venue.get_source("venue").expect("the dialect's entry");
-assert_eq!((entry.file(), entry.pluginside()), (Some("alpha.cfb"), PluginSide::SellSide));
+assert_eq!((entry.file(), entry.pluginside()), (Some("alpha.cfb"), Side::Sell));
 assert!(roots.is_empty());
 
 // `add_cfb_files` takes the locations alone: a folder holds the `.cfb`
@@ -786,7 +852,7 @@ assert_eq!(merge.failed.len(), 1);
 assert!(merge.failed[0].source.as_deref().is_some_and(|url| url.ends_with("broken.cfb")));
 assert!(!merge.is_clean());
 // Ascending URL order, each file stamped with its stem.
-assert_eq!(registry.field(4)?.as_fix().sources().collect::<Vec<_>>(), ["alpha", "beta"]);
+assert_eq!(FixField::new(registry.field(4)?).sources().collect::<Vec<_>>(), ["alpha", "beta"]);
 assert_eq!(registry.sources().map(FixSource::id).collect::<Vec<_>>(), ["alpha", "beta"]);
 
 registry.merge_with(&venue)?;
@@ -803,8 +869,9 @@ std::fs::remove_dir_all(&path)?;
   source alone. Install a `log` backend (`env_logger`, say, or the core's own
   `yggdryl::logging::basic_config(BasicConfig::new())`, the terminal line on
   standard error) to see the warnings.
-- The graph getters (`get_crosscode`, `get_side`, `get_currunix`) are trait
-  methods: import `yggdryl::graph::{Element, Event, Market}`.
+- The graph getters (`get_crosscode`, `get_side`, `get_transunix`) are trait
+  methods: import `yggdryl::graph::{Element, Event}` and
+  `yggdryl_market::graph::Market`.
 - `with_exclude_msgtypes([])` needs its types spelled:
   `with_exclude_msgtypes::<[&str; 0], &str>([])`.
 - `FixDedup` (drop an adjacent republication) is Rust-only, and so are

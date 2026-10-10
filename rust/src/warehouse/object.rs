@@ -163,7 +163,7 @@ impl Object {
     }
 
     /// The implementation's own name: `MemoryCatalog`, `MediaTable`.
-    pub(crate) const fn implementation_name(&self) -> &'static str {
+    pub(crate) fn implementation_name(&self) -> &'static str {
         match self {
             Self::Catalog(catalog) => catalog.implementation_name(),
             Self::Namespace(namespace) => namespace.implementation_name(),
@@ -266,41 +266,6 @@ impl From<super::FolderNamespace> for Object {
 impl From<super::MediaTable> for Object {
     fn from(table: super::MediaTable) -> Self {
         Self::Table(Table::from(table))
-    }
-}
-
-#[cfg(feature = "iceberg")]
-impl From<crate::iceberg::IcebergCatalog> for Object {
-    fn from(catalog: crate::iceberg::IcebergCatalog) -> Self {
-        Self::Catalog(Catalog::Iceberg(Box::new(catalog)))
-    }
-}
-
-#[cfg(feature = "iceberg")]
-impl From<crate::iceberg::IcebergNamespace> for Object {
-    fn from(namespace: crate::iceberg::IcebergNamespace) -> Self {
-        Self::Namespace(Namespace::Iceberg(Box::new(namespace)))
-    }
-}
-
-#[cfg(feature = "iceberg")]
-impl From<crate::iceberg::IcebergTable<super::Handle>> for Object {
-    fn from(table: crate::iceberg::IcebergTable<super::Handle>) -> Self {
-        Self::Table(Table::Iceberg(Box::new(table)))
-    }
-}
-
-#[cfg(feature = "s3tables")]
-impl From<crate::s3tables::S3TablesCatalog> for Object {
-    fn from(catalog: crate::s3tables::S3TablesCatalog) -> Self {
-        Self::Catalog(Catalog::S3Tables(Box::new(catalog)))
-    }
-}
-
-#[cfg(feature = "s3tables")]
-impl From<crate::s3tables::S3TablesNamespace> for Object {
-    fn from(namespace: crate::s3tables::S3TablesNamespace) -> Self {
-        Self::Namespace(Namespace::S3Tables(Box::new(namespace)))
     }
 }
 

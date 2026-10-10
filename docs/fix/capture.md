@@ -10,7 +10,7 @@ A day of session log is a table. This page is the road from one to the other: [`
 | Columns | named by the field's folded canonical name - `msgtype`, never `35` and never `msg_type`; the display spelling stays on the field's `display`, the tag on its `FIX:tag`, and a named group column's counter on its `FIX:counter` |
 | Shape | the columns every generated schema opens with - the element's, the event's, the market's with the derived `strikepx` and the `metadata` Map group, and the operation's; then the clocks FIX states, the standard header with FIX's own `msgdirection` and the capture's facts, the instrument with its normalized codes and the strike `StrikePrice(202)`, the fields a consumer reads, two Serie groups, the trailer, then the `fixentries` map: 152 tags from `fix_schema_tags`, 153 fields with the shipped registry: `strikepx` adds the market fact and `msgpluginside` adds the required capture fact, each Serie group its column alone: the group's length is its count, and no column holds the counter. The full listing is [Row schemas](../graph/schemas.md#the-fix-row) |
 | Identifiers | the names a message goes by, the parties it names and its security's identifiers are the shared columns `identifiers`, `partyids` and `securityids`, each a serie of [identifiers](../graph/identifier.md#arrow) [read off](message.md#the-identifier-maps) the FIX fields that state them; `SecurityID(48)`, `SecurityIDSource(22)`, `Parties(453)` and `SecAltIDGrp(454)` are no columns of their own and stay in `fixentries` as sent, and the crated `isincode`, `forexcode`, `bloombergcode` and `figicode` are views of `securityids` |
-| Non-null | `beginstring`, `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `crosscode`, `curruuid`, `crossuuid`, `seqnum`, `msgpluginside` - the instants, identity, place within the instant and plugin role every message states; every other column is nullable, `state` among them - stated on every row a message writes, `UNKNOWN` where nothing states one, while an empty cell entering the column is null as it is for any [enum](../types/enum/state.md#the-code-is-the-rank) - `sendingtime` among them, because the row states tag 52 only where the message did: a clock intake stood in with is not a fact of the message, and the instant it was settled into has a column of its own |
+| Non-null | `beginstring`, `transunix`, `creaunix`, `hashcode`, `crosshashcode`, `crosscode`, `uuid`, `crossuuid`, `seqnum`, `msgpluginside` - the instants, identity, place within the instant and plugin role every message states; every other column is nullable, `state` among them - stated on every row a message writes, `UNKNOWN` where nothing states one, while an empty cell entering the column is null as it is for any [enum](../types/enum/state.md#the-code-is-the-rank) - `sendingtime` among them, because the row states tag 52 only where the message did: a clock intake stood in with is not a fact of the message, and the instant it was settled into has a column of its own |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
 | Residual | projected typed columns hold the facts their schema owns; `fixentries`, a sorted map keyed `tag:name`, holds only arrival content no projected column can represent - and, under `0:<key>`, each key no dictionary resolved that an identifier map holds with its value - and `metadata` every other key no dictionary resolved. Each arrival is held once. Rebuilding combines them into the semantic message |
 | Expansion | a line yields one message per [frame it carries](decode.md#a-line-yields-none-one-or-many-messages) and none where it carries none, each followed by the messages it [reports](message.md#a-parse-splits-what-a-message-reports) - a fill, a traded side, a batch entry - a quote being one message holding both its legs; a [JSON document](#a-json-document-is-one-message-stating-nothing) yields exactly one, named `unknown`, whatever the document names |
@@ -27,7 +27,9 @@ One line in, one row per message out, with the columns named as the dictionary n
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, Scalar, fix_schema};
+    use yggdryl_fix::{FixCodec, FixRegistry, fix_schema};
+    use yggdryl::Scalar;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -57,7 +59,7 @@ One line in, one row per message out, with the columns named as the dictionary n
     assert_eq!(keys, ["9999"]);
     // In memory the message holds every pair it read as an entry, the
     // unknown key under tag 0 and its own spelling.
-    let names: Vec<&str> = order.entries().iter().map(yggdryl::FixEntry::name).collect();
+    let names: Vec<&str> = order.entries().iter().map(yggdryl_fix::FixEntry::name).collect();
     assert_eq!(names, ["symbol", "side", "execinst", "9999", "timeinforce"]);
     let unresolved: Vec<_> = order.entries().iter().filter(|entry| entry.tag() == 0).collect();
     assert_eq!(unresolved.len(), 1);
@@ -160,7 +162,9 @@ Every one of them ends in the same builder, so a document is typed by the rules 
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, Scalar};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    use yggdryl::Scalar;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     // A bridge row states its fields and not its type, so this reader is told
@@ -169,7 +173,7 @@ Every one of them ends in the same builder, so a document is typed by the rules 
         .with_exclude_msgtypes::<[&str; 0], &str>([]);
 
     let bridge: &[u8] = b"|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1\
-|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|";
+    |#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|";
     let held = reader.parse_line(bridge)?.next().expect("one frame")?;
     assert_eq!(held.by_tag(55)?.as_str(), Some("TTF"));
     assert_eq!(held.by_tag(44)?, Scalar::from(yggdryl::Decimal::parse("41.25")?));
@@ -302,7 +306,8 @@ A bridge logs what it exchanged over JMX beside what it exchanged over FIX, so a
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     // A document states no message type, so this reader reads the untyped row
@@ -399,7 +404,7 @@ Data is never an error. A parse, a market projection, a [lifecycle](lifecycle.md
 | Left out | a line that is not a row, and a frame that builds no message, the frames after it still read; a batch row whose cell the Arrow landing refuses - a `state` code no member takes - the rest of its batch still read; a batch of another schema than the first; a [book entry that cannot stand](message.md#market-data); in a book walk, an operation dated before its book and a group the book refuses - an order or a quote resting on neither side is warned of and still the book's delta ([Book](../graph/book.md#entries)) |
 | Kept as stated | an observation whose content merge is refused is walked unmerged, its clocks and provenance folded; an order link or a side the rebuild refuses leaves the message as it stated itself ([lifecycle](lifecycle.md#edges)); a message citing two live chains stands under its own identity, beside a [`FixAnomaly`](message.md#anomalies) under `crosscode` ([lifecycle](lifecycle.md#a-message-citing-two-chains-is-a-conflict)) |
 | Deduplication | keyed by where it is raised, what went wrong and the column, tag or kind it is about - never the value or the row: logged the first time with its detail, then again as `seen N times` at the tenfold counts 10, 100, 1000; process-wide, and bounded at 4096 distinct warnings: a warning of a kind past them is not said, and one line on `yggdryl.warning` counts such warnings together at the first and each tenfold one - `4096 distinct warnings were logged; N of other kinds were not` |
-| Level | `WARN` on Rust's `log` facade, its target the module path that raised it - `yggdryl::fix::messages`, the logger `yggdryl.fix.messages` - and its call site that module's last segment and the line of the raising call, `messages:<line>` |
+| Level | `WARN` on Rust's `log` facade, its target the module path that raised it - `yggdryl_fix::messages`, the logger `yggdryl.fix.messages` - and its call site that module's last segment and the line of the raising call, `messages:<line>` |
 | Surfaces | Rust: the core's tree ([`yggdryl::logging`](../logging.md#the-log-facade), `install`, or `basic_config` for the [terminal line](../logging.md#terminal) on standard error) or any other `log` backend, `env_logger` for one. Python: the standard `logging` module ([hosted by `logging`](../logging.md#python-hosted-by-logging)), logger `yggdryl.<module path>` - `yggdryl.fix.messages` - at `WARNING`; a level changed at any time applies to the next record. JavaScript: standard error as the [terminal line](../logging.md#terminal) through the tree's last resort - `2026-10-03 07:49:27,953 ! WARNING  [main] yggdryl.fix.build build:<line> › FIX clock left unstated: ...`, `[worker-N]` in a worker - or a handler on `logging.getLogger('yggdryl')` ([JavaScript](../logging.md#javascript)). CLI: printed on standard output once the command's progress line is done, one `!` line counting them, then each as a `·` note |
 
 ```text
@@ -414,7 +419,8 @@ The clock below names no instant, so it is data: the message is read, dated as o
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -489,9 +495,9 @@ The order opens with the columns every generated schema of the crate opens with 
 
 | Band | Columns |
 | --- | --- |
-| the element | `curruuid`, `crossuuid`, `crosscode`, `currhashcode`, `crosshashcode`, `srcuuids` |
-| the event | `currunix`, `creaunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix`, `prevuuid`, `seqnum`, `state` |
-| the market | `marketdatakind`, `marketdatatype`, `Price`, `StopPx`, `Currency`, `Quantity`, `DisplayQty`, `hiddenqty`, `unit`, `Side`, `securityids`, `isincode`, `CFICode`, `miccode`, `execunix`, `LastPx`, `LastQty`, `AvgPx`, `CumQty`, `LeavesQty`, `CxlQty`, `prevpx`, `prevqty`, `spotrate`, `forwardpoints`, `BidPx`, `bidqty`, `bidccy`, `askpx`, `askqty`, `askccy`, `fxrates`, `ticker`, `strikepx`, `metadata` |
+| the element | `uuid`, `crossuuid`, `crosscode`, `hashcode`, `crosshashcode`, `srcuuids` |
+| the event | `transunix`, `creaunix`, `sendunix`, `exprunix`, `prevunix`, `snapunix`, `prevuuid`, `seqnum`, `state` |
+| the market | `marketdatakind`, `marketdatatype`, `Price`, `StopPx`, `Currency`, `Quantity`, `DisplayQty`, `hiddenqty`, `unit`, `Side`, `securityids`, `instcode`, `isincode`, `CFICode`, `miccode`, `execunix`, `LastPx`, `LastQty`, `AvgPx`, `CumQty`, `LeavesQty`, `CxlQty`, `prevpx`, `prevqty`, `spotrate`, `forwardpoints`, `BidPx`, `bidqty`, `bidccy`, `askpx`, `askqty`, `askccy`, `fxrates`, `ticker`, `strikepx`, `metadata` |
 | the operation | `ordqty`, `TimeInForce`, `tradable`, `identifiers`, `partyids` |
 | the capture's own | where a row carries them - the line's `body`, its classification, the header's captures: [a capture's own columns](#a-captures-own-columns-follow-the-shared-ones) |
 | the clocks FIX states | `SendingTime`, `OrigSendingTime`, `TransactTime`, `SettlDate`, `TradeDate`, `ExpireTime`, `ValidUntilTime`, `ExpireDate` |
@@ -505,7 +511,7 @@ The order opens with the columns every generated schema of the crate opens with 
 
 A market or an operation column FIX names alike - `Price(44)`, `StopPx(99)`, `Currency(15)`, `Quantity(53)`, `DisplayQty(1138)`, `Side(54)`, `CFICode(461)`, `LastPx(31)`, `LastQty(32)`, `AvgPx(6)`, `CumQty(14)`, `LeavesQty(151)`, `CxlQty(84)`, `BidPx(132)` and the operation's `TimeInForce(59)` - is that FIX field, holding what the message states there. Every other one is the crate's own: the ones FIX states under a name of its own are [derived](#the-crates-own-columns) from those fields and stated a second time beside them - `ticker` beside `Symbol`, `askpx` beside `OfferPx`, `ordqty` beside `OrderQty`, `hiddenqty` the quantity past the part shown - so both spellings are columns and neither is lost.
 
-`cargo run --example fix_schema --features arrow` prints that row as the Arrow batch schema a consumer reads, one column a line: its tag, its name, its Arrow type, and whether it is required.
+The example below builds that row as the schema a consumer reads - each column's name, its tag through `fix_schema_tags` and `FixField::tag`, and the band it stands in.
 
 A Serie group column carries `FIX:counter` beside the `FIX:tag` its definition derives from its own name, and `FIX:counter` is only the wire tag that names it: the NumInGroup tag that frames the group on the wire and finds the column, never a column of its own. The group's length is its count, and the column holds the occurrences. The semantic collections are `trdregtimestamps` / `TrdRegTimestamps`, found by tag 768, and `regulatorytradeids` / `RegulatoryTradeIDs`, found by tag 1907 - `fix_column_of(schema, 1907)` answers the `regulatorytradeids` column - while `NoTrdRegTimestamps(768)` and `NoRegulatoryTradeIDs(1907)` stay fields of the dictionary and are no columns. The crate's `metadata` Map carries tag and counter on one group column, 65037, the same way; a Map's entries already determine its cardinality.
 
@@ -515,7 +521,8 @@ A proprietary group that reuses a standard counter but maps none of that standar
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixRegistry, fix_column_of, fix_schema, fix_schema_tags};
+    use yggdryl_fix::{fix_column_of, fix_schema, fix_schema_tags, FixField, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
@@ -525,20 +532,20 @@ A proprietary group that reuses a standard counter but maps none of that standar
     // The columns every generated schema opens with lead the row - the
     // element's, the event's, the market's, the operation's - and the
     // protocol's own follow them.
-    assert_eq!(&columns[..4], ["curruuid", "crossuuid", "crosscode", "currhashcode"]);
+    assert_eq!(&columns[..4], ["uuid", "crossuuid", "crosscode", "hashcode"]);
     assert_eq!(&columns[15..18], ["marketdatakind", "marketdatatype", "price"]);
     // The band that says which message and session carried it, in its order.
     let header = schema.index_of("beginstring").expect("the band opens");
     assert_eq!(&columns[header..header + 4], ["beginstring", "msgtype", "msgseqnum", "sendercompid"]);
     assert_eq!(columns.last(), Some(&"fixentries"));
-    assert_eq!(fix_schema_tags().len(), 152);
-    assert_eq!(columns.len(), 153);
+    assert_eq!(fix_schema_tags().len(), 153);
+    assert_eq!(columns.len(), 154);
     assert_eq!(&fix_schema_tags()[header..header + 4], [8, 35, 34, 49]);
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
     let held = schema.get_field_by_path("msgtype").expect("the msgtype column");
     assert_eq!(held.display(), Some("MsgType"));
-    assert_eq!(held.as_fix().tag()?, Some(35));
+    assert_eq!(FixField::new(held).tag()?, Some(35));
     // The tag rides on the column, so a tag still finds it. Rust only.
     assert_eq!(fix_column_of(&schema, 35), schema.index_of("msgtype"));
     // A field no band claims is still a column, further along.
@@ -559,14 +566,14 @@ A proprietary group that reuses a standard counter but maps none of that standar
     # The columns every generated schema opens with lead the row - the
     # element's, the event's, the market's, the operation's - and the
     # protocol's own follow them.
-    assert columns[:4] == ["curruuid", "crossuuid", "crosscode", "currhashcode"]
+    assert columns[:4] == ["uuid", "crossuuid", "crosscode", "hashcode"]
     assert columns[15:18] == ["marketdatakind", "marketdatatype", "price"]
     # The band that says which message and session carried it, in its order.
     header = columns.index("beginstring")
     assert columns[header:header + 4] == ["beginstring", "msgtype", "msgseqnum", "sendercompid"]
     assert columns[-1] == "fixentries"
-    assert len(fix_schema_tags()) == 152
-    assert len(columns) == 153
+    assert len(fix_schema_tags()) == 153
+    assert len(columns) == 154
     assert fix_schema_tags()[header:header + 4] == [8, 35, 34, 49]
 
     # The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -590,14 +597,14 @@ A proprietary group that reuses a standard counter but maps none of that standar
     // The columns every generated schema opens with lead the row - the
     // element's, the event's, the market's, the operation's - and the
     // protocol's own follow them.
-    assert.deepEqual(columns.slice(0, 4), ['curruuid', 'crossuuid', 'crosscode', 'currhashcode'])
+    assert.deepEqual(columns.slice(0, 4), ['uuid', 'crossuuid', 'crosscode', 'hashcode'])
     assert.deepEqual(columns.slice(15, 18), ['marketdatakind', 'marketdatatype', 'price'])
     // The band that says which message and session carried it, in its order.
     const header = schema.indexOf('beginstring')
     assert.deepEqual(columns.slice(header, header + 4), ['beginstring', 'msgtype', 'msgseqnum', 'sendercompid'])
     assert.equal(columns[columns.length - 1], 'fixentries')
-    assert.equal(fix.schemaTags().length, 152)
-    assert.equal(columns.length, 153)
+    assert.equal(fix.schemaTags().length, 153)
+    assert.equal(columns.length, 154)
     assert.deepEqual(fix.schemaTags().slice(header, header + 4), [8, 35, 34, 49])
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -626,38 +633,38 @@ The typed entries are the message's in memory - [`entries()`](message.md#contrac
 
 A key whose name [names an identifier](message.md#the-identifier-maps) - a bridge's `PARENTORDERID`, `OMS_RICCODE`, `TECH.CLIENTID` - is captured instead, wherever the set its type belongs to holds it with the value it states: it rides `fixentries` under `0:` and the key folded as the message holds it, its value as it arrived - `PARENTORDERID=P1` is `0:parentorderid` = `P1` - and leaves the `metadata` cell, so each arrival is held once and `metadata` holds only what nothing resolved. A name stated several times is captured only where every occurrence is, and a key whose value its type refuses, or whose set holds another value of no lower rank, stays in `metadata`. The wire and the digest a row reads back to are the parse's either way; the message in memory - its entries and `FixMsg::metadata()` - is unchanged by the capture, and a row with a `metadata` column and no `fixentries` keeps every unresolved key in `metadata`.
 
-An entry says what the message states and only that. A group is one entry, filed under its counter's tag with its length as its value - `(453, "Parties", "1", [...])` in memory, `453:parties` in `fixentries` - and the count is never a field of its own: the wire re-emits `453=N` from the list's length. A list holding nothing is the group stated empty - `NoPartySubIDs(802)=0` is one entry that re-emits - while a null list is the group absent: no entry, no `fixentries` key, nothing the wire re-emits and nothing `currhashcode` digests. A table column holds a group as null or as at least one occurrence, so a stated zero rides the residual `fixentries` record; a column read back as `[]` where the row held null, as PyIceberg does, states nothing, and a row read back keeps its `currhashcode` and folds with the delivery it was. A miscount is no anomaly: `453=2` followed by one occurrence is a group of one, which re-emits `453=1`. A bridge packing a whole occurrence into one value - `#NOPARTYIDS[0]=PARTYID=BUYSIDE...PARTYROLE=1` - is read into the members of the occurrence it names, so the record holds the occurrence in its group's entry as it holds one a numeric frame spelled member by member. No dialect is there either: a message is not a dictionary member, and which sources a field belongs to is the field's own `FIX:sources` in the registry.
+An entry says what the message states and only that. A group is one entry, filed under its counter's tag with its length as its value - `(453, "Parties", "1", [...])` in memory, `453:parties` in `fixentries` - and the count is never a field of its own: the wire re-emits `453=N` from the list's length. A list holding nothing is the group stated empty - `NoPartySubIDs(802)=0` is one entry that re-emits - while a null list is the group absent: no entry, no `fixentries` key, nothing the wire re-emits and nothing `hashcode` digests. A table column holds a group as null or as at least one occurrence, so a stated zero rides the residual `fixentries` record; a column read back as `[]` where the row held null, as PyIceberg does, states nothing, and a row read back keeps its `hashcode` and folds with the delivery it was. A miscount is no anomaly: `453=2` followed by one occurrence is a group of one, which re-emits `453=1`. A bridge packing a whole occurrence into one value - `#NOPARTYIDS[0]=PARTYID=BUYSIDE...PARTYROLE=1` - is read into the members of the occurrence it names, so the record holds the occurrence in its group's entry as it holds one a numeric frame spelled member by member. No dialect is there either: a message is not a dictionary member, and which sources a field belongs to is the field's own `FIX:sources` in the registry.
 
 ## The crate's own columns
 
-Fifty-two definitions carry the facts no dictionary publishes, in the order of the [row](#the-columns-are-the-folded-names) they open: the [element](../graph/event.md)'s identities and the event's clocks, place and state; the [market](../graph/market.md#contract) facts FIX states under a name of its own or not at all - the category and the type, the origin currency, the normalized ISIN and MIC, the execution clock, the metadata and the derived columns below - and the operation's; then the message's own: the plugin and conversation a bridge's log line names, three more normalized instrument codes and the capture's `sourceurl`. Every registry holds them from construction - the [derived](#a-derived-column-restates-a-fix-field) ones excepted - and the [store](store.md) writes them, so a dump is the whole row and a stored copy is read past in favour of the constructed one: `fix_crate_fields` lists all 52 in tag order. Their tags run contiguously from 65001 in the fixed row's order - `curruuid` 65001 through `partyids` 65041, then `msgpluginid` 65042 and `msgpluginside` 65043, the remaining message fields through `figicode` 65051 and capture-only `sourceurl` 65052; fixed-row document `fixmsg` is 65053 - a retired definition leaving no gap; `CRATE_TAG_MIN` (65000) opens the reserved block and `CRATE_TAG_MAX` (65100) closes it, `CURRUNIX_TAG_NAME` and its siblings hold each `(tag, name)` pair, `is_crate_tag` tests ownership and `is_derived_tag` tells the derived ones. `metadata` is the one group, reached by `field_by_counter(65037)` or by name. On a message every definition but `sourceurl` is a [typed fact](message.md#typed-tags): held by the event, the message or the capture, reached by its tag, and never in the content row. None is a bridge's own: a bridge's key no dictionary resolves - `PARENTORDERID=`, `OMS_InstrumentID=`, `TRANSVERSALKEY=` - arrives as an unmapped entry, kept as it came in a fixed row's `metadata` cell and a leaf's metadata, unless its key names an identifier: then [`Identifier::from_key`](../graph/identifier.md#reading-a-name) reads it into the [identifier maps](message.md#the-identifier-maps), and a fixed row whose map holds it carries it in `fixentries` under `0:<key>` [instead](#nothing-is-lost-at-the-end). The option strike is `strikepx`, a [derived](#a-derived-column-restates-a-fix-field) market column read off the dictionary's own `StrikePrice(202)`, which keeps its column in the fixed row's instrument band under that field's tag; Rust reads it as `Market::get_strikepx`, Python and JavaScript as `msg.strikepx`. `sourceurl` is the capture's own column - what a *reader* said about the line rather than what the line said - and neither a message nor the fixed row holds it: it stands with [the capture's own](#a-captures-own-columns-follow-the-shared-ones), beside the body the line was cut from and its place in the object.
+Fifty-three definitions carry the facts no dictionary publishes, in the order of the [row](#the-columns-are-the-folded-names) they open: the [element](../graph/event.md)'s identities and the event's clocks, place and state; the [market](../graph/market.md#contract) facts FIX states under a name of its own or not at all - the category and the type, the origin currency, the [instrument](../graph/instrument.md)'s cross code, the normalized ISIN and MIC, the execution clock, the metadata and the derived columns below - and the operation's; then the message's own: the plugin and conversation a bridge's log line names, three more normalized instrument codes and the capture's `sourceurl`. Every registry holds them from construction - the [derived](#a-derived-column-restates-a-fix-field) ones excepted - and the [store](store.md) writes them, so a dump is the whole row and a stored copy is read past in favour of the constructed one: `fix_crate_fields` lists all 53 in tag order. Their tags run contiguously from 65001 in the fixed row's order - `uuid` 65001 through `partyids` 65041, then `msgpluginid` 65042 and `msgpluginside` 65043, the remaining message fields through `figicode` 65051 and capture-only `sourceurl` 65052; fixed-row document `fixmsg` is 65053 and `instcode`, numbered past it, 65054 - a market fact, so it stands in the row right after `securityids` - a retired definition leaving no gap; `CRATE_TAG_MIN` (65000) opens the reserved block and `CRATE_TAG_MAX` (65100) closes it, `TRANSUNIX_TAG_NAME` and its siblings hold each `(tag, name)` pair, `is_crate_tag` tests ownership and `is_derived_tag` tells the derived ones. `metadata` is the one group, reached by `field_by_counter(65037)` or by name. On a message every definition but `sourceurl` is a [typed fact](message.md#typed-tags): held by the event, the message or the capture, reached by its tag, and never in the content row. None is a bridge's own: a bridge's key no dictionary resolves - `PARENTORDERID=`, `OMS_InstrumentID=`, `TRANSVERSALKEY=` - arrives as an unmapped entry, kept as it came in a fixed row's `metadata` cell and a leaf's metadata, unless its key names an identifier: then [`Identifier::from_key`](../graph/identifier.md#reading-a-name) reads it into the [identifier maps](message.md#the-identifier-maps), and a fixed row whose map holds it carries it in `fixentries` under `0:<key>` [instead](#nothing-is-lost-at-the-end). The option strike is `strikepx`, a [derived](#a-derived-column-restates-a-fix-field) market column read off the dictionary's own `StrikePrice(202)`, which keeps its column in the fixed row's instrument band under that field's tag; Rust reads it as `Market::get_strikepx`, Python and JavaScript as `msg.strikepx`. `sourceurl` is the capture's own column - what a *reader* said about the line rather than what the line said - and neither a message nor the fixed row holds it: it stands with [the capture's own](#a-captures-own-columns-follow-the-shared-ones), beside the body the line was cut from and its place in the object.
 
 | Column | Display | Tag | Holds |
 | --- | --- | --- | --- |
-| `curruuid` | `Current UUID` | 65001 | the message's identity, a `uuid`: its millisecond `currunix` leads, `seqnum` occupies UUIDv7's ordered 12-bit lane up to 4095, and `rand_b` carries a 62-bit XXH3 payload over `currhashcode` plus the whole sequence seeded by `crosshashcode`; non-null |
-| `crossuuid` | `Cross UUID` | 65002 | the identity every message of one lifecycle shares, a `uuid`: the UUIDv8 of `crosshashcode`, or the message's own `curruuid` where it names no cross code; non-null |
+| `uuid` | `UUID` | 65001 | the message's own UUID, its identity, a `uuid`: its millisecond `transunix` leads, `seqnum` occupies UUIDv7's ordered 12-bit lane up to 4095, and `rand_b` carries a 62-bit XXH3 payload over `hashcode` plus the whole sequence seeded by `crosshashcode`; non-null |
+| `crossuuid` | `Cross UUID` | 65002 | the identity every message of one lifecycle shares, a `uuid`: the UUIDv8 of `crosshashcode`, or the message's own `uuid` where it names no cross code; non-null |
 | `crosscode` | `Cross Code` | 65003 | the identifier every message of one lifecycle shares: an explicit nonempty value, else the first nonempty `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` or `MDReqID(262)` - led for a message filed `TRAD` by its trade's `TradeID(1003)` and `TradeReportID(571)` - stored as `{kind}:{side}:{base}` - the `MarketDataKind` code of its `msgcat`, the `Side` code of the side it takes where that category is sided (`ORDR`, `EXEC`: [`MarketDataKind::is_sided`](../types/enum/marketdatakind.md#sided-kinds-and-batches)) and `0` for any other category - a quote, whose side is a tag, among them - or a side of `UKNW` - `10:1:A1`, `14:0:Q1`, `21:0:T1`; empty where none; on a walked message its chain's, the message [re-keyed](lifecycle.md#a-chain-is-named-by-its-cross-code) onto it |
-| `currhashcode` | `Current Hash Code` | 65004 | the code the message's content digests to, `uint64`: the XXH3-64 of what the message states but the standard header and trailer, less `MsgType(35)` - the event's own facts, the text, the metadata, `MsgType`, the FIX fields it lifted, then the [entry tree](#nothing-is-lost-at-the-end) - never the frame a hop carried it in, never the chain it is in and never the row's columns; non-null |
+| `hashcode` | `Hash Code` | 65004 | the message's hash code, the code its content digests to, `uint64`: the XXH3-64 of what the message states but the standard header and trailer, less `MsgType(35)` - the event's own facts, the text, the metadata, `MsgType`, the FIX fields it lifted, then the [entry tree](#nothing-is-lost-at-the-end) - never the frame a hop carried it in, never the chain it is in and never the row's columns; non-null |
 | `crosshashcode` | `Cross Hash Code` | 65005 | the XXH3-64 of `crosscode` as stored, its `{kind}:{side}:` prefix included, zero where the message names none; non-null |
-| `srcuuids` | `Source UUIDs` | 65006 | the sorted unique identities of the elements this message was read from, a `serie<uuid>`: the [text line](../media/text.md) it was parsed out of, stated by the line doors as the line's own `curruuid` before the message settles, and for a message a parse [split off](message.md#a-parse-splits-what-a-message-reports) its source's `curruuid` beside its source's own sources; none for bytes; provenance, never its chain - no walk moves it - and outside the `currhashcode`, so the same bytes read from two lines are one message; never on the wire; nullable |
-| `currunix` | `Current Time` | 65007 | when the message happened, a nanosecond UTC clock: a stated `currunix`, else the official transaction clock standing within the codec's `official_time_delay_ms` of `SendingTime(52)`, else that `SendingTime`; non-null |
-| `creaunix` | `Creation Time` | 65008 | when the message was created: a stated one, else `currunix`; `CreationTime` is its indexed alias, so a bridge's case-folded `CREATIONTIME` and compact UTC timestamp fill this typed instant directly; the earliest its chain knows once walked; non-null |
-| `recdunix` | `Recording Time` | 65009 | the precise recording instant, nanoseconds UTC: a stated crate value, else the enclosing text line's `mtime`, else - where the row carries no `recdunix` column at all - the stated `SendingTime(52)`, the one recording the message itself states; never a hop clock nor a stand-in sending clock; nullable, and a row read back states its own, a null included |
+| `srcuuids` | `Source UUIDs` | 65006 | the sorted unique identities of the elements this message was read from, a `serie<uuid>`: the [text line](../media/text.md) it was parsed out of, stated by the line doors as the line's own `uuid` before the message settles, and for a message a parse [split off](message.md#a-parse-splits-what-a-message-reports) its source's `uuid` beside its source's own sources; none for bytes; provenance, never its chain - no walk moves it - and outside the `hashcode`, so the same bytes read from two lines are one message; never on the wire; nullable |
+| `transunix` | `Transaction Time` | 65007 | when the operation the message states really happened - its transaction instant, a nanosecond UTC clock: a stated `transunix`, else the official transaction clock standing less than the codec's `official_time_delay_ms` from `SendingTime(52)`, else that `SendingTime`; non-null |
+| `creaunix` | `Creation Time` | 65008 | when the message was created: a stated one, else `transunix`; `CreationTime` is its indexed alias, so a bridge's case-folded `CREATIONTIME` and compact UTC timestamp fill this typed instant directly; the earliest its chain knows once walked; non-null |
+| `sendunix` | `Sending Time` | 65009 | when the message crossed the wire - the technical clock and the merge reference - nanoseconds UTC: a stated crate value, else its carrier's clock, the enclosing text line's `mtime`, else - where the row carries no `sendunix` column at all - the stated `SendingTime(52)`, the one wire clock the message itself states; the earliest its statements know; never a hop clock nor a stand-in sending clock; nullable, and a row read back states its own, a null included |
 | `exprunix` | `Expiry Time` | 65010 | when the current generation stops being good, a nanosecond UTC clock: `ExpireTime(126)`, else `ValidUntilTime(62)`, else the end of the day `ExpireDate(432)` names - the last day an order can trade, so an order good until today is alive all of it; `MaturityDate(541)` is when the instrument matures and is no message's deadline; a newer message's explicit deadline wins even where earlier, else it inherits the predecessor's; nullable |
 | `prevunix` | `Previous Time` | 65011 | when the message this one follows happened; stamped by the [lifecycle](lifecycle.md), nullable |
-| `snapunix` | `Snapshot Time` | 65012 | on a separate owned [grid view](lifecycle.md#snapshots-are-a-grid), the instant the live message it copies was stated at - that message's own `snapunix` where it is itself a view - while the view is dated at its epoch-aligned tick, its `currunix` the tick and its `curruuid` the identity that instant derives; nullable, and unchanged on source rows |
+| `snapunix` | `Snapshot Time` | 65012 | on a separate owned [grid view](lifecycle.md#snapshots-are-a-grid), the instant the live message it copies was stated at - that message's own `snapunix` where it is itself a view - while the view is dated at its epoch-aligned tick, its `transunix` the tick and its `uuid` the identity that instant derives; nullable, and unchanged on source rows |
 | `prevuuid` | `Previous UUID` | 65013 | the identity of the message this one follows; stamped by the lifecycle, nullable |
 | `seqnum` | `Sequence Number` | 65014 | the message's [place](lifecycle.md#a-place-counts-one-instant) among the messages of its instant, `uint64`: 0 for the first of each run its stream hands over at that instant, with no other instant between, one more for each next; never null |
 | `state` | `State` | 65015 | the state the message reached, stored as the `uint16` code of its [member](../types/enum/state.md#the-code-is-the-rank) and read by the crate's `statecodeset`: the first status field the message states - `OrdStatus(39)`, `ExecType(150)`, `ExecAckStatus(1036)`, `TrdRptStatus(939)`, `QuoteStatus(297)`, `AllocStatus(87)`, `ConfirmStatus(665)`, `AffirmStatus(940)`, `MassActionResponse(1375)`, `MassCancelResponse(531)` - each read as its code whatever the dictionary types it, an integer code set's number as its digits, so `QuoteStatus(297)` `4` is `CANCELED` - else what its message type asks for, `PENDING_CANCEL` for a cancel request `F` and a quote cancel `Z`, `UNKNOWN` where neither states one; `FILLED` on an execution a parse split off; the furthest its chain knows once the [lifecycle](lifecycle.md) followed it, and a row stating one is the row's word; nullable, and never null on a row a message wrote |
 | `marketdatakind` | `Market Data Kind` | 65016 | the message type's business category, the [`MarketDataKind`](../types/enum/marketdatakind.md) member its `uint8` code stores - `ORDR` `10`, `QUOT` `14`, `EXEC` `8`, `TRAD` `21`, `BOOK` `3`, and the batches `ORDB` `22`, `QUOB` `23`, `TRDB` `25` - read by the crate's `marketdatakindcodeset` off the dictionary's `FIX:msgcat` for the type ([filing](index.md#a-message-type-is-filed-under-one-category)), `UKNW` where it files none; an execution report a parse splits a fill off is its order's `ORDR`, or its quote's `QUOT`, and the fill `EXEC`, and a batch's entries a parse splits off each its item's - `ORDR`, `QUOT`, `EXEC` or `TRAD`. The first market column, and the category a [market data leaf](message.md#market-data) states as its `marketdatakind`; a row stating one is the row's word; nullable |
 | `marketdatatype` | `Market Data Type` | 65017 | the type of its kind the message is, the [`MarketDataType`](../types/enum/marketdatatype.md) member its `uint16` code stores - `ORDLIMIT` `102`, `ORDMKT` `101`, `QUOTRAD` `201`, `TRDBLOCK` `301`, `BOOKBID` `400` - read by the crate's `marketdatatypecodeset` off the field its message type names first - a trade capture report's `TradeReportType(856)`, a quote request's `QuoteRequestType(303)`, a mass cancel's `MassCancelRequestType(530)`, a market data request's `SubscriptionRequestType(263)` - else its kind's: an order's `OrdType(40)`, a quote's `QuoteType(537)` then `OrdType`, an execution's or a trade's `TrdType(828)` then `OrdType`, any other's `MDEntryType(269)`; then every field the dictionary [maps through `FIX:marketdatatype`](registry.md#a-field-maps-its-values-onto-a-market-data-type), each value read by the dictionary's mapping before the crate's own; a value no member names is its set's catch-all - `ORDOTHER`, `QUOOTHER`, `TRDOTHER`, `BOOKOTHER`, `TRPTOTHER`, `QRQOTHER`, `MCXOTHER`, `MDROTHER` - and `UKNW` where none is stated; a row stating one is the row's word; non-null |
-| `origccy` | `Origin Currency` | 65018 | the currency the instrument the message is about was issued in, `ccy` - a depositary receipt or a share class listed in another currency trades apart from it - where the message states it or the lifecycle's [registry](../graph/isin-registry.md#matching) filled it; no FIX field states it, so this column is its one source. Null where neither did: the currency is then the origin an amount converts from, read by `Market::origin_currency` and never stored ([Market](../graph/market.md#origin-currency)); a row stating one is the row's word; nullable |
+| `origccy` | `Origin Currency` | 65018 | the currency the instrument the message is about was issued in, `ccy` - a depositary receipt or a share class listed in another currency trades apart from it - where the message states it or the lifecycle's [instruments](../graph/instrument.md#matching) filled it; no FIX field states it, so this column is its one source. Null where neither did: the currency is then the origin an amount converts from, read by `Market::origin_currency` and never stored ([Market](../graph/market.md#origin-currency)); a row stating one is the row's word; nullable |
 | `hiddenqty` | `Hidden Quantity` | 65019 | the part of the quantity an iceberg keeps from the market: the quantity - `Quantity(53)`, else what is left to work, `LeavesQty(151)` - past the part it shows, `DisplayQty(1138)` else `MaxFloor(111)`, where it shows less than all of it; [derived](#a-derived-column-restates-a-fix-field), and a row stating one is the row's word; nullable |
 | `unit` | `Unit` | 65020 | the unit the quantity is counted in: `UnitOfMeasure(996)`; [derived](#a-derived-column-restates-a-fix-field), and a row stating one is the row's word; nullable |
 | `securityids` | `Security IDs` | 65021 | the security identifiers the message names, a sorted `map<utf8, utf8>` of [identifiers](../graph/identifier.md#arrow) from the key's text - `src:type`, the type alone for the base source - to the code: `SecurityID(48)` under the base key of its `SecurityIDSource(22)`'s type - a source spelled `{NAMESPACE}INSTRUMENTID` an `instrumentid` from that namespace (`ULLINK.INSTRUMENTID` is `ullink`), a namespace folding to a source the crate reserves - `base`, `derived`, `fix` - none, so `DERIVEDINSTRUMENTID` is the base `instrumentid` - the `SecAltIDGrp(454)` occurrences the same way, the unmapped entries whose key names a security type - the keyed aliases a bridge states, `OMS_RICCODE` is `oms:ric` and `SEDOLCODE` the base `sedol`, and `OMS_InstrumentID` is `oms:instrumentid`, filling `instrumentid` where nothing states it - and the codes an ISIN embeds from `derived`, each held to its type's shape and a later code replacing one only where it [outranks](../types/codes/isin.md#the-check-digit) it; `SecurityID`, `SecurityIDSource` and the group stay in `fixentries` as sent, and a keyed alias the set holds under `0:<key>`; [derived](#a-derived-column-restates-a-fix-field), and a row stating one is the row's word; nullable |
 | `isincode` | `ISIN Code` | 65022 | the `isin` of the message's [security identifiers](message.md#typed-tags), stated directly by a bridge or through `SecurityID(48)` under source `4` or a `SecAltIDGrp(454)` occurrence: a [view](message.md#typed-tags) of `get_securityids()`, the code `get` answered when the row was written, resolved once as a row is read: read back with no `securityids` column, a code any key of its type in the message's reading holds, or the code `Symbol(55)`'s shape names where nothing else states one, states nothing, and any other replaces its type's base key - whether it was derived lost; nullable |
 | `miccode` | `MIC Code` | 65023 | the MIC the message names for its market: a stated one, else `LastMkt(30)`, `ExDestination(100)`, the market a bridge's [instrument key](message.md#typed-tags) names, then `SecurityExchange(207)`, the first an ISO 10383 MIC - `Mic::is_iso`, four upper-case letters or digits - or a Reuters mnemonic resolving to one; a currency pair naming none of them is ISO 10383's `XXXX`. A bridge's `INSTRUMENT[EXCHANGE]` is its alias and states it; a short code there, `S` or `TW`, is an [anomaly](message.md#anomalies) kept in the message's metadata, never on the wire, while the ladder answers; nullable |
-| `execunix` | `Execution Time` | 65024 | a [market fact](../graph/market.md#contract), not an event's - a text line states none: the latest precise execution instant this lifecycle has reached, nanoseconds UTC: initially a stated crate value, else `ExecutionTimestamp(2749)`, else the first `TrdRegTimestamps(768)` occurrence whose `TrdRegTimestampType(770)` is `ExecutionTime`, else a bridge's `eventtimestamp`, else `TransactTime(60)` stating a clock only where the message reports an execution - a day alone, which the parse restates as that day's midnight, dates no execution as it dates no event - an initial `35=AE` with `TradeReportTransType(487)` absent/New and `ExecType(150)` absent or execution-like among them; non-New/cancel/correct/reverse/status AE and `AD`, `AQ` or `AR` invent none. A report `FixMsg::is_execution` accepts that states no precise clock takes its `currunix` at intake, where it follows nothing yet, and later lifecycle events carry the clock without moving it backward; a lifecycle output read back with none is not refilled |
+| `execunix` | `Execution Time` | 65024 | a [market fact](../graph/market.md#contract), not an event's - a text line states none: the latest precise execution instant this lifecycle has reached, nanoseconds UTC: initially a stated crate value, else `ExecutionTimestamp(2749)`, else the first `TrdRegTimestamps(768)` occurrence whose `TrdRegTimestampType(770)` is `ExecutionTime`, else a bridge's `eventtimestamp`, else `TransactTime(60)` stating a clock only where the message reports an execution - a day alone, which the parse restates as that day's midnight, dates no execution as it dates no event - an initial `35=AE` with `TradeReportTransType(487)` absent/New and `ExecType(150)` absent or execution-like among them; non-New/cancel/correct/reverse/status AE and `AD`, `AQ` or `AR` invent none. A report `FixMsg::is_execution` accepts that states no precise clock takes its `transunix` at intake, where it follows nothing yet, and later lifecycle events carry the clock without moving it backward; a lifecycle output read back with none is not refilled |
 | `prevpx` | `Previous Price` | 65025 | the price the step before settled on: `PrevClosePx(140)`, the predecessor's price once walked; [derived](#a-derived-column-restates-a-fix-field), and a row stating one is the row's word; nullable |
 | `prevqty` | `Previous Quantity` | 65026 | the quantity the step before settled on, which only a lifecycle states; [derived](#a-derived-column-restates-a-fix-field), and a row stating one is the row's word; nullable |
 | `spotrate` | `Spot Rate` | 65027 | the spot part of an FX forward price: `LastSpotRate(194)` - a quote's `BidSpotRate(188)` and `OfferSpotRate(190)` are its legs', which stay its own fields; [derived](#a-derived-column-restates-a-fix-field), and a row stating one is the row's word; nullable |
@@ -677,15 +684,16 @@ Fifty-two definitions carry the facts no dictionary publishes, in the order of t
 | `partyids` | `Party IDs` | 65041 | the parties the operation names, a sorted `map<utf8, utf8>` of [identifiers](../graph/identifier.md#arrow) from the key's text to the value, each a role from a source, which fills the role's base key: the `Parties(453)` and `RootParties(1116)` occurrences and `Account(1)` under `AcctIDSource(660)`, which stay on the wire as sent ([the naming rule](message.md#parties-and-regulatory-trade-identifiers)), and the unmapped entries whose key names a party - a bridge's `TECH.CLIENTID` - riding `fixentries` under `0:<key>`; [derived](#a-derived-column-restates-a-fix-field), and a row stating one is the row's word; nullable |
 | `msgpluginid` | `Message Plugin ID` | 65042 | the plugin that logged the line, as a bridge names it: a row's own `msgpluginid` capture or column fills it, and it selects nothing - no dictionary, no version; a capture fact |
 | `msgpluginside` | `Message Plugin Side` | 65043 | the source plugin's role, required and `UKNW` where none is known; a capture fact |
-| `msgoriginator` | `Message Originator` | 65044 | the plugin a message came into a bridge through, as the bridge's own log line names it: `Message received: ... from (X as ...)`, `Execution report from X type ...`, or the `msgpluginid` that logged a `Receiving :` line; null where the line names none - `PLUGINORIGINATOR=OMSDealer` is content and stays so. Placed after `msgpluginid` in the message band, outside the `currhashcode`, and when two observations of one delivery merge the earlier one's stands, a differing later one an [anomaly](message.md#anomalies); a capture fact |
+| `msgoriginator` | `Message Originator` | 65044 | the plugin a message came into a bridge through, as the bridge's own log line names it: `Message received: ... from (X as ...)`, `Execution report from X type ...`, or the `msgpluginid` that logged a `Receiving :` line; null where the line names none - `PLUGINORIGINATOR=OMSDealer` is content and stays so. Placed after `msgpluginid` in the message band, outside the `hashcode`, and when two observations of one delivery merge the earlier one's stands, a differing later one an [anomaly](message.md#anomalies); a capture fact |
 | `msgctxid` | `Message Context ID` | 65045 | the message context a bridge handled the message in, from its log's bracket; a capture fact |
 | `msgsessionid` | `Message Session ID` | 65046 | the session *instance* a bridge handled the line on, as its own row header brackets it - never what the message states about itself; a capture fact |
-| `msgsesseventid` | `Message Session Event ID` | 65047 | the session event a bridge delivered the message as, `utf8`: `MsgType(35)`, `msgsessionid`, `msgctxid` and `MsgSeqNum(34)` joined by `:` as they are stated - `8:e7256476:9effef3e6a:1094` - where the three texts are nonempty and the sequence present, null otherwise; derived by the message whenever it settles and never read off a row, settled to one message and never carried along a chain, outside the `currhashcode`, and the key the lifecycle's [delivery merge](lifecycle.md#a-twin-is-not-a-successor) matches observations on; a capture fact |
-| `conversationid` | `Conversation ID` | 65048 | the conversation a bridge filed the message under: a `CONVERSATIONID` the message stated, else the `{conversationId: ...}` of its log line, a line naming another an anomaly; closes the message band after `msgsesseventid`, outside the `currhashcode`, and merges as `msgoriginator` does; a capture fact |
+| `msgsesseventid` | `Message Session Event ID` | 65047 | the session event a bridge delivered the message as, `utf8`: `MsgType(35)`, `msgsessionid`, `msgctxid` and `MsgSeqNum(34)` joined by `:` as they are stated - `8:e7256476:9effef3e6a:1094` - where the three texts are nonempty and the sequence present, null otherwise; derived by the message whenever it settles and never read off a row, settled to one message and never carried along a chain, outside the `hashcode`, and the key the lifecycle's [delivery merge](lifecycle.md#a-twin-is-not-a-successor) matches observations on; a capture fact |
+| `conversationid` | `Conversation ID` | 65048 | the conversation a bridge filed the message under: a `CONVERSATIONID` the message stated, else the `{conversationId: ...}` of its log line, a line naming another an anomaly; closes the message band after `msgsesseventid`, outside the `hashcode`, and merges as `msgoriginator` does; a capture fact |
 | `forexcode` | `Forex Code` | 65049 | the `forex` of the message's security identifiers - the [currency pair](../types/codes/forex.md) it is about, canonical `CCY/CCY` - stated by a row, else [detected](#a-currency-pair-is-read-off-the-symbol) off `Symbol(55)` where the message states no other class, from `derived`: a [view](message.md#typed-tags) of `get_securityids()`, the pair `get` answered when the row was written, resolved once as a row is read: read back with no `securityids` column, a pair `get` over the message's reading answers, or the pair the symbol names where nothing else states one, states nothing, and any other replaces its type's base key - whether it was derived lost; nullable |
 | `bloombergcode` | `Bloomberg Code` | 65050 | the `bloomberg` of the message's security identifiers, stated directly or under source `A`: a [view](message.md#typed-tags) of `get_securityids()`, the code `get` answered when the row was written, resolved once as a row is read: read back with no `securityids` column, a code any key of its type in the message's reading holds, or the code `Symbol(55)`'s shape names where nothing else states one, states nothing, and any other replaces its type's base key - whether it was derived lost; nullable |
 | `figicode` | `FIGI Code` | 65051 | the `figi` of the message's security identifiers, stated directly or under source `S`: a [view](message.md#typed-tags) of `get_securityids()`, the code `get` answered when the row was written, resolved once as a row is read: read back with no `securityids` column, a code any key of its type in the message's reading holds, or the code `Symbol(55)`'s shape names where nothing else states one, states nothing, and any other replaces its type's base key - whether it was derived lost; nullable |
-| `sourceurl` | `Source URL` | 65052 | the object the line was read from, typed as a `url`: the capture's own column and no column of the fixed row, declared by whoever read the line and carried in front of the row, carried by every message parsed out of or read back from that row as [what it carries](message.md#a-row-is-a-message-again) and stated again at its column by `into_row`, and held as no fact, so outside the `currhashcode`, the entries and the wire; null where nobody stated one, because the same message read from a second copy of one day's log is the same message |
+| `sourceurl` | `Source URL` | 65052 | the object the line was read from, typed as a `url`: the capture's own column and no column of the fixed row, declared by whoever read the line and carried in front of the row, carried by every message parsed out of or read back from that row as [what it carries](message.md#a-row-is-a-message-again) and stated again at its column by `into_row`, and held as no fact, so outside the `hashcode`, the entries and the wire; null where nobody stated one, because the same message read from a second copy of one day's log is the same message |
+| `instcode` | `Instrument Code` | 65054 | the cross code of the [instrument](../graph/instrument.md) the message is about, `utf8`, the instruments table's key: the real ISIN of a security an agency numbered, `class:body` for everything no agency numbers - `IF:EUR/USD` for a spot pair. Written at the parse where the code is a function of the message alone - a stated real ISIN, a detected [currency pair](#a-currency-pair-is-read-off-the-symbol) - and filled by the [lifecycle](lifecycle.md#instruments-are-learned-in-instant-order) from the instrument the message resolves to otherwise; followed along a chain, fed to no digest; a row stating one is the row's word; nullable |
 
 ### A derived column restates a FIX field
 
@@ -696,9 +704,11 @@ FIX keeps the market facts it names alike under their standard tags - the price,
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::Market;
+    use yggdryl_market::graph::Market;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{Decimal, FixCodec, FixRegistry, STRIKEPX_TAG_NAME, Scalar};
+    use yggdryl::{Decimal, Scalar};
+    use yggdryl_fix::{FixCodec, FixRegistry, STRIKEPX_TAG_NAME};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -755,15 +765,15 @@ FIX keeps the market facts it names alike under their standard tags - the price,
     assert.deepEqual(unreadable.anomalies.map((anomaly) => anomaly.field), ['strikeprice'])
     ```
 
-`currhashcode` is the one stored content identity and `crossuuid` the chain's; what each digests, and why a projection that adds or renames columns leaves them alone, is the [message's identity](../hashing.md). `FixMsg::digest` is a separate contract: the XXH3-128 of what the wire emits, so two identical orders read with two separators digest equal, and [`FixDedup`](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call) drops the second.
+`hashcode` is the one stored content identity and `crossuuid` the chain's; what each digests, and why a projection that adds or renames columns leaves them alone, is the [message's identity](../hashing.md). `FixMsg::digest` is a separate contract: the XXH3-128 of what the wire emits, so two identical orders read with two separators digest equal, and [`FixDedup`](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call) drops the second.
 
-The three capture facts a read states - `msgpluginid`, `msgctxid`, `msgsessionid` - come from [row-header captures](arrow.md#a-bridge-log-names-what-it-fills) or columns of the read, without overwriting a value the message stated. A complete nonempty `msgtype`, `msgsessionid` and `msgctxid` with a present `msgseqnum` join to the [delivery identity](lifecycle.md#a-twin-is-not-a-successor) `msgsesseventid`, the fourth fact the capture holds and a column of the fixed row of its own: the four values joined by `:` exactly as stated, `<msgtype>:<msgsessionid>:<msgctxid>:<msgseqnum>` - `8:e7256476:9effef3e6a:1094` - the sequence in its canonical `u64` spelling. The message derives it again whenever it settles, so any missing part removes it, a cell a row states for it is replaced by the join rather than read. A session or context holding a `:` of its own could join two splits to one key; a bridge names none that way. It is capture provenance and excluded from the FIX content identity. Equal `msgsesseventid` values force a full merge before ordinary with-previous following: the observation with the later `recdunix` is the reference - a stated one leads an absent one, and the later `currunix` closes a tie - its scalar conflicts win, older facts fill absences, and equal-index group occurrences merge recursively in FIX tag order. The merged `recdunix` and `execunix` are the earliest observations, so a merged statement ranks by its earliest recording against a third. A capture or column named `sourceurl` fills nothing at all: the cell is carried by every message read out of that row and stated again at its own column by `into_row`. Market values remain FIX fields; the normalized identifier columns, plus category, state, expiry, execution and recording instants, are typed readings built from them. A lifecycle carries the furthest state and the current generation's deadline: a newer explicit `exprunix` can shorten it, while an absent one inherits. The parse fills an absent `execunix` from `currunix` only where `FixMsg::is_execution` says that observation reports an execution - including a qualifying initial AE even without an execution lifecycle state, and excluding cancel/correct/status reports even where their carried state is filled - and the lifecycle carries the later of that clock and the predecessor's through successors; `recdunix` remains a fact of the observation. Duplicate statements merge execution and recording facts to their earliest values. `prevuuid`, `prevunix` and the folded `creaunix` are stamped by the [lifecycle](lifecycle.md), `seqnum` is the message's [place at its instant](lifecycle.md#a-place-counts-one-instant), which the parse gives by order, the walk by content and a market leaf takes from its message, and `snapunix` only on a separate grid view; `srcuuids` is stated where a message is parsed out of a `TextLine` - the line's own `curruuid` - and where a parse [splits a message off](message.md#a-parse-splits-what-a-message-reports) another, and by nothing else, because a walk carries no source along a chain. FIX's `SenderCompID` and `TargetCompID` name counterparties; the plugin carrying a message inside a bridge is a separate fact.
+The three capture facts a read states - `msgpluginid`, `msgctxid`, `msgsessionid` - come from [row-header captures](arrow.md#a-bridge-log-names-what-it-fills) or columns of the read, without overwriting a value the message stated. A complete nonempty `msgtype`, `msgsessionid` and `msgctxid` with a present `msgseqnum` join to the [delivery identity](lifecycle.md#a-twin-is-not-a-successor) `msgsesseventid`, the fourth fact the capture holds and a column of the fixed row of its own: the four values joined by `:` exactly as stated, `<msgtype>:<msgsessionid>:<msgctxid>:<msgseqnum>` - `8:e7256476:9effef3e6a:1094` - the sequence in its canonical `u64` spelling. The message derives it again whenever it settles, so any missing part removes it, a cell a row states for it is replaced by the join rather than read. A session or context holding a `:` of its own could join two splits to one key; a bridge names none that way. It is capture provenance and excluded from the FIX content identity. Equal `msgsesseventid` values force a full merge before ordinary with-previous following: the observation with the later `sendunix` is the reference - a stated one leads an absent one, and the later `transunix` closes a tie - its scalar conflicts win, older facts fill absences, and equal-index group occurrences merge recursively in FIX tag order. The merged `sendunix` and `execunix` are the earliest observations, so a merged statement ranks by its earliest recording against a third. A capture or column named `sourceurl` fills nothing at all: the cell is carried by every message read out of that row and stated again at its own column by `into_row`. Market values remain FIX fields; the normalized identifier columns, plus category, state, expiry, execution and recording instants, are typed readings built from them. A lifecycle carries the furthest state and the current generation's deadline: a newer explicit `exprunix` can shorten it, while an absent one inherits. The parse fills an absent `execunix` from `transunix` only where `FixMsg::is_execution` says that observation reports an execution - including a qualifying initial AE even without an execution lifecycle state, and excluding cancel/correct/status reports even where their carried state is filled - and the lifecycle carries the later of that clock and the predecessor's through successors; `sendunix` remains a fact of the observation. Duplicate statements merge execution and recording facts to their earliest values. `prevuuid`, `prevunix` and the folded `creaunix` are stamped by the [lifecycle](lifecycle.md), `seqnum` is the message's [place at its instant](lifecycle.md#a-place-counts-one-instant), which the parse gives by order, the walk by content and a market leaf takes from its message, and `snapunix` only on a separate grid view; `srcuuids` is stated where a message is parsed out of a `TextLine` - the line's own `uuid` - and where a parse [splits a message off](message.md#a-parse-splits-what-a-message-reports) another, and by nothing else, because a walk carries no source along a chain. FIX's `SenderCompID` and `TargetCompID` name counterparties; the plugin carrying a message inside a bridge is a separate fact.
 
-There is no partition column. How a layout is cut is the target's to decide: an Iceberg table takes an `hour` transform over `currunix` and reads the instant the row already carries, so a materialized copy of it was a second owner of one fact. A reader that wants the hour asks the target for it.
+There is no partition column. How a layout is cut is the target's to decide: an Iceberg table takes an `hour` transform over `transunix` and reads the instant the row already carries, so a materialized copy of it was a second owner of one fact. A reader that wants the hour asks the target for it.
 
 ### The plugin's role is the source's
 
-`msgpluginside` is no capture of the line and no tag of the wire: it is the role of the plugin whose session produced the message - a Buy-Side plugin originates orders and cancels and receives execution reports, a Sell-Side one receives them and answers - which a dictionary knows of each source it was built from, in that source's [catalog entry](registry.md#membership), read off a CBlock root's `type` ([`PluginSide`](../types/enum/pluginside.md#a-cblock-names-its-plugins-role)). A codec reading under one source - `FixCodec::with_source(id)`, Python `FixCodec(registry, source=id)`, JavaScript `new FixCodec(registry, { source })` - resolves the id against the catalog once, under the fold, refusing one it does not hold, and stamps that entry's role on every message it builds, on the line, row, byte and batch doors alike; a codec told no source stamps `UKNW`. A row-header capture or a row cell named `msgpluginside` - a line spelling the crate tag `65043` itself included - is the row's word over the stamp, in any spelling the enum reads, and a FIX row read back states its own cell. The role is the session's, never the order's: a Sell-Side plugin receives buy orders, so `Side(54)` and `msgpluginside` answer apart, and the stamp is outside `currhashcode`, `curruuid`, the message's stable hash and the wire - one line parsed under two sources is one message stamped two ways. Python reads it as `message.msgpluginside`, JavaScript as `message.capture().msgpluginside`.
+`msgpluginside` is no capture of the line and no tag of the wire: it is the role of the plugin whose session produced the message - a Buy-Side plugin originates orders and cancels and receives execution reports, a Sell-Side one receives them and answers - which a dictionary knows of each source it was built from, in that source's [catalog entry](registry.md#membership), read off a CBlock root's `type` as a [`Side`](../types/enum/side.md#a-fix-plugins-role-is-a-side). A codec reading under one source - `FixCodec::with_source(id)`, Python `FixCodec(registry, source=id)`, JavaScript `new FixCodec(registry, { source })` - resolves the id against the catalog once, under the fold, refusing one it does not hold, and stamps that entry's role on every message it builds, on the line, row, byte and batch doors alike; a codec told no source stamps `UKNW`. A row-header capture or a row cell named `msgpluginside` - a line spelling the crate tag `65043` itself included - is the row's word over the stamp, in any spelling the enum reads, and a FIX row read back states its own cell. The role is the session's, never the order's: a Sell-Side plugin receives buy orders, so `Side(54)` and `msgpluginside` answer apart, and the stamp is outside `hashcode`, `uuid`, the message's stable hash and the wire - one line parsed under two sources is one message stamped two ways. Python reads it as `message.msgpluginside`, JavaScript as `message.capture().msgpluginside`.
 
 === "Rust"
 
@@ -771,30 +781,34 @@ There is no partition column. How a layout is cut is the target's to decide: an 
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Market};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::Market;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, FixSource, PluginSide, Scalar, Side, MSGPLUGINSIDE_TAG_NAME};
+    use yggdryl_fix::{FixCodec, FixRegistry, FixSource, MSGPLUGINSIDE_TAG_NAME};
+    use yggdryl::Scalar;
+    use yggdryl_market::Side;
+    yggdryl_fix::install()?;
 
     let seed = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("config").join("fix");
     let mut registry = FixRegistry::from_handle(&LocalFolder::new(seed)?)?;
     // The source's entry states its plugin's role, as a CBlock root's `type` does.
-    registry.add_source(FixSource::new("venue")?.with_pluginside(PluginSide::SellSide));
+    registry.add_source(FixSource::new("venue")?.with_pluginside(Side::Sell));
     let registry = Arc::new(registry);
 
     let line: &[u8] = b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|10=0|";
     let codec = FixCodec::new(Arc::clone(&registry)).with_source("VENUE")?;
     assert_eq!(codec.source(), Some("venue"));
     let message = codec.parse_fix_line(line)?;
-    assert_eq!(message.msgpluginside(), PluginSide::SellSide);
+    assert_eq!(message.msgpluginside(), Side::Sell);
     assert_eq!(MSGPLUGINSIDE_TAG_NAME, (65_043, "msgpluginside"));
-    assert_eq!(message.get_by_tag(65_043), Some(Scalar::PluginSide(PluginSide::SellSide)));
+    assert_eq!(message.get_by_tag(65_043), Some(Scalar::from(Side::Sell)));
     // The session's role, never the order's side.
     assert_eq!(message.get_side(), Side::Buy);
 
     // No source named stamps `UKNW`; an id the catalog does not hold is refused.
     let bare = FixCodec::new(Arc::clone(&registry)).parse_fix_line(line)?;
-    assert_eq!(bare.msgpluginside(), PluginSide::Unknown);
-    assert_eq!(bare.get_currhashcode(), message.get_currhashcode());
+    assert_eq!(bare.msgpluginside(), Side::Unknown);
+    assert_eq!(bare.get_hashcode(), message.get_hashcode());
     assert!(FixCodec::new(registry).with_source("ghost").is_err());
     ```
 
@@ -805,21 +819,21 @@ There is no partition column. How a layout is cut is the target's to decide: an 
 
     import pytest
 
-    from yggdryl import PluginSide, Side
+    from yggdryl import Side
     from yggdryl.fix import FixCodec, FixRegistry
 
     registry = FixRegistry.from_handle(pathlib.Path("config/fix").resolve())
     # The source's entry states its plugin's role, as a CBlock root's `type` does.
-    registry.add_source("venue", pluginside=PluginSide.SELL)
+    registry.add_source("venue", pluginside=Side.SELL)
 
     line = b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|10=0|"
     message = FixCodec(registry, source="VENUE").parse_fix_line(line)
-    assert message.msgpluginside is PluginSide.SELL
+    assert message.msgpluginside is Side.SELL
     # The session's role, never the order's side.
     assert message.side is Side.BUYS
 
     # No source named stamps `UKNW`; an id the catalog does not hold is refused.
-    assert FixCodec(registry).parse_fix_line(line).msgpluginside is PluginSide.UKNW
+    assert FixCodec(registry).parse_fix_line(line).msgpluginside is Side.UKNW
     with pytest.raises(ValueError, match="ghost"):
         FixCodec(registry, source="ghost")
     ```
@@ -829,7 +843,7 @@ There is no partition column. How a layout is cut is the target's to decide: an 
     ```javascript
     const assert = require('node:assert/strict')
     const path = require('node:path')
-    const { PluginSide, fix } = require('yggdryl')
+    const { Side, fix } = require('yggdryl')
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config/fix'))
     // The source's entry states its plugin's role, as a CBlock root's `type` does.
@@ -838,7 +852,7 @@ There is no partition column. How a layout is cut is the target's to decide: an 
     const line = Buffer.from('8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|40=2|44=100|10=0|')
     const message = new fix.FixCodec(registry, { source: 'VENUE' }).parseFixLine(line)
     assert.equal(message.capture().msgpluginside, 'SELL')
-    assert.equal(PluginSide[message.capture().msgpluginside], 2)
+    assert.equal(Side[message.capture().msgpluginside], 2)
     // The session's role, never the order's side.
     assert.equal(message.side, 'BUYS')
 
@@ -853,7 +867,7 @@ These facts are settled when a message is built, whatever its line carried, and 
 
 `beginstring` is the wire's own `BeginString(8)` when stated, else `FIX.4.4`, the crate's own, filled by the builder so that every row states one: a bridge row, and the row a JSON document is, say which FIX they were read as exactly as a frame does. A codec pins none - a version is what a line said, never a caller's statement about a whole run - and the dictionary states none to lend: it holds every tag ever defined and filters by none.
 
-Eight values close every message and are never null: `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `crosscode` - the empty text where the message names none - `curruuid`, `crossuuid` and `seqnum`, whose first place is `0`; `state` is written on every one of them too, `UNKNOWN` where nothing states one, and stays a nullable column because a state has no neutral member for an empty cell to read as; `msgpluginside` is stated on every one and required, `UKNW` where the codec [reads under no source](#the-plugins-role-is-the-sources). Initial intake settles the clocks once. `SendingTime(52)` is the message's own, else a row cell or line capture reaching tag 52, else the `currunix` of the [text line](../media/text.md) the message was read out of - its `mtime` capture, else its handle's modification time; on the [Arrow text door](arrow.md), the batch's `currunix` column; a line at the epoch is a line nothing dated, on either door - else the codec's `default_sending_time`, else one UTC-now read for that undated message. The line's clock leads the pin because the instant a line was recorded at is nearer the send than any clock a caller pins for a whole run; bytes read with no line behind them - `parse_line`, `parse_fix_line`, `parse_lines`, `parse_pairs` - go straight to the default, and a root built by `FixMsg::new` to now. Only a stated one is a fact of the message, so only a stated one goes back on the wire and into the row's tag-52 column, which `FixHeader::stated_sendingtime` answers. That clock is the **reference** every parse dates against, and `currunix` is a stated `currunix`, else [the official clock](#the-official-clock-dates-the-message) standing within the codec's `official_time_delay_ms` of it, else the sending clock itself; `creaunix` is a stated one, else `currunix`. What a resend's `OrigSendingTime(122)` says stays the [lifecycle](lifecycle.md)'s to read off the structured message. `execunix` reads the most precise direct execution clock the message gives, and a report `FixMsg::is_execution` accepts that states none and follows nothing takes its settled `currunix` right at intake, because an execution report stating no other clock executed when it happened; `recdunix` is the enclosing line's recording clock - the same line clock - else, where the message states its `SendingTime(52)`, that clock: the one recording the message itself states; a stand-in sending clock records nothing. A stated clock that names no instant is left unstated - beside an anomaly naming the text and a [warning](#warnings) - and the message is dated as one stating none is: the message states no sending clock, and the row's tag-52 column none. No wall clock is read after intake - writes, row exchange, the lifecycle and replay carry the settled values - so a read that must be reproducible reads lines that carry their clock, pins `default_sending_time`, or carries the settled rows. `header().sendingtime()` and the event's clock getters answer them without a lookup, in nanoseconds since the epoch, and `by_tag` answers the same clocks under their standard or crate tags.
+Eight values close every message and are never null: `transunix`, `creaunix`, `hashcode`, `crosshashcode`, `crosscode` - the empty text where the message names none - `uuid`, `crossuuid` and `seqnum`, whose first place is `0`; `state` is written on every one of them too, `UNKNOWN` where nothing states one, and stays a nullable column because a state has no neutral member for an empty cell to read as; `msgpluginside` is stated on every one and required, `UKNW` where the codec [reads under no source](#the-plugins-role-is-the-sources). Initial intake settles the clocks once. `SendingTime(52)` is the message's own, else a row cell or line capture reaching tag 52, else the `transunix` of the [text line](../media/text.md) the message was read out of - its `mtime` capture, else its handle's modification time; on the [Arrow text door](arrow.md), the batch's `transunix` column; a line at the epoch is a line nothing dated, on either door - else the codec's `default_sending_time`, else one UTC-now read for that undated message. The line's clock leads the pin because the instant a line was written at is nearer the send than any clock a caller pins for a whole run; bytes read with no line behind them - `parse_line`, `parse_fix_line`, `parse_lines`, `parse_pairs` - go straight to the default, and a root built by `FixMsg::new` to now. Only a stated one is a fact of the message, so only a stated one goes back on the wire and into the row's tag-52 column, which `FixHeader::stated_sendingtime` answers. That clock is the **reference** every parse dates against, and `transunix` - when the operation happened - is a stated `transunix`, else [the official clock](#the-official-clock-dates-the-message) standing less than the codec's `official_time_delay_ms` from it, else the sending clock itself; `creaunix` is a stated one, else `transunix`. What a resend's `OrigSendingTime(122)` says stays the [lifecycle](lifecycle.md)'s to read off the structured message. `execunix` reads the most precise direct execution clock the message gives, and a report `FixMsg::is_execution` accepts that states none and follows nothing takes its settled `transunix` right at intake, because an execution report stating no other clock executed when it happened; `sendunix` - when the message crossed the wire - is the enclosing line's clock, the carrier's, else, where the message states its `SendingTime(52)`, that clock: the one wire clock the message itself states; a stand-in sending clock states none. A stated clock that names no instant is left unstated - beside an anomaly naming the text and a [warning](#warnings) - and the message is dated as one stating none is: the message states no sending clock, and the row's tag-52 column none. No wall clock is read after intake - writes, row exchange, the lifecycle and replay carry the settled values - so a read that must be reproducible reads lines that carry their clock, pins `default_sending_time`, or carries the settled rows. `header().sendingtime()` and the event's clock getters answer them without a lookup, in nanoseconds since the epoch, and `by_tag` answers the same clocks under their standard or crate tags.
 
 Dated, each message takes its [place](lifecycle.md#a-place-counts-one-instant) by order: the next of its instant's run, within a row and across every row the door reads, so a report and the execution the parse [split off](message.md#a-parse-splits-what-a-message-reports) it are places 0 and 1, and the split message's `srcuuids` name the identity its source was placed under.
 
@@ -863,17 +877,19 @@ Dated, each message takes its [place](lifecycle.md#a-place-counts-one-instant) b
     use std::sync::Arc;
     use yggdryl::graph::{Element, Event};
     use yggdryl::local::LocalFolder;
-    use yggdryl::{CREAUNIX_TAG_NAME, FixCodec, FixRegistry, Scalar, TimeUnit, Timezone, CURRUNIX_TAG_NAME, fix_crate_fields};
+    use yggdryl_fix::{CREAUNIX_TAG_NAME, FixCodec, FixRegistry, TRANSUNIX_TAG_NAME, fix_crate_fields};
+    use yggdryl::{Scalar, TimeUnit, Timezone};
+    yggdryl_fix::install()?;
 
     let fields = fix_crate_fields()?;
-    assert_eq!(fields.len(), 52);
+    assert_eq!(fields.len(), 53);
     // No partition column: how a layout is cut is the target's to decide.
     assert!(fields.iter().all(|field| !field.is_partition()));
     // The two identities are the crate's own uuid, the codes plain integers.
     let by_name = |name: &str| fields.iter().find(|field| field.name() == name).expect("a crate column");
-    assert_eq!(by_name("curruuid").dtype(), &yggdryl::DataType::uuid());
+    assert_eq!(by_name("uuid").dtype(), &yggdryl::DataType::uuid());
     assert_eq!(by_name("crossuuid").dtype(), &yggdryl::DataType::uuid());
-    assert_eq!(by_name("currhashcode").dtype(), &yggdryl::DataType::UInt64);
+    assert_eq!(by_name("hashcode").dtype(), &yggdryl::DataType::UInt64);
     // And no market column: a price is `Price(44)`, the dictionary's own.
     assert!(fields.iter().all(|field| field.name() != "price" && field.name() != "quantity"));
 
@@ -889,28 +905,28 @@ Dated, each message takes its [place](lifecycle.md#a-place-counts-one-instant) b
     assert_eq!(bare.by_tag(8)?.as_str(), Some("FIX.4.4"));
     assert_eq!(bare.by_tag(52)?, default);
     assert!(!bare.header().stated_sendingtime());
-    assert_eq!(bare.by_tag(CURRUNIX_TAG_NAME.0)?, default);
+    assert_eq!(bare.by_tag(TRANSUNIX_TAG_NAME.0)?, default);
     assert_eq!(bare.by_tag(CREAUNIX_TAG_NAME.0)?, default);
-    assert_eq!(bare.get_currunix(), 1_704_190_530_000_000_000);
-    assert_eq!(bare.get_curruuid(), bare.time_uuid()?);
+    assert_eq!(bare.get_transunix(), 1_704_190_530_000_000_000);
+    assert_eq!(bare.get_uuid(), bare.time_uuid()?);
     // None of them became a pair on the wire: the header re-emits the
     // version, and the content what the frame stated, a day order derived.
     assert_eq!(bare.into_text('|')?, "8=FIX.4.4|35=D|55=AAPL|59=0|10=0|");
 
     // A frame stating its clocks keeps them: the stated SendingTime goes
-    // back on the wire, and the transaction half a second in front of it is
-    // inside the default one-second delay, so it is the same event said
-    // twice and the more exact saying of it dates the message.
+    // back on the wire, and the transaction 465 ms in front of it is inside
+    // the default half-second delay, so it is the same event said twice and
+    // the more exact saying of it dates the message.
     let sent = reader
-        .parse_line(b"8=FIX.4.2|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|55=AAPL|10=0|")?
+        .parse_line(b"8=FIX.4.2|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.950|55=AAPL|10=0|")?
         .next()
         .expect("one frame")?;
     assert_eq!(sent.header().beginstring(), "FIX.4.2");
     assert!(sent.header().stated_sendingtime());
     assert_eq!(sent.by_tag(52)?.temporal_count_at(TimeUnit::Millisecond), Some(1_787_308_200_415));
-    assert_eq!(sent.get_currunix(), 1_787_308_199_900_000_000);
-    assert_eq!(sent.get_creaunix(), Some(sent.get_currunix()));
-    assert_eq!(sent.by_tag(60)?.temporal_count_at(TimeUnit::Millisecond), Some(1_787_308_199_900));
+    assert_eq!(sent.get_transunix(), 1_787_308_199_950_000_000);
+    assert_eq!(sent.get_creaunix(), Some(sent.get_transunix()));
+    assert_eq!(sent.by_tag(60)?.temporal_count_at(TimeUnit::Millisecond), Some(1_787_308_199_950));
     assert!(sent.get_snapunix().is_none(), "a read is not a snapshot");
     assert!(sent.into_text('|')?.starts_with("8=FIX.4.2|35=D|52=20260821-10:30:00.415|"));
     ```
@@ -926,14 +942,14 @@ Dated, each message takes its [place](lifecycle.md#a-place-counts-one-instant) b
 
     UNIX, CREAUNIX = 65007, 65008
     fields = list(fix_crate_fields())
-    assert len(fields) == 52
+    assert len(fields) == 53
     # No partition column: how a layout is cut is the target's to decide.
     assert not any(field.is_partition for field in fields)
     # The two identities are the crate's own uuid, the codes plain integers.
     by_name = {field.name: field for field in fields}
-    assert by_name["curruuid"].dtype == DataType("uuid")
+    assert by_name["uuid"].dtype == DataType("uuid")
     assert by_name["crossuuid"].dtype == DataType("uuid")
-    assert by_name["currhashcode"].dtype == DataType("uint64")
+    assert by_name["hashcode"].dtype == DataType("uint64")
     assert "price" not in by_name and "quantity" not in by_name
 
     default = datetime(2024, 1, 2, 10, 15, 30, tzinfo=timezone.utc)
@@ -949,22 +965,22 @@ Dated, each message takes its [place](lifecycle.md#a-place-counts-one-instant) b
     assert not bare.header().stated_sendingtime
     assert bare.by_tag(UNIX).as_py() == default
     assert bare.by_tag(CREAUNIX).as_py() == default
-    assert bare.currunix == 1_704_190_530_000_000_000
+    assert bare.transunix == 1_704_190_530_000_000_000
     # None of them became a pair on the wire: the header re-emits the version, and
     # the content what the frame stated, a day order derived.
     assert bare.into_text("|") == "8=FIX.4.4|35=D|55=AAPL|59=0|10=0|"
 
     # A frame stating its clocks keeps them: the stated SendingTime goes back on
-    # the wire, and the transaction half a second in front of it is inside the
-    # default one-second delay, so it is the same event said twice and the more
-    # exact saying of it dates the message.
-    sent = next(reader.parse_line(b"8=FIX.4.2|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|55=AAPL|10=0|"))
+    # the wire, and the transaction 465 ms in front of it is inside the default
+    # half-second delay, so it is the same event said twice and the more exact
+    # saying of it dates the message.
+    sent = next(reader.parse_line(b"8=FIX.4.2|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.950|55=AAPL|10=0|"))
     assert sent.header().beginstring == "FIX.4.2"
     assert sent.header().stated_sendingtime
     assert sent.by_tag(52).as_py() == datetime(2026, 8, 21, 10, 30, 0, 415000, tzinfo=timezone.utc)
-    assert sent.currunix == 1_787_308_199_900_000_000
-    assert sent.creaunix == sent.currunix
-    assert sent.by_tag(60).as_py() == datetime(2026, 8, 21, 10, 29, 59, 900000, tzinfo=timezone.utc)
+    assert sent.transunix == 1_787_308_199_950_000_000
+    assert sent.creaunix == sent.transunix
+    assert sent.by_tag(60).as_py() == datetime(2026, 8, 21, 10, 29, 59, 950000, tzinfo=timezone.utc)
     assert sent.snapunix is None, "a read is not a snapshot"
     assert sent.into_text("|").startswith("8=FIX.4.2|35=D|52=20260821-10:30:00.415|")
     ```
@@ -978,14 +994,14 @@ Dated, each message takes its [place](lifecycle.md#a-place-counts-one-instant) b
 
     const [UNIX, CREAUNIX] = [65007, 65008]
     const fields = fix.crateFields()
-    assert.equal(fields.length, 52)
+    assert.equal(fields.length, 53)
     // No partition column: how a layout is cut is the target's to decide.
     assert.ok(fields.every((field) => !field.isPartition))
     // The two identities are the crate's own uuid, the codes plain integers.
     const byName = Object.fromEntries(fields.map((field) => [field.name, field]))
-    assert.equal(byName.curruuid.dtype.toString(), 'uuid')
+    assert.equal(byName.uuid.dtype.toString(), 'uuid')
     assert.equal(byName.crossuuid.dtype.toString(), 'uuid')
-    assert.equal(byName.currhashcode.dtype.toString(), 'uint64')
+    assert.equal(byName.hashcode.dtype.toString(), 'uint64')
     assert.equal(byName.price, undefined)
     assert.equal(byName.quantity, undefined)
 
@@ -1002,32 +1018,32 @@ Dated, each message takes its [place](lifecycle.md#a-place-counts-one-instant) b
     assert.ok(bare.byTag(52).equals(reader.defaultSendingTime))
     assert.ok(bare.byTag(UNIX).equals(bare.byTag(52)))
     assert.ok(bare.byTag(CREAUNIX).equals(bare.byTag(52)))
-    assert.equal(bare.currunix, 1_704_190_530_000_000_000n)
+    assert.equal(bare.transunix, 1_704_190_530_000_000_000n)
     // None of them became a pair on the wire - only a stated sending clock is a
     // fact of the message - so the header re-emits the version and the content
     // what the frame stated, a day order derived.
     assert.equal(bare.intoText('|'), '8=FIX.4.4|35=D|55=AAPL|59=0|10=0|')
 
     // A frame stating its clocks keeps them: the stated SendingTime goes back on
-    // the wire, and the transaction half a second in front of it is inside the
-    // default one-second delay, so it is the same event said twice and the more
-    // exact saying of it dates the message.
+    // the wire, and the transaction 465 ms in front of it is inside the default
+    // half-second delay, so it is the same event said twice and the more exact
+    // saying of it dates the message.
     const sent = reader
-      .parseLine(Buffer.from('8=FIX.4.2|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|55=AAPL|10=0|'))
+      .parseLine(Buffer.from('8=FIX.4.2|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.950|55=AAPL|10=0|'))
       .next().value
     assert.equal(sent.header().beginstring, 'FIX.4.2')
-    assert.equal(sent.currunix, 1_787_308_199_900_000_000n)
-    assert.equal(sent.creaunix, sent.currunix)
-    assert.equal(sent.byTag(60).asJs().getTime(), Date.UTC(2026, 7, 21, 10, 29, 59, 900))
+    assert.equal(sent.transunix, 1_787_308_199_950_000_000n)
+    assert.equal(sent.creaunix, sent.transunix)
+    assert.equal(sent.byTag(60).asJs().getTime(), Date.UTC(2026, 7, 21, 10, 29, 59, 950))
     assert.equal(sent.snapunix, null, 'a read is not a snapshot')
     assert.ok(sent.intoText('|').startsWith('8=FIX.4.2|35=D|52=20260821-10:30:00.415|'))
     ```
 
 ### The official clock dates the message
 
-`SendingTime(52)` is when a session put the message on the wire, which is not when the thing it reports happened. A venue that stamps its own clock says that more exactly, and the distance between the two is the only evidence a parse has that the two clocks are saying the same thing: inside a hop they are one event said twice and the venue's saying is the better one; a whole second apart they are two events - a resend of an older order, a report batched behind the trades it covers, a clock nobody disciplined - and dating the message by the far one would move it out of the order it was sent in. `official_time_delay_ms` / `officialTimeDelayMs` is that distance, one second by default, and it is a pin on the codec for the whole run.
+`SendingTime(52)` is when a session put the message on the wire, which is not when the thing it reports happened. A venue that stamps its own clock says that more exactly, and the distance between the two is the only evidence a parse has that the two clocks are saying the same thing: inside a hop they are one event said twice and the venue's saying is the better one; half a second or more apart they are read as two events - a resend of an older order, a report batched behind the trades it covers, a clock nobody disciplined - and dating the message by the far one would move it out of the order it was sent in. `official_time_delay_ms` / `officialTimeDelayMs` is that distance, half a second by default, and it is a pin on the codec for the whole run: an official clock dates the message only where its gap to the sending clock is less than the delay, so one exactly the delay off is another event, and a nonpositive delay admits only a clock equal to the sending clock.
 
-The parse ranks what the message says about its own event and takes the best clock standing inside the delay, on either side of the sending clock:
+The parse ranks what the message says about its own event and takes the best clock standing less than the delay from the sending clock, on either side of it:
 
 | Rank | Clock | Read as |
 | --- | --- | --- |
@@ -1036,7 +1052,7 @@ The parse ranks what the message says about its own event and takes the best clo
 | 3 | `TrdRegTimestamp(769)` whose type is `TimeIn(2)`, `TimeOut(3)`, `BrokerReceipt(4)`, `DeskReceipt(6)` or `OrderRoutingTime(31)` | a hop the message crossed on its way here: nearer the event than the sending clock, further from it than the stamps above |
 | - | every other `TrdRegTimestampType`, and a code no set names | never a clock. Submission to clearing, public and non-public reporting and their updates, confirmation, clearing, allocation, submission to a repository, continuation events, valuation, an identifier's assignment, affirmation and a bare update time all happen *after* the event; a previous time priority and a previous identifier describe the state this one replaced; a reference time for the BBO describes the market it was measured against. An unranked stamp is silence, never a guess |
 
-Two clocks of one rank are decided by the nearer of them, and the earlier instant closes the last tie, so one row reads one way. The `TrdRegTimestamps(768)` group is read **as a group**: `TrdRegTimestamp` says nothing on its own - the same tag carries an execution's instant, a desk's receipt and the moment a report reached a repository - and what tells them apart is the `TrdRegTimestampType` standing beside it in the same occurrence, which only a dictionary declaring the group pairs. Where nothing inside the delay qualifies, the sending clock dates the message, as it always did.
+Two clocks of one rank are decided by the nearer of them, and the earlier instant closes the last tie, so one row reads one way. The `TrdRegTimestamps(768)` group is read **as a group**: `TrdRegTimestamp` says nothing on its own - the same tag carries an execution's instant, a desk's receipt and the moment a report reached a repository - and what tells them apart is the `TrdRegTimestampType` standing beside it in the same occurrence, which only a dictionary declaring the group pairs. Where nothing less than the delay off qualifies, the sending clock dates the message, as it always did.
 
 This is parse behavior and depends on the one message being parsed, so it composes with everything downstream untouched. What a message whose sending clock was a *stand-in* does is the [lifecycle](lifecycle.md)'s separate reading: `FixMsg::dated_by_transaction` re-dates it by `TransactTime` with no delay at all, because a clock nobody stated is no reference to measure a distance from.
 
@@ -1046,22 +1062,23 @@ This is parse behavior and depends on the one message being parsed, so it compos
     use std::sync::Arc;
     use yggdryl::graph::Event;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     let codec = FixCodec::new(registry);
-    assert_eq!(FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS, 1_000);
-    assert_eq!(codec.official_time_delay_ms(), 1_000);
+    assert_eq!(FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS, 500);
+    assert_eq!(codec.official_time_delay_ms(), 500);
 
     // A report stating no TransactTime and two regulatory stamps. The nearer
     // one is when the report reached a repository, which is not when the
-    // trade happened; the execution half a second earlier is.
+    // trade happened; the execution 465 ms earlier is.
     let report = codec.parse_fix_line(
         b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=2|\
-          769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.900|770=1|10=0|",
+          769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.950|770=1|10=0|",
     )?;
-    assert_eq!(report.get_currunix(), 1_787_308_199_900_000_000);
+    assert_eq!(report.get_transunix(), 1_787_308_199_950_000_000);
 
     // Five seconds out is a different event of the session's day, whatever
     // its type says, so the one clock every message carries keeps it.
@@ -1069,7 +1086,7 @@ This is parse behavior and depends on the one message being parsed, so it compos
         b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|\
           769=20260821-10:29:55|770=1|10=0|",
     )?;
-    assert_eq!(apart.get_currunix(), 1_787_308_200_415_000_000);
+    assert_eq!(apart.get_transunix(), 1_787_308_200_415_000_000);
 
     // The delay is the caller's to widen, and a nonpositive one admits only a
     // clock equal to the sending clock.
@@ -1079,7 +1096,7 @@ This is parse behavior and depends on the one message being parsed, so it compos
         b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|\
           769=20260821-10:29:55|770=1|10=0|",
     )?;
-    assert_eq!(widened.get_currunix(), 1_787_308_195_000_000_000);
+    assert_eq!(widened.get_transunix(), 1_787_308_195_000_000_000);
     ```
 
 === "Python"
@@ -1091,16 +1108,16 @@ This is parse behavior and depends on the one message being parsed, so it compos
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     codec = FixCodec(registry)
-    assert codec.official_time_delay_ms == 1_000
+    assert codec.official_time_delay_ms == 500
 
     # A report stating no TransactTime and two regulatory stamps. The nearer one
     # is when the report reached a repository, which is not when the trade
-    # happened; the execution half a second earlier is.
+    # happened; the execution 465 ms earlier is.
     report = codec.parse_fix_line(
         b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=2|"
-        b"769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.900|770=1|10=0|"
+        b"769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.950|770=1|10=0|"
     )
-    assert report.currunix == 1_787_308_199_900_000_000
+    assert report.transunix == 1_787_308_199_950_000_000
 
     # Five seconds out is a different event of the session's day, whatever its
     # type says, so the one clock every message carries keeps it.
@@ -1108,7 +1125,7 @@ This is parse behavior and depends on the one message being parsed, so it compos
         b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|"
         b"769=20260821-10:29:55|770=1|10=0|"
     )
-    assert apart.currunix == 1_787_308_200_415_000_000
+    assert apart.transunix == 1_787_308_200_415_000_000
 
     # The delay is the caller's to widen.
     wide = FixCodec(registry, official_time_delay_ms=10_000)
@@ -1117,7 +1134,7 @@ This is parse behavior and depends on the one message being parsed, so it compos
         b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|"
         b"769=20260821-10:29:55|770=1|10=0|"
     )
-    assert widened.currunix == 1_787_308_195_000_000_000
+    assert widened.transunix == 1_787_308_195_000_000_000
     ```
 
 === "JavaScript"
@@ -1129,18 +1146,18 @@ This is parse behavior and depends on the one message being parsed, so it compos
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     const codec = new fix.FixCodec(registry)
-    assert.equal(codec.officialTimeDelayMs, 1_000)
+    assert.equal(codec.officialTimeDelayMs, 500)
 
     // A report stating no TransactTime and two regulatory stamps. The nearer one
     // is when the report reached a repository, which is not when the trade
-    // happened; the execution half a second earlier is.
+    // happened; the execution 465 ms earlier is.
     const report = codec.parseFixLine(
       Buffer.from(
         '8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=2|' +
-          '769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.900|770=1|10=0|',
+          '769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.950|770=1|10=0|',
       ),
     )
-    assert.equal(report.currunix, 1_787_308_199_900_000_000n)
+    assert.equal(report.transunix, 1_787_308_199_950_000_000n)
 
     // Five seconds out is a different event of the session's day, whatever its
     // type says, so the one clock every message carries keeps it.
@@ -1149,7 +1166,7 @@ This is parse behavior and depends on the one message being parsed, so it compos
         '8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|769=20260821-10:29:55|770=1|10=0|',
       ),
     )
-    assert.equal(apart.currunix, 1_787_308_200_415_000_000n)
+    assert.equal(apart.transunix, 1_787_308_200_415_000_000n)
 
     // The delay is the caller's to widen.
     const wide = new fix.FixCodec(registry, { officialTimeDelayMs: 10_000 })
@@ -1159,7 +1176,7 @@ This is parse behavior and depends on the one message being parsed, so it compos
         '8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|769=20260821-10:29:55|770=1|10=0|',
       ),
     )
-    assert.equal(widened.currunix, 1_787_308_195_000_000_000n)
+    assert.equal(widened.transunix, 1_787_308_195_000_000_000n)
     ```
 
 ## What a message implied is filled in
@@ -1196,7 +1213,7 @@ What each rule reads, in words:
 | `Product(460)` | `SecurityType(167)`, else `CFICode(461)` | the group the dictionary's `SecurityType` code set files the value under, as the `Product` code set spells it - `Agency` is `1`, `Corporate` `3`, `Currency` `4`, `Equity` `5`, `Government` `6`, `Loan` `8`, `Money Market` `9`, `Mortgage` `10`, `Municipal` `11`, `Financing` `13`; `Derivatives` and `Other` answer nothing. A CFI in category `E` is `5` and in `L` is `13` |
 | `TimeInForce(59)` | nothing, on an order `D`, a replace `G` or a report `8` | the field's own definition: absent means `0`, a day order |
 | `OrdStatus(39)` | `ExecType(150)`; else `LeavesQty(151)` and `CumQty(14)` on a trade | the values the two code sets spell alike - not `D`, Restated in one and AcceptedForBidding in the other; a trade leaving nothing is filled, `2`, and one leaving something after doing something is partially filled, `1` - each landing under `OrdStatus`'s own code set, which is where `get_state` reads the element's [state](../types/enum/state.md) |
-| `LeavesQty(151)`, `OrderQty(38)`, `CumQty(14)` | the other two, on a report | Appendix D, by where the order stands as its `OrdStatus(39)` reads ([`State::from_fix_status`](../types/enum/state.md)): nothing is left once it ended, and live or filled `OrderQty = CumQty + LeavesQty`; ended any other way - canceled, done for the day, expired, calculated, rejected - what it asked for is what it did plus `CxlQty(84)`: `OrderQty` answers `CumQty + CxlQty`, and `CumQty` `OrderQty - LeavesQty - CxlQty`, nothing where the report states no `CxlQty`. A report with nothing left that states a positive canceled quantity answers `CumQty + CxlQty` too, and `CxlQty` is read last where nothing says what is left |
+| `LeavesQty(151)`, `OrderQty(38)`, `CumQty(14)` | the other two, on a report | Appendix D, by where the order stands as its `OrdStatus(39)` reads ([`yggdryl_fix::state::from_status`](../types/enum/state.md)): nothing is left once it ended, and live or filled `OrderQty = CumQty + LeavesQty`; ended any other way - canceled, done for the day, expired, calculated, rejected - what it asked for is what it did plus `CxlQty(84)`: `OrderQty` answers `CumQty + CxlQty`, and `CumQty` `OrderQty - LeavesQty - CxlQty`, nothing where the report states no `CxlQty`. A report with nothing left that states a positive canceled quantity answers `CumQty + CxlQty` too, and `CxlQty` is read last where nothing says what is left |
 | `GrossTradeAmt(381)` | `LastQty(32)` x `LastPx(31)` | Appendix D's execution reports; each operand is stated at scale nine, half the target scale, so the product lands back at eighteen digits |
 | `SettlCurrAmt(119)` | `GrossTradeAmt(381)` x `SettlCurrFxRate(155)` | Appendix O, at the same scales |
 | `Currency(15)`, `SettlCurrency(120)` | each other | Appendix O: a trade settling in the currency it was dealt in states it once - except on a currency product, `Product(460)` `4`, whose two currencies are the pair's two legs |
@@ -1220,9 +1237,13 @@ What the pass leaves null it leaves null on purpose, and a reader needs to be ab
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::graph::{Event, Market};
+    use yggdryl::graph::Event;
+    use yggdryl_market::graph::Market;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, IdType, Scalar};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    use yggdryl_market::IdType;
+    use yggdryl::Scalar;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -1332,16 +1353,18 @@ A venue quoting a currency pair routinely states nothing but its symbol - `55=EU
 | `SettlCurrency(120)` | the other leg, where `Currency(15)` is one |
 | `SettlType(63)` | what the symbol's suffix spells, where neither it nor `SettlDate(64)` is stated |
 
-A symbol naming no pair detects nothing, and so does a message stating a class that is not foreign exchange - a `SecurityType(167)` outside the FX codes (`FOR`, `FXNDF`, `FXSPOT`, `FXFWD`, `FXSWAP`, `FXNDS`, `FXBN`, `FXDN`), a `Product(460)` other than `4` (or `2` for a metal), a `CFICode(461)` neither all `X` nor in an FX group; a later write that makes it so takes back what detection derived. A row's `forexcode` is a [view](message.md#typed-tags) of the set - the pair `get` answered when the row was written - resolved once as the row is read. The pair its symbol names, where nothing else the row states holds a pair, is the view of the detection: it reads back from `derived`, and only that pair follows a written symbol as a detected pair does - a written symbol takes it back or derives its own. The cells detection wrote - `SecurityType(167)`, `Product(460)`, `CFICode(461)`, `Currency(15)`, `SettlCurrency(120)` - are the row's content and read back as its own word, which a written symbol leaves standing. Read back from a row with no `securityids` column, a pair a key of its type in the message's reading holds states nothing, and any other pair is the row's statement, replacing the `forex` base key, which detection's own pair never replaces - whether it was derived lost, [as every such view's is](message.md#typed-tags). Each registry remembers what every distinct symbol read as, pair and no pair alike, for 4,096 symbols - past that the answer is still given and not remembered - so every codec and door reading one registry reads a symbol once. A detected pair is a derived identifier, stated nowhere; a `forex` identifier a row or a bridge key states is stated.
+A symbol naming no pair detects nothing, and so does a message stating a class that is not foreign exchange - a `SecurityType(167)` outside the FX codes (`FOR`, `FXNDF`, `FXSPOT`, `FXFWD`, `FXSWAP`, `FXNDS`, `FXBN`, `FXDN`), a `Product(460)` other than `4` (or `2` for a metal), a `CFICode(461)` neither all `X` nor in an FX group; a later write that makes it so takes back what detection derived. A row's `forexcode` is a [view](message.md#typed-tags) of the set - the pair `get` answered when the row was written - resolved once as the row is read. The pair its symbol names, where nothing else the row states holds a pair, is the view of the detection: it reads back from `derived`, and only that pair follows a written symbol as a detected pair does - a written symbol takes it back or derives its own. The cells detection wrote - `SecurityType(167)`, `Product(460)`, `CFICode(461)`, `Currency(15)`, `SettlCurrency(120)` - are the row's content and read back as its own word, which a written symbol leaves standing. Read back from a row with no `securityids` column, a pair a key of its type in the message's reading holds states nothing, and any other pair is the row's statement, replacing the `forex` base key, which detection's own pair never replaces - whether it was derived lost, [as every such view's is](message.md#typed-tags). Each registry remembers what every distinct symbol read as, pair and no pair alike, for 4,096 symbols - past that the answer is still given and not remembered - so every codec and door reading one registry reads a symbol once. A detected pair is a derived identifier, stated nowhere; a `forex` identifier a row or a bridge key states is stated. Once the pair, its tenor and its class are settled, the message spells the pair's [cross code](../graph/instrument.md#forex) from them alone - `IF:EUR/USD` for a spot, a forward's or a swap's with its settles - as `instcode`, and derives the code's [minted number](../graph/instrument.md#the-minted-number) under `derived:isin`, so a stated ISIN wins and the pair's book is keyed by its number from the first message; no table is read.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::Market;
+    use yggdryl_market::graph::Market;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, IdKey, IdSource, IdType};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    use yggdryl_market::{IdKey, IdSource, IdType};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -1350,6 +1373,8 @@ A symbol naming no pair detects nothing, and so does a message stating a class t
     let order = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=FX1|55=EURUSD|54=1|38=1000000|10=0|")?;
     assert_eq!(order.get_securityids().get_from(&IdKey::new(IdSource::Derived, IdType::Forex)), Some("EUR/USD"));
     assert_eq!(order.get_miccode().map(|mic| mic.as_str()), Some("XXXX"));
+    // Its cross code and its minted number, from the message alone.
+    assert_eq!((order.get_instcode(), order.get_isincode()), (Some("IF:EUR/USD"), Some("QYLTVIRYHNX5")));
     // What the pair implies is written into the row.
     assert_eq!(order.by_tag(167)?.as_str(), Some("FXSPOT"));
     assert_eq!(order.by_tag(15)?.as_str(), Some("EUR"));
@@ -1369,6 +1394,8 @@ A symbol naming no pair detects nothing, and so does a message stating a class t
     order = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=FX1|55=EURUSD|54=1|38=1000000|10=0|")
     assert order.securityids.get_from("derived:forex") == "EUR/USD"
     assert order.miccode.as_py() == "XXXX"
+    # Its cross code and its minted number, from the message alone.
+    assert (order.instcode, order.isincode) == ("IF:EUR/USD", "QYLTVIRYHNX5")
     # What the pair implies is written into the row.
     assert order.by_tag(167).as_py() == "FXSPOT"
     assert order.by_tag(15).as_py() == "EUR"
@@ -1388,6 +1415,8 @@ A symbol naming no pair detects nothing, and so does a message stating a class t
     const order = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=FX1|55=EURUSD|54=1|38=1000000|10=0|'))
     assert.equal(order.securityids.getFrom('derived:forex'), 'EUR/USD')
     assert.equal(order.miccode, 'XXXX')
+    // Its cross code and its minted number, from the message alone.
+    assert.deepEqual([order.instcode, order.isincode], ['IF:EUR/USD', 'QYLTVIRYHNX5'])
     // What the pair implies is written into the row.
     assert.equal(order.byTag(167).asJs(), 'FXSPOT')
     assert.equal(order.byTag(15).asJs(), 'EUR')
@@ -1403,9 +1432,12 @@ The [identifier maps](message.md#the-identifier-maps) `Operation` answers - `get
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Operation};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::Operation;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, IdKey, IdType, Identifier};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    use yggdryl_market::{IdKey, IdType, Identifier};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -1453,7 +1485,8 @@ The cancel reject the corpus ends on shows the fill and its bound side by side: 
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -1549,7 +1582,7 @@ The cancel reject the corpus ends on shows the fill and its bound side by side: 
 
 ### Edges
 
-- A value no standard closes is ranked, not refused: `SecurityID` under source `4` spelling `XX0000000001`, whose check digit does not close it, is the ISIN the message states, a value of [rank](../types/codes/isin.md#the-check-digit) 0 with no country read off it, and a real ISIN learned later - stated by another statement of the instrument, or filled by the walk's [registry](lifecycle.md#instruments-are-learned-in-instant-order) - replaces it on merge whatever the order. A value of another shape - eleven characters, a letter where the check digit stands - is no ISIN, kept as an [anomaly](message.md#anomalies).
+- A value no standard closes is ranked, not refused: `SecurityID` under source `4` spelling `XX0000000001`, whose check digit does not close it, is the ISIN the message states, a value of [rank](../types/codes/isin.md#the-check-digit) 0 with no country read off it, and a real ISIN learned later - stated by another statement of the instrument, or filled by the walk's [instruments](lifecycle.md#instruments-are-learned-in-instant-order) - replaces it on merge whatever the order. A value of another shape - eleven characters, a letter where the check digit stands - is no ISIN, kept as an [anomaly](message.md#anomalies).
 - A value that would not type - `201=abc` in the `PutOrCall` column - is a null the row holds while the entry keeps the text; a rule fills the null in place, so the row has one column for the tag and the entry still says `abc`.
 - An absent input is silence: a report stating `LastQty(32)` and no `LastPx(31)` derives no `GrossTradeAmt(381)`, and no rule guesses.
 - A security source is read as the message's identifiers read it, by its code or any name the code set gives it: a bridge row spelling `SECURITYIDSOURCE=isin` beside a `SECURITYID` the check digit closes states the ISIN, opens `CountryOfIssue(470)` and keeps `isin` on the wire as sent. Other rules read codes, and a venue's own word for one is not the code: the same row spelling `SECURITYTYPE=equity` names no code of the `SecurityType` set, so no group files it and no CFI is read off it. Direct bridge keys are different: `ISINCODE` resolves the crate's normalized `isincode`, while `CFICODE` resolves FIX's standard `CFICode(461)`; neither becomes unknown metadata. A bridge's spelling of a security code no dictionary resolves - `OMS_RICCODE`, `SEDOLCODE`, `BBGCODE` - is read into `securityids` by the type its folded name ends with and rides a fixed row's `fixentries` under `0:<key>`; `TICKER`, `SYMBOL` and `TICKERCODE` name no security type.
@@ -1579,13 +1612,15 @@ Map groups use the same row and Arrow doors, preserving key/value fields, non-nu
 
 A line's URL, line number, timestamp and other capture fields stand right after the columns every generated schema opens with - the element's, the event's, the market's and the operation's - and before the message's own. A source row produces one output row per message - one per frame a line carried, one for a JSON document - and each of them receives the same carried values from that row; a row that carried no message produces none.
 
-A carried column whose folded name a FIX column already takes - a `MsgCtxId` capture beside `msgctxid`, a text reader's `msgtype` beside the FIX one - is dropped rather than renamed or duplicated: the FIX column is the one a reader spelling it means, and two columns of one name is not a schema. What it stated is not lost. A clashing column whose FIX field is fillable [fills it](arrow.md#a-column-is-the-caller-speaking-per-row) - a `MsgCtxId` capture does. A column naming `sourceurl` clashes with nothing, because no column of the fixed row takes that name: it stands with the rest of the capture's own, is carried by every message read out of the row, and is stated again at that column by `into_row`. A `msgdirection` column is the row's stated direction, read as a parameter and carried nowhere else. The fifteen [element and event columns](../graph/market-data.md#columns) a [text line's batch](../media/text.md) opens with are the line's own facts and fill no field: the carrier's `curruuid` is each message's one source, its `srcuuids`, exactly as the line door states it, its `currunix` is the line's clock - each message's `recdunix`, and the [sending clock](#every-message-is-dated) of one stating no `SendingTime(52)` - and the other thirteen say nothing about the message; all are dropped as the row's own twins take their names.
+A carried column whose folded name a FIX column already takes - a `MsgCtxId` capture beside `msgctxid`, a text reader's `msgtype` beside the FIX one - is dropped rather than renamed or duplicated: the FIX column is the one a reader spelling it means, and two columns of one name is not a schema. What it stated is not lost. A clashing column whose FIX field is fillable [fills it](arrow.md#a-column-is-the-caller-speaking-per-row) - a `MsgCtxId` capture does. A column naming `sourceurl` clashes with nothing, because no column of the fixed row takes that name: it stands with the rest of the capture's own, is carried by every message read out of the row, and is stated again at that column by `into_row`. A `msgdirection` column is the row's stated direction, read as a parameter and carried nowhere else. The fifteen [element and event columns](../graph/market-data.md#columns) a [text line's batch](../media/text.md) opens with are the line's own facts and fill no field: the carrier's `uuid` is each message's one source, its `srcuuids`, exactly as the line door states it, its `transunix` is the line's clock - each message's `sendunix`, and the [sending clock](#every-message-is-dated) of one stating no `SendingTime(52)` - and the other thirteen say nothing about the message; all are dropped as the row's own twins take their names.
 
 === "Rust"
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FixRegistry, StructType, fix_schema, fix_schema_carrying};
+    use yggdryl::{DataType, StructType};
+    use yggdryl_fix::{FixRegistry, fix_schema, fix_schema_carrying};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
@@ -1670,8 +1705,8 @@ A carried column whose folded name a FIX column already takes - a `MsgCtxId` cap
 - A column whose field carries neither a `FIX:tag` nor a `FIX:counter`, and whose name spells no tag, is the capture's own, so `into_row` answers null there; whoever read the capture states it. `sourceurl` carries a `FIX:tag` and answers null just the same, because no holder answers it either.
 - A column whose name holds a `.` is a bridge's own statement rather than a capture's, so `from_row` carries it into the message's [metadata](message.md#typed-tags) as a parsed line's namespaced key goes there.
 - `SendingTime(52)` and `TransactTime(60)` are typed by the registry's own declarations - `FixRegistry::new` seeds both where a dictionary defines neither - and a declaration that is not a nanosecond UTC instant is a defect of the registry, refused at intake; a stated clock that does not read as an instant is left unstated beside an anomaly and a [warning](#warnings), and the message is dated as one stating none is. `TrdRegTimestamp(769)` is seeded by nothing and is the dictionary's to type, so a registry that leaves it untyped reads no regulatory clock and the message is dated without one.
-- A column of the crate's own is typed by the crate's definition, on a tag from 65001 that no dictionary publishes: `currunix` is an instant, `currhashcode` a `uint64`, `curruuid` a `uuid`, `marketdatakind` a `marketdatakind`, `state` a `state`, `forexcode` a `forex`, `sourceurl` a `url`, whatever text a venue spelled them in - and a FIX column is typed by the dictionary, so `SecurityExchange(207)` is a `mic` and `Price(44)` a `decimal128(38, 18)`.
-- A capture's own `timestamp` is context, not a FIX clock: it leads the row as a carried column, dates nothing, and never overrides the message's own [reading](#the-official-clock-dates-the-message) of `currunix`. The line's own clock - an `mtime` capture, else its handle's time - is the one the message reads: its `recdunix`, and the [sending clock](#every-message-is-dated) of a message stating no `SendingTime(52)`.
+- A column of the crate's own is typed by the crate's definition, on a tag from 65001 that no dictionary publishes: `transunix` is an instant, `hashcode` a `uint64`, `uuid` a `uuid`, `marketdatakind` a `marketdatakind`, `state` a `state`, `forexcode` a `forex`, `sourceurl` a `url`, whatever text a venue spelled them in - and a FIX column is typed by the dictionary, so `SecurityExchange(207)` is a `mic` and `Price(44)` a `decimal128(38, 18)`.
+- A capture's own `timestamp` is context, not a FIX clock: it leads the row as a carried column, dates nothing, and never overrides the message's own [reading](#the-official-clock-dates-the-message) of `transunix`. The line's own clock - an `mtime` capture, else its handle's time - is the one the message reads: its `sendunix`, and the [sending clock](#every-message-is-dated) of a message stating no `SendingTime(52)`.
 - `metadata` is the message's own fact, filled as it is built: a message stating no namespaced key and no unresolved key but those an identifier map captures leaves the column null. The alternate identifiers are no column: a row states the fields they are read from, and a message read back out of a row answers them again.
 - Typed text drops the replacement character and every control character but tab, so a byte a transport mangled does not become a mangled column; the entry keeps the bytes exactly as they arrived.
 - `index_of` on a column the schema does not carry -> `None`, never a wrong column.
@@ -1687,8 +1722,8 @@ What one line of each shape costs the codec - a framed tag stream, a bare one, a
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --test fix schema::
-    cargo test -p yggdryl --test fix codec::a_bridge_frame
+    cargo test -p yggdryl-fix --test root schema::
+    cargo test -p yggdryl-fix --test root codec::a_bridge_frame
     cargo run -p yggdryl-cli -- fix schema --root config/fix
     ```
 

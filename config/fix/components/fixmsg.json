@@ -4,13 +4,13 @@
     "type": "struct",
     "fields": [
       {
-        "name": "curruuid",
+        "name": "uuid",
         "dtype": {
           "type": "null"
         },
         "nullable": false,
         "metadata": {
-          "FIX:field": "curruuid",
+          "FIX:field": "uuid",
           "FIX:tag": "65001"
         }
       },
@@ -37,13 +37,13 @@
         }
       },
       {
-        "name": "currhashcode",
+        "name": "hashcode",
         "dtype": {
           "type": "null"
         },
         "nullable": false,
         "metadata": {
-          "FIX:field": "currhashcode",
+          "FIX:field": "hashcode",
           "FIX:tag": "65004"
         }
       },
@@ -70,13 +70,13 @@
         }
       },
       {
-        "name": "currunix",
+        "name": "transunix",
         "dtype": {
           "type": "null"
         },
         "nullable": false,
         "metadata": {
-          "FIX:field": "currunix",
+          "FIX:field": "transunix",
           "FIX:tag": "65007"
         }
       },
@@ -92,13 +92,13 @@
         }
       },
       {
-        "name": "recdunix",
+        "name": "sendunix",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:field": "recdunix",
+          "FIX:field": "sendunix",
           "FIX:tag": "65009"
         }
       },
@@ -333,6 +333,17 @@
           "FIX:transient": "false",
           "description": "The security identifiers the message names, each a type, a source and a code: SecurityID under SecurityIDSource, the SecurityAltID group, a bridge's instrument key, the keyed aliases a bridge states - ISINCODE, OMS_RICCODE, SEDOL_CODE - and the codes an ISIN embeds. SecurityID, SecurityIDSource and the group stay in fixentries as sent, and a keyed alias under 0:key. Derived from the message's fields; a row stating one is the row's word.",
           "display": "Security IDs"
+        }
+      },
+      {
+        "name": "instcode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "instcode",
+          "FIX:tag": "65054"
         }
       },
       {

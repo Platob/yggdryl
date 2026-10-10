@@ -101,6 +101,7 @@ def test_mutable_identity_wrappers_hash_lock_instead_of_becoming_unhashable() ->
         ("trades.arrows", "batch_row_size", 32),
         ("trades.arrows", "commit_batch_num", 64),
         ("trades.arrows", "num_threads", 4),
+        ("trades.arrows", "cache_ttl", 1000),
         ("trades.arrows", "max_row_size", 128),
         ("trades.arrows", "max_byte_size", 4096),
         ("trades.arrows", "level", 6),

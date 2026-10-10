@@ -21,11 +21,11 @@ test('an order chains to the live order it follows', () => {
   const head = walked[0].asOrderEvent()
   const tail = walked[1].asOrderEvent()
   // The head is the order itself, the walk stating when its chain began.
-  assert.equal(head.curruuid, first.curruuid)
+  assert.equal(head.uuid, first.uuid)
   assert.equal(head.creaunix, CLOCK)
   assert.equal(head.seqnum, 0)
   assert.equal(head.prevuuid, null)
-  assert.equal(tail.prevuuid, first.curruuid)
+  assert.equal(tail.prevuuid, first.uuid)
   assert.equal(tail.prevunix, CLOCK)
   // A later instant keeps its own place.
   assert.equal(tail.seqnum, 0)
@@ -57,7 +57,7 @@ test('unsorted items are sorted first', () => {
   const first = order(CLOCK)
   const second = order(CLOCK + 1n, 'REPLACED')
   const walked = [...new graph.EventIterator([second, first], false)]
-  assert.deepEqual(walked.map((data) => data.asOrderEvent().currunix), [CLOCK, CLOCK + 1n])
+  assert.deepEqual(walked.map((data) => data.asOrderEvent().transunix), [CLOCK, CLOCK + 1n])
 })
 
 test('alive and the snapshot grid', () => {
@@ -66,7 +66,7 @@ test('alive and the snapshot grid', () => {
   const walked = [...walk].map((data) => data.asOrderEvent())
   // Each view is dated at its tick and keeps the instant the order was stated at.
   assert.deepEqual(
-    walked.map((event) => [event.currunix, event.snapunix]),
+    walked.map((event) => [event.transunix, event.snapunix]),
     [[CLOCK, null], [CLOCK, CLOCK], [CLOCK + 5n, CLOCK], [CLOCK + 10n, null]],
   )
   assert.equal(walked.at(-1).state, 'EXPIRED')
@@ -86,21 +86,21 @@ test('a snapshot view is the live event as of its tick', () => {
   assert.deepEqual(walked.map((event) => event.snapunix), [null, CLOCK, CLOCK, null])
   const [live] = walked
   const views = walked.filter((event) => event.snapunix !== null)
-  assert.deepEqual(views.map((view) => view.currunix), [CLOCK, CLOCK + 5_000_000n])
+  assert.deepEqual(views.map((view) => view.transunix), [CLOCK, CLOCK + 5_000_000n])
   for (const view of views) {
     // Dated at its tick, so it has the identity that tick derives, and
     // keeping the instant the live event was stated at ...
-    assert.equal(view.snapunix, live.currunix)
-    assert.equal(view.curruuid === live.curruuid, view.currunix === live.currunix)
+    assert.equal(view.snapunix, live.transunix)
+    assert.equal(view.uuid === live.uuid, view.transunix === live.transunix)
     // ... while its content, its place and its cross element are the live event's.
-    assert.equal(view.currhashcode, live.currhashcode)
+    assert.equal(view.hashcode, live.hashcode)
     assert.equal(view.seqnum, live.seqnum)
     assert.equal(view.prevuuid, live.prevuuid)
     assert.equal(view.crossuuid, live.crossuuid)
   }
-  assert.notEqual(views[1].curruuid, live.curruuid)
+  assert.notEqual(views[1].uuid, live.uuid)
   // A view does not advance the chain: the expiry follows the live event.
-  assert.equal(walked.at(-1).prevuuid, live.curruuid)
+  assert.equal(walked.at(-1).prevuuid, live.uuid)
 })
 
 test('a JavaScript failure is thrown as itself', () => {

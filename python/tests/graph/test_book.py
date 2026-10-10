@@ -28,13 +28,13 @@ def order(
         side="BUYS",
         price=D(price),
         quantity=10,
-        ticker="IBM",
+        ticker="IBM", instcode="IBM",
         tradable=tradable,
     )
 
 
 def quote(clock: int = CLOCK, price: str = "102", code: str = "Q-1") -> graph.QuoteEvent:
-    return graph.QuoteEvent(clock, crosscode=code, side="SELL", price=D(price), quantity=5, ticker="IBM")
+    return graph.QuoteEvent(clock, crosscode=code, side="SELL", price=D(price), quantity=5, ticker="IBM", instcode="IBM")
 
 
 def decimal_of(value: Scalar | None) -> object:
@@ -46,7 +46,7 @@ class TestBookEvent:
     def test_an_empty_book(self) -> None:
         book = graph.BookEvent(CLOCK, "IBM")
         # A book states side 0 whatever side it takes: kind 3, side 0, its ticker.
-        assert book.currunix == CLOCK and book.crosscode == "3:0:IBM"
+        assert book.transunix == CLOCK and book.crosscode == "3:0:IBM"
         assert book.marketdatakind is MarketDataKind.BOOK
         # A book holds both sides.
         assert book.side is Side.BOTH
@@ -92,12 +92,12 @@ class TestBookEvent:
         # an entry stating nothing about trading trades.
         best = limits[0].as_py()
         assert best["quantity"] == D("20")
-        assert best["uuids"] == [first.curruuid.as_py(), second.curruuid.as_py()]
+        assert best["uuids"] == [first.uuid.as_py(), second.uuid.as_py()]
         assert best["tradable"] is True
         assert limits[1].as_py() == {
             "price": D("100"),
             "quantity": D("10"),
-            "uuids": [lower.curruuid.as_py()],
+            "uuids": [lower.uuid.as_py()],
             "tradable": True,
         }
         # The depth walks the limits in that order.
@@ -118,7 +118,7 @@ class TestBookEvent:
         assert untradable.best_price(Side.BUYS) is None and untradable.bidpx is None
 
     def test_an_unpriced_entry_rests_at_the_last_limit(self) -> None:
-        unpriced = graph.OrderEvent(CLOCK, crosscode="M-1", side="BUYS", quantity=4, ticker="IBM")
+        unpriced = graph.OrderEvent(CLOCK, crosscode="M-1", side="BUYS", quantity=4, ticker="IBM", instcode="IBM")
         book = graph.BookEvent(CLOCK, "IBM").with_operations([unpriced, order()])
         # The market order is held rather than refused, after every priced
         # level, and states no best of its own.
@@ -129,7 +129,7 @@ class TestBookEvent:
         assert last.as_py() == {
             "price": None,
             "quantity": D("4"),
-            "uuids": [unpriced.curruuid.as_py()],
+            "uuids": [unpriced.uuid.as_py()],
             "tradable": True,
         }
         assert decimal_of(book.depth(Side.BUYS, 2)) == D("14")
@@ -143,7 +143,7 @@ class TestBookEvent:
         assert not book.is_locked
         assert decimal_of(book.spread) == D("1")
         # (10 - 30) / (10 + 30) over the first level of each side.
-        deep = graph.QuoteEvent(CLOCK, crosscode="Q-2", side="SELL", price=D("102"), quantity=30, ticker="IBM")
+        deep = graph.QuoteEvent(CLOCK, crosscode="Q-2", side="SELL", price=D("102"), quantity=30, ticker="IBM", instcode="IBM")
         leaning = empty.with_operations([order(), deep])
         assert decimal_of(leaning.imbalance(1)) == D("-0.5")
         assert leaning.imbalance(0) is None
@@ -188,7 +188,7 @@ class TestBookEvent:
         # A book places no execution: a fill moves it through its order's
         # report, and the execution stands among the events of its instant,
         # never in its delta.
-        execution = graph.ExecutionEvent(CLOCK, crosscode="E-1", side="BUYS", lastpx=D("101"), lastqty=1)
+        execution = graph.ExecutionEvent(CLOCK, crosscode="E-1", side="BUYS", lastpx=D("101"), lastqty=1, instcode="IBM")
         book = graph.BookEvent(CLOCK, "IBM").with_operations(iter([graph.MarketData(order()), execution]))
         assert [entry.crosscode for entry in book.alive] == ["10:1:O-1"]
         assert [delta.crosscode for delta in book.delta] == ["10:1:O-1"]
@@ -205,9 +205,9 @@ class TestBookEvent:
             [order(code="B-1"), order(price="100", code="B-2"), quote()]
         )
         cancel = graph.OrderEvent(
-            CLOCK + 1, crosscode="B-1", side="BUYS", price=D("101"), quantity=10, ticker="IBM", state="CANCELED"
+            CLOCK + 1, crosscode="B-1", side="BUYS", price=D("101"), quantity=10, ticker="IBM", instcode="IBM", state="CANCELED"
         )
-        fill = graph.ExecutionEvent(CLOCK + 1, crosscode="E-1", side="BUYS", lastpx=D("100"), lastqty=1, ticker="IBM")
+        fill = graph.ExecutionEvent(CLOCK + 1, crosscode="E-1", side="BUYS", lastpx=D("100"), lastqty=1, ticker="IBM", instcode="IBM")
         later = book.with_operations([cancel, fill, quote(CLOCK + 1, price="103", code="Q-2")])
         assert all(isinstance(entry, graph.OrderEvent) for entry in later.ordlive + later.orddelta)
         # Resting: the orders alive now. Changed: the orders the instant applied.
@@ -245,8 +245,8 @@ class TestBookEvent:
         with pytest.raises(ValueError, match=r"\$\.operations\[0\]\.kind"):
             book.with_operations([graph.Order()])
         assert book.events == [] and len(book.orddelta) == len(book.delta) == 1
-        root = graph.ExecutionEvent(CLOCK + 1, crosscode="T-1", ticker="IBM", lastpx=D("101"), lastqty=1)
-        fill = graph.ExecutionEvent(CLOCK + 1, crosscode="F-1", side="BUYS", ticker="IBM", lastpx=D("101"), lastqty=1)
+        root = graph.ExecutionEvent(CLOCK + 1, crosscode="T-1", ticker="IBM", instcode="IBM", lastpx=D("101"), lastqty=1)
+        fill = graph.ExecutionEvent(CLOCK + 1, crosscode="F-1", side="BUYS", ticker="IBM", instcode="IBM", lastpx=D("101"), lastqty=1)
         trade = graph.TradeEvent.from_parts(root, [fill])
         books = list(graph.BookIterator([order(), trade, quote(CLOCK + 1)]))
         assert all(held.events == [] for held in books)
@@ -256,8 +256,8 @@ class TestBookEvent:
         ]
 
     def test_alive_on_reads_one_side_best_first(self) -> None:
-        unpriced = graph.OrderEvent(CLOCK, crosscode="B-M", side="BUYS", quantity=3, ticker="IBM")
-        ask = graph.OrderEvent(CLOCK, crosscode="A-1", side="SELL", price=D("102"), quantity=1, ticker="IBM")
+        unpriced = graph.OrderEvent(CLOCK, crosscode="B-M", side="BUYS", quantity=3, ticker="IBM", instcode="IBM")
+        ask = graph.OrderEvent(CLOCK, crosscode="A-1", side="SELL", price=D("102"), quantity=1, ticker="IBM", instcode="IBM")
         book = graph.BookEvent(CLOCK, "IBM").with_operations(
             [order(price="100", code="B-1"), unpriced, order(price="101", code="B-2"), ask]
         )
@@ -277,7 +277,7 @@ class TestBookEvent:
         # A quote tagging no side rests on every side it states a leg for, as
         # one entry: `alive` lists it once, each side reads its own leg.
         two_sided = graph.QuoteEvent(
-            CLOCK, crosscode="Q-1", ticker="IBM", bidpx=D("99"), bidqty=2, askpx=D("101"), askqty=3, state="NEW"
+            CLOCK, crosscode="Q-1", ticker="IBM", instcode="IBM", bidpx=D("99"), bidqty=2, askpx=D("101"), askqty=3, state="NEW"
         )
         # Quoting both legs and tagging neither, it holds both sides.
         assert two_sided.crosscode == "14:0:Q-1" and two_sided.side is Side.BOTH
@@ -300,14 +300,16 @@ class TestBookEvent:
             crosscode="B-1",
             securityids=[Identifier("isin", "CH0012214059")],
             ticker="HOLN",
+            instcode="CH0012214059",
             side="BUYS",
             price=D("99"),
             quantity=1,
             state="NEW",
         )
         (first,) = graph.BookIterator([listed])
-        # Keyed by the instrument's ISIN, which beats its ticker.
+        # Keyed by the instrument's code, which the book states as its own.
         assert first.crosscode == "3:0:CH0012214059"
+        assert first.instcode == "CH0012214059"
         assert first.ticker == "HOLN"
         # With no grid and no snapshot input, a book is a delta book.
         assert not first.is_complete
@@ -318,15 +320,20 @@ class TestBookEvent:
         with pytest.raises(ValueError, match=r"\$\.alive"):
             first.with_operations([order(clock=2)])
         base = graph.BookEvent.keyed(1, "CH0012214059")
-        assert base.crosscode == "3:0:CH0012214059"
+        assert base.crosscode == "3:0:CH0012214059" and base.instcode == "CH0012214059"
         assert base.ticker is None and base.is_complete and base.alive == []
         whole = first.with_previous(base)
         assert whole is not None and whole.is_complete
         assert [entry.crosscode for entry in whole.alive] == ["10:1:B-1"]
-        assert whole.curruuid == first.curruuid
-        # An empty symbol keys the book by the number that states none.
-        assert graph.BookEvent(CLOCK, "").crosscode == "3:0:XX0000000000"
-        assert graph.BookEvent.keyed(CLOCK, "XX0000000000") == graph.BookEvent(CLOCK, "")
+        assert whole.uuid == first.uuid
+        # The constructor is `keyed`: an empty key keys a book by nothing,
+        # whose cross code is empty and which states no instcode.
+        assert graph.BookEvent(CLOCK, "").crosscode == ""
+        assert graph.BookEvent(CLOCK, "").instcode is None
+        assert graph.BookEvent.keyed(CLOCK, "") == graph.BookEvent(CLOCK, "")
+        # A book takes only inputs stating its key as their instcode.
+        with pytest.raises(ValueError, match=r"\$\.operation\.instcode"):
+            graph.BookEvent(CLOCK, "IBM").with_operations([graph.OrderEvent(CLOCK, crosscode="X-1", side="BUYS", price=D("1"), quantity=1, ticker="IBM")])
 
     def test_a_snapshot_control_folds(self) -> None:
         snapshot = graph.SnapshotEvent.snapshot(order(), "Symbol=IBM")
@@ -349,7 +356,7 @@ class TestBookEvent:
         assert book.executions == []
 
     def test_an_instant_only_an_execution_reached_is_an_event_only_book(self) -> None:
-        fill = graph.ExecutionEvent(CLOCK + 1, crosscode="E-1", side="BUYS", lastpx=D("101"), lastqty=1, ticker="IBM")
+        fill = graph.ExecutionEvent(CLOCK + 1, crosscode="E-1", side="BUYS", lastpx=D("101"), lastqty=1, ticker="IBM", instcode="IBM")
         first, later = graph.BookIterator([order(), fill])
         # A delta book with an empty delta and the execution in its events.
         assert not later.is_complete
@@ -386,7 +393,7 @@ class TestBookEvent:
         assert twin.alive == book.alive
         assert twin.limits(Side.BUYS) == book.limits(Side.BUYS)
         assert copy.copy(book) == book and copy.deepcopy(book) == book
-        assert repr(book) == f'BookEvent({book.curruuid.as_py()}, currunix={CLOCK}, crosscode="3:0:IBM")'
+        assert repr(book) == f'BookEvent({book.uuid.as_py()}, transunix={CLOCK}, crosscode="3:0:IBM")'
         later = graph.BookEvent(CLOCK + 1, "IBM")
         assert later.is_after(book) and book.is_before(later)
 
@@ -395,7 +402,7 @@ class TestSnapshotEvent:
     def test_snapshot_copies_a_dated_leaf(self) -> None:
         source = order()
         snapshot = graph.SnapshotEvent.snapshot(source, "S")
-        assert snapshot.currunix == source.currunix and snapshot.ticker == "IBM"
+        assert snapshot.transunix == source.transunix and snapshot.ticker == "IBM"
         assert snapshot.marketdatakind is MarketDataKind.BOOK
         assert snapshot.book.action == "snapshot" and snapshot.book.scope == "S"
         assert graph.SnapshotEvent.snapshot(graph.MarketData(source)).book.scope is None
@@ -412,7 +419,7 @@ class TestSnapshotEvent:
         assert twin == snapshot and hash(twin) == hash(snapshot)
         assert twin.book == snapshot.book
         assert copy.copy(snapshot) == snapshot and copy.deepcopy(snapshot) == snapshot
-        assert repr(snapshot).startswith(f"SnapshotEvent({snapshot.curruuid.as_py()}, currunix={CLOCK}")
+        assert repr(snapshot).startswith(f"SnapshotEvent({snapshot.uuid.as_py()}, transunix={CLOCK}")
 
 
 class TestBookIterator:
@@ -420,12 +427,12 @@ class TestBookIterator:
         # A walk records an execution where it pulls it: an instant only an
         # execution reached emits an event-only book, resting it nowhere.
         execution = graph.ExecutionEvent(
-            CLOCK + 1, crosscode="O-1", side="BUYS", lastpx=D("101"), lastqty=1, ticker="IBM"
+            CLOCK + 1, crosscode="O-1", side="BUYS", lastpx=D("101"), lastqty=1, ticker="IBM", instcode="IBM"
         )
         walk = graph.BookIterator([order(), graph.MarketData(quote()), execution])
         books = list(walk)
         assert [type(book) for book in books] == [graph.BookEvent, graph.BookEvent]
-        assert [book.currunix for book in books] == [CLOCK, CLOCK + 1]
+        assert [book.transunix for book in books] == [CLOCK, CLOCK + 1]
         assert decimal_of(books[0].best_price(Side.BUYS)) == D("101")
         assert decimal_of(books[0].best_price(Side.SELL)) == D("102")
         assert [delta.marketdatakind for delta in books[0].delta] == [MarketDataKind.ORDR, MarketDataKind.QUOT]
@@ -437,19 +444,19 @@ class TestBookIterator:
     def test_a_filter_narrows_the_walk_and_never_widens_it(self) -> None:
         def inputs() -> list[Any]:
             return [
-                graph.OrderEvent(1, crosscode="B-1", side="BUYS", price=D("100"), quantity=2, ticker="IBM", state="NEW"),
-                graph.OrderEvent(2, crosscode="A-1", side="SELL", price=D("102"), quantity=1, ticker="IBM", state="NEW"),
+                graph.OrderEvent(1, crosscode="B-1", side="BUYS", price=D("100"), quantity=2, ticker="IBM", instcode="IBM", state="NEW"),
+                graph.OrderEvent(2, crosscode="A-1", side="SELL", price=D("102"), quantity=1, ticker="IBM", instcode="IBM", state="NEW"),
                 graph.ExecutionEvent(
-                    3, crosscode="E-1", side="BUYS", price=D("100"), quantity=1, ticker="IBM", state="FILLED"
+                    3, crosscode="E-1", side="BUYS", price=D("100"), quantity=1, ticker="IBM", instcode="IBM", state="FILLED"
                 ),
-                graph.QuoteEvent(4, crosscode="B-2", side="BUYS", price=D("101"), quantity=1, ticker="IBM", state="NEW"),
+                graph.QuoteEvent(4, crosscode="B-2", side="BUYS", price=D("101"), quantity=1, ticker="IBM", instcode="IBM", state="NEW"),
             ]
 
         def instants(filter: Any = None) -> list[int]:
-            return [book.currunix for book in graph.BookIterator(inputs(), filter=filter)]
+            return [book.transunix for book in graph.BookIterator(inputs(), filter=filter)]
 
         buys = list(graph.BookIterator(inputs(), 0, "side = 'BUYS'"))
-        assert [book.currunix for book in buys] == [1, 3, 4]
+        assert [book.transunix for book in buys] == [1, 3, 4]
         assert buys[1].delta == [] and [event.crosscode for event in buys[1].events] == ["8:1:E-1"]
         assert [delta.crosscode for delta in buys[2].delta] == ["14:0:B-2"]
         # A filter is any filter the expression layer reads: text, a Filter

@@ -505,11 +505,8 @@ fn write_leaf<W: Write>(
             value.as_str().expect("a code borrowed its text"),
             escape,
         ),
-        crate::enum_scalars!() => write_escaped(
-            writer,
-            value.enum_name().expect("an enum member names itself"),
-            escape,
-        ),
+        Scalar::Market(held) => write_escaped(writer, held.as_str(), escape),
+        Scalar::State(held) => write_escaped(writer, held.as_str(), escape),
         Scalar::Version(value) => write_escaped(writer, &value.to_string(), escape),
         Scalar::Url(value) => write_escaped(writer, &value.to_string(), escape),
         Scalar::Urn(value) => write_escaped(writer, &value.to_string(), escape),

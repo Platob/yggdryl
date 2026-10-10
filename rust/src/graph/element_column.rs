@@ -5,7 +5,7 @@
 //! name and one datatype each, before the [`EventColumn`](super::EventColumn)s
 //! an event adds - a [text line](crate::text::TextLine) read into a batch, a
 //! FIX message parsed out of it, a `marketdata` row - so the rows join on
-//! them without a mapping: a message's `srcuuids` are the `curruuid` of the
+//! them without a mapping: a message's `srcuuids` are the `uuid` of the
 //! lines it was read from. The names are the trait's own: what [`Element`]
 //! reads and writes under `get_`/`set_` is what a column is called.
 
@@ -21,45 +21,50 @@ use super::Element;
 /// was read from.
 ///
 /// ```
-/// use yggdryl::graph::{Element, ElementColumn, OrderEvent};
+/// use std::sync::Arc;
+///
+/// use yggdryl::graph::{Element, ElementColumn};
+/// use yggdryl::text::{TextBytes, TextLine, TextOptions};
 /// use yggdryl::Uuid;
 ///
 /// # fn main() -> yggdryl::Result<()> {
+/// let line = || TextLine::from_bytes(0, TextBytes::from_bytes(b"x")?, Arc::new(TextOptions::new()));
 /// let fields = ElementColumn::fields()?;
 /// assert_eq!(fields.len(), 6);
-/// assert_eq!(fields[0].name(), "curruuid");
+/// assert_eq!(fields[0].name(), "uuid");
 /// assert_eq!(fields[5].name(), "srcuuids");
 /// // What an element states under a column, and the same fact stated back.
-/// let mut element = OrderEvent::at(1_700_000_000_000_000_000);
+/// let mut element = line()?;
 /// element.set_srcuuids(vec![Uuid::from_v8(7)]);
 /// let sources = ElementColumn::SrcUuids.fact(&element).expect("a source");
-/// let mut again = OrderEvent::default();
+/// let mut again = line()?;
 /// ElementColumn::SrcUuids.record(&mut again, &sources);
 /// assert_eq!(again.get_srcuuids(), [Uuid::from_v8(7)]);
 /// // A code is always stated, the empty text where the element names
 /// // none; an empty list is a null.
 /// assert_eq!(
-///     ElementColumn::CrossCode.fact(&OrderEvent::default()),
+///     ElementColumn::CrossCode.fact(&line()?),
 ///     Some(yggdryl::Scalar::from(""))
 /// );
-/// assert_eq!(ElementColumn::SrcUuids.fact(&OrderEvent::default()), None);
+/// assert_eq!(ElementColumn::SrcUuids.fact(&line()?), None);
 /// assert_eq!(ElementColumn::of_name("SrcUuids"), Some(ElementColumn::SrcUuids));
 /// // When an element happened is an event's fact, not an element's.
-/// assert_eq!(ElementColumn::of_name("currunix"), None);
+/// assert_eq!(ElementColumn::of_name("transunix"), None);
 /// # Ok(())
 /// # }
 /// ```
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ElementColumn {
-    /// The element's identity; never absent.
-    CurrUuid,
+    /// The element's own UUID - its identity; never absent.
+    Uuid,
     /// The identity every element of one chain shares; the element's own
     /// where it names no cross code, so never absent.
     CrossUuid,
     /// The code naming the chain, as the element spells it; empty where none.
     CrossCode,
-    /// The XXH3-64 the element's content digests to; never absent.
-    CurrHashCode,
+    /// The element's hash code: the XXH3-64 its content digests to; never
+    /// absent.
+    HashCode,
     /// The XXH3-64 of the cross code, zero where none; never absent.
     CrossHashCode,
     /// The identities this element was read from: provenance, never its
@@ -70,10 +75,10 @@ pub enum ElementColumn {
 impl ElementColumn {
     /// Every column, in the order [`Element`] declares them.
     pub const ALL: [Self; 6] = [
-        Self::CurrUuid,
+        Self::Uuid,
         Self::CrossUuid,
         Self::CrossCode,
-        Self::CurrHashCode,
+        Self::HashCode,
         Self::CrossHashCode,
         Self::SrcUuids,
     ];
@@ -82,10 +87,10 @@ impl ElementColumn {
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
-            Self::CurrUuid => "curruuid",
+            Self::Uuid => "uuid",
             Self::CrossUuid => "crossuuid",
             Self::CrossCode => "crosscode",
-            Self::CurrHashCode => "currhashcode",
+            Self::HashCode => "hashcode",
             Self::CrossHashCode => "crosshashcode",
             Self::SrcUuids => "srcuuids",
         }
@@ -95,10 +100,10 @@ impl ElementColumn {
     #[must_use]
     pub const fn display(self) -> &'static str {
         match self {
-            Self::CurrUuid => "Current UUID",
+            Self::Uuid => "UUID",
             Self::CrossUuid => "Cross UUID",
             Self::CrossCode => "Cross Code",
-            Self::CurrHashCode => "Current Hash Code",
+            Self::HashCode => "Hash Code",
             Self::CrossHashCode => "Cross Hash Code",
             Self::SrcUuids => "Source UUIDs",
         }
@@ -108,8 +113,8 @@ impl ElementColumn {
     #[must_use]
     pub const fn description(self) -> &'static str {
         match self {
-            Self::CurrUuid => {
-                "The element's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash."
+            Self::Uuid => {
+                "The element's own UUID: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash."
             }
             Self::CrossUuid => {
                 "The identity every element of one chain shares, derived from the code they share; the element's own where it names none."
@@ -117,7 +122,7 @@ impl ElementColumn {
             Self::CrossCode => {
                 "The code every element of one chain shares, as the element spells it: the empty text where it names none, never null."
             }
-            Self::CurrHashCode => "The XXH3-64 of what the element states.",
+            Self::HashCode => "The XXH3-64 of what the element states.",
             Self::CrossHashCode => {
                 "The XXH3-64 of the cross code; zero where the element names none."
             }
@@ -133,9 +138,9 @@ impl ElementColumn {
     #[must_use]
     pub fn datatype(self) -> DataType {
         match self {
-            Self::CurrUuid | Self::CrossUuid => DataType::Uuid,
+            Self::Uuid | Self::CrossUuid => DataType::Uuid,
             Self::CrossCode => DataType::utf8(),
-            Self::CurrHashCode | Self::CrossHashCode => DataType::UInt64,
+            Self::HashCode | Self::CrossHashCode => DataType::UInt64,
             Self::SrcUuids => DataType::serie(DataType::Uuid.required_field("srcuuid")),
         }
     }
@@ -185,10 +190,10 @@ impl ElementColumn {
     /// the element names none.
     pub fn fact<E: Element + ?Sized>(self, element: &E) -> Option<Scalar> {
         match self {
-            Self::CurrUuid => Some(Scalar::Uuid(element.get_curruuid())),
+            Self::Uuid => Some(Scalar::Uuid(element.get_uuid())),
             Self::CrossUuid => Some(Scalar::Uuid(element.get_crossuuid())),
             Self::CrossCode => Some(Scalar::from(element.get_crosscode())),
-            Self::CurrHashCode => Some(Scalar::from(element.get_currhashcode())),
+            Self::HashCode => Some(Scalar::from(element.get_hashcode())),
             Self::CrossHashCode => Some(Scalar::from(element.get_crosshashcode())),
             Self::SrcUuids => uuids_fact(element.get_srcuuids()),
         }
@@ -199,9 +204,9 @@ impl ElementColumn {
     /// silence.
     pub fn record<E: Element + ?Sized>(self, element: &mut E, value: &Scalar) {
         match self {
-            Self::CurrUuid => {
+            Self::Uuid => {
                 if let Scalar::Uuid(uuid) = value {
-                    element.set_curruuid(*uuid);
+                    element.set_uuid(*uuid);
                 }
             }
             Self::CrossUuid => {
@@ -221,9 +226,9 @@ impl ElementColumn {
             // `decimal(20, 0)` an Iceberg table holds a `uint64` as, or the
             // `long` of its width - states the number it was; a cell the
             // door refuses states nothing.
-            Self::CurrHashCode => {
+            Self::HashCode => {
                 if let Some(code) = digest_u64(value) {
-                    element.set_currhashcode(code);
+                    element.set_hashcode(code);
                 }
             }
             Self::CrossHashCode => {

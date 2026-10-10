@@ -1,0 +1,1373 @@
+diff --git a/rust/fix/tests/allocations.rs b/rust/fix/tests/allocations.rs
+--- a/rust/fix/tests/allocations.rs
++++ b/rust/fix/tests/allocations.rs
+@@ -892,8 +892,9 @@ fn schema_path_hits_and_misses_on_short_names_allocate_nothing() {
+ 
+ #[test]
+ fn the_typed_facts_of_a_message_are_borrowed_at_every_row_width() {
+-    // The header, the capture and the event are held beside the row rather
+-    // than in it, so reading one is a borrow whatever the row carries.
++    // The header and the capture are held beside the record and the facts in
++    // the market message rather than in the record, so reading one is a
++    // borrow whatever the record carries.
+     for width in [0, 64, 1_024] {
+         let field = StructType::from_fields(
+             (0..width).map(|index| DataType::Int64.required_field(format!("datum{index}"))),
+@@ -915,7 +916,7 @@ fn the_typed_facts_of_a_message_are_borrowed_at_every_row_width() {
+             ));
+         });
+         free("the settled identity", || {
+-            let held = black_box(&message);
++            let held = black_box(&message).message();
+             black_box((
+                 held.get_transunix(),
+                 held.get_hashcode(),
+@@ -931,8 +932,11 @@ fn direct_fix_operation_conversion_needs_no_intermediate_allocation() {
+     let codec = FixCodec::new(Arc::new(fix_registry(0)));
+     for wire in [b"35=D|55=AAPL|".as_slice(), b"35=S|55=AAPL|"] {
+         let message = codec.parse_line(wire).unwrap().next().unwrap().unwrap();
+-        let (allocations, operation) =
+-            counted(|| yggdryl::FixMsg::into_market_leaf(message).unwrap());
++        let (allocations, operation) = counted(|| {
++            yggdryl::FixMsg::into_message(message)
++                .into_market_leaf()
++                .unwrap()
++        });
+         assert_eq!(operation.get_ticker(), Some("AAPL"));
+         assert_eq!(
+             allocations, 0,
+@@ -8601,28 +8744,30 @@ fn a_rekey_costs_the_chains_cross_code_on_a_typed_leaf() {
+ }
+ 
+ /// A FIX message the walk re-keys onto its chain is settled once: over
+-/// followers of a `D` stored `10:1:A1`, a sided report stored `10:1:O1`
+-/// costs two allocations - the code's text and the one settle, which a
+-/// message's finalize costs alone - and a side-less cancel reject stored
+-/// `10:0:O1` eighteen, the side written as `Side(54)` through the provided
+-/// `follow_identity` before the code and the settle; a report already
+-/// holding the chain's side and code costs nothing and moves nothing. Read
+-/// off the run at 8 and 1024 followers. The side-less figure is a
+-/// `FixMsg`'s own `follow_identity`: the lifecycle's message, crate-private,
+-/// writes the side its own way.
++/// followers of a `D` stored `10:1:A1`, each the market message a parse
++/// moved out of its FIX handle, a sided report stored `10:1:O1` costs two
++/// allocations - the code's text and the one settle, which a message's
++/// finalize costs alone - and a side-less cancel reject stored `10:0:O1`
++/// eighteen, the side stated through the provided `follow_identity` before
++/// the code and the settle - a FIX message writes it as `Side(54)` when it
++/// renders, never as a write here; a report already holding the chain's
++/// side and code costs nothing and moves nothing. Read off the run at 8 and
++/// 1024 followers.
+ #[cfg(feature = "internals")]
+ #[test]
+ fn a_rekey_of_a_fix_message_is_one_settle() {
++    use yggdryl::graph::MarketMessage;
+     use yggdryl::internals::graph_iterator::rekeyed;
+ 
+     let codec = FixCodec::new(Arc::new(committed_registry().clone())).with_threads(1);
+-    let parse = |line: &[u8]| -> FixMsg {
++    let parse = |line: &[u8]| -> MarketMessage {
+         codec
+             .parse_line(line)
+             .expect("a readable line")
+             .next()
+             .expect("one message")
+             .expect("a message")
++            .into_message()
+     };
+     let live = parse(
+         b"8=FIX.4.4|35=D|49=B|56=S|34=1|52=20260921-10:00:00|11=A1|55=AAPL|54=1|38=10|44=100|10=0|",
+@@ -8656,7 +8801,7 @@ fn a_rekey_of_a_fix_message_is_one_settle() {
+         for (what, line, parsed, each, moves) in cases {
+             let message = parse(line);
+             assert_eq!(message.get_crosscode(), parsed, "{what}");
+-            let mut held: Vec<FixMsg> = (0..followers).map(|_| message.clone()).collect();
++            let mut held: Vec<MarketMessage> = (0..followers).map(|_| message.clone()).collect();
+             let (allocations, moved) = counted(|| {
+                 held.iter_mut()
+                     .map(|message| rekeyed(message, &live, identity))
+@@ -8776,8 +8921,9 @@ fn a_parsed_fix_message_holds_the_same_bytes_at_one_and_two_captures() {
+     eprintln!(
+         "parsed_fix_message: one capture {one_bytes} bytes over {one_messages} messages \
+          ({one_each:.0} each), two copies {two_bytes} bytes over {two_messages} messages \
+-         ({two_each:.0} each); a FixMsg is {} bytes inline",
+-        std::mem::size_of::<FixMsg>()
++         ({two_each:.0} each); a FixMsg is {} bytes inline, its MarketMessage {}",
++        std::mem::size_of::<FixMsg>(),
++        std::mem::size_of::<yggdryl::graph::MarketMessage>()
+     );
+     assert!(
+         (two_each - one_each).abs() <= one_each * 0.02,
+@@ -8816,14 +8962,14 @@ fn a_sorted_lifecycle_walk_over_distinct_chains_holds_what_its_live_set_costs()
+     // Once outside every count, so every process-wide first use is no
+     // walk's.
+     let mut warm = parse(&rendered_capture(1));
+-    warm.sort_by_key(Event::get_transunix);
++    warm.sort_by_key(|message| message.message().get_transunix());
+     walk(warm);
+     let mut figures = Vec::new();
+     for copies in [32_u64, 64] {
+         let capture = rendered_capture(copies);
+         let (input_bytes, mut messages) = retained(|| parse(&capture));
+         let input_bytes = usize::try_from(input_bytes).expect("a parse keeps what it built");
+-        messages.sort_by_key(Event::get_transunix);
++        messages.sort_by_key(|message| message.message().get_transunix());
+         let input = messages.len();
+         let (peak, yielded) = peaked(|| walk(messages));
+         let per_input = peak as f64 / input as f64;
+diff --git a/rust/fix/tests/graph/iterator.rs b/rust/fix/tests/graph/iterator.rs
+--- a/rust/fix/tests/graph/iterator.rs
++++ b/rust/fix/tests/graph/iterator.rs
+@@ -649,8 +649,8 @@ fn a_statement_logged_again_after_the_step_that_ended_its_chain_at_its_instant_r
+ /// instant, restate the message they repeat through its own reading.
+ #[test]
+ fn a_market_data_walk_restates_a_fix_twin_and_a_fix_statement_logged_again() {
+-    use yggdryl::graph::MarketData;
+-    use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind};
++    use yggdryl::graph::{MarketData, MarketMessage};
++    use yggdryl::{FixCodec, FixRegistry, MarketDataKind};
+ 
+     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+     let folder = yggdryl::local::LocalFolder::new(root).expect("the local seed path");
+@@ -658,7 +658,7 @@ fn a_market_data_walk_restates_a_fix_twin_and_a_fix_statement_logged_again() {
+         FixRegistry::from_handle(&folder).expect("the committed dictionary loads"),
+     ));
+     // Walked as market data, read back as the messages the walk yielded.
+-    let walked = |lines: &[&str]| -> Vec<FixMsg> {
++    let walked = |lines: &[&str]| -> Vec<MarketMessage> {
+         let arrived: Vec<MarketData> = lines
+             .iter()
+             .flat_map(|line| codec.parse_line(line.as_bytes()).expect("a readable line"))
+@@ -666,7 +666,10 @@ fn a_market_data_walk_restates_a_fix_twin_and_a_fix_statement_logged_again() {
+             .collect();
+         EventIterator::new(arrived, true)
+             .filter(|held| held.marketdatakind() == MarketDataKind::Order)
+-            .map(|held| FixMsg::try_from(held).expect("a FIX message walks as itself"))
++            .map(|held| {
++                MarketMessage::try_from(held)
++                    .expect("a FIX message walks as the market message it is")
++            })
+             .collect()
+     };
+     let order =
+@@ -1467,7 +1470,7 @@ fn a_market_data_walk_chains_within_one_kind_and_passes_the_rest_through() {
+     let walked: Vec<MarketData> =
+         EventIterator::new(vec![MarketData::from(typed), fix], true).collect();
+     assert!(
+-        walked[1].as_message::<FixMsg>().is_some(),
++        walked[1].as_message().is_some(),
+         "the message keeps its leaf"
+     );
+     assert_eq!(walked[1].get_side(), Side::Buy);
+diff --git a/rust/fix/tests/graph/market_data.rs b/rust/fix/tests/graph/market_data.rs
+--- a/rust/fix/tests/graph/market_data.rs
++++ b/rust/fix/tests/graph/market_data.rs
+@@ -40,7 +40,7 @@ fn one_of_every_leaf() -> Vec<MarketData> {
+         MarketData::from(TradeEvent::from_parts(&root, vec![execution(8, "E-8")]).unwrap()),
+         MarketData::from(BookEvent::new(9, "ACME")),
+         MarketData::from(snapshot),
+-        MarketData::from(fix::messages(&fix::ORDERS[..1]).remove(0)),
++        MarketData::from(message::order(1, "M-1")),
+     ]
+ }
+ 
+@@ -488,155 +493,150 @@ fn an_operation_event_follows_one_of_another_kind_through_their_facts() {
+     assert!(trade.with_previous(&first).is_none());
+ }
+ 
+-/// A FIX message is market data as it is: it answers every trait through
+-/// the message, states the category its dictionary files it under, writes
+-/// one row that reads back as the leaf of that category, and a book folds
+-/// the leaves it splits into.
+-mod fix {
+-    use std::sync::Arc;
+-
+-    use yggdryl::graph::{BookIterator, Element, Event, Market, MarketData, MarketKind, Operation};
+-    use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind, Side};
+-
+-    fn registry() -> Arc<FixRegistry> {
+-        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+-        let folder = yggdryl::local::LocalFolder::new(root).expect("the local seed path");
+-        Arc::new(FixRegistry::from_handle(&folder).expect("the committed dictionary loads"))
+-    }
+-
+-    pub(super) fn messages(lines: &[&str]) -> Vec<FixMsg> {
+-        let codec = FixCodec::new(registry());
+-        lines
+-            .iter()
+-            .flat_map(|line| codec.parse_line(line.as_bytes()).expect("a readable line"))
+-            .collect::<yggdryl::Result<Vec<_>>>()
+-            .expect("every frame parses")
++/// A message is market data as it is: it answers every trait through its
++/// facts, states its own category, walks and merges only with another
++/// message, writes as the leaves it splits into, and a book folds those
++/// leaves. A FIX message reaches here as the message it is
++/// (`rust/tests/fix/market.rs`).
++mod message {
++    use yggdryl::graph::{
++        BookIterator, Element, Event, Market, MarketData, MarketKind, MarketMessage, Operation,
++        OrderEvent,
++    };
++    use yggdryl::{Decimal, MarketDataKind, Side, TimeInForce};
++
++    /// An order message on `ACME`, finalized.
++    pub(super) fn order(unix: i64, code: &str) -> MarketMessage {
++        let mut order = MarketMessage::new(MarketDataKind::Order);
++        order.set_transunix(unix);
++        order.set_crosscode(code.to_owned());
++        order.set_ticker(Some("ACME".into()), true);
++        order.set_side(Side::Buy, true);
++        order.set_price(Some(Decimal::from_int(100)), true);
++        order.set_quantity(Some(Decimal::from_int(5)), true);
++        order.set_timeinforce(Some(TimeInForce::Day), true);
++        order.finalize();
++        order
+     }
+ 
+-    pub(super) const ORDERS: [&str; 2] = [
+-        "8=FIX.4.4|35=D|52=20240102-10:00:00.000|11=C1|55=ACME|54=1|40=2|44=100|38=5|59=0|10=0|",
+-        "8=FIX.4.4|35=D|52=20240102-10:00:01.000|11=C2|55=ACME|54=2|40=2|44=101|38=3|59=1|10=0|",
+-    ];
+-
+     #[test]
+     fn a_message_is_market_data_as_it_is() {
+-        let message = messages(&ORDERS[..1]).remove(0);
++        let message = order(1_000_000, "M-1");
+         let held = MarketData::from(message.clone());
+-        assert_eq!(held.kind(), MarketKind::Fix);
++        assert_eq!(held.kind(), MarketKind::Message);
+         assert!(held.is_event());
+         assert_eq!(held.marketdatakind(), MarketDataKind::Order);
+         assert_eq!(held.get_uuid(), message.get_uuid());
+         assert_eq!(held.get_side(), Side::Buy);
+         assert_eq!(held.get_price(), message.get_price());
+-        assert_eq!(held.as_message::<FixMsg>(), Some(&message));
+-        assert_eq!(FixMsg::try_from(held).unwrap(), message);
+-    }
+-
+-    /// Written, a message is the leaves it reports: its one order here.
+-    #[test]
+-    fn a_message_row_reads_back_as_the_leaf_of_its_category() {
+-        let message = messages(&ORDERS[..1]).remove(0);
+-        let held = vec![MarketData::from(message.clone())];
+-        let reader = MarketData::arrow_reader(held, None, None).expect("one row");
+-        let read: Vec<MarketData> = MarketData::from_arrow_reader(reader)
+-            .expect("the row's schema")
+-            .collect::<yggdryl::Result<_>>()
+-            .expect("the row reads");
+-        assert_eq!(read.len(), 1);
+-        let leaf = read[0].as_order_event().expect("an order event");
+-        assert_eq!(leaf.get_price(), message.get_price());
+-        assert_eq!(leaf.get_side(), message.get_side());
+-        assert_eq!(leaf.get_ordqty(), message.get_ordqty());
+-        assert_eq!(leaf.get_timeinforce(), message.get_timeinforce());
+-        assert_eq!(leaf.get_transunix(), message.get_transunix());
+-    }
+-
+-    /// The variant holds the message as a trait object, two words wide, so
+-    /// it adds nothing to the enum's size: `the_enum_is_the_size_of_its_widest_inline_leaf`
+-    /// pins that size, with this variant among the ones it is held against.
+-    #[test]
+-    fn a_held_message_is_a_two_word_pointer() {
+-        use std::mem::size_of;
+-        use yggdryl::graph::market_data::MarketMessage;
+-
+-        assert_eq!(size_of::<Box<dyn MarketMessage>>(), 2 * size_of::<usize>());
+-    }
+-
+-    /// The trait object owes the enum holding it a copy, an equality, a hash
+-    /// and the way back to its own type; each is the message's own.
+-    #[test]
+-    fn a_held_message_clones_compares_hashes_and_downcasts_as_the_message_it_is() {
+-        use yggdryl::graph::market_data::MarketMessage;
+-
+-        let mut parsed = messages(&ORDERS);
+-        let second = parsed.remove(1);
+-        let first = parsed.remove(0);
+-        let held = MarketData::from(first.clone());
+-        let other = MarketData::from(second.clone());
+-
+-        // A copy of the enum is a copy of the message, equal to it.
+-        let copy = held.clone();
+-        assert_eq!(copy, held);
+-        assert_ne!(held, other);
+-        assert_eq!(copy.as_message::<FixMsg>(), Some(&first));
+-        assert_eq!(other.as_message::<FixMsg>(), Some(&second));
+-
+-        let (MarketData::Fix(boxed), MarketData::Fix(boxed_other)) = (held, other) else {
+-            panic!("a message held whole");
+-        };
+-        let twin = boxed.clone_box();
+-        assert!(boxed.dyn_eq(&*twin));
+-        assert!(twin.dyn_eq(&*boxed));
+-        assert!(!boxed.dyn_eq(&*boxed_other));
+-        assert!(!boxed_other.dyn_eq(&*boxed));
+-
+-        // The hash is the message's own, so a copy hashes as the original and
+-        // two different messages do not.
+-        assert_eq!(MarketMessage::stable_hash(&*boxed), first.stable_hash());
+-        assert_eq!(boxed.stable_hash(), twin.stable_hash());
+-        assert_ne!(boxed.stable_hash(), boxed_other.stable_hash());
+-
+-        // The way back: borrowed, or owned, to the type it is and to no other.
+-        assert_eq!(boxed.as_any().downcast_ref::<FixMsg>(), Some(&first));
+-        assert!(boxed.as_any().downcast_ref::<String>().is_none());
+-        let owned = boxed
+-            .into_any()
+-            .downcast::<FixMsg>()
+-            .expect("the message itself");
+-        assert_eq!(*owned, first);
+-        assert!(boxed_other.into_any().downcast::<String>().is_err());
++        assert_eq!(held.as_message(), Some(&message));
++        assert_eq!(MarketMessage::try_from(held).unwrap(), message);
+     }
+ 
+-    /// Only a held message lends a message: every leaf the enum holds lends
+-    /// none, and the one it holds whole lends the type it is.
++    /// Only a held message lends a message, and another kind is refused at
++    /// the kind.
+     #[test]
+     fn only_a_held_message_lends_a_message() {
+         for value in super::one_of_every_leaf() {
+             assert_eq!(
+-                value.as_message::<FixMsg>().is_some(),
+-                value.kind() == MarketKind::Fix,
++                value.as_message().is_some(),
++                value.kind() == MarketKind::Message,
+                 "{:?}",
+                 value.kind()
+             );
+         }
++        let error = MarketMessage::try_from(MarketData::from(OrderEvent::at(1))).unwrap_err();
++        assert!(
++            error
++                .to_string()
++                .contains("expected message, got order_event"),
++            "{error}"
++        );
++
++        let mut held = MarketData::from(order(1, "M-1"));
++        held.as_message_mut()
++            .expect("a held message")
++            .set_price(Some(Decimal::from_int(7)), true);
++        assert_eq!(held.get_price(), Some(Decimal::from_int(7)));
+     }
+ 
+     #[test]
+-    fn a_fix_message_held_whole_answers_its_category_through_the_trait() {
+-        let message = messages(&ORDERS[..1]).remove(0);
+-        let data = MarketData::from(message);
++    fn a_message_held_whole_answers_its_category_through_the_trait() {
++        let data = MarketData::from(order(1, "M-1"));
+         assert_eq!(Market::marketdatakind(&data), MarketDataKind::Order);
+         assert!(Market::is_sided(&data));
+         assert_eq!(data.marketdatakind(), Market::marketdatakind(&data));
+     }
+ 
++    /// A held message follows and merges with another held message alone,
++    /// as the message does.
++    #[test]
++    fn a_held_message_follows_and_merges_with_a_held_message_alone() {
++        let first = order(1_000_000, "M-1");
++        let second = order(2_000_000, "M-1");
++        let followed = MarketData::from(second.clone())
++            .with_previous(&MarketData::from(first.clone()))
++            .expect("a later step of one chain follows");
++        assert_eq!(
++            followed,
++            MarketData::from(second.clone().with_previous(&first).unwrap()),
++            "the message's own following"
++        );
++        let followed = followed.as_message().expect("still a message");
++        assert_eq!(followed.get_prevuuid(), Some(first.get_uuid()));
++
++        let leaf = MarketData::from(super::order(1_000_000, "M-1"));
++        assert!(
++            MarketData::from(second.clone())
++                .with_previous(&leaf)
++                .is_none(),
++            "a message follows no leaf"
++        );
++        assert!(
++            leaf.clone()
++                .with_previous(&MarketData::from(first.clone()))
++                .is_none(),
++            "no leaf follows a message"
++        );
++
++        let mut restated = first.clone();
++        restated.set_srcuuids(vec![yggdryl::Uuid::from_v8(9)]);
++        let merged = MarketData::from(first.clone())
++            .merge_with(&MarketData::from(restated))
++            .expect("another statement of the message adds its source");
++        assert_eq!(merged.kind(), MarketKind::Message);
++        assert_eq!(merged.get_srcuuids(), [yggdryl::Uuid::from_v8(9)]);
++    }
++
++    /// Written, a message is the leaves it states: its one order here.
++    #[test]
++    fn a_message_row_reads_back_as_the_leaf_of_its_category() {
++        let message = order(1_000_000, "M-1");
++        let held = vec![MarketData::from(message.clone())];
++        let reader = MarketData::arrow_reader(held, None, None).expect("one row");
++        let read: Vec<MarketData> = MarketData::from_arrow_reader(reader)
++            .expect("the row's schema")
++            .collect::<yggdryl::Result<_>>()
++            .expect("the row reads");
++        assert_eq!(read.len(), 1);
++        let leaf = read[0].as_order_event().expect("an order event");
++        assert_eq!(leaf.get_price(), message.get_price());
++        assert_eq!(leaf.get_side(), message.get_side());
++        assert_eq!(leaf.get_timeinforce(), message.get_timeinforce());
++        assert_eq!(leaf.get_transunix(), message.get_transunix());
++    }
++
+     #[test]
+     fn a_book_folds_the_leaves_a_message_splits_into() {
+-        let parsed = messages(&ORDERS);
+-        let whole: Vec<MarketData> = parsed.iter().cloned().map(MarketData::from).collect();
+-        let split: Vec<MarketData> = parsed
++        let mut second = order(2_000_000, "M-2");
++        second.set_side(Side::Sell, true);
++        second.set_price(Some(Decimal::from_int(101)), true);
++        second.finalize();
++        let messages = [order(1_000_000, "M-1"), second];
++        let whole: Vec<MarketData> = messages.iter().cloned().map(MarketData::from).collect();
++        let split: Vec<MarketData> = messages
+             .into_iter()
+-            .flat_map(|message| message.into_market_data().expect("market data"))
++            .flat_map(MarketMessage::into_market_data)
+             .collect();
+         let books = |items: Vec<MarketData>| {
+             BookIterator::new(items.into_iter(), 0)
+diff --git a/rust/market/src/graph/mod.rs b/rust/market/src/graph/mod.rs
+--- a/rust/market/src/graph/mod.rs
++++ b/rust/market/src/graph/mod.rs
+@@ -24,7 +24,12 @@
+ //! [`OperationEvent`] are the one undated and one dated operation type - an
+ //! order, a quote or an execution by the sealed [`OperationKind`] they are
+ //! generic over - and [`MarketData`] is the one value over every leaf, read
+-//! generically past the boundary that resolved it. [`BookEvent`] holds its
++//! generically past the boundary that resolved it. [`MarketMessage`] is
++//! the one message every protocol lands in - its facts, the entries it
++//! states beyond them under its protocol's root, the elements it states as
++//! children, and the [`Anomaly`] values its reading could not take - which
++//! `MarketData` holds whole and splits into the leaves it states
++//! ([`MarketMessage::into_market_data`]). [`BookEvent`] holds its
+ //! `delta` - the orders and quotes its instant applied, in the order
+ //! applied - and its `events` - every other event the instant recorded:
+ //! the executions, resting on no side, and the snapshot controls - and, a
+@@ -43,397 +48,520 @@
+ //! mapping.
+ 
+ /// `impl Event` forwarding every accessor to a field that is an `Event`,
+-/// with the readings a wrapper answers itself given as closures.
++/// with the readings a wrapper answers itself given as closures. A boxed
++/// holder - `*field` - forwards through the box, and one naming a
++/// `stating` field marks there, one
++/// [`StatedFacts`](crate::graph::StatedFacts) bit each, what its setters
++/// state: the state, the expiry, the instant and a held wire clock.
+ macro_rules! delegate_event {
+-    ($type:ty, $($field:ident).+, restating = $restating:expr) => {
+-        delegate_event!(
+-            $type,
+-            $($field).+,
+-            restating = $restating,
+-            is_execution = |this: &$type| $crate::graph::Event::is_execution(&this.$($field).+),
+-            set_transunix = |this: &mut $type, unix: i64| {
+-                $crate::graph::Event::set_transunix(&mut this.$($field).+, unix);
+-            }
+-        );
+-    };
+     (
+-        $type:ty,
+-        $($field:ident).+,
++        @impl $type:ty,
++        [$($deref:tt)?] $($field:ident).+,
+         restating = $restating:expr,
+         is_execution = $is_execution:expr,
+         set_transunix = $set_transunix:expr
++        $(, stating = $($stated:ident).+)?
+     ) => {
+         impl $crate::graph::Event for $type {
+             fn get_transunix(&self) -> i64 {
+-                $crate::graph::Event::get_transunix(&self.$($field).+)
++                $crate::graph::Event::get_transunix(&$($deref)? self.$($field).+)
+             }
+             fn set_transunix(&mut self, unix: i64) {
+                 ($set_transunix)(self, unix);
+             }
+             fn get_state(&self) -> &$crate::State {
+-                $crate::graph::Event::get_state(&self.$($field).+)
++                $crate::graph::Event::get_state(&$($deref)? self.$($field).+)
+             }
+             fn set_state(&mut self, state: $crate::State) {
+-                $crate::graph::Event::set_state(&mut self.$($field).+, state);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::STATE); )?
++                $crate::graph::Event::set_state(&mut $($deref)? self.$($field).+, state);
+             }
+             fn is_execution(&self) -> bool {
+                 ($is_execution)(self)
+             }
+             fn get_seqnum(&self) -> u64 {
+-                $crate::graph::Event::get_seqnum(&self.$($field).+)
++                $crate::graph::Event::get_seqnum(&$($deref)? self.$($field).+)
+             }
+             fn set_seqnum(&mut self, seqnum: u64) {
+-                $crate::graph::Event::set_seqnum(&mut self.$($field).+, seqnum);
++                $crate::graph::Event::set_seqnum(&mut $($deref)? self.$($field).+, seqnum);
+             }
+             fn get_creaunix(&self) -> Option<i64> {
+-                $crate::graph::Event::get_creaunix(&self.$($field).+)
++                $crate::graph::Event::get_creaunix(&$($deref)? self.$($field).+)
+             }
+             fn set_creaunix(&mut self, unix: Option<i64>) {
+-                $crate::graph::Event::set_creaunix(&mut self.$($field).+, unix);
++                $crate::graph::Event::set_creaunix(&mut $($deref)? self.$($field).+, unix);
+             }
+             fn get_sendunix(&self) -> Option<i64> {
+-                $crate::graph::Event::get_sendunix(&self.$($field).+)
++                $crate::graph::Event::get_sendunix(&$($deref)? self.$($field).+)
+             }
+             fn set_sendunix(&mut self, unix: Option<i64>) {
+-                $crate::graph::Event::set_sendunix(&mut self.$($field).+, unix);
++                $( $crate::graph::StatedFacts::set(&mut self.$($stated).+, $crate::graph::StatedFacts::HELD_SENDUNIX, unix.is_some()); )?
++                $crate::graph::Event::set_sendunix(&mut $($deref)? self.$($field).+, unix);
+             }
+             fn get_exprunix(&self) -> Option<i64> {
+-                $crate::graph::Event::get_exprunix(&self.$($field).+)
++                $crate::graph::Event::get_exprunix(&$($deref)? self.$($field).+)
+             }
+             fn set_exprunix(&mut self, unix: Option<i64>) {
+-                $crate::graph::Event::set_exprunix(&mut self.$($field).+, unix);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::EXPIRY); )?
++                $crate::graph::Event::set_exprunix(&mut $($deref)? self.$($field).+, unix);
+             }
+             fn get_prevunix(&self) -> Option<i64> {
+-                $crate::graph::Event::get_prevunix(&self.$($field).+)
++                $crate::graph::Event::get_prevunix(&$($deref)? self.$($field).+)
+             }
+             fn set_prevunix(&mut self, unix: Option<i64>) {
+-                $crate::graph::Event::set_prevunix(&mut self.$($field).+, unix);
++                $crate::graph::Event::set_prevunix(&mut $($deref)? self.$($field).+, unix);
+             }
+             fn get_prevuuid(&self) -> Option<$crate::Uuid> {
+-                $crate::graph::Event::get_prevuuid(&self.$($field).+)
++                $crate::graph::Event::get_prevuuid(&$($deref)? self.$($field).+)
+             }
+             fn set_prevuuid(&mut self, uuid: Option<$crate::Uuid>) {
+-                $crate::graph::Event::set_prevuuid(&mut self.$($field).+, uuid);
++                $crate::graph::Event::set_prevuuid(&mut $($deref)? self.$($field).+, uuid);
+             }
+             fn get_snapunix(&self) -> Option<i64> {
+-                $crate::graph::Event::get_snapunix(&self.$($field).+)
++                $crate::graph::Event::get_snapunix(&$($deref)? self.$($field).+)
+             }
+             fn set_snapunix(&mut self, unix: Option<i64>) {
+-                $crate::graph::Event::set_snapunix(&mut self.$($field).+, unix);
++                $crate::graph::Event::set_snapunix(&mut $($deref)? self.$($field).+, unix);
+             }
+             fn restating(self, live: &Self) -> Self {
+                 ($restating)(self, live)
+             }
+             fn finalized(&mut self, hashcode: u64) {
+-                $crate::graph::Event::finalized(&mut self.$($field).+, hashcode);
++                $crate::graph::Event::finalized(&mut $($deref)? self.$($field).+, hashcode);
+             }
+         }
+     };
++    ($type:ty, $($field:ident).+, restating = $restating:expr) => {
++        $crate::graph::delegate_event!(
++            $type,
++            $($field).+,
++            restating = $restating,
++            is_execution = |this: &$type| $crate::graph::Event::is_execution(&this.$($field).+),
++            set_transunix = |this: &mut $type, unix: i64| {
++                $crate::graph::Event::set_transunix(&mut this.$($field).+, unix);
++            }
++        );
++    };
++    (
++        $type:ty,
++        $($field:ident).+,
++        restating = $restating:expr,
++        is_execution = $is_execution:expr,
++        set_transunix = $set_transunix:expr
++    ) => {
++        $crate::graph::delegate_event!(
++            @impl $type,
++            [] $($field).+,
++            restating = $restating,
++            is_execution = $is_execution,
++            set_transunix = $set_transunix
++        );
++    };
++    (
++        $type:ty,
++        *$($field:ident).+,
++        stating = $($stated:ident).+,
++        restating = $restating:expr,
++        is_execution = $is_execution:expr
++    ) => {
++        $crate::graph::delegate_event!(
++            @impl $type,
++            [*] $($field).+,
++            restating = $restating,
++            is_execution = $is_execution,
++            set_transunix = |this: &mut $type, unix: i64| {
++                $crate::graph::StatedFacts::insert(
++                    &mut this.$($stated).+,
++                    $crate::graph::StatedFacts::TRANSUNIX,
++                );
++                $crate::graph::Event::set_transunix(&mut *this.$($field).+, unix);
++            },
++            stating = $($stated).+
++        );
++    };
+ }
+ 
+-/// `impl Market` forwarding every fact to a field that is a `Market`.
++/// `impl Market` forwarding every fact to a field that is a `Market`. A
++/// boxed holder - `*field` - forwards through the box, and one naming a
++/// `stating` field marks there, one
++/// [`StatedFacts`](crate::graph::StatedFacts) bit each, the facts its
++/// setters state; a derivation, the origin currency, the previous
++/// quantity, the rates and the metadata mark none.
+ macro_rules! delegate_market {
+-    ($type:ty, $($field:ident).+) => {
++    (@impl $type:ty, [$($deref:tt)?] $($field:ident).+ $(, stating = $($stated:ident).+)?) => {
+         impl $crate::graph::Market for $type {
+             fn get_price(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_price(&self.$($field).+)
++                $crate::graph::Market::get_price(&$($deref)? self.$($field).+)
+             }
+             fn set_price(&mut self, price: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_price(&mut self.$($field).+, price, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::PRICE); )?
++                $crate::graph::Market::set_price(&mut $($deref)? self.$($field).+, price, overwrite);
+             }
+ 
+             fn get_stoppx(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_stoppx(&self.$($field).+)
++                $crate::graph::Market::get_stoppx(&$($deref)? self.$($field).+)
+             }
+ 
+             fn set_stoppx(&mut self, value: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_stoppx(&mut self.$($field).+, value, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::STOPPX); )?
++                $crate::graph::Market::set_stoppx(&mut $($deref)? self.$($field).+, value, overwrite);
+             }
+ 
+             fn get_strikepx(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_strikepx(&self.$($field).+)
++                $crate::graph::Market::get_strikepx(&$($deref)? self.$($field).+)
+             }
+ 
+             fn set_strikepx(&mut self, value: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_strikepx(&mut self.$($field).+, value, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::STRIKEPX); )?
++                $crate::graph::Market::set_strikepx(&mut $($deref)? self.$($field).+, value, overwrite);
+             }
+             fn get_currency(&self) -> &$crate::Ccy {
+-                $crate::graph::Market::get_currency(&self.$($field).+)
++                $crate::graph::Market::get_currency(&$($deref)? self.$($field).+)
+             }
+             fn set_currency(&mut self, currency: $crate::Ccy, overwrite: bool) {
+-                $crate::graph::Market::set_currency(&mut self.$($field).+, currency, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::CURRENCY); )?
++                $crate::graph::Market::set_currency(&mut $($deref)? self.$($field).+, currency, overwrite);
+             }
+             fn get_origccy(&self) -> &$crate::Ccy {
+-                $crate::graph::Market::get_origccy(&self.$($field).+)
++                $crate::graph::Market::get_origccy(&$($deref)? self.$($field).+)
+             }
+             fn set_origccy(&mut self, ccy: $crate::Ccy, overwrite: bool) {
+-                $crate::graph::Market::set_origccy(&mut self.$($field).+, ccy, overwrite);
++                $crate::graph::Market::set_origccy(&mut $($deref)? self.$($field).+, ccy, overwrite);
+             }
+             fn get_quantity(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_quantity(&self.$($field).+)
++                $crate::graph::Market::get_quantity(&$($deref)? self.$($field).+)
+             }
+             fn set_quantity(&mut self, quantity: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_quantity(&mut self.$($field).+, quantity, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::QUANTITY); )?
++                $crate::graph::Market::set_quantity(&mut $($deref)? self.$($field).+, quantity, overwrite);
+             }
+ 
+             fn get_displayqty(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_displayqty(&self.$($field).+)
++                $crate::graph::Market::get_displayqty(&$($deref)? self.$($field).+)
+             }
+ 
+             fn set_displayqty(&mut self, value: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_displayqty(&mut self.$($field).+, value, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::DISPLAYQTY); )?
++                $crate::graph::Market::set_displayqty(&mut $($deref)? self.$($field).+, value, overwrite);
+             }
+ 
+             fn get_hiddenqty(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_hiddenqty(&self.$($field).+)
++                $crate::graph::Market::get_hiddenqty(&$($deref)? self.$($field).+)
+             }
+ 
+             fn set_hiddenqty(&mut self, value: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_hiddenqty(&mut self.$($field).+, value, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::HIDDENQTY); )?
++                $crate::graph::Market::set_hiddenqty(&mut $($deref)? self.$($field).+, value, overwrite);
+             }
+             fn get_unit(&self) -> &$crate::Unit {
+-                $crate::graph::Market::get_unit(&self.$($field).+)
++                $crate::graph::Market::get_unit(&$($deref)? self.$($field).+)
+             }
+             fn set_unit(&mut self, unit: $crate::Unit, overwrite: bool) {
+-                $crate::graph::Market::set_unit(&mut self.$($field).+, unit, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::UNIT); )?
++                $crate::graph::Market::set_unit(&mut $($deref)? self.$($field).+, unit, overwrite);
+             }
+             fn get_side(&self) -> $crate::Side {
+-                $crate::graph::Market::get_side(&self.$($field).+)
++                $crate::graph::Market::get_side(&$($deref)? self.$($field).+)
+             }
+             fn set_side(&mut self, side: $crate::Side, overwrite: bool) {
+-                $crate::graph::Market::set_side(&mut self.$($field).+, side, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::SIDE); )?
++                $crate::graph::Market::set_side(&mut $($deref)? self.$($field).+, side, overwrite);
+             }
+             fn marketdatakind(&self) -> $crate::MarketDataKind {
+-                $crate::graph::Market::marketdatakind(&self.$($field).+)
++                $crate::graph::Market::marketdatakind(&$($deref)? self.$($field).+)
+             }
+             fn get_marketdatatype(&self) -> $crate::MarketDataType {
+-                $crate::graph::Market::get_marketdatatype(&self.$($field).+)
++                $crate::graph::Market::get_marketdatatype(&$($deref)? self.$($field).+)
+             }
+             fn set_marketdatatype(&mut self, mdtype: $crate::MarketDataType, overwrite: bool) {
+-                $crate::graph::Market::set_marketdatatype(&mut self.$($field).+, mdtype, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::MDTYPE); )?
++                $crate::graph::Market::set_marketdatatype(&mut $($deref)? self.$($field).+, mdtype, overwrite);
+             }
+             fn get_securityids(&self) -> &$crate::Identifiers {
+-                $crate::graph::Market::get_securityids(&self.$($field).+)
++                $crate::graph::Market::get_securityids(&$($deref)? self.$($field).+)
+             }
+             fn set_securityids(&mut self, ids: $crate::Identifiers, overwrite: bool) -> $crate::Result<()> {
+-                $crate::graph::Market::set_securityids(&mut self.$($field).+, ids, overwrite)
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::SECURITYIDS); )?
++                $crate::graph::Market::set_securityids(&mut $($deref)? self.$($field).+, ids, overwrite)
+             }
+             fn insert_securityid(&mut self, id: $crate::Identifier) -> $crate::Result<bool> {
+-                $crate::graph::Market::insert_securityid(&mut self.$($field).+, id)
++                $( if id.src() != &$crate::IdSource::Derived { $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::SECURITYIDS); } )?
++                $crate::graph::Market::insert_securityid(&mut $($deref)? self.$($field).+, id)
+             }
+             fn remove_securityid(&mut self, key: &$crate::IdKey) -> $crate::Result<bool> {
+-                $crate::graph::Market::remove_securityid(&mut self.$($field).+, key)
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::SECURITYIDS); )?
++                $crate::graph::Market::remove_securityid(&mut $($deref)? self.$($field).+, key)
+             }
+             fn derive_securityid(&mut self, kind: &$crate::IdType, code: &str) -> bool {
+-                $crate::graph::Market::derive_securityid(&mut self.$($field).+, kind, code)
++                $crate::graph::Market::derive_securityid(&mut $($deref)? self.$($field).+, kind, code)
+             }
+             fn get_cficode(&self) -> Option<&$crate::Cfi> {
+-                $crate::graph::Market::get_cficode(&self.$($field).+)
++                $crate::graph::Market::get_cficode(&$($deref)? self.$($field).+)
+             }
+             fn set_cficode(&mut self, code: Option<$crate::Cfi>, overwrite: bool) {
+-                $crate::graph::Market::set_cficode(&mut self.$($field).+, code, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::CFI); )?
++                $crate::graph::Market::set_cficode(&mut $($deref)? self.$($field).+, code, overwrite);
+             }
+             fn get_miccode(&self) -> Option<&$crate::Mic> {
+-                $crate::graph::Market::get_miccode(&self.$($field).+)
++                $crate::graph::Market::get_miccode(&$($deref)? self.$($field).+)
+             }
+             fn set_miccode(&mut self, code: Option<$crate::Mic>, overwrite: bool) {
+-                $crate::graph::Market::set_miccode(&mut self.$($field).+, code, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::MIC); )?
++                $crate::graph::Market::set_miccode(&mut $($deref)? self.$($field).+, code, overwrite);
+             }
+             fn get_execunix(&self) -> Option<i64> {
+-                $crate::graph::Market::get_execunix(&self.$($field).+)
++                $crate::graph::Market::get_execunix(&$($deref)? self.$($field).+)
+             }
+             fn set_execunix(&mut self, unix: Option<i64>, overwrite: bool) {
+-                $crate::graph::Market::set_execunix(&mut self.$($field).+, unix, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::EXECUTION); )?
++                $crate::graph::Market::set_execunix(&mut $($deref)? self.$($field).+, unix, overwrite);
++                $( let held = $crate::graph::Market::get_execunix(&*self).is_some();
++                $crate::graph::StatedFacts::set(&mut self.$($stated).+, $crate::graph::StatedFacts::HELD_EXECUNIX, held); )?
+             }
+             fn get_lastpx(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_lastpx(&self.$($field).+)
++                $crate::graph::Market::get_lastpx(&$($deref)? self.$($field).+)
+             }
+             fn set_lastpx(&mut self, px: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_lastpx(&mut self.$($field).+, px, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::LASTPX); )?
++                $crate::graph::Market::set_lastpx(&mut $($deref)? self.$($field).+, px, overwrite);
+             }
+             fn get_lastqty(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_lastqty(&self.$($field).+)
++                $crate::graph::Market::get_lastqty(&$($deref)? self.$($field).+)
+             }
+             fn set_lastqty(&mut self, qty: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_lastqty(&mut self.$($field).+, qty, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::FILLS); )?
++                $crate::graph::Market::set_lastqty(&mut $($deref)? self.$($field).+, qty, overwrite);
+             }
+             fn get_avgpx(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_avgpx(&self.$($field).+)
++                $crate::graph::Market::get_avgpx(&$($deref)? self.$($field).+)
+             }
+             fn set_avgpx(&mut self, px: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_avgpx(&mut self.$($field).+, px, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::FILLS); )?
++                $crate::graph::Market::set_avgpx(&mut $($deref)? self.$($field).+, px, overwrite);
+             }
+             fn get_cumqty(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_cumqty(&self.$($field).+)
++                $crate::graph::Market::get_cumqty(&$($deref)? self.$($field).+)
+             }
+             fn set_cumqty(&mut self, qty: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_cumqty(&mut self.$($field).+, qty, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::FILLS); )?
++                $crate::graph::Market::set_cumqty(&mut $($deref)? self.$($field).+, qty, overwrite);
+             }
+             fn get_leavesqty(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_leavesqty(&self.$($field).+)
++                $crate::graph::Market::get_leavesqty(&$($deref)? self.$($field).+)
+             }
+             fn set_leavesqty(&mut self, qty: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_leavesqty(&mut self.$($field).+, qty, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::FILLS); )?
++                $crate::graph::Market::set_leavesqty(&mut $($deref)? self.$($field).+, qty, overwrite);
+             }
+ 
+             fn get_cxlqty(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_cxlqty(&self.$($field).+)
++                $crate::graph::Market::get_cxlqty(&$($deref)? self.$($field).+)
+             }
+ 
+             fn set_cxlqty(&mut self, value: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_cxlqty(&mut self.$($field).+, value, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::CXLQTY); )?
++                $crate::graph::Market::set_cxlqty(&mut $($deref)? self.$($field).+, value, overwrite);
+             }
+             fn get_prevpx(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_prevpx(&self.$($field).+)
++                $crate::graph::Market::get_prevpx(&$($deref)? self.$($field).+)
+             }
+             fn set_prevpx(&mut self, px: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_prevpx(&mut self.$($field).+, px, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::PREVPX); )?
++                $crate::graph::Market::set_prevpx(&mut $($deref)? self.$($field).+, px, overwrite);
+             }
+             fn get_prevqty(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_prevqty(&self.$($field).+)
++                $crate::graph::Market::get_prevqty(&$($deref)? self.$($field).+)
+             }
+             fn set_prevqty(&mut self, qty: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_prevqty(&mut self.$($field).+, qty, overwrite);
++                $crate::graph::Market::set_prevqty(&mut $($deref)? self.$($field).+, qty, overwrite);
+             }
+             fn get_spotrate(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_spotrate(&self.$($field).+)
++                $crate::graph::Market::get_spotrate(&$($deref)? self.$($field).+)
+             }
+             fn set_spotrate(&mut self, rate: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_spotrate(&mut self.$($field).+, rate, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::LASTPX); )?
++                $crate::graph::Market::set_spotrate(&mut $($deref)? self.$($field).+, rate, overwrite);
+             }
+             fn get_forwardpoints(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_forwardpoints(&self.$($field).+)
++                $crate::graph::Market::get_forwardpoints(&$($deref)? self.$($field).+)
+             }
+             fn set_forwardpoints(&mut self, points: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_forwardpoints(&mut self.$($field).+, points, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::LASTPX); )?
++                $crate::graph::Market::set_forwardpoints(&mut $($deref)? self.$($field).+, points, overwrite);
+             }
+             fn get_ticker(&self) -> Option<&str> {
+-                $crate::graph::Market::get_ticker(&self.$($field).+)
++                $crate::graph::Market::get_ticker(&$($deref)? self.$($field).+)
+             }
+             fn set_ticker(&mut self, ticker: Option<smol_str::SmolStr>, overwrite: bool) {
+-                $crate::graph::Market::set_ticker(&mut self.$($field).+, ticker, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::TICKER); )?
++                $crate::graph::Market::set_ticker(&mut $($deref)? self.$($field).+, ticker, overwrite);
+             }
+             fn get_metadata(&self) -> &$crate::graph::Metadata {
+-                $crate::graph::Market::get_metadata(&self.$($field).+)
++                $crate::graph::Market::get_metadata(&$($deref)? self.$($field).+)
+             }
+             fn set_metadata(&mut self, metadata: Option<$crate::graph::Metadata>, overwrite: bool) {
+-                $crate::graph::Market::set_metadata(&mut self.$($field).+, metadata, overwrite);
++                $crate::graph::Market::set_metadata(&mut $($deref)? self.$($field).+, metadata, overwrite);
+             }
+             fn get_fxrates(&self) -> &$crate::graph::FxRates {
+-                $crate::graph::Market::get_fxrates(&self.$($field).+)
++                $crate::graph::Market::get_fxrates(&$($deref)? self.$($field).+)
+             }
+             fn set_fxrates(&mut self, rates: $crate::graph::FxRates, overwrite: bool) {
+-                $crate::graph::Market::set_fxrates(&mut self.$($field).+, rates, overwrite);
++                $crate::graph::Market::set_fxrates(&mut $($deref)? self.$($field).+, rates, overwrite);
+             }
+             fn get_bidpx(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_bidpx(&self.$($field).+)
++                $crate::graph::Market::get_bidpx(&$($deref)? self.$($field).+)
+             }
+             fn set_bidpx(&mut self, px: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_bidpx(&mut self.$($field).+, px, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::BIDASK); )?
++                $crate::graph::Market::set_bidpx(&mut $($deref)? self.$($field).+, px, overwrite);
+             }
+             fn get_bidqty(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_bidqty(&self.$($field).+)
++                $crate::graph::Market::get_bidqty(&$($deref)? self.$($field).+)
+             }
+             fn set_bidqty(&mut self, qty: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_bidqty(&mut self.$($field).+, qty, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::BIDASK); )?
++                $crate::graph::Market::set_bidqty(&mut $($deref)? self.$($field).+, qty, overwrite);
+             }
+             fn get_bidccy(&self) -> Option<&$crate::Ccy> {
+-                $crate::graph::Market::get_bidccy(&self.$($field).+)
++                $crate::graph::Market::get_bidccy(&$($deref)? self.$($field).+)
+             }
+             fn set_bidccy(&mut self, ccy: Option<$crate::Ccy>, overwrite: bool) {
+-                $crate::graph::Market::set_bidccy(&mut self.$($field).+, ccy, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::BIDASK); )?
++                $crate::graph::Market::set_bidccy(&mut $($deref)? self.$($field).+, ccy, overwrite);
+             }
+             fn get_askpx(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_askpx(&self.$($field).+)
++                $crate::graph::Market::get_askpx(&$($deref)? self.$($field).+)
+             }
+             fn set_askpx(&mut self, px: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_askpx(&mut self.$($field).+, px, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::BIDASK); )?
++                $crate::graph::Market::set_askpx(&mut $($deref)? self.$($field).+, px, overwrite);
+             }
+             fn get_askqty(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Market::get_askqty(&self.$($field).+)
++                $crate::graph::Market::get_askqty(&$($deref)? self.$($field).+)
+             }
+             fn set_askqty(&mut self, qty: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Market::set_askqty(&mut self.$($field).+, qty, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::BIDASK); )?
++                $crate::graph::Market::set_askqty(&mut $($deref)? self.$($field).+, qty, overwrite);
+             }
+             fn get_askccy(&self) -> Option<&$crate::Ccy> {
+-                $crate::graph::Market::get_askccy(&self.$($field).+)
++                $crate::graph::Market::get_askccy(&$($deref)? self.$($field).+)
+             }
+             fn set_askccy(&mut self, ccy: Option<$crate::Ccy>, overwrite: bool) {
+-                $crate::graph::Market::set_askccy(&mut self.$($field).+, ccy, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::BIDASK); )?
++                $crate::graph::Market::set_askccy(&mut $($deref)? self.$($field).+, ccy, overwrite);
+             }
+         }
+     };
++    ($type:ty, $($field:ident).+) => {
++        $crate::graph::delegate_market!(@impl $type, [] $($field).+);
++    };
++    ($type:ty, *$($field:ident).+, stating = $($stated:ident).+) => {
++        $crate::graph::delegate_market!(@impl $type, [*] $($field).+, stating = $($stated).+);
++    };
+ }
+ 
+ /// `impl Operation` forwarding every fact to a field that is a
+ /// `Operation`, and the conflict a lifecycle notes with them; what the type
+ /// states over its own facts - [`Operation::follow_identity`], provided -
+-/// stays its own unless items after a `;` override it.
++/// stays its own unless items after a `;` override it. A boxed holder -
++/// `*field` - forwards through the box and marks, one
++/// [`StatedFacts`](crate::graph::StatedFacts) bit each, the facts its
++/// setters state in its `stating` field; it states its own
++/// [`Operation::note_conflict`] among the items after the `;`.
+ macro_rules! delegate_operation {
+-    ($type:ty, $($field:ident).+ $(; $($item:item)*)?) => {
++    (
++        @impl $type:ty,
++        [$($deref:tt)?] $($field:ident).+
++        $(, stating = $($stated:ident).+)?
++        ; { $($item:item)* }
++    ) => {
+         impl $crate::graph::Operation for $type {
+             fn get_ordqty(&self) -> Option<$crate::Decimal> {
+-                $crate::graph::Operation::get_ordqty(&self.$($field).+)
++                $crate::graph::Operation::get_ordqty(&$($deref)? self.$($field).+)
+             }
+             fn set_ordqty(&mut self, qty: Option<$crate::Decimal>, overwrite: bool) {
+-                $crate::graph::Operation::set_ordqty(&mut self.$($field).+, qty, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::ORDQTY); )?
++                $crate::graph::Operation::set_ordqty(&mut $($deref)? self.$($field).+, qty, overwrite);
+             }
+             fn get_timeinforce(&self) -> Option<&$crate::TimeInForce> {
+-                $crate::graph::Operation::get_timeinforce(&self.$($field).+)
++                $crate::graph::Operation::get_timeinforce(&$($deref)? self.$($field).+)
+             }
+             fn set_timeinforce(&mut self, tif: Option<$crate::TimeInForce>, overwrite: bool) {
+-                $crate::graph::Operation::set_timeinforce(&mut self.$($field).+, tif, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::TIF); )?
++                $crate::graph::Operation::set_timeinforce(&mut $($deref)? self.$($field).+, tif, overwrite);
+             }
+             fn get_tradable(&self) -> Option<bool> {
+-                $crate::graph::Operation::get_tradable(&self.$($field).+)
++                $crate::graph::Operation::get_tradable(&$($deref)? self.$($field).+)
+             }
+             fn set_tradable(&mut self, tradable: Option<bool>, overwrite: bool) {
+-                $crate::graph::Operation::set_tradable(&mut self.$($field).+, tradable, overwrite);
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::TRADABLE); )?
++                $crate::graph::Operation::set_tradable(&mut $($deref)? self.$($field).+, tradable, overwrite);
+             }
+             fn get_identifiers(&self) -> &$crate::Identifiers {
+-                $crate::graph::Operation::get_identifiers(&self.$($field).+)
++                $crate::graph::Operation::get_identifiers(&$($deref)? self.$($field).+)
+             }
+             fn set_identifiers(&mut self, ids: $crate::Identifiers, overwrite: bool) -> $crate::Result<()> {
+-                $crate::graph::Operation::set_identifiers(&mut self.$($field).+, ids, overwrite)
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::IDENTIFIERS); )?
++                $crate::graph::Operation::set_identifiers(&mut $($deref)? self.$($field).+, ids, overwrite)
+             }
+             fn insert_identifier(&mut self, id: $crate::Identifier) -> $crate::Result<bool> {
+-                $crate::graph::Operation::insert_identifier(&mut self.$($field).+, id)
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::IDENTIFIERS); )?
++                $crate::graph::Operation::insert_identifier(&mut $($deref)? self.$($field).+, id)
+             }
+             fn remove_identifier(&mut self, key: &$crate::IdKey) -> $crate::Result<bool> {
+-                $crate::graph::Operation::remove_identifier(&mut self.$($field).+, key)
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::IDENTIFIERS); )?
++                $crate::graph::Operation::remove_identifier(&mut $($deref)? self.$($field).+, key)
+             }
+             fn get_partyids(&self) -> &$crate::Identifiers {
+-                $crate::graph::Operation::get_partyids(&self.$($field).+)
++                $crate::graph::Operation::get_partyids(&$($deref)? self.$($field).+)
+             }
+             fn set_partyids(&mut self, partyids: $crate::Identifiers, overwrite: bool) -> $crate::Result<()> {
+-                $crate::graph::Operation::set_partyids(&mut self.$($field).+, partyids, overwrite)
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::PARTYIDS); )?
++                $crate::graph::Operation::set_partyids(&mut $($deref)? self.$($field).+, partyids, overwrite)
+             }
+             fn insert_partyid(&mut self, partyid: $crate::Identifier) -> $crate::Result<bool> {
+-                $crate::graph::Operation::insert_partyid(&mut self.$($field).+, partyid)
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::PARTYIDS); )?
++                $crate::graph::Operation::insert_partyid(&mut $($deref)? self.$($field).+, partyid)
+             }
+             fn remove_partyid(&mut self, key: &$crate::IdKey) -> $crate::Result<bool> {
+-                $crate::graph::Operation::remove_partyid(&mut self.$($field).+, key)
++                $( $crate::graph::StatedFacts::insert(&mut self.$($stated).+, $crate::graph::StatedFacts::PARTYIDS); )?
++                $crate::graph::Operation::remove_partyid(&mut $($deref)? self.$($field).+, key)
+             }
+             fn is_followed_identifier(&self, id: &$crate::Identifier) -> bool {
+-                $crate::graph::Operation::is_followed_identifier(&self.$($field).+, id)
++                $crate::graph::Operation::is_followed_identifier(&$($deref)? self.$($field).+, id)
+             }
+             fn parents_of(&self, base: &$crate::IdType) -> ::std::borrow::Cow<'_, [$crate::IdType]> {
+-                $crate::graph::Operation::parents_of(&self.$($field).+, base)
++                $crate::graph::Operation::parents_of(&$($deref)? self.$($field).+, base)
+             }
+             fn parent_of(&self, kind: &$crate::IdType) -> Option<($crate::IdType, usize)> {
+-                $crate::graph::Operation::parent_of(&self.$($field).+, kind)
++                $crate::graph::Operation::parent_of(&$($deref)? self.$($field).+, kind)
+             }
++            $($item)*
++        }
++    };
++    ($type:ty, $($field:ident).+ $(; $($item:item)*)?) => {
++        $crate::graph::delegate_operation!(@impl $type, [] $($field).+ ; {
+             fn note_conflict(&mut self, cited: &str) {
+                 $crate::graph::Operation::note_conflict(&mut self.$($field).+, cited);
+             }
+             $($($item)*)?
+-        }
++        });
++    };
++    ($type:ty, *$($field:ident).+, stating = $($stated:ident).+ ; $($item:item)*) => {
++        $crate::graph::delegate_operation!(
++            @impl $type,
++            [*] $($field).+,
++            stating = $($stated).+
++            ; { $($item)* }
++        );
+     };
+ }
+ 
++pub(crate) use delegate_event;
+ pub(crate) use delegate_market;
+ pub(crate) use delegate_operation;
+ 
++pub mod anomaly;
+ pub mod arrow;
+ pub mod book;
+ pub mod candle;
+@@ -446,6 +574,7 @@ pub mod kind;
+ pub mod market;
+ pub mod market_column;
+ pub mod market_data;
++pub mod message;
+ pub mod operation;
+ pub mod operation_column;
+ #[cfg(feature = "http")]
+@@ -453,6 +582,7 @@ pub mod serve;
+ pub mod trade;
+ pub mod view;
+ 
++pub use anomaly::Anomaly;
+ pub use book::{BookEvent, BookIterator, SnapshotEvent};
+ pub use candle::{Candle, CandleIterator, CandleOptions, Ohlc};
+ pub use column::EventColumn;
+@@ -462,7 +592,8 @@ pub use iterator::EventIterator;
+ pub use kind::MarketKind;
+ pub use market::{FxRates, Market, Metadata, Operation, empty_fxrates, empty_metadata};
+ pub use market_column::MarketColumn;
+-pub use market_data::{MarketData, MarketMessage};
++pub use market_data::MarketData;
++pub use message::{InstrumentStatement, MarketMessage, MessageIterator, StatedFacts};
+ pub use operation::{
+     BookRef, Execution, ExecutionEvent, ExecutionKind, MdUpdateAction, OperationElement,
+     OperationEvent, OperationKind, Order, OrderEvent, OrderKind, Quote, QuoteEvent, QuoteKind,
+diff --git a/rust/market/tests/allocations.rs b/rust/market/tests/allocations.rs
+--- a/rust/market/tests/allocations.rs
++++ b/rust/market/tests/allocations.rs
+@@ -941,6 +945,145 @@ fn direct_fix_operation_conversion_needs_no_intermediate_allocation() {
+     }
+ }
+ 
++/// The FIX handle lets go of its market message by moving it: an order or
++/// a quote every field of which a typed column reads moves its facts, its
++/// record and its anomalies out of `FixMsg::into_message` without one
++/// allocation, and the market message moves into `MarketData` the same way.
++#[test]
++fn a_fix_message_moves_into_its_market_message_without_allocating() {
++    let codec = FixCodec::new(Arc::new(fix_registry(0)));
++    for wire in [b"35=D|55=AAPL|".as_slice(), b"35=S|55=AAPL|"] {
++        let message = codec.parse_line(wire).unwrap().next().unwrap().unwrap();
++        let (allocations, moved) = counted(|| message.into_message());
++        assert_eq!(moved.get_ticker(), Some("AAPL"));
++        assert_eq!(allocations, 0, "the message moves out of its handle");
++        let (allocations, held) = counted(|| MarketData::from(moved));
++        assert_eq!(
++            held.marketdatakind(),
++            held.as_message().unwrap().marketdatakind()
++        );
++        assert_eq!(allocations, 0, "and into the value that holds it whole");
++    }
++}
++
++/// A market message no codec built is the one leaf of its category by
++/// moving its facts: `into_market_leaf` of an order or a quote allocates
++/// nothing, whatever entries it states beside its facts.
++#[test]
++fn a_market_message_moves_into_its_one_leaf_without_allocating() {
++    use yggdryl::graph::MarketMessage;
++
++    let root = Arc::new(
++        StructType::from_fields([DataType::utf8().nullable_field("venue")])
++            .map(DataType::from)
++            .expect("one entry")
++            .required_field("entries"),
++    );
++    for kind in [
++        yggdryl::MarketDataKind::Order,
++        yggdryl::MarketDataKind::Quotation,
++    ] {
++        let mut message = MarketMessage::new(kind)
++            .try_with_entries(
++                Arc::clone(&root),
++                Scalar::from_sequence([Scalar::from("XAMS")]),
++            )
++            .expect("an entry the root takes");
++        message.set_transunix(1_700_000_000_000_000_000);
++        message.set_crosscode("M-1".to_owned());
++        message.set_ticker(Some(SmolStr::new("AAPL")), true);
++        message.finalize();
++        let (allocations, leaf) = counted(|| message.into_market_leaf().unwrap());
++        assert_eq!(leaf.get_ticker(), Some("AAPL"));
++        assert_eq!(allocations, 0, "a direct leaf moves the message's facts");
++    }
++}
++
++/// The way back adopts the codec's own record as it is: `FixMsg::from_message`
++/// over a message a parse moved out parses no text and rebuilds its indexes
++/// alone - the tag positions over the record's children, the header and the
++/// capture caches - so it costs the same whatever the record holds, and
++/// less than reading the line it came from.
++#[test]
++fn a_market_message_adopted_back_rebuilds_its_indexes_alone() {
++    let registry = Arc::new(fix_registry(64));
++    let codec = FixCodec::new(Arc::clone(&registry));
++    let adopted = |line: &[u8]| {
++        let message = codec
++            .parse_fix_line(line)
++            .expect("a readable line")
++            .into_message();
++        let (allocations, back) =
++            counted(|| FixMsg::from_message(Arc::clone(&registry), message).unwrap());
++        assert_eq!(
++            back.message().marketdatakind(),
++            yggdryl::MarketDataKind::Order
++        );
++        allocations
++    };
++    let parsed = |line: &[u8]| counted(|| codec.parse_fix_line(line).expect("a readable line")).0;
++    let (narrow, wide) = (fix_pairs_line(4), fix_pairs_line(64));
++    let at = [adopted(&narrow[..]), adopted(&wide[..])];
++    eprintln!(
++        "from_message over the codec's own record: {} allocations at 4 pairs, {} at 64",
++        at[0], at[1]
++    );
++    assert_eq!(at[0], at[1], "the indexes, whatever the record holds");
++    assert!(
++        at[0] < parsed(&narrow[..]),
++        "fewer than reading the line: {} against {}",
++        at[0],
++        parsed(&narrow[..])
++    );
++}
++
++/// A book message's entries are its children, each a market message of its
++/// own: what a `W` with more entries costs to move out of its handle grows
++/// by the same count per entry - the child's facts box, its record under
++/// the group's one shared root - and its leaves cost what its children
++/// state, nothing more.
++#[test]
++fn a_book_messages_children_cost_the_same_per_entry() {
++    let codec = FixCodec::new(Arc::new(committed_registry().clone())).with_threads(1);
++    let line = |entries: usize| {
++        let mut line = format!("8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268={entries}|");
++        for entry in 0..entries {
++            line.push_str(&format!("269={}|270={}|271=5|", entry % 2, 100 + entry));
++        }
++        line.push_str("10=0|");
++        line.into_bytes()
++    };
++    let moved = |entries: usize| {
++        let message = codec
++            .parse_fix_line(&line(entries))
++            .expect("a book message");
++        let (allocations, message) = counted(|| message.into_message());
++        assert_eq!(message.children().len(), entries);
++        let (split, leaves) = counted(|| message.into_market_data());
++        assert_eq!(leaves.len(), entries, "one leaf per child");
++        (allocations, split)
++    };
++    let measured = [moved(1), moved(2), moved(4), moved(8)];
++    eprintln!("a W's children, moved out and split, at 1, 2, 4 and 8 entries: {measured:?}");
++    let per_child = measured[1].0 - measured[0].0;
++    assert_eq!(
++        measured[2].0 - measured[1].0,
++        2 * per_child,
++        "linear in the entries"
++    );
++    assert_eq!(
++        measured[3].0 - measured[2].0,
++        4 * per_child,
++        "linear in the entries"
++    );
++    let per_leaf = measured[1].1 - measured[0].1;
++    assert_eq!(
++        measured[3].1 - measured[2].1,
++        4 * per_leaf,
++        "linear in the leaves"
++    );
++}
++
+ #[test]
+ fn a_leaf_moves_into_and_out_of_market_data_without_allocating() {
+     let mut event = OrderEvent::at(1);
+diff --git a/rust/market/tests/graph.rs b/rust/market/tests/graph.rs
+--- a/rust/market/tests/graph.rs
++++ b/rust/market/tests/graph.rs
+@@ -1,5 +1,7 @@
+ //! Graph vocabulary integration tests.
+ 
++#[path = "graph/anomaly.rs"]
++mod anomaly;
+ #[path = "graph/arrow.rs"]
+ mod arrow;
+ #[path = "graph/book.rs"]
+@@ -24,6 +26,8 @@ mod market;
+ mod market_column;
+ #[path = "graph/market_data.rs"]
+ mod market_data;
++#[path = "graph/message.rs"]
++mod message;
+ #[path = "graph/operation.rs"]
+ mod operation;
+ #[path = "graph/operation_column.rs"]
+diff --git a/rust/market/tests/graph/market_data.rs b/rust/market/tests/graph/market_data.rs
+--- a/rust/market/tests/graph/market_data.rs
++++ b/rust/market/tests/graph/market_data.rs
+@@ -240,12 +240,17 @@ fn only_two_dated_values_order_and_only_one_variant_merges() {
+ /// after padding. It moved to 896 when its one list became two - its
+ /// `delta`, the orders and quotes its instant applied, and its `events`,
+ /// every other event its instant recorded - one 24-byte vector more, 16
+-/// after padding, still narrower than the snapshot.
++/// after padding, still narrower than the snapshot. It held at 912 when the
++/// message held whole became the market side's own `MarketMessage`, inline
++/// where a two-word trait object stood: its facts boxed, it is far narrower
++/// than the snapshot.
+ #[test]
+ fn the_enum_is_the_size_of_its_widest_inline_leaf() {
+     use std::mem::size_of;
++    use yggdryl::graph::MarketMessage;
+     assert_eq!(size_of::<MarketData>(), size_of::<SnapshotEvent>());
+     assert!(size_of::<TradeEvent>() < size_of::<MarketData>());
++    assert!(size_of::<MarketMessage>() < size_of::<SnapshotEvent>());
+     assert_eq!(size_of::<BookEvent>(), 896);
+     assert_eq!(size_of::<MarketData>(), 912);
+ }
+diff --git a/rust/src/implementer.rs b/rust/src/implementer.rs
+--- a/rust/src/implementer.rs
++++ b/rust/src/implementer.rs
+@@ -134,6 +134,18 @@ pub fn struct_type_from_unique_fields(fields: Vec<Field>) -> StructType {
+     StructType::from_unique_fields(fields)
+ }
+ 
++/// `xxhash::write_named_bytes`, for the market and FIX crates: the canonical
++/// record framing of an already sorted, borrowed named row - the entries a
++/// market message digests, and a FIX message's own content.
++#[inline]
++pub fn write_named_bytes<'a>(
++    sink: &mut impl Hasher,
++    cells: impl ExactSizeIterator<Item = (&'a str, &'a Scalar)>,
++    depth: usize,
++) {
++    crate::xxhash::write_named_bytes(sink, cells, depth);
++}
++
+ /// How many distinct contents one instant places inline before a run
+ /// spills its codes into a map: a message and what its parse split off.
+ const INLINE_PLACES: usize = 4;
+@@ -766,17 +778,6 @@ pub fn declared_charset(head: &[u8]) -> Result<Option<Charset>> {
+     crate::xml::declared_charset(head)
+ }
+ 
+-/// `xxhash::write_named_bytes`, for the FIX crate: the canonical record
+-/// framing of an already sorted, borrowed named row.
+-#[inline]
+-pub fn write_named_bytes<'a>(
+-    sink: &mut impl Hasher,
+-    cells: impl ExactSizeIterator<Item = (&'a str, &'a Scalar)>,
+-    depth: usize,
+-) {
+-    crate::xxhash::write_named_bytes(sink, cells, depth);
+-}
+-
+ /// `Cfi::UNCLASSIFIED`, for the FIX crate: the code that classifies
+ /// nothing, every position unknown.
+ pub const CFI_UNCLASSIFIED: &str = Cfi::UNCLASSIFIED;
+@@ -920,7 +921,8 @@ pub use crate::text::display::{
+ /// and media crates.
+ pub use crate::arrow::rows::result_reader;
+ 
+-/// The stable XXH3-64 of a structural hash, for the FIX and media crates.
++/// The stable XXH3-64 of a structural hash, for the market, FIX and media
++/// crates.
+ pub use crate::hashing::stable::stable_hash_of;
+ 
+ /// The one ordered map over persistent stream workers, for the FIX and

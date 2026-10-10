@@ -4,7 +4,7 @@
 
 ## Which encoding will this handle use?
 
-The suffix or media type decides; `record_options()` answers the settings for that encoding, refuses an encoding the build does not implement, and an absent resource reads as no rows.
+The suffix or media type decides; `record_options()` answers the settings for that encoding, refuses a type no medium claims (naming the claimed ones and the crate to install), and an absent resource reads as no rows.
 
 ```python
 import pathlib

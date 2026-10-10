@@ -1,0 +1,1131 @@
+//! The type of name an identifier is: one vocabulary for security,
+//! alternate and party identifiers.
+//!
+//! [`IdType`] holds the words the crate names as members - every source
+//! FIX's `SecurityIDSource(22)` code set names, the operation identifiers a
+//! FIX message states, the party roles a FIX flow commonly carries - each a
+//! static word that costs nothing to hold or compare, and any other word as
+//! [`IdType::Other`]. A security type carries the rule its codes follow: an
+//! ISIN is held by its shape and ranked by its check digit, a pair is stored
+//! canonical.
+
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::sync::LazyLock;
+
+use smol_str::format_smolstr;
+
+use crate::identifier::{IDENTIFIER_VALUE_WIDTH, IDENTIFIER_WORD_WIDTH, id_vocabulary};
+use yggdryl::implementer::BBG_WIDTH;
+use yggdryl::implementer::RIC_WIDTH;
+use yggdryl::implementer::{DTI_WIDTH, ELF_WIDTH, FISN_WIDTH, LEI_WIDTH};
+use yggdryl::{Ccy, Cfi, Country, Cusip, DataType, Error, Figi, Forex, Isin, Result, Ric, Sedol};
+use yggdryl::{Dti, Elf, Fisn, Lei};
+
+id_vocabulary! {
+    /// The type of name an identifier is: `isin`, `clordid`,
+    /// `executingtrader`.
+    ///
+    /// A spelling folds to lower case without the `_`, `-`, space and `#` a
+    /// spelling breaks it with, so `ISIN_Number` and `isinnumber` are both
+    /// [`IdType::Isin`]; each member also reads by the code-set names FIX
+    /// gives it, and by the column a market view names it by - `isincode`,
+    /// `riccode`, `cficode`. Any other folded word is an [`IdType::Other`].
+    ///
+    /// ```
+    /// # yggdryl_market::install().unwrap();
+    /// use yggdryl_market::IdType;
+    ///
+    /// assert_eq!("ISIN_Number".parse::<IdType>().unwrap(), IdType::Isin);
+    /// assert_eq!("isincode".parse::<IdType>().unwrap(), IdType::Isin);
+    /// assert_eq!("bloombergsymbol".parse::<IdType>().unwrap(), IdType::Bloomberg);
+    /// assert_eq!(IdType::ClOrdId.as_str(), "clordid");
+    /// let house = "House Code".parse::<IdType>().unwrap();
+    /// assert!(!house.is_known());
+    /// assert_eq!(house.as_str(), "housecode");
+    /// ```
+    IdType, "an identifier type" {
+        /// A CUSIP, FIX `SecurityIDSource(22)` code `1`.
+        Cusip => "cusip" | "cusipcode" | "cusipnumber" | "cusipid",
+        /// A SEDOL, code `2`.
+        Sedol => "sedol" | "sedolcode" | "sedolnumber" | "sedolid",
+        /// A QUIK code, code `3`.
+        Quik => "quik",
+        /// An ISIN, code `4`.
+        Isin => "isin" | "isinnumber" | "isincode" | "isinid",
+        /// A Reuters instrument code, code `5`.
+        Ric => "ric" | "riccode" | "ricsymbol" | "reuterscode" | "reuterssymbol" | "reuters",
+        /// An ISO 4217 currency code, code `6`.
+        IsoCcy => "isoccy" | "isocurrencycode",
+        /// An ISO 3166 country code, code `7`.
+        IsoCtry => "isoctry" | "isocountrycode",
+        /// An exchange symbol, code `8`: the symbol a venue lists the
+        /// instrument under - SIX Swiss Exchange's symbol, its
+        /// `Valorensymbol`, among them - a listing code whose venue is the
+        /// market it is stated on.
+        ExchSymb => "exchsymb" | "exchangesymbol" | "exchsymbol" | "sixsymbol" | "valorsymbol" | "valorensymbol",
+        /// A Consolidated Tape Association symbol, code `9`.
+        Cta => "cta" | "consolidatedtapeassociation" | "ctasymbol" | "consolidatedtapeassociationsymbol",
+        /// A Bloomberg symbol, code `A`.
+        Bloomberg => "bloomberg" | "bbgsymb" | "bloombergsymbol" | "bloombergcode" | "bbg" | "bbgcode" | "bbgsymbol" | "bloombergid" | "bloombergticker",
+        /// A Wertpapierkennnummer, code `B`.
+        Wkn => "wkn" | "wertpapier" | "wkncode" | "wknnumber",
+        /// A Dutch security code, code `C`.
+        Dutch => "dutch",
+        /// A Valor number, code `D`; SIX's own source spelling
+        /// `X-SWX-VALOR` and its German name `Valorennummer` read as it too.
+        Valor => "valor" | "valoren" | "valorcode" | "valornumber" | "valorid" | "xswxvalor" | "valorennummer" | "valorennumber",
+        /// A SICOVAM code, code `E`.
+        Sicovam => "sicovam",
+        /// A Belgian security code, code `F`.
+        Belgian => "belgian",
+        /// A Common Code of Clearstream and Euroclear, code `G`.
+        Common => "common" | "commoncode",
+        /// A clearing house's or clearing organization's own code, code `H`.
+        /// `clearingorganization` alone is the party role `PartyRole(452)`
+        /// `21` names.
+        ClearingHouse => "clearinghouse" | "clearinghouseclearingorganization",
+        /// An ISDA FpML product specification, code `I`.
+        FpmlSpec => "fpmlspec" | "isdafpmlspecification" | "isdafpmlproductspecification",
+        /// An OPRA option symbol, code `J`.
+        Opra => "opra" | "optionpricereportingauthority" | "optionspricereportingauthority",
+        /// An ISDA FpML product URL, code `K`.
+        FpmlUrl => "fpmlurl" | "isdafpmlurl" | "isdafpmlproducturl",
+        /// A letter of credit, code `L`.
+        Loc => "loc" | "letterofcredit",
+        /// A marketplace's own identifier, code `M`.
+        MktAssigned => "mktassigned" | "marketplaceassignedidentifier",
+        /// A Markit RED entity CLIP, code `N`.
+        RedEntity => "redentity" | "markitredentityclip",
+        /// A Markit RED pair CLIP, code `P`.
+        RedPair => "redpair" | "markitredpairclip",
+        /// A CFTC commodity code, code `Q`.
+        Cftc => "cftc" | "cftccommoditycode",
+        /// An ISDA commodity reference price, code `R`.
+        IsdaCommodity => "isdacommodity" | "isdacommodityreferenceprice",
+        /// A FIGI, code `S`.
+        Figi => "figi" | "financialinstrumentglobalidentifier" | "figicode" | "figiid" | "openfigi",
+        /// A legal entity identifier, code `T`.
+        Lei => "lei" | "legalentityidentifier",
+        /// A synthetic instrument, code `U`.
+        Synthetic => "synthetic",
+        /// A Fidessa instrument mnemonic, code `V`.
+        Fim => "fim" | "fidessainstrumentmnemonic",
+        /// An index name, code `W`.
+        Index => "index" | "indexname",
+        /// A uniform symbol, code `X`.
+        Umtf => "umtf" | "uniformsymbol",
+        /// A digital token identifier, code `Y`.
+        Dti => "dti" | "digitaltokenidentifier",
+        /// A currency pair, canonical `CCY/CCY` - the crate's own, which FIX
+        /// gives no code.
+        Forex => "forex" | "forexcode" | "ccypair" | "currencypair",
+        /// An ISO 10962 classification.
+        Cfi => "cfi" | "cficode",
+        /// An ISO 18774 financial instrument short name - the issuer and the
+        /// instrument's description either side of a `/` - which FIX states
+        /// in `FinancialInstrumentShortName(2737)` and gives no
+        /// `SecurityIDSource(22)` code.
+        Fisn => "fisn" | "fisncode" | "financialinstrumentshortname",
+        /// A venue's or a bridge's own instrument key.
+        InstrumentId => "instrumentid" | "instrumentcode",
+        /// An ISO 20275 entity legal form: what kind of entity a party is -
+        /// `2HBR` a German GmbH - which describes an entity rather than
+        /// naming a security or a party.
+        Elf => "elf" | "elfcode" | "entitylegalform" | "entitylegalformcode",
+        /// `OrderID(37)`.
+        OrderId => "orderid",
+        /// `ClOrdID(11)`.
+        ClOrdId => "clordid",
+        /// `OrigClOrdID(41)`, `clordid`'s one parent.
+        OrigClOrdId => "origclordid",
+        /// `SecondaryOrderID(198)`.
+        SecondaryOrderId => "secondaryorderid",
+        /// `SecondaryClOrdID(526)`.
+        SecondaryClOrdId => "secondaryclordid",
+        /// `SecondaryExecID(527)`.
+        SecondaryExecId => "secondaryexecid",
+        /// `SecondaryQuoteID(1751)`.
+        SecondaryQuoteId => "secondaryquoteid",
+        /// `SecondaryTradeID(1040)`.
+        SecondaryTradeId => "secondarytradeid",
+        /// `SecondaryFirmTradeID(1042)`.
+        SecondaryFirmTradeId => "secondaryfirmtradeid",
+        /// `SecondaryAllocID(793)`.
+        SecondaryAllocId => "secondaryallocid",
+        /// `SecondaryIndividualAllocID(989)`.
+        SecondaryIndividualAllocId => "secondaryindividualallocid",
+        /// `ExecID(17)`.
+        ExecId => "execid",
+        /// `QuoteID(117)`.
+        QuoteId => "quoteid",
+        /// `QuoteReqID(131)`.
+        QuoteReqId => "quotereqid",
+        /// `MDReqID(262)`.
+        MdReqId => "mdreqid",
+        /// `TrdMatchID(880)`.
+        TrdMatchId => "trdmatchid",
+        /// `TradeID(1003)`.
+        TradeId => "tradeid",
+        /// `TradeReportID(571)`.
+        TradeReportId => "tradereportid",
+        /// `TradeReportRefID(572)`, `tradereportid`'s one parent: the report
+        /// a cancel or a replace (`TradeReportTransType(487)` `1` or `2`)
+        /// refers to.
+        TradeReportRefId => "tradereportrefid",
+        /// `MDEntryID(278)`.
+        MdEntryId => "mdentryid",
+        /// `MDEntryRefID(280)`.
+        MdEntryRefId => "mdentryrefid",
+        /// The current regulatory trade identifier, `RegulatoryTradeIDType(1906)`
+        /// `0`.
+        RegTradeId => "regtradeid",
+        /// The previous regulatory trade identifier, type `1`.
+        PrevRegTradeId => "prevregtradeid",
+        /// A block's regulatory trade identifier, type `2`.
+        BlockRegTradeId => "blockregtradeid",
+        /// A related regulatory trade identifier, type `3`.
+        RelatedRegTradeId => "relatedregtradeid",
+        /// A cleared block's regulatory trade identifier, type `4`.
+        ClearedRegTradeId => "clearedregtradeid",
+        /// A trading venue transaction identification code, type `5`.
+        Tvtic => "tvtic" | "tradingvenuetransactionidentifier",
+        /// A report tracking number, type `6`.
+        ReportTrackingNumber => "reporttrackingnumber",
+        /// The account an order is booked to, `Account(1)`.
+        Account => "account",
+        /// A party whose role nothing states.
+        Party => "party",
+        /// A user of a system.
+        UserId => "userid",
+        /// `PartyRole(452)` `1`.
+        ExecutingFirm => "executingfirm",
+        /// `PartyRole(452)` `3`.
+        ClientId => "clientid",
+        /// `PartyRole(452)` `4`.
+        ClearingFirm => "clearingfirm",
+        /// `PartyRole(452)` `5`.
+        InvestorId => "investorid",
+        /// `PartyRole(452)` `7`.
+        EnteringFirm => "enteringfirm",
+        /// `PartyRole(452)` `11`.
+        OrderOriginationTrader => "orderoriginationtrader",
+        /// `PartyRole(452)` `12`.
+        ExecutingTrader => "executingtrader",
+        /// `PartyRole(452)` `13`.
+        OrderOriginationFirm => "orderoriginationfirm",
+        /// `PartyRole(452)` `16`.
+        ExecutingSystem => "executingsystem",
+        /// `PartyRole(452)` `17`.
+        ContraFirm => "contrafirm",
+        /// `PartyRole(452)` `21`.
+        ClearingOrganization => "clearingorganization",
+        /// `PartyRole(452)` `22`.
+        Exchange => "exchange",
+        /// `PartyRole(452)` `24`.
+        CustomerAccount => "customeraccount",
+        /// `PartyRole(452)` `36`.
+        EnteringTrader => "enteringtrader",
+        /// `PartyRole(452)` `37`.
+        ContraTrader => "contratrader",
+        /// `PartyRole(452)` `38`.
+        PositionAccount => "positionaccount",
+        /// `PartyRole(452)` `44`.
+        OrderEntryOperatorId => "orderentryoperatorid",
+        /// `PartyRole(452)` `73`.
+        ExecutionVenue => "executionvenue",
+        /// `PartyRole(452)` `76`.
+        DeskId => "deskid",
+        /// `PartyRole(452)` `122`.
+        InvestmentDecisionMaker => "investmentdecisionmaker",
+        /// `PartyRole(452)` `131`.
+        Algorithm => "algorithm",
+    },
+    aliases
+}
+
+/// The security types FIX's `SecurityIDSource(22)` code set names, each with
+/// its one-character code, in the code set's order.
+pub(crate) static FIX_SECURITY_SOURCES: [(IdType, char); 33] = [
+    (IdType::Cusip, '1'),
+    (IdType::Sedol, '2'),
+    (IdType::Quik, '3'),
+    (IdType::Isin, '4'),
+    (IdType::Ric, '5'),
+    (IdType::IsoCcy, '6'),
+    (IdType::IsoCtry, '7'),
+    (IdType::ExchSymb, '8'),
+    (IdType::Cta, '9'),
+    (IdType::Bloomberg, 'A'),
+    (IdType::Wkn, 'B'),
+    (IdType::Dutch, 'C'),
+    (IdType::Valor, 'D'),
+    (IdType::Sicovam, 'E'),
+    (IdType::Belgian, 'F'),
+    (IdType::Common, 'G'),
+    (IdType::ClearingHouse, 'H'),
+    (IdType::FpmlSpec, 'I'),
+    (IdType::Opra, 'J'),
+    (IdType::FpmlUrl, 'K'),
+    (IdType::Loc, 'L'),
+    (IdType::MktAssigned, 'M'),
+    (IdType::RedEntity, 'N'),
+    (IdType::RedPair, 'P'),
+    (IdType::Cftc, 'Q'),
+    (IdType::IsdaCommodity, 'R'),
+    (IdType::Figi, 'S'),
+    (IdType::Lei, 'T'),
+    (IdType::Synthetic, 'U'),
+    (IdType::Fim, 'V'),
+    (IdType::Index, 'W'),
+    (IdType::Umtf, 'X'),
+    (IdType::Dti, 'Y'),
+];
+
+/// The words that name another instrument's identifier, never this
+/// instrument's: a field name opening with one, and a key spelling one
+/// before a security type ([`IdType::from_key_end`]).
+const REFUSED_FIELD_PREFIXES: [&str; 5] = ["leg", "underlying", "contra", "related", "benchmark"];
+
+/// Whether a folded key naming an instrument's fact - a security type, a
+/// product category - that starts at `at` names another instrument's: one
+/// of the words naming another instrument - `leg`, `underlying`, `contra`,
+/// `related`, `benchmark` - opens the key or ends what it spells before the
+/// fact, after any namespace (`omsunderlyingisin`, `fix.legisin`,
+/// `firm.x.contracusip`, `underlyingeusipa`). The one rule both the
+/// identifiers a key names (`IdType::from_key_end`) and the product
+/// category a FIX message's bridge key states read.
+pub fn names_another_instrument(folded: &str, at: usize) -> bool {
+    let before = folded[..at].trim_end_matches('.');
+    REFUSED_FIELD_PREFIXES
+        .iter()
+        .any(|word| folded.starts_with(word) || before.ends_with(word))
+}
+
+/// The field names that are a ticker, never a security type.
+const REFUSED_FIELD_NAMES: [&str; 3] = ["ticker", "symbol", "symbolticker"];
+
+/// The words a type's spelling opens with to name a parent of the type
+/// after them, in the order a type's [`IdType::parents`] lists them: the
+/// value it held before it last changed, then its chain's first.
+const PARENT_PREFIXES: [&str; 2] = ["parent", "orig"];
+
+/// The words that, spelled before an identifier name at the end of a key,
+/// stay part of the type it names - `firm.x.ParentOrderID` is a
+/// `parentorderid`, `OriginalOrderID` an `originalorderid` - longest first.
+const PARENTAGE_WORDS: [&str; 4] = ["original", "parent", "origin", "orig"];
+
+impl IdType {
+    /// The types holding this type's parents, nearest first: the value it
+    /// held before it last changed, then - where there are two - the value
+    /// its chain first stated. Parents exist for chain identities alone
+    /// ([`Self::is_chain_identity`]): `clordid`'s is `origclordid`, FIX's
+    /// `OrigClOrdID(41)`, the client order identifier a cancel/replace
+    /// replaced, and `tradereportid`'s `tradereportrefid`, FIX's
+    /// `TradeReportRefID(572)`, each alone; any other chain identity has
+    /// `parent{type}` then `orig{type}` - `orderid` has `parentorderid` and
+    /// `origorderid` - and every other type - a per-report reference, a
+    /// security, a party, a parent type, any other word - has none, so
+    /// parentage never nests. A dictionary states another list on a field
+    /// with `FIX:parents`
+    /// (`yggdryl_fix::FixRegistry::parents_of`).
+    /// Borrowed, so a lifecycle asking per identifier allocates nothing.
+    ///
+    /// ```
+    /// # yggdryl_market::install().unwrap();
+    /// use yggdryl_market::IdType;
+    ///
+    /// let parents: Vec<String> = IdType::OrderId.parents().iter().map(|kind| kind.to_string()).collect();
+    /// assert_eq!(parents, ["parentorderid", "origorderid"]);
+    /// assert_eq!(IdType::ClOrdId.parents().as_ref(), [IdType::OrigClOrdId]);
+    /// assert_eq!(IdType::TradeReportId.parents().as_ref(), [IdType::TradeReportRefId]);
+    /// assert!(IdType::OrigClOrdId.parents().is_empty());
+    /// assert!(IdType::ExecId.parents().is_empty(), "a per-report reference");
+    /// assert!(IdType::Isin.parents().is_empty(), "a security");
+    /// ```
+    #[must_use]
+    pub fn parents(&self) -> Cow<'static, [Self]> {
+        static KNOWN_PARENTS: LazyLock<HashMap<&'static str, Box<[IdType]>>> =
+            LazyLock::new(|| {
+                IdType::SPELLINGS
+                    .into_iter()
+                    .zip(IdType::KNOWN)
+                    .map(|(spelled, kind)| (spelled, kind.spelled_parents()))
+                    .collect()
+            });
+        match KNOWN_PARENTS.get(self.as_str()) {
+            Some(parents) => Cow::Borrowed(parents),
+            // An `Other` word is no chain identity, so it has none.
+            None => Cow::Borrowed(&[]),
+        }
+    }
+
+    /// The type this type is a parent of, and its place among that type's
+    /// [`Self::parents`]: `origclordid` is `clordid`'s first,
+    /// `tradereportrefid` `tradereportid`'s, `parentorderid` `orderid`'s
+    /// first and `origorderid` its second. Only a chain identity
+    /// ([`Self::is_chain_identity`]) has a parent, so `parentexecid` and
+    /// `parentisin` are words of their own; so are `parentclordid` and
+    /// `parenttradereportid`, since the one parent of each of those two
+    /// bases is spelled as FIX names it. A word spelled `origin` or
+    /// `original` before an identifier is no parent, and nothing allocates.
+    ///
+    /// ```
+    /// # yggdryl_market::install().unwrap();
+    /// use yggdryl_market::IdType;
+    ///
+    /// assert_eq!(IdType::OrigClOrdId.parent_of(), Some((IdType::ClOrdId, 0)));
+    /// assert_eq!(IdType::TradeReportRefId.parent_of(), Some((IdType::TradeReportId, 0)));
+    /// let parent: IdType = "ParentOrderID".parse().unwrap();
+    /// assert_eq!(parent.parent_of(), Some((IdType::OrderId, 0)));
+    /// let origin: IdType = "OrigTradeID".parse().unwrap();
+    /// assert_eq!(origin.parent_of(), Some((IdType::TradeId, 1)));
+    /// assert_eq!("ParentClOrdID".parse::<IdType>().unwrap().parent_of(), None);
+    /// assert_eq!("ParentExecID".parse::<IdType>().unwrap().parent_of(), None);
+    /// assert_eq!("originalorderid".parse::<IdType>().unwrap().parent_of(), None);
+    /// ```
+    #[must_use]
+    pub fn parent_of(&self) -> Option<(Self, usize)> {
+        if matches!(self, Self::TradeReportRefId) {
+            return Some((Self::TradeReportId, 0));
+        }
+        PARENT_PREFIXES.iter().enumerate().find_map(|(at, prefix)| {
+            // `origin...` and `original...` name no chain identity after
+            // `orig`, so they are words of their own.
+            let base = self.as_str().strip_prefix(prefix)?.parse::<Self>().ok()?;
+            let at = match base {
+                Self::ClOrdId => (*prefix == "orig").then_some(0)?,
+                Self::TradeReportId => return None,
+                _ if !base.is_chain_identity() => return None,
+                _ => at,
+            };
+            Some((base, at))
+        })
+    }
+
+    /// [`Self::parents`] spelled out, every one a type [`Self::parent_of`]
+    /// reads back to this one.
+    fn spelled_parents(&self) -> Box<[Self]> {
+        match self {
+            Self::ClOrdId => return Box::new([Self::OrigClOrdId]),
+            Self::TradeReportId => return Box::new([Self::TradeReportRefId]),
+            _ if !self.is_chain_identity() => return Box::default(),
+            _ => {}
+        }
+        let word = self.as_str();
+        PARENT_PREFIXES
+            .iter()
+            .filter_map(|prefix| {
+                let mut buffer = [0_u8; IDENTIFIER_WORD_WIDTH];
+                let spelled = buffer.get_mut(..prefix.len() + word.len())?;
+                spelled[..prefix.len()].copy_from_slice(prefix.as_bytes());
+                spelled[prefix.len()..].copy_from_slice(word.as_bytes());
+                let parent = std::str::from_utf8(spelled).ok()?.parse::<Self>().ok()?;
+                parent
+                    .parent_of()
+                    .is_some_and(|(base, _)| base == *self)
+                    .then_some(parent)
+            })
+            .collect()
+    }
+
+    /// Whether this type names a security: a type FIX's
+    /// `SecurityIDSource(22)` code set names, a currency pair, a
+    /// classification, a financial instrument short name or an instrument
+    /// key - what a market's `securityids` hold.
+    ///
+    /// ```
+    /// # yggdryl_market::install().unwrap();
+    /// use yggdryl_market::IdType;
+    ///
+    /// assert!(IdType::Isin.is_security());
+    /// assert!(IdType::InstrumentId.is_security());
+    /// assert!(IdType::Fisn.is_security());
+    /// assert!(!IdType::Elf.is_security(), "a legal form names no security");
+    /// assert!(!IdType::ClOrdId.is_security());
+    /// ```
+    #[must_use]
+    pub fn is_security(&self) -> bool {
+        matches!(
+            self,
+            Self::Forex | Self::Cfi | Self::Fisn | Self::InstrumentId
+        ) || self.fix_security_source().is_some()
+    }
+
+    /// Whether this type names one lifecycle chain - an order, a quote, a
+    /// trade or a trade report - by a value the chain states as its own:
+    /// `orderid`, `clordid`, `secondaryorderid`, `secondaryclordid`,
+    /// `quoteid`, `secondaryquoteid`, `tradeid`, `secondarytradeid`,
+    /// `secondaryfirmtradeid` and `tradereportid`, and nothing else. A
+    /// reference an event states about itself or about a request many
+    /// chains answer - `execid`, `trdmatchid`, `tvtic`, `quotereqid`,
+    /// `mdreqid`, `mdentryid`, the regulatory trade identifiers - names no
+    /// chain of its own, and neither does a security, a party, the account,
+    /// a parent type or any other word. The types that have parents
+    /// ([`Self::parents`]), and whose every value stays a lifecycle chain's
+    /// name until the chain ends, where any other chain name
+    /// ([`Self::is_chain_name`]) is the live statement's alone.
+    ///
+    /// ```
+    /// # yggdryl_market::install().unwrap();
+    /// use yggdryl_market::IdType;
+    ///
+    /// assert!(IdType::ClOrdId.is_chain_identity());
+    /// assert!(IdType::TradeReportId.is_chain_identity());
+    /// assert!(!IdType::ExecId.is_chain_identity(), "one per report");
+    /// assert!(!IdType::QuoteReqId.is_chain_identity(), "every dealer answers it");
+    /// assert!(!IdType::OrigClOrdId.is_chain_identity(), "a parent");
+    /// assert!(!"venueorderid".parse::<IdType>().unwrap().is_chain_identity());
+    /// ```
+    #[must_use]
+    pub const fn is_chain_identity(&self) -> bool {
+        matches!(
+            self,
+            Self::OrderId
+                | Self::ClOrdId
+                | Self::SecondaryOrderId
+                | Self::SecondaryClOrdId
+                | Self::QuoteId
+                | Self::SecondaryQuoteId
+                | Self::TradeId
+                | Self::SecondaryTradeId
+                | Self::SecondaryFirmTradeId
+                | Self::TradeReportId
+        )
+    }
+
+    /// Whether a value of this type names the live lifecycle chain that
+    /// states it - what a lifecycle walk matches a current element to a
+    /// previous alive one of its kind, instrument and side by (decision
+    /// 25): every type an operation's `identifiers` hold - a chain identity
+    /// ([`Self::is_chain_identity`]), a report's own reference (`execid`,
+    /// `tvtic`), a book entry's `mdentryid`, a regulatory trade identifier,
+    /// a lineage type (`origclordid`, `origorderid`, `tradereportrefid`:
+    /// the chain's first value) and any other word a bridge spells - but
+    /// the ones many elements share, whose value names something other than
+    /// its own chain: `trdmatchid`, which both orders one match filled
+    /// state, `quotereqid`, which every dealer answering one request
+    /// states, `mdreqid`, which every entry of one subscription states, and
+    /// the parent-order slot `parent{chain identity}` - `parentorderid`, the
+    /// previous value a walk writes from the chain's own, `parentclordid`,
+    /// `parenttradeid` - which a bridge spells a hierarchy parent by, so two
+    /// child orders of one parent stay two; the chain's first value
+    /// (`origclordid`, `origorderid`, `tradereportrefid`) names its chain. A
+    /// security and a party name no chain either: they live in the other
+    /// two maps. Not `const`, because it reads the word after `parent`.
+    ///
+    /// ```
+    /// # yggdryl_market::install().unwrap();
+    /// use yggdryl_market::IdType;
+    ///
+    /// assert!(IdType::OrderId.is_chain_name());
+    /// assert!(IdType::ExecId.is_chain_name(), "the live report's own");
+    /// assert!(IdType::OrigClOrdId.is_chain_name(), "the chain's first value");
+    /// assert!("venueorderid".parse::<IdType>().unwrap().is_chain_name());
+    /// assert!(!IdType::TrdMatchId.is_chain_name(), "both orders of a match state it");
+    /// assert!(!IdType::QuoteReqId.is_chain_name(), "every dealer answers it");
+    /// assert!(!IdType::MdReqId.is_chain_name(), "every entry of a subscription");
+    /// assert!(!"parentorderid".parse::<IdType>().unwrap().is_chain_name(), "the previous value");
+    /// assert!(!"parentclordid".parse::<IdType>().unwrap().is_chain_name(), "a bridge's parent order");
+    /// assert!("parentexecid".parse::<IdType>().unwrap().is_chain_name(), "a word of its own");
+    /// assert!(!IdType::Isin.is_chain_name(), "a security");
+    /// ```
+    #[must_use]
+    pub fn is_chain_name(&self) -> bool {
+        if matches!(self, Self::TrdMatchId | Self::QuoteReqId | Self::MdReqId)
+            || self.is_security()
+            || self.is_party()
+        {
+            return false;
+        }
+        !self
+            .as_str()
+            .strip_prefix("parent")
+            .and_then(|base| base.parse::<Self>().ok())
+            .is_some_and(|base| base.is_chain_identity())
+    }
+
+    /// Whether this type names a party: the account, a party of no role, a
+    /// user, or a `PartyRole(452)` role the crate names - what an
+    /// operation's `partyids` hold.
+    ///
+    /// ```
+    /// # yggdryl_market::install().unwrap();
+    /// use yggdryl_market::IdType;
+    ///
+    /// assert!(IdType::Account.is_party());
+    /// assert!(IdType::ExecutingTrader.is_party());
+    /// assert!(!IdType::OrderId.is_party());
+    /// ```
+    #[must_use]
+    pub const fn is_party(&self) -> bool {
+        matches!(
+            self,
+            Self::Account
+                | Self::Party
+                | Self::UserId
+                | Self::ExecutingFirm
+                | Self::ClientId
+                | Self::ClearingFirm
+                | Self::InvestorId
+                | Self::EnteringFirm
+                | Self::OrderOriginationTrader
+                | Self::ExecutingTrader
+                | Self::OrderOriginationFirm
+                | Self::ExecutingSystem
+                | Self::ContraFirm
+                | Self::ClearingOrganization
+                | Self::Exchange
+                | Self::CustomerAccount
+                | Self::EnteringTrader
+                | Self::ContraTrader
+                | Self::PositionAccount
+                | Self::OrderEntryOperatorId
+                | Self::ExecutionVenue
+                | Self::DeskId
+                | Self::InvestmentDecisionMaker
+                | Self::Algorithm
+        )
+    }
+
+    /// Whether a code of this type names one listing of an instrument - its
+    /// line on one market - rather than the instrument an ISIN numbers: a
+    /// RIC, a Bloomberg symbol, an exchange, CTA, Fidessa or uniform symbol,
+    /// a SEDOL, a FIGI, a marketplace's own identifier and an instrument
+    /// key. One instrument has as many as it has markets, so a code of this
+    /// type is never filled from one market onto another's.
+    ///
+    /// ```
+    /// # yggdryl_market::install().unwrap();
+    /// use yggdryl_market::IdType;
+    ///
+    /// assert!(IdType::Ric.is_listing());
+    /// assert!(IdType::Bloomberg.is_listing());
+    /// assert!(!IdType::Isin.is_listing());
+    /// assert!(!IdType::Cusip.is_listing());
+    /// ```
+    #[must_use]
+    pub const fn is_listing(&self) -> bool {
+        matches!(
+            self,
+            Self::Ric
+                | Self::Bloomberg
+                | Self::ExchSymb
+                | Self::Cta
+                | Self::Sedol
+                | Self::Figi
+                | Self::MktAssigned
+                | Self::Fim
+                | Self::Umtf
+                | Self::InstrumentId
+        )
+    }
+
+    /// The datatype a column of this type's values declares: the registered
+    /// code a type is checked as - `isin`, `cusip`, `sedol`, `figi`, `ric`,
+    /// `bbg`, `ccy`, `country`, `cfi`, `forex`, `lei`, `dti`, `fisn`,
+    /// `elf` - and `utf8` for every other type.
+    ///
+    /// ```
+    /// # yggdryl_market::install().unwrap();
+    /// use yggdryl::DataType;
+    /// use yggdryl_market::IdType;
+    ///
+    /// assert_eq!(IdType::Isin.value_dtype(), DataType::isin());
+    /// assert_eq!(IdType::Bloomberg.value_dtype(), DataType::bbg());
+    /// assert_eq!(IdType::Fisn.value_dtype(), DataType::fisn());
+    /// assert_eq!(IdType::Valor.value_dtype(), DataType::utf8());
+    /// ```
+    #[must_use]
+    pub const fn value_dtype(&self) -> DataType {
+        match self {
+            Self::Isin => DataType::isin(),
+            Self::Cusip => DataType::cusip(),
+            Self::Sedol => DataType::sedol(),
+            Self::Figi => DataType::figi(),
+            Self::Ric => DataType::ric(),
+            Self::Bloomberg => DataType::bbg(),
+            Self::IsoCcy => DataType::ccy(),
+            Self::IsoCtry => DataType::country(),
+            Self::Cfi => DataType::cfi(),
+            Self::Forex => DataType::forex(),
+            Self::Lei => DataType::lei(),
+            Self::Dti => DataType::dti(),
+            Self::Fisn => DataType::fisn(),
+            Self::Elf => DataType::elf(),
+            _ => DataType::utf8(),
+        }
+    }
+
+    /// The spellings that name an identifier at the end of a key: each
+    /// spelling the crate reads a type by - an alias included - that ends
+    /// with `id`, the account, the security codes that close on a check
+    /// digit - an ISIN, a CUSIP, a SEDOL, a FIGI - and each security type's
+    /// spelling ending with `code`, `symbol`, `number` or `ticker`, so a
+    /// bridge's `OMS_RICCODE` names its `ric`, its `ULLINK.ISINCODE` its
+    /// `isin` and its `OMS_BloombergTicker` its `bloomberg`. A bare `ric` or
+    /// `cfi` ends no key, since `GENERIC` names none, and `ticker` alone is
+    /// no type's spelling.
+    pub(crate) fn identifier_names<'name>() -> impl Iterator<Item = &'name str> + Clone {
+        let spellings: &'name [&'name str] = &Self::SPELLINGS;
+        spellings
+            .iter()
+            .chain(Self::ALIASES)
+            .copied()
+            .filter(|spelled| {
+                spelled.ends_with("id")
+                    || matches!(*spelled, "account" | "isin" | "cusip" | "sedol" | "figi")
+                    || (["code", "symbol", "number", "ticker"]
+                        .iter()
+                        .any(|suffix| spelled.ends_with(suffix))
+                        && Self::from_folded(spelled).is_some_and(|kind| kind.is_security()))
+            })
+    }
+
+    /// The type the end of a folded key names, and where in the key it
+    /// starts: the longest of `names` the key ends with, stepped back over a
+    /// parentage word spelled before it - `parent`, `orig`, `origin`,
+    /// `original` - which stays part of the type, so `firm.x.parentorderid`
+    /// ends with `parentorderid`. A security type is refused where another
+    /// instrument's word - `leg`, `underlying`, `contra`, `related`,
+    /// `benchmark` - opens the key or ends what is spelled before the type,
+    /// after any namespace (`omsunderlyingisin`, `fix.legisin`,
+    /// `firm.x.contracusip`), since it names that instrument's code. `None`
+    /// where the key ends with none of `names`.
+    pub(crate) fn from_key_end<'name>(
+        folded: &str,
+        names: impl IntoIterator<Item = &'name str>,
+    ) -> Option<(usize, Self)> {
+        let longest = names
+            .into_iter()
+            .filter(|name| !name.is_empty() && folded.ends_with(name))
+            .map(str::len)
+            .max()?;
+        let mut at = folded.len() - longest;
+        if let Some(word) = PARENTAGE_WORDS
+            .iter()
+            .find(|word| folded[..at].ends_with(*word))
+        {
+            at -= word.len();
+        }
+        let kind = folded[at..].parse::<Self>().ok()?;
+        (!(kind.is_security() && names_another_instrument(folded, at))).then_some((at, kind))
+    }
+
+    /// The security type a folded key names an underlying's code by: the
+    /// last `underlying` the key spells - opening it or after any
+    /// namespace - followed by a field name of a security type
+    /// ([`Self::from_field_name`]): `underlyingisin`,
+    /// `omsunderlyingisincode` and `fix.underlying.isin` name an ISIN;
+    /// `underlyingsecurityid`, which states no type, and
+    /// `underlyinglegisin`, another instrument's again, name none. What an
+    /// [`Instruments`](crate::Instruments) reads an instrument's
+    /// underlying by - a bridge's key on a FIX message, a column of a golden
+    /// file - and never a security identifier of the instrument itself,
+    /// which [`Self::from_key_end`] goes on refusing.
+    pub(crate) fn underlying_security(folded: &str) -> Option<Self> {
+        const UNDERLYING: &str = "underlying";
+        let at = folded.rfind(UNDERLYING)? + UNDERLYING.len();
+        Self::from_field_name(folded[at..].trim_start_matches('.'))
+    }
+
+    /// The security type one FIX `SecurityIDSource(22)` code names.
+    #[must_use]
+    pub fn from_fix_security_source(code: char) -> Option<Self> {
+        FIX_SECURITY_SOURCES
+            .iter()
+            .find(|(_, held)| *held == code)
+            .map(|(kind, _)| kind.clone())
+    }
+
+    /// The FIX `SecurityIDSource(22)` code of a security type FIX names.
+    #[must_use]
+    pub fn fix_security_source(&self) -> Option<char> {
+        FIX_SECURITY_SOURCES
+            .iter()
+            .find(|(kind, _)| kind == self)
+            .map(|(_, code)| *code)
+    }
+
+    /// The security type a `SecurityIDSource(22)` value states: its
+    /// one-character code as FIX writes it (`4`, `K`), else a name the code
+    /// set gives a member, in any case and spacing, its punctuation and its
+    /// parenthesized remarks passed over - `ISIN number`, `Clearing House /
+    /// Clearing Organization`, `ISDA/FpML Product URL (URL in SecurityID)` -
+    /// else the value kept as it was stated, under the one fold every type
+    /// word takes: a code FIX names no member for, a private code (`100` and
+    /// above) or a venue's own word is the word it folds to - lower case,
+    /// its breaks dropped - and never another member, so `100` stays `100`
+    /// and `Z` is `z`. A code is case-sensitive: `a` is a word of its own,
+    /// never the Bloomberg symbol `A` names. A member naming another kind of
+    /// identifier - `ClOrdID`, the party role `Exchange` - is no source.
+    ///
+    /// ```
+    /// # yggdryl_market::install().unwrap();
+    /// use yggdryl_market::IdType;
+    ///
+    /// assert_eq!(IdType::from_security_source("4").unwrap(), IdType::Isin);
+    /// assert_eq!(IdType::from_security_source("ISIN").unwrap(), IdType::Isin);
+    /// assert_eq!(IdType::from_security_source("ISIN number").unwrap(), IdType::Isin);
+    /// assert_eq!(IdType::from_security_source("B").unwrap(), IdType::Wkn);
+    /// assert_eq!(
+    ///     IdType::from_security_source("ISDA/FpML Product URL (URL in SecurityID)").unwrap(),
+    ///     IdType::FpmlUrl
+    /// );
+    /// assert_eq!(IdType::from_security_source("101").unwrap().as_str(), "101");
+    /// assert!(IdType::from_security_source("ticker").is_err());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// A value no word folds from - a byte other than an ASCII letter, a
+    /// digit, `.` and the breaks a fold drops, or more than
+    /// [`IDENTIFIER_WORD_WIDTH`] of them - `ticker` in any spelling, which
+    /// is the name a person knows an instrument by rather than a security
+    /// type, and a member that names an operation's or a party's
+    /// identifier.
+    pub fn from_security_source(text: &str) -> Result<Self> {
+        let trimmed = text.trim();
+        let mut chars = trimmed.chars();
+        let code = match (chars.next(), chars.next()) {
+            (Some(code), None) => Self::from_fix_security_source(code),
+            _ => None,
+        };
+        if let Some(kind) = code {
+            return Ok(kind);
+        }
+        let kind = match Self::from_security_source_name(trimmed) {
+            Some(kind) => kind,
+            None => trimmed.parse::<Self>()?,
+        };
+        kind.check_security()?;
+        if kind.is_known() && !kind.is_security() {
+            return Err(Error::InvalidRecord {
+                path: format_smolstr!("{kind}"),
+                reason: yggdryl::implementer::expected_got(
+                    "a security identifier type",
+                    format_args!("{kind}, which names another kind of identifier"),
+                ),
+            });
+        }
+        Ok(kind)
+    }
+
+    /// The member a code set's name for a source names: its ASCII letters,
+    /// digits and dots lower-cased - a dot no member spells, so a dotted word
+    /// is a word - its other punctuation, its spacing and what it writes
+    /// between parentheses passed over - a remark such as `(XML in
+    /// SecurityXML(1185))` explains the source and never names one. `None`
+    /// where that names no member or the name holds a byte no member
+    /// spells.
+    fn from_security_source_name(name: &str) -> Option<Self> {
+        let mut buffer = [0_u8; IDENTIFIER_WORD_WIDTH];
+        let mut len = 0;
+        let mut depth = 0_usize;
+        for byte in name.bytes() {
+            match byte {
+                b'(' => depth += 1,
+                b')' => depth = depth.saturating_sub(1),
+                _ if depth > 0 => {}
+                _ if byte.is_ascii_alphanumeric() || byte == b'.' => {
+                    *buffer.get_mut(len)? = byte.to_ascii_lowercase();
+                    len += 1;
+                }
+                _ if byte.is_ascii() => {}
+                _ => return None,
+            }
+        }
+        Self::from_folded(std::str::from_utf8(&buffer[..len]).ok()?)
+    }
+
+    /// Refuses the one word no security type is: `ticker`, the name a person
+    /// knows an instrument by, which lives on `set_ticker`.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidRecord`] for `ticker`.
+    pub fn check_security(&self) -> Result<()> {
+        if self.as_str() == "ticker" {
+            return Err(Error::InvalidRecord {
+                path: format_smolstr!("{self}"),
+                reason: "a ticker is the name a person knows an instrument by, not a security \
+                         identifier type: state it through set_ticker"
+                    .into(),
+            });
+        }
+        Ok(())
+    }
+
+    /// The security type a field is named for, or `None` where the name is
+    /// not one instrument's own identifier.
+    ///
+    /// A leading `#` is dropped and the name folds as every spelling here
+    /// folds. The whole name as a security type FIX names - or a currency
+    /// pair - names the type; otherwise `[security] + alias + [code | id |
+    /// number]`, where the alias is one, does. `ticker`, `symbol` and
+    /// `symbolticker` name no type, and neither does a field of another
+    /// instrument - `leg*`, `underlying*`, `contra*`, `related*`,
+    /// `benchmark*`.
+    ///
+    /// ```
+    /// # yggdryl_market::install().unwrap();
+    /// use yggdryl_market::IdType;
+    ///
+    /// assert_eq!(IdType::from_field_name("#ISINCODE"), Some(IdType::Isin));
+    /// assert_eq!(IdType::from_field_name("cusip_code"), Some(IdType::Cusip));
+    /// assert_eq!(IdType::from_field_name("legisin"), None);
+    /// assert_eq!(IdType::from_field_name("ticker"), None);
+    /// ```
+    #[must_use]
+    pub fn from_field_name(name: &str) -> Option<Self> {
+        let name = name.strip_prefix('#').unwrap_or(name);
+        let mut buffer = [0_u8; IDENTIFIER_WORD_WIDTH];
+        let folded = crate::identifier::fold_into(name, &mut buffer).ok()?;
+        let field_source = |text: &str| Self::from_folded(text).filter(Self::is_field_source);
+        if let Some(kind) = field_source(folded) {
+            return Some(kind);
+        }
+        if REFUSED_FIELD_NAMES.contains(&folded)
+            || REFUSED_FIELD_PREFIXES
+                .iter()
+                .any(|prefix| folded.starts_with(prefix))
+        {
+            return None;
+        }
+        let alias = folded.strip_prefix("security").unwrap_or(folded);
+        if alias.is_empty() {
+            return None;
+        }
+        if let Some(kind) = (alias != folded).then(|| field_source(alias)).flatten() {
+            return Some(kind);
+        }
+        ["code", "id", "number"]
+            .iter()
+            .find_map(|suffix| alias.strip_suffix(suffix))
+            .filter(|stem| !stem.is_empty())
+            .and_then(field_source)
+    }
+
+    /// Whether a field's name may name this type: a security type FIX names,
+    /// or a currency pair.
+    fn is_field_source(&self) -> bool {
+        matches!(self, Self::Forex) || self.fix_security_source().is_some()
+    }
+
+    /// The most bytes a value of this type may be: the fixed width of a
+    /// checked code - an LEI's twenty, a DTI's nine and an entity legal
+    /// form's four read from their own code files - the code's bound for a
+    /// Bloomberg symbol and a RIC (32) and a financial instrument short name
+    /// (35), and [`IDENTIFIER_VALUE_WIDTH`] for every
+    /// other type - an FpML product URL, an index name and a private
+    /// source's code among them.
+    #[must_use]
+    pub fn max_value_width(&self) -> usize {
+        match self {
+            Self::Isin | Self::Figi => 12,
+            Self::Cusip | Self::Valor => 9,
+            Self::Sedol | Self::Forex => 7,
+            Self::Wkn | Self::Cfi => 6,
+            Self::IsoCcy => 3,
+            Self::IsoCtry => 2,
+            Self::Bloomberg => BBG_WIDTH,
+            Self::Ric => RIC_WIDTH,
+            Self::Dti => DTI_WIDTH,
+            Self::Lei => LEI_WIDTH,
+            Self::Fisn => FISN_WIDTH,
+            Self::Elf => ELF_WIDTH,
+            _ => IDENTIFIER_VALUE_WIDTH,
+        }
+    }
+
+    /// Whether values of this type fold to upper case.
+    fn folds_case(&self) -> bool {
+        matches!(
+            self,
+            Self::Isin
+                | Self::Cusip
+                | Self::Sedol
+                | Self::Figi
+                | Self::Wkn
+                | Self::Cfi
+                | Self::IsoCcy
+                | Self::IsoCtry
+                | Self::Lei
+                | Self::Dti
+                | Self::Fisn
+                | Self::Elf
+        )
+    }
+
+    /// `value` as this type stores its letters: copied into `buffer` and
+    /// upper-cased where the type folds case and `value` holds a lower-case
+    /// letter, else `value` as it is. The one fold [`Self::value_into`]
+    /// stores by and [`Self::rank`] reads by, so a spelling ranks as the
+    /// value it is stored as. A value wider than the buffer is answered
+    /// untouched: every checked code is narrower, and its constructor
+    /// refuses it by width.
+    fn folded<'value>(
+        &self,
+        value: &'value str,
+        buffer: &'value mut [u8; IDENTIFIER_VALUE_WIDTH],
+    ) -> &'value str {
+        if !self.folds_case()
+            || value.len() > IDENTIFIER_VALUE_WIDTH
+            || !value.bytes().any(|byte| byte.is_ascii_lowercase())
+        {
+            return value;
+        }
+        let slot = &mut buffer[..value.len()];
+        slot.copy_from_slice(value.as_bytes());
+        slot.make_ascii_uppercase();
+        std::str::from_utf8(slot).expect("upper-casing keeps UTF-8")
+    }
+
+    /// How real `value` is as a value of this type, from zero to
+    /// [`Self::max_rank`]: a code's own [`CodeValue::rank`](yggdryl::CodeValue::rank)
+    /// for the registered codes - an ISIN closing under a listed prefix two,
+    /// a CUSIP, a SEDOL, a FIGI, an LEI or a DTI that closes one, a listed
+    /// country or a detailed CFI code - and one for every other type, which has nothing
+    /// partial about it; zero for a value the type refuses. What
+    /// [`Identifiers`](crate::Identifiers) decides a restated key by, so a
+    /// real value replaces a placeholder, a masked number or a typo
+    /// whatever the order. A lower-case spelling ranks as the upper-case
+    /// one it folds to, for every type that folds case - the spelling an
+    /// identifier of the type is stored under. Allocation-free: every code
+    /// is inline.
+    #[must_use]
+    pub fn rank(&self, value: &str) -> u8 {
+        use yggdryl::CodeValue;
+        let mut buffer = [0_u8; IDENTIFIER_VALUE_WIDTH];
+        let value = self.folded(value, &mut buffer);
+        match self {
+            Self::Isin => Isin::new(value).map_or(0, |code| code.rank()),
+            Self::Cusip => Cusip::new(value).map_or(0, |code| code.rank()),
+            Self::Sedol => Sedol::new(value).map_or(0, |code| code.rank()),
+            Self::Figi => Figi::new(value).map_or(0, |code| code.rank()),
+            Self::Cfi => Cfi::new(value).map_or(0, |code| code.rank()),
+            Self::IsoCcy => Ccy::new(value).map_or(0, |code| code.rank()),
+            Self::IsoCtry => Country::new(value).map_or(0, |code| code.rank()),
+            Self::Lei => Lei::new(value).map_or(0, |code| code.rank()),
+            Self::Dti => Dti::new(value).map_or(0, |code| code.rank()),
+            Self::Fisn => Fisn::new(value).map_or(0, |code| code.rank()),
+            Self::Elf => Elf::new(value).map_or(0, |code| code.rank()),
+            _ => 1,
+        }
+    }
+
+    /// The rank a real value of this type holds: the code's
+    /// [`CodeValue::MAX_RANK`](yggdryl::CodeValue::MAX_RANK) for a registered
+    /// code, one for every other type.
+    #[must_use]
+    pub fn max_rank(&self) -> u8 {
+        use yggdryl::CodeValue;
+        match self {
+            Self::Isin => <Isin as CodeValue>::MAX_RANK,
+            Self::Cfi => <Cfi as CodeValue>::MAX_RANK,
+            _ => 1,
+        }
+    }
+
+    /// Whether `value` is as real as a value of this type gets:
+    /// [`Self::rank`] at [`Self::max_rank`].
+    #[must_use]
+    pub fn is_real(&self, value: &str) -> bool {
+        self.rank(value) == self.max_rank()
+    }
+
+    /// `value`, already trimmed and stating something, as this type stores
+    /// it, written into `buffer` where it moves: an ISIN, a CUSIP, a SEDOL,
+    /// a FIGI, an LEI and a DTI are held by their shape - the check digit or
+    /// character as stated, its closing being [`Self::rank`]'s reading - a CFI, an ISO currency and
+    /// an ISO country code by their width, a financial instrument short name
+    /// as an issuer and a description either side of a `/` in at most 35
+    /// printable bytes and an entity legal form as four letters or digits,
+    /// each upper-cased first; a RIC is
+    /// one token of printable ASCII, its case kept; a WKN is six of
+    /// `[0-9A-HJ-NP-Z]`, a Valor number one to nine digits without a
+    /// leading zero; a pair is stored as its one canonical spelling -
+    /// `eurusd` is `EUR/USD`; every other security type FIX names takes
+    /// printable ASCII within [`Self::max_value_width`], and every other
+    /// type any text within it. Nothing allocates.
+    pub(crate) fn value_into<'value>(
+        &self,
+        value: &'value str,
+        buffer: &'value mut [u8; IDENTIFIER_VALUE_WIDTH],
+    ) -> Result<&'value str> {
+        let refusal = |actual: &dyn std::fmt::Display| Error::InvalidRecord {
+            path: format_smolstr!("{self}"),
+            reason: yggdryl::implementer::expected_got(format_args!("a {self} value"), actual),
+        };
+        if matches!(self, Self::Forex) {
+            let pair = Forex::new(value)?;
+            return copied(pair.as_str(), buffer).ok_or_else(|| refusal(&value));
+        }
+        let width = self.max_value_width();
+        if value.len() > width {
+            return Err(refusal(&format_args!(
+                "{} bytes, over the {width} the type allows",
+                value.len()
+            )));
+        }
+        let value = self.folded(value, buffer);
+        match self {
+            Self::Isin => drop(Isin::new(value)?),
+            Self::Cusip => drop(Cusip::new(value)?),
+            Self::Sedol => drop(Sedol::new(value)?),
+            Self::Figi => drop(Figi::new(value)?),
+            Self::Ric => drop(Ric::new(value)?),
+            Self::Cfi => drop(Cfi::new(value)?),
+            Self::IsoCcy => drop(Ccy::new(value)?),
+            Self::IsoCtry => drop(Country::new(value)?),
+            Self::Lei => drop(Lei::new(value)?),
+            Self::Dti => drop(Dti::new(value)?),
+            Self::Elf => drop(Elf::new(value)?),
+            // A short name past the compact string's inline width would
+            // spill: the stored spelling is checked in place, and only a
+            // refusal builds one.
+            Self::Fisn if !Fisn::is_canonical(value) => drop(Fisn::new(value)?),
+            Self::Wkn => {
+                if value.len() != 6
+                    || !value.bytes().all(|byte| {
+                        matches!(byte, b'0'..=b'9' | b'A'..=b'H' | b'J'..=b'N' | b'P'..=b'Z')
+                    })
+                {
+                    return Err(refusal(&format_args!(
+                        "{value:?}, not six of [0-9A-HJ-NP-Z]"
+                    )));
+                }
+            }
+            Self::Valor => {
+                if !value.bytes().all(|byte| byte.is_ascii_digit()) || value.starts_with('0') {
+                    return Err(refusal(&format_args!(
+                        "{value:?}, not one to nine digits without a leading zero"
+                    )));
+                }
+            }
+            _ if self.fix_security_source().is_some() => {
+                if let Some((position, byte)) = value
+                    .bytes()
+                    .enumerate()
+                    .find(|(_, byte)| !byte.is_ascii() || byte.is_ascii_control())
+                {
+                    return Err(refusal(&format_args!(
+                        "the byte 0x{byte:02X} at {position}, not printable ASCII"
+                    )));
+                }
+            }
+            _ => {}
+        }
+        Ok(value)
+    }
+}
+
+/// `text` copied into `buffer`, where it fits.
+fn copied<'buffer>(
+    text: &str,
+    buffer: &'buffer mut [u8; IDENTIFIER_VALUE_WIDTH],
+) -> Option<&'buffer str> {
+    let slot = buffer.get_mut(..text.len())?;
+    slot.copy_from_slice(text.as_bytes());
+    std::str::from_utf8(slot).ok()
+}

@@ -24,17 +24,17 @@
 | Identifier maps | A scalar may carry `FIX:idmap`: the [identifier types](#a-field-names-a-message-by-its-identifiers) its value states - the map, `identifiers`, the lower-case key the type is, whether a following operation carries it, and on `PartyID(448)` the `PartyRole(452)` of the occurrence stating it; `idmap_sources` compiles every field's once |
 | Identifiers | `FIX:identifiers` declares a component's direct scalar identifiers, resolved to canonical member names in component order; a `MsgType` compiles their selection once |
 | Definition tags | Components and Serie/LargeSerie groups carry a `FIX:tag` derived from their name into `[100000, 1100000)`; a reference occurrence never restates it. A crate Map group instead has one reserved tag, also its counter, with no scalar counterpart |
-| Counters | A group's counter is an `int32` field of the dictionary, found by `field_by_tag`; the group it frames carries the counter's tag as `FIX:counter` and is found by `field_by_counter`. The counter frames the group on the wire and nothing else: a message or component definition lists the group alone, its length the count, and one listing the counter beside the group is refused |
+| Counters | A group's counter is an `int32` field of the dictionary, found by `field_by_tag`; the group it frames carries the counter's tag as `FIX:counter` and is found by `field_by_counter`. The counter frames the group on the wire and nothing else: a message or component definition lists the group alone, its length the count; a definition written alone that lists the counter beside the group is refused, and a CBlock grammar or a fold listing one is read without it |
 | Doors | one family, and every category answers it: `field_by_tag`, `field_by_name`, `field_by_id`, `field_by_path`, `field_by_counter` and the generic `field`, each with its `get_` twin; `insert` files a Struct as a component, a Serie/LargeSerie of a Struct or a Map as a group, anything else as a scalar, and `update`, `add_field`, `merge_with` and `remove` take any of the three |
 | References | `FIX:field`, `FIX:component`, and `FIX:group` resolve once at catalog intake; live definitions hold resolved native fields |
 | Planning | Message identity, contextual counter lookup, group layouts and identifier selection are compiled before parsing rows |
 | Mutation | A refusal leaves every category and index unchanged; metadata edits refresh referenced occurrences atomically |
 | Identity spelling | A case-only replacement preserves the stored canonical name; an identity or referenced datatype change is refused |
-| Membership | `FIX:sources` lists the ids of the sources that contributed a field, and the registry's [sources catalog](#membership) holds one `FixSource` per id - the file it was read from and its plugin's [`PluginSide`](../types/enum/pluginside.md) - provenance a caller filters on; no lookup consults it, and a message root the codec builds carries none |
+| Membership | `FIX:sources` lists the ids of the sources that contributed a field, and the registry's [sources catalog](#membership) holds one `FixSource` per id - the file it was read from and its plugin's role, a [`Side`](../types/enum/side.md#a-fix-plugins-role-is-a-side) - provenance a caller filters on; no lookup consults it, and a message root the codec builds carries none |
 | Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
 | Snapshot | `into_json` / `from_json` preserve the vocabularies and the three categories - `{codesets, fields, components, groups}` and no other key, the sets leading so a reader holds them before it meets a field naming one - with each field's membership inside its metadata; stable hashes include that complete state |
-| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 52 definitions, tags 65001 to 65052: 51 scalar fields and the sorted Map group `metadata(65037)`. Nineteen are derived (`is_derived_tag`) and never registered; `new()` registers the other 32 - 31 scalar fields and `metadata` - beside `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 33 scalar fields and one group: 34 definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
+| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 53 definitions, tags 65001 to 65052 and 65054 (`instcode`, numbered past the `fixmsg` document's 65053): 52 scalar fields and the sorted Map group `metadata(65037)`. Nineteen are derived (`is_derived_tag`) and never registered; `new()` registers the other 34 - 33 scalar fields and `metadata` - beside `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 35 scalar fields and one group: 36 definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
 | Standard clocks | `new()` seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields; they account for two of the empty registry's 33 scalar definitions. A loaded dictionary defining either supplies its own matching layout |
 
 ## Use
@@ -44,33 +44,35 @@
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixRegistry, FieldPath, StructType};
+    use yggdryl::{DataType, FieldPath, StructType};
+    use yggdryl_fix::{FixField, FixFieldMut, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
-    counter.as_fix_mut().set_tag(453)?;
+    FixFieldMut::new(&mut counter).set_tag(453)?;
     let mut party_id = DataType::utf8().nullable_field("PartyID");
-    party_id.as_fix_mut().set_tag(448)?;
+    FixFieldMut::new(&mut party_id).set_tag(448)?;
     let mut registry = FixRegistry::from_fields([counter, party_id])?;
 
     // One door files each by its shape: a Struct is a component, a Serie of
     // one a group, and a scalar a field.
     let mut member = registry.field(448)?.clone();
-    member.as_fix_mut().set_field_ref("PartyID")?;
+    FixFieldMut::new(&mut member).set_field_ref("PartyID")?;
     let party = DataType::from(StructType::from_fields([member])?).required_field("Party");
     registry.insert(party.clone())?;
     let mut parties = DataType::serie(party).nullable_field("Parties");
-    parties.as_fix_mut().set_counter(453)?;
-    parties.as_fix_mut().set_component("Party")?;
+    FixFieldMut::new(&mut parties).set_counter(453)?;
+    FixFieldMut::new(&mut parties).set_component("Party")?;
     registry.insert(parties)?;
 
     let mut group = registry.field_by_name("Parties")?.clone();
-    group.as_fix_mut().set_group("Parties")?;
+    FixFieldMut::new(&mut group).set_group("Parties")?;
     let mut order = DataType::from(StructType::from_fields([group])?).required_field("Order");
-    order.as_fix_mut().set_msgtype("D")?;
+    FixFieldMut::new(&mut order).set_msgtype("D")?;
     registry.insert(order)?;
 
     assert_eq!(registry.field(453)?.dtype(), &DataType::Int32);
-    assert_eq!(registry.field_by_path(&FieldPath::from_str("Order.Parties.PartyID")?)?.as_fix().tag()?, Some(448));
+    assert_eq!(FixField::new(registry.field_by_path(&FieldPath::from_str("Order.Parties.PartyID")?)?).tag()?, Some(448));
     let message = registry.msgtype("D")?;
     assert_eq!(message.name(), "Order");
     assert_eq!(message.get_group_by_tag(453).expect("the group the counter opens").name(), "Parties");
@@ -170,20 +172,22 @@ The generator gives every group a collection display. A unique published plural 
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructType};
+    use yggdryl::{DataType, Scalar, StructType};
+    use yggdryl_fix::{FixField, FixFieldMut, FixMsg, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut client = DataType::utf8().nullable_field("clordid");
-    client.as_fix_mut().set_tag(11)?;
-    client.as_fix_mut().set_names(["ClientOrder"])?;
+    FixFieldMut::new(&mut client).set_tag(11)?;
+    FixFieldMut::new(&mut client).set_names(["ClientOrder"])?;
     let mut server = DataType::utf8().nullable_field("orderid");
-    server.as_fix_mut().set_tag(37)?;
+    FixFieldMut::new(&mut server).set_tag(37)?;
     let mut order = DataType::from(StructType::from_fields([client.clone(), server.clone()])?).required_field("order");
-    order.as_fix_mut().set_msgtype("D")?;
-    order.as_fix_mut().set_identifiers(["37", "ClientOrder"])?;
-    assert_eq!(order.as_fix().identifiers().collect::<Vec<_>>(), ["clordid", "orderid"]);
+    FixFieldMut::new(&mut order).set_msgtype("D")?;
+    FixFieldMut::new(&mut order).set_identifiers(["37", "ClientOrder"])?;
+    assert_eq!(FixField::new(&order).identifiers().collect::<Vec<_>>(), ["clordid", "orderid"]);
     assert_eq!(order.get_metadata("FIX:identifiers"), Some("clordid,orderid"));
     let before = order.clone();
-    assert!(order.as_fix_mut().set_identifiers(["clordid", "11"]).is_err());
+    assert!(FixFieldMut::new(&mut order).set_identifiers(["clordid", "11"]).is_err());
     assert_eq!(order, before);
 
     let mut registry = FixRegistry::new();
@@ -304,13 +308,15 @@ Every name lookup reads four word pairs either way - `offer`/`ask`, `size`/`qty`
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixId, FixKey, FixRegistry};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixField, FixFieldMut, FixId, FixKey, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut msgtype = DataType::utf8().nullable_field("MsgType");
-    msgtype.as_fix_mut().set_tag(35)?;
+    FixFieldMut::new(&mut msgtype).set_tag(35)?;
     let registry = FixRegistry::from_fields([msgtype])?;
 
-    let id = registry.field(35)?.as_fix().id()?.expect("a tagged field");
+    let id = FixField::new(registry.field(35)?).id()?.expect("a tagged field");
     assert_eq!(id, FixId::of(35, "msg_type")?);
     assert!(FixId::of(0, "MsgType").is_err());
     assert_eq!(registry.field(FixKey::Id(id))?.name(), "MsgType");
@@ -384,30 +390,32 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixId, FixRegistry};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixField, FixFieldMut, FixId, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut symbol = DataType::utf8().nullable_field("Symbol");
-    symbol.as_fix_mut().set_tag(55)?;
+    FixFieldMut::new(&mut symbol).set_tag(55)?;
     let mut registry = FixRegistry::from_fields([symbol])?;
 
     // The same folded name under another tag: one field, one more number.
     let mut spelled = DataType::utf8().nullable_field("symbol");
-    spelled.as_fix_mut().set_tag(9055)?;
-    spelled.as_fix_mut().set_sources(["blp"])?;
+    FixFieldMut::new(&mut spelled).set_tag(9055)?;
+    FixFieldMut::new(&mut spelled).set_sources(["blp"])?;
     assert!(!registry.add_field(spelled)?, "merged");
     let holder = registry.field_by_tag(9055)?;
     assert_eq!(holder.name(), "Symbol");
-    assert_eq!(holder.as_fix().tags()?, [9055]);
-    assert_eq!(holder.as_fix().sources().collect::<Vec<_>>(), ["blp"]);
+    assert_eq!(FixField::new(holder).tags()?, [9055]);
+    assert_eq!(FixField::new(holder).sources().collect::<Vec<_>>(), ["blp"]);
 
     // The same tag under another name: a second field beside the holder.
     let mut venue = DataType::utf8().nullable_field("VenueSymbol");
-    venue.as_fix_mut().set_tag(55)?;
-    venue.as_fix_mut().set_sources(["xnas"])?;
+    FixFieldMut::new(&mut venue).set_tag(55)?;
+    FixFieldMut::new(&mut venue).set_sources(["xnas"])?;
     assert!(registry.add_field(venue)?, "added");
     assert_eq!(registry.field_by_tag(55)?.name(), "Symbol", "the bare tag answers the holder");
-    assert_eq!(registry.field_by_tag(55)?.as_fix().names().count(), 0, "neither learns the other's name");
-    assert!(!registry.field_by_tag(55)?.as_fix().has_source("xnas"));
+    assert_eq!(FixField::new(registry.field_by_tag(55)?).names().count(), 0, "neither learns the other's name");
+    assert!(!FixField::new(registry.field_by_tag(55)?).has_source("xnas"));
     let newcomer = registry.field_by_id(FixId::of(55, "venue_symbol")?)?;
     assert_eq!(newcomer.name(), "VenueSymbol");
     assert_eq!(registry.field_by_name("VenueSymbol")?.name(), "VenueSymbol", "reached by its own name");
@@ -416,17 +424,17 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
     // A field named by nothing but its tag is unnamed: the first name to
     // arrive on the tag names it, and a later unnamed one merges into it.
     let mut unnamed = DataType::utf8().nullable_field("541");
-    unnamed.as_fix_mut().set_tag(541)?;
+    FixFieldMut::new(&mut unnamed).set_tag(541)?;
     assert!(registry.add_field(unnamed.clone())?, "added");
     let mut maturity = DataType::utf8().nullable_field("MaturityDate");
-    maturity.as_fix_mut().set_tag(541)?;
+    FixFieldMut::new(&mut maturity).set_tag(541)?;
     assert!(!registry.add_field(maturity)?, "merged, and named");
     assert!(!registry.add_field(unnamed)?, "merged");
     assert_eq!(registry.field_by_tag(541)?.name(), "MaturityDate");
 
     // Tag-major, the tag's holder first, then id; the seeded clocks and the
     // crate's own fields sit on their own tags around them.
-    let names: Vec<&str> = registry.iter().filter(|field| field.as_fix().tag().ok().flatten() < Some(65_000)).map(|field| field.name()).collect();
+    let names: Vec<&str> = registry.iter().filter(|field| FixField::new(field).tag().ok().flatten() < Some(65_000)).map(|field| field.name()).collect();
     assert_eq!(names, ["sendingtime", "Symbol", "VenueSymbol", "transacttime", "MaturityDate"]);
     ```
 
@@ -532,7 +540,7 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
 
 A dictionary is a membership, not a namespace: what a source contributed is recorded on the field it contributed to, as `FIX:sources` - a compact JSON array of source ids, `["blp","xnas"]`, each held to the id grammar (a non-empty word holding no quote, backslash or control character), folded to ASCII lowercase, deduplicated under the fold and kept sorted, so two registries built from the same sources in any order hash alike. An empty list removes the key, which is what every field the specification alone defines states: the shipped `config/fix` carries none. Membership is provenance a caller filters on; resolution never consults it, and a message root the codec builds carries none.
 
-What is known of a source is recorded once, in the registry's sources catalog rather than on every field: one `FixSource` per id - the id, the file it was read from where one is known, and the role of its plugin, a [`PluginSide`](../types/enum/pluginside.md) that is `UKNW` where the source states none. A [store](store.md#membership) writes the catalog as `sources.json`. A field names its sources itself, so a field may name an id the catalog does not hold and the catalog may hold an entry no field names; [`yggdryl fix check`](cli.md#schema-check-and-diff) fails the first and notes the second.
+What is known of a source is recorded once, in the registry's sources catalog rather than on every field: one `FixSource` per id - the id, the file it was read from where one is known, and the role of its plugin, a [`Side`](../types/enum/side.md#a-fix-plugins-role-is-a-side) that is `UKNW` where the source states none. A [store](store.md#membership) writes the catalog as `sources.json`. A field names its sources itself, so a field may name an id the catalog does not hold and the catalog may hold an entry no field names; [`yggdryl fix check`](cli.md#schema-check-and-diff) fails the first and notes the second.
 
 | Rust | Python | JavaScript | Answer |
 | --- | --- | --- | --- |
@@ -541,7 +549,7 @@ What is known of a source is recorded once, in the registry's sources catalog ra
 | `FixFieldMut::set_sources([..])` | `field.fix.sources = [..]` | `field.fix.sources = [..]` | Replace the list; an id that is empty or holds a quote, a backslash or a control character is refused, naming `FIX:sources` |
 | `FixFieldMut::add_source(id)` | `field.fix.add_source(id)` | `field.fix.addSource(id)` | Add one, idempotent under the fold |
 | `FixRegistry::dialects()` | `registry.dialects()` | `registry.dialects()` | The distinct ids any field or named definition names, sorted - what the fields state, not the catalog |
-| `FixRegistry::sources()` | `registry.sources()` | `registry.sources()` | The catalog in id order: `FixSource` values in Rust, `{"id", "file", "pluginside"}` records in Python (`file` `None` where none is known, `pluginside` a `PluginSide` member), `{ id, file, pluginside }` objects in JavaScript (`file` left out where none is known, `pluginside` the member's stored name) |
+| `FixRegistry::sources()` | `registry.sources()` | `registry.sources()` | The catalog in id order: `FixSource` values in Rust, `{"id", "file", "pluginside"}` records in Python (`file` `None` where none is known, `pluginside` a `Side` member), `{ id, file, pluginside }` objects in JavaScript (`file` left out where none is known, `pluginside` the member's stored name) |
 | `FixRegistry::get_source(id)` | `registry.get_source(id)` | not bound | The entry `id` names under the fold - `VENUE` and `ve_nue` both reach `venue` - or none |
 | `FixRegistry::add_source(FixSource::new(id)?.with_file(..).with_pluginside(..))` | `registry.add_source(id, *, file=None, pluginside=None)` | `registry.addSource(id, { file, pluginside })` | Record one entry, answering whether it arrived; an id already held keeps its entry and takes only what it lacked - a file where it stated none, a role where it stated `UKNW` - and a role disagreeing with a stated one keeps the held one, logged at warn |
 | `FixRegistry::remove_source(id)` | `registry.remove_source(id)` | not bound | Remove the entry and answer it; refused as a conflict naming the first field or definition still naming the id |
@@ -551,12 +559,15 @@ What is known of a source is recorded once, in the registry's sources catalog ra
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixRegistry, FixSource, PluginSide};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixFieldMut, FixRegistry, FixSource};
+    use yggdryl_market::Side;
+    yggdryl_fix::install()?;
 
     let mut registry = FixRegistry::new();
     let mut venue = DataType::utf8().nullable_field("VenueTag");
-    venue.as_fix_mut().set_tag(20001)?;
-    venue.as_fix_mut().set_sources(["Venue"])?;
+    FixFieldMut::new(&mut venue).set_tag(20001)?;
+    FixFieldMut::new(&mut venue).set_sources(["Venue"])?;
     registry.insert(venue)?;
     // The field names its source; the catalog records what is known of it, once.
     assert_eq!(registry.dialects(), ["venue"]);
@@ -564,17 +575,17 @@ What is known of a source is recorded once, in the registry's sources catalog ra
 
     let entry = FixSource::new("VENUE")?
         .with_file("venue.cfb")
-        .with_pluginside(PluginSide::SellSide);
+        .with_pluginside(Side::Sell);
     assert!(registry.add_source(entry), "arrived");
     let held = registry.get_source("Venue").expect("one entry under the fold");
     assert_eq!(
         (held.id(), held.file(), held.pluginside()),
-        ("venue", Some("venue.cfb"), PluginSide::SellSide)
+        ("venue", Some("venue.cfb"), Side::Sell)
     );
 
     // A held id keeps its entry and takes only what it lacked.
-    assert!(!registry.add_source(FixSource::new("venue")?.with_pluginside(PluginSide::BuySide)));
-    assert_eq!(registry.get_source("venue").map(FixSource::pluginside), Some(PluginSide::SellSide));
+    assert!(!registry.add_source(FixSource::new("venue")?.with_pluginside(Side::Buy)));
+    assert_eq!(registry.get_source("venue").map(FixSource::pluginside), Some(Side::Sell));
     // An entry a field still names stays.
     assert!(registry.remove_source("venue").is_err());
     assert_eq!(registry.sources().len(), 1);
@@ -585,7 +596,7 @@ What is known of a source is recorded once, in the registry's sources catalog ra
     ```python
     import pytest
 
-    from yggdryl import Field, PluginSide
+    from yggdryl import Field, Side
     from yggdryl.fix import FixRegistry
 
     registry = FixRegistry()
@@ -598,11 +609,11 @@ What is known of a source is recorded once, in the registry's sources catalog ra
     assert registry.get_source("venue") is None
 
     assert registry.add_source("VENUE", file="venue.cfb", pluginside="SELL") is True
-    entry = {"id": "venue", "file": "venue.cfb", "pluginside": PluginSide.SELL}
+    entry = {"id": "venue", "file": "venue.cfb", "pluginside": Side.SELL}
     assert registry.get_source("Venue") == entry
 
     # A held id keeps its entry and takes only what it lacked.
-    assert registry.add_source("venue", pluginside=PluginSide.BUYS) is False
+    assert registry.add_source("venue", pluginside=Side.BUYS) is False
     assert registry.sources() == [entry]
     # An entry a field still names stays.
     with pytest.raises(ValueError):
@@ -664,16 +675,18 @@ These mutations preserve stored canonical spelling for case-only input changes. 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixRegistry};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixFieldMut, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut registry = FixRegistry::new();
     let mut symbol = DataType::utf8().nullable_field("Symbol");
-    symbol.as_fix_mut().set_tag(55)?;
+    FixFieldMut::new(&mut symbol).set_tag(55)?;
     assert!(registry.insert(symbol.clone())?.is_none(), "it arrived");
     assert!(registry.insert(symbol.clone())?.is_some(), "and the second insert replaced it");
     assert!(!registry.add_field(symbol.clone())?, "the lenient twin folds it in");
     symbol.set_name("SYMBOL");
-    symbol.as_fix_mut().set_description("Instrument symbol")?;
+    FixFieldMut::new(&mut symbol).set_description("Instrument symbol")?;
     registry.update(symbol)?;
     // A case-only rename keeps the stored spelling, and the metadata merged.
     assert_eq!(registry.field(55)?.name(), "Symbol");
@@ -743,12 +756,14 @@ A vocabulary belongs to the dictionary rather than to one field. The specificati
 
 The set is stated first, because a registry refuses a field whose `FIX:codeset` names a set it does not hold - at `insert`, `update`, `from_fields`, `from_json` and a [store](store.md) load alike. Taking one away runs the other way: `remove_codeset`, and `set_codeset` with an empty list, refuse while a held field still reads by that name, naming the field.
 
-`marketdatakindcodeset`, `marketdatatypecodeset`, `statecodeset` and `msgpluginsidecodeset` are intrinsic rather than ordinary mutable vocabularies: the first names every [MarketDataKind](../types/enum/marketdatakind.md) member - its four-letter category, the `uint8` code a `marketdatakind` column stores and what it stands for - the second every [MarketDataType](../types/enum/marketdatatype.md) member - its stored name, the `uint16` code a `marketdatatype` column stores and what it means - the third every [State](../types/enum/state.md) member - its stored name, the `uint16` code a `state` column stores as the value, and what it means - and the fourth every [PluginSide](../types/enum/pluginside.md) role and its `uint8` code; all four are fixed by the crate. Reinstalling the same canonical document is idempotent; replacing, widening, removing, or loading a conflicting document is refused. A custom `MsgType` may still select any symbolic category already in `marketdatakindcodeset`, through its `FIX:msgcat`.
+`marketdatakindcodeset`, `marketdatatypecodeset`, `statecodeset` and `msgpluginsidecodeset` are intrinsic rather than ordinary mutable vocabularies: the first names every [MarketDataKind](../types/enum/marketdatakind.md) member - its four-letter category, the `uint8` code a `marketdatakind` column stores and what it stands for - the second every [MarketDataType](../types/enum/marketdatatype.md) member - its stored name, the `uint16` code a `marketdatatype` column stores and what it means - the third every [State](../types/enum/state.md) member - its stored name, the `uint16` code a `state` column stores as the value, and what it means - and the fourth every [Side](../types/enum/side.md) member - its stored name, the `uint8` code a `msgpluginside` column stores, and what it means, because a plugin's role is a side; all four are fixed by the crate. Reinstalling the same canonical document is idempotent; replacing, widening, removing, or loading a conflicting document is refused. A custom `MsgType` may still select any symbolic category already in `marketdatakindcodeset`, through its `FIX:msgcat`.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixCode, FixRegistry};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixCode, FixField, FixFieldMut, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut registry = FixRegistry::new();
     registry.set_codeset("sidecodeset", &[
@@ -757,12 +772,12 @@ The set is stated first, because a registry refuses a field whose `FIX:codeset` 
     ])?;
 
     let mut side = DataType::utf8().nullable_field("Side");
-    side.as_fix_mut().set_tag(54)?;
-    side.as_fix_mut().set_codeset("sidecodeset")?;
+    FixFieldMut::new(&mut side).set_tag(54)?;
+    FixFieldMut::new(&mut side).set_codeset("sidecodeset")?;
     registry.insert(side)?;
 
     // The field carries the name; the dictionary answers the members.
-    assert_eq!(registry.field(54)?.as_fix().codeset(), Some("sidecodeset"));
+    assert_eq!(FixField::new(registry.field(54)?).codeset(), Some("sidecodeset"));
     let set = registry.codeset_of(registry.field(54)?).expect("the set the field reads by");
     assert_eq!(set.name(), "sidecodeset");
     assert_eq!(set.code_value("Buy"), Some("1"));
@@ -849,7 +864,8 @@ is no key beside the order that states one.
 === "Rust"
 
     ```rust
-    use yggdryl::{FixCode, FixRegistry};
+    use yggdryl_fix::{FixCode, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut registry = FixRegistry::new();
     registry.set_codeset("sidecodeset", &[
@@ -932,7 +948,8 @@ used still reaches the value.
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::FixRegistry;
+    use yggdryl_fix::FixRegistry;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
@@ -981,7 +998,8 @@ metadata documents remain on the field and round-trip through both bindings.
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::FixRegistry;
+    use yggdryl_fix::{FixField, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
@@ -995,8 +1013,8 @@ metadata documents remain on the field and round-trip through both bindings.
     // The spelling an older version used reaches the field as an alias.
     assert_eq!(registry.field("LastShares")?.name(), "lastqty");
     // A field FIX Latest removed says so, and says at which version.
-    assert_eq!(registry.field_by_tag(111)?.as_fix().deprecated(), Some("5.0"));
-    assert_eq!(registry.field_by_tag(55)?.as_fix().deprecated(), None);
+    assert_eq!(FixField::new(registry.field_by_tag(111)?).deprecated(), Some("5.0"));
+    assert_eq!(FixField::new(registry.field_by_tag(55)?).deprecated(), None);
     ```
 
 ### `FIX:nulls`, the spellings that mean nothing was sent
@@ -1022,7 +1040,7 @@ How one entry is applied at one level - the root, or one occurrence of a repeati
 
 ### What the specification retired
 
-The crate holds the replaced and deprecated features of FIX 4.3 through 5.0 SP2 - the specification's appendices "Replaced features" (6-F) and "Deprecated features" (6-E) - as one table in `rust/src/fix/retired.rs`: 37 retired fields, 100 entries, keyed by the retired tag and in the order the specification retired them, the appendix that stated each named beside it. An entry states only what the appendix states as a value mapping. The crate's own tests hold the table sorted by tag with each tag once, every entry filling something and a catch-all last.
+The crate holds the replaced and deprecated features of FIX 4.3 through 5.0 SP2 - the specification's appendices "Replaced features" (6-F) and "Deprecated features" (6-E) - as one table in `rust/fix/src/retired.rs`: 37 retired fields, 100 entries, keyed by the retired tag and in the order the specification retired them, the appendix that stated each named beside it. An entry states only what the appendix states as a value mapping. The crate's own tests hold the table sorted by tag with each tag once, every entry filling something and a catch-all last.
 
 | FIX | Source | Restated as |
 | --- | --- | --- |
@@ -1105,15 +1123,18 @@ TradeID(1003)  ["origtradeid"]
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FixRegistry, IdType};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixField, FixFieldMut, FixRegistry};
+    use yggdryl_market::IdType;
+    yggdryl_fix::install()?;
 
     // A field states the parents of its identifier, each folded as a type is.
     let mut orderid = DataType::utf8().nullable_field("OrderID");
-    orderid.as_fix_mut().set_tag(37)?;
-    orderid.as_fix_mut().set_parents(["ParentOrderID", "origorderid"])?;
+    FixFieldMut::new(&mut orderid).set_tag(37)?;
+    FixFieldMut::new(&mut orderid).set_parents(["ParentOrderID", "origorderid"])?;
     assert_eq!(orderid.get_metadata("FIX:parents"), Some(r#"["parentorderid","origorderid"]"#));
-    assert_eq!(orderid.as_fix().parents().collect::<Vec<_>>(), ["parentorderid", "origorderid"]);
-    assert!(orderid.as_fix_mut().set_parents(["origorderid", "OrigOrderID"]).is_err(), "a type listed twice");
+    assert_eq!(FixField::new(&orderid).parents().collect::<Vec<_>>(), ["parentorderid", "origorderid"]);
+    assert!(FixFieldMut::new(&mut orderid).set_parents(["origorderid", "OrigOrderID"]).is_err(), "a type listed twice");
 
     // The committed dictionary: ClOrdID(11) states the parent OrigClOrdID(41) is.
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -1218,13 +1239,15 @@ A message states what type of its kind it is - a limit order, a tradeable quote,
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::Market;
-    use yggdryl::{DataType, FixCodec, FixRegistry, MarketDataType};
+    use yggdryl_market::graph::Market;
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixCodec, FixFieldMut, FixRegistry};
+    use yggdryl_market::MarketDataType;
+    yggdryl_fix::install()?;
 
     let mut ordtype = DataType::utf8().nullable_field("OrdType");
-    ordtype.as_fix_mut().set_tag(40)?;
-    ordtype
-        .as_fix_mut()
+    FixFieldMut::new(&mut ordtype).set_tag(40)?;
+    FixFieldMut::new(&mut ordtype)
         .set_marketdatatypes(&[("Z", MarketDataType::OrdPegged)])?;
     assert_eq!(ordtype.get_metadata("FIX:marketdatatype"), Some(r#"["Z=ORDPEGGED"]"#));
 
@@ -1329,7 +1352,7 @@ How long an order stands is a [`TimeInForce`](../types/enum/timeinforce.md) memb
 
 ## Folding a second source in
 
-Rust and Python expose `merge_with`, `add_fields`, `add_cfb_file`, `add_cfb_files` and `add_json_file` as one native fold each, staged and adopted whole: nothing lands until the whole call has folded, a datatype the source states at another precision of the stored one folds under it, and a contradiction is passed over rather than ending the fold - see below for which is which. `FixRegistry::from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and the code sets its fields read by - a CBlock names no set of its own, so each is filed under the name the field supplies, `hedgecurrencycodeset` for `HedgeCurrency` - and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `FIX:sources`, recording the catalog entry `dialect` names - the file's name, and the role the root element's `type` attribute names, a [`PluginSide`](../types/enum/pluginside.md) read by `PluginSide::from_plugin_type`; `None` stamps nothing and records no entry, the role read past with it. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the row's own `beginstring` where the transport states one, else what the line implies. The [CLI](cli.md) exposes ingestion and synchronization.
+Rust and Python expose `merge_with`, `add_fields`, `add_cfb_file`, `add_cfb_files` and `add_json_file` as one native fold each, staged and adopted whole: nothing lands until the whole call has folded, a datatype the source states at another precision of the stored one folds under it, and a contradiction is passed over rather than ending the fold - see below for which is which. `FixRegistry::from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and the code sets its fields read by - a CBlock names no set of its own, so each is filed under the name the field supplies, `hedgecurrencycodeset` for `HedgeCurrency` - and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `FIX:sources`, recording the catalog entry `dialect` names - the file's name, and the role the root element's `type` attribute names, a [`Side`](../types/enum/side.md#a-fix-plugins-role-is-a-side) read by `yggdryl_fix::plugin_side`; `None` stamps nothing and records no entry, the role read past with it. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the row's own `beginstring` where the transport states one, else what the line implies. The [CLI](cli.md) exposes ingestion and synchronization.
 
 A `vocabulary-tag`'s `alt` names its tag where it names only that tag. A dialect that spells one `alt` over two tags - `TRTN_FX_TradeCapture` declares `HedgeCurrency` for the currency a hedge settles in and again for the one it is quoted in - has given a name to neither, and a tag whose `alt` is another tag's own decimal has done the same to that tag's identity. The file's other statement of what a tag is called is read first: a `normalization-binding` spelling one of them by a name of its own names it - `LEGLASTSPOTRATE` for a tag 5190 whose `alt` repeats tag 637's `LegLastPx` - and the contended spelling, then one tag's alone, stays with that tag. A tag the bindings leave unnamed too falls back to its own decimal, the name a tag declaring no `alt` takes as well, and keeps the declared spelling as `display`, so every tag is left named and nothing the file said is lost. A field named by its own decimal is unnamed, and the [fold](#what-one-namespace-means-for-a-field-that-arrives) reads it so: a later file naming that tag names the field, and the members of both files read one field. Contention is decided by the key the spelling's catalog name, below, is indexed under, which folds case and drops `_`, `-` and space, so `Hedge_Currency` and `Hedge Currency` contend with `HedgeCurrency`. Two tags sharing a spelling record each other's tag among their alternate tags and so stay reachable as a pair; three record nothing, because an alternate identifier names one field. A `normalization-binding` cannot spell a contended name back onto one of them, and a `map` naming one decodes neither. The spelling survives where the file made it unambiguous: a `tag-constraint` binds one tag, so the message root, the component and the group each carry it, and a reader resolving a key against the message it arrived in - a bridge row's `MSGTYPE`, and the repeating group the key sits in - reaches the tag the file meant.
 
@@ -1347,7 +1370,7 @@ A `map` decodes a tag's values into the code set its field reads by, one `entry`
 
 `merge_with`, `add_cfb_file`, `add_cfb_files` and `add_json_file` each answer a `FixMerge`, [below](#what-a-source-says-otherwise-than-the-dictionary-is-passed-over): `sources` counts the dictionaries or files folded - the file count is a fact only the plural calls hold, since an empty match and a match whose files all merged into stored fields both answer zero `added` and `merged` - `added` and `merged` the scalar fields over every source, `restated` among the merged those whose source declared another precision of the stored datatype and folded under it, `dropped` what was passed over in the order the fold met it, `failed` the files `add_cfb_files` left out whole - one `FixFailure` each, its `source` URL and the `reason` it was left out over, displayed `{source}: {reason}` - and `is_clean()` whether `dropped` and `failed` are both empty. `merge_with`, `add_cfb_file` and `add_json_file` are one mutation each: what leaves nothing to keep - a file that will not parse, an incoming dictionary whose own catalog does not validate - leaves the dictionary exactly as it was, and the refusal names the source.
 
-**In `add_cfb_files` one file is one mutation, and one bad file is one file.** Each file folds into the staged dictionary as a mutation of its own: a file that cannot be read, is not a well-formed CBlock, or whose fold refuses rather than passing a declaration over is rolled back alone - the staged dictionary is exactly what the files before it left - and named in `failed`, while every other file still folds. Nothing is adopted until the last file is in and the catalog resolves, so a caller sees every folded file's contribution or none of the call's. The resolution is the one place two files' contributions can refuse each other; where the union does not resolve, the files fold again one at a time, each resolved before the next, so the file the union cannot hold is the one left out by name and the rest are still the dictionary. A listing that fails - a location's or one entry of it - refuses the call before any file is parsed, so a listing that fails part way is a refusal rather than a half-read dictionary. Python answers `failed` as a list of `{"source", "reason"}` mappings.
+**In `add_cfb_files` one file is one mutation, and one bad file is one file.** Each file folds into the staged dictionary as a mutation of its own: a file that cannot be read, is not a well-formed CBlock, or whose fold refuses rather than passing a declaration over is rolled back alone - the staged dictionary is exactly what the files before it left - and named in `failed`, while every other file still folds. Nothing is adopted until the last file is in and the catalog resolves, so a caller sees every folded file's contribution or none of the call's. The resolution is the one place two files' contributions can refuse each other; where the union does not resolve, the files fold again one at a time, each resolved before the next, so the file the union cannot hold is the one left out by name and the rest are still the dictionary. A counter one file lists beside a group another file, or the held dictionary, holds is not such a case: the member is left out and the file folds. A listing that fails - a location's or one entry of it - refuses the call before any file is parsed, so a listing that fails part way is a refusal rather than a half-read dictionary. Python answers `failed` as a list of `{"source", "reason"}` mappings.
 
 A CBlock is read for what it says. A real one is megabytes over hundreds of thousands of elements, so an element this reader cannot make sense of - a tag spelled in a way the core cannot store, a mapping to a type nothing listed, a nested grammar with no counter - is dropped and the rest of the file is still a dictionary. A tag - a `vocabulary-tag`'s or a `tag-constraint`'s `name`, a normalization's bare `$N` - is read by the dictionary's one tag reader, decimal digits alone from 1 through 2147483647, so `+35`, `0` and `-5` are no tag and the element is dropped with one warning, `expected a decimal tag, got "+35"`, exactly as a typed key reads them as names. A constraint naming a tag the file's own vocabulary never declared is not dropped: it declares the tag as text named by its digits, so the message keeps the member and a file that names the tag names the field when the two fold. Only a document that is not well-formed XML, or that stops with an element open, is refused, because neither leaves anything to keep: `from_cfb_file` and `add_cfb_file` raise it as a native located error wherever they are bound, and `add_cfb_files` leaves that file out, named in `failed`.
 
@@ -1357,7 +1380,7 @@ The document crosses the charset boundary once, before the XML reader sees a byt
 
 Each drop is a `log` record at warn level carrying the located sentence a refusal would have, then what the reader did about it: `invalid cfb expression at byte N: line L, column C: expected X, got Y in "<element ...>"; <consequence>` - the byte the reader had reached, the line and column it falls on, what was expected, what arrived and the element quoted as the file spells it, then, after the semicolon, the consequence: `the declaration is dropped`, `the tag is typed string, which every FIX datatype is on the wire`, `the value is kept as the file spelled it`, `the attribute is dropped and the element keeps the rest`, `the constraint is dropped and the message keeps its other members`, `the constraint declares the tag as text, named by its digits`, `the group is dropped and the message keeps the rest`, `the member is dropped and the message keeps the rest`, `the message is dropped and every field it declared kept`, `the tag keeps no code set`, `an entry spelling nothing states no code, so each is skipped`. The last is one record per code set however many maps and entries it covers - `tag 39 "OrdStatus", code set ordstatuscodeset: 1 map entry spelling none, null or nothing: "ORDSTATUS" key "none" value "8"; an entry spelling nothing states no code, so each is skipped` - its list bounded at 16 entries, then `and N more`. A parse reading a located file prefixes the file's name, and one stamping a dialect the dialect - `venue.cfb [venue] invalid cfb expression at byte 204: ...` - which names the file among the many a glob reads side by side. A drop the core raised rather than the grammar - a description or a spelling that cannot be stored, two declarations of one tag - carries the core's own sentence behind the declaration that asked for it. Every quoted span is bounded, so a warning never grows with the file.
 
-A message whose grammar states a NumInGroup counter beside the nested grammar that counter opens is the vendor's contradiction, not a fold's: the message is dropped with every field it declared kept, every other message still binds, and the warning names the line and column of its `grammar-binding`.
+A message whose grammar states a NumInGroup counter beside the nested grammar that counter opens - before it or after it, at the root or inside an entry, in one binding or across two bindings of one wire type - is read **without that member**, silently: the group is its list and its length the count, so the message, the group and every other member are kept, the tag stays an `int32` field of the dictionary, the group is required where either statement requires it, and nothing is warned or counted in `dropped`. The entry a group repeats restating that group's own counter is read without it too, a required one making the group required. A counter whose group is in another message, or in none, is an ordinary member - until a fold brings a group on its counter into that structure, which takes it out the same way. A binding the catalog will not hold - one whose `type` names no wire type - is the message dropped with every field it declared kept, every other message still binds, and the warning names the line and column of its `grammar-binding`.
 
 What the file states twice is not a drop. A type its listing and one of its bindings both declare, a grammar bound under a wire type another grammar already bound, and a member the held message already carries are each what a dialect looks like: the declarations fold, the members union - the held ones first in their order, then every member only the later declaration states - and the fold is a `log` record at info level rather than a warning. A second grammar-binding of one wire type folds into the first under the [merge rules](#what-a-source-says-otherwise-than-the-dictionary-is-passed-over): two references to one group on one counter fold their members together, a group on another counter stands beside, and each member that still disagrees is dropped with a warning - `message "D", bound again: <reason>; the member is dropped and the message keeps the rest` - while the rest of the binding folds. A group or component the first binding shares with another message is widened for both, as a fold across dialects widens it, and the splits the second binding wrote that nothing reads once it folded are taken back. A definition the second binding widened into the structure of another the file already registered is that definition: the widened one keeps its name and the other folds into it, whichever of the two messages the file binds first. Warn stays reserved for what is actually lost.
 
@@ -1379,6 +1402,8 @@ A datatype at another precision of the stored one is no contradiction: the field
 
 A time of day against an instant is the contradiction two FIX spellings of one field routinely make - a CBlock has `utc-time-only` and no word for `TZTimeOnly`, so its `MaturityTime(1079)` meets the dictionary's `datetime64(ns,"UTC")` - and it stays passed over, its reason saying why: `expected the datatype datetime64(ns,"UTC") stored for maturitytime (1079), got time64(ns): the stored instant reads a clock on the epoch day, at the offset it states or else as a wall clock in the column's zone`; the reverse ends `the stored time of day reads no date and no offset`.
 
+**A counter beside the group it counts is left out, not passed over.** A group is its list and its length the count, so a member reading the field a group of the folded structure is counted by states the list again: once every member of the source is in, it is left out of that structure - whichever side stated it, the held one or the source's - with nothing named in `dropped` and nothing failed, and a required one makes the group required whichever side folds first: the relaxation a definition stating the held structure takes keeps it. A group the fold passed over leaves the member standing, since nothing else then owns the count. A definition written alone that lists one is refused, as `insert_definition` refuses it.
+
 **A counter is the one exception to merging never changing a declared datatype.** A field a source counts a group by - NumInGroup, an `int32` - that the dictionary holds as unbounded text, a float or another integer width is retyped `int32`, logged at warn level - `tag 8070 counts a repeating group, so nocustflds is retyped int32 from float64` - the rule a CBlock's own parse applies to a nested grammar's counter inside one file, so the dictionary is the same whichever file sorts first. A value another dialect sends in that tag that is not an integer reads as null from then on. A decimal, an enum, a code, a flag or a temporal is a contradiction rather than a coarser count: the field stays as held, and the group is passed over and named. Only the field holding the tag - its own, or the one its name reaches on another tag - is retyped. A tag the dictionary reads as another field's alternate is that field spelled with another number: where the field is a count, a group counted by the tag is counted by it, and where it is anything else the group is passed over and named (`expected tag 9001, counting a repeating group, to spell a count, got the alternate tag of text (58), held as utf8`), the field it spells left as it was and the group never moved onto that field's own tag.
 
 `add_field`, `add_fields`, `insert` and `update` are unaffected by any of this and stay strict: met alone, outside a fold, any datatype difference is still refused rather than restated or passed over. A code set's spelling collision never refuses a source: a code arriving with a new value under a name another code already claims keeps its value under no name while the first keeps the spelling, logged at warn level. A fold refuses the whole source, adopting nothing from it, only where nothing is left to keep: malformed XML or JSON, an incoming dictionary whose own catalog does not validate, or a folded catalog that does not resolve.
@@ -1386,25 +1411,27 @@ A time of day against an instant is the contradiction two FIX spellings of one f
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixRegistry};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixFieldMut, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut price = DataType::Float64.nullable_field("Price");
-    price.as_fix_mut().set_tag(44)?;
+    FixFieldMut::new(&mut price).set_tag(44)?;
     let mut held = FixRegistry::from_fields([price])?;
 
     // One source types tag 44 as text, which every FIX datatype is on the
     // wire: another precision of the price, folded under it.
     let mut text = DataType::utf8().nullable_field("Price");
-    text.as_fix_mut().set_tag(44)?;
+    FixFieldMut::new(&mut text).set_tag(44)?;
     let merge = held.merge_with(&FixRegistry::from_fields([text])?)?;
     assert_eq!(merge.restated, 1);
     assert!(merge.is_clean());
 
     // Another types it as a flag, and brings a field of its own.
     let mut flag = DataType::Boolean.nullable_field("Price");
-    flag.as_fix_mut().set_tag(44)?;
+    FixFieldMut::new(&mut flag).set_tag(44)?;
     let mut side = DataType::utf8().nullable_field("Side");
-    side.as_fix_mut().set_tag(54)?;
+    FixFieldMut::new(&mut side).set_tag(54)?;
     let other = FixRegistry::from_fields([flag, side])?;
 
     // The held declaration stays: the contradiction is named and passed
@@ -1472,14 +1499,16 @@ A member reading a field that merged into a held field by folded name under anot
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixRegistry};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixField, FixFieldMut, FixRegistry};
+    yggdryl_fix::install()?;
 
     let mut field = DataType::utf8().nullable_field("MsgType");
-    field.as_fix_mut().set_tag(35)?;
+    FixFieldMut::new(&mut field).set_tag(35)?;
     let mut registry = FixRegistry::from_fields([field])?;
     let message = registry.register_msgtype("P Report Ack", Some("AllocationReportAck"), None)?;
     assert_eq!(message.as_str(), "P Report Ack");
-    assert_eq!(message.as_field().as_fix().msgtype(), Some("P Report Ack"));
+    assert_eq!(FixField::new(message.as_field()).msgtype(), Some("P Report Ack"));
     assert_eq!(registry.msgtype("allocationreportack")?.as_str(), "P Report Ack");
     ```
 
@@ -1550,7 +1579,8 @@ reads such a row as [one message stating nothing](capture.md#a-json-document-is-
 === "Rust"
 
     ```rust
-    use yggdryl::FixCodec;
+    use yggdryl_fix::FixCodec;
+    yggdryl_fix::install()?;
 
     assert_eq!(FixCodec::infer_msgtype_bytes(b"8=FIX.4.4|35=AE|"), Some(b"AE".as_slice()));
     assert_eq!(FixCodec::infer_msgtype_text("MSGTYPE=P Report Ack|"), Some("P Report Ack"));
@@ -1622,13 +1652,13 @@ Every door fills tag 385 from that reading where the wire states none - `parse_l
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --test fix
-    cargo test --features internals -p yggdryl --test fix -- mod_::internal
-    cargo test --features internals -p yggdryl --test fix -- mod_::internal::the_fold_table_holds_through_add_field_and_through_merge_with mod_::internal::one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one mod_::internal::three_spellings_of_one_name_under_one_tag_are_one_identity mod_::internal::name_indexes_fold_ascii_and_membership_never_resolves
-    cargo test -p yggdryl --test fix -- registry::lenient
-    cargo test -p yggdryl --test fix -- cfb::
-    cargo test -p yggdryl --test fix -- retired:: latest:: enrich::
-    cargo test -p yggdryl --test fix -- aliases:: alias_rule::
+    cargo test -p yggdryl-fix --test root
+    cargo test --features internals -p yggdryl-fix --test root -- lib::internal
+    cargo test --features internals -p yggdryl-fix --test root -- lib::internal::the_fold_table_holds_through_add_field_and_through_merge_with lib::internal::one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one lib::internal::three_spellings_of_one_name_under_one_tag_are_one_identity lib::internal::name_indexes_fold_ascii_and_membership_never_resolves
+    cargo test -p yggdryl-fix --test root -- registry::lenient
+    cargo test -p yggdryl-fix --test root -- cfb::
+    cargo test -p yggdryl-fix --test root -- retired:: latest:: enrich::
+    cargo test -p yggdryl-fix --test root -- aliases:: alias_rule::
     ```
 
 === "Python"
@@ -1676,7 +1706,7 @@ Borrowed Rust lookups, singleton views, compiled group-plan lookups and identifi
 Regenerate from the repository root with release bindings installed:
 
 ```bash
-cargo bench -p yggdryl --bench fix -- 'fix/(resolve|mutate|store)'
+cargo bench -p yggdryl-fix --bench fix -- 'fix/(resolve|mutate|store)'
 python python/benchmarks/fix.py --iterations 2000
 ```
 

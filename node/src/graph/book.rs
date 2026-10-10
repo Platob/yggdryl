@@ -5,9 +5,10 @@ use napi::bindgen_prelude::{
     Array, BigInt, ClassInstance, Either, Either3, Env, Function, Null, Result, Unknown,
 };
 use napi_derive::napi;
-use yggdryl::Side as CoreSide;
-use yggdryl::graph::{
-    BookEvent as CoreBookEvent, BookIterator as CoreBookIterator, Event, Market,
+use yggdryl::graph::Event;
+use yggdryl_market::Side as CoreSide;
+use yggdryl_market::graph::{
+    BookEvent as CoreBookEvent, BookIterator as CoreBookIterator, Market,
     MarketData as CoreMarketData, SnapshotEvent as CoreSnapshotEvent,
 };
 
@@ -27,7 +28,7 @@ pub struct BookLimit {
     /// The exact sum of the quantities its entries state, as decimal text;
     /// an entry stating none adds nothing.
     pub quantity: String,
-    /// Its entries' `curruuid`s in live order: position, then arrival.
+    /// Its entries' `uuid`s in live order: position, then arrival.
     pub uuids: Vec<String>,
     /// Whether the level can trade: any of its entries does not state
     /// `tradable = false`.
@@ -79,24 +80,26 @@ impl JsBookEvent {
 
 #[napi]
 impl JsBookEvent {
-    /// An empty book of the ticker `symbol` at `currunix` nanoseconds since
-    /// the epoch, keyed by that ticker; an empty `symbol` keys the book
-    /// `XX0000000000`, the ISIN that states none, and states no ticker.
+    /// An empty book keyed `key` at `transunix` nanoseconds since the epoch:
+    /// `key` is the instrument's cross code (`instcode`) every input it
+    /// takes states - a real ISIN, an FX pair's `IF:EUR/USD`, a derivative's
+    /// `class:body` - which the book states as its own `instcode` and stores
+    /// as its crosscode `3:0:{key}`; the book states neither a ticker nor an
+    /// ISIN until its first input states each. An empty `key` keys a book by
+    /// nothing, which takes nothing. The same door as `keyed`.
     #[napi(constructor)]
-    pub fn new(currunix: Either<BigInt, f64>, symbol: String) -> Result<Self> {
-        let currunix = instant_of(currunix, "currunix")?;
-        Ok(Self::from_core(CoreBookEvent::new(currunix, symbol)))
+    pub fn new(transunix: Either<BigInt, f64>, key: String) -> Result<Self> {
+        let transunix = instant_of(transunix, "transunix")?;
+        Ok(Self::from_core(CoreBookEvent::keyed(transunix, key)))
     }
 
-    /// An empty book keyed `key` at `currunix` nanoseconds since the epoch:
-    /// `key` is its crosscode - an instrument's ISIN, a ticker, or
-    /// `XX0000000000` - and the book states neither a ticker nor an ISIN.
-    /// The empty base a code's first book, a delta book, rebuilds over
-    /// with `withPrevious`.
+    /// An empty book keyed `key` at `transunix` nanoseconds since the epoch -
+    /// `new BookEvent(transunix, key)` - the empty base a code's first book,
+    /// a delta book, rebuilds over with `withPrevious`.
     #[napi(factory)]
-    pub fn keyed(currunix: Either<BigInt, f64>, key: String) -> Result<Self> {
-        let currunix = instant_of(currunix, "currunix")?;
-        Ok(Self::from_core(CoreBookEvent::keyed(currunix, key)))
+    pub fn keyed(transunix: Either<BigInt, f64>, key: String) -> Result<Self> {
+        let transunix = instant_of(transunix, "transunix")?;
+        Ok(Self::from_core(CoreBookEvent::keyed(transunix, key)))
     }
 
     /// Whether the book holds its sides - every entry alive on it - rather
@@ -210,7 +213,7 @@ impl JsBookEvent {
 
     /// One limit per price level of the side `side` names - read through
     /// the `Side` vocabulary - best first and the one unpriced limit last,
-    /// each naming its entries' `curruuid`s in position order; empty for a
+    /// each naming its entries' `uuid`s in position order; empty for a
     /// side that is neither a bid nor an ask, and on a delta book.
     #[napi]
     pub fn limits(&self, side: Either<String, f64>) -> Result<Vec<BookLimit>> {
@@ -402,9 +405,10 @@ event_verbs!(JsSnapshotEvent, "SnapshotEvent");
 /// JavaScript failure crossing as one typed sentinel.
 type BookSource = Box<dyn Iterator<Item = yggdryl::Result<CoreMarketData>> + Send>;
 
-/// Books from a sorted stream of operations, one per book key and effective
-/// timestamp, pulling its items lazily from the caller's iterable. Yields
-/// `BookEvent`.
+/// Books from a sorted stream of operations, one per instrument cross code
+/// (`instcode`) and effective timestamp, pulling its items lazily from the
+/// caller's iterable; an input stating no `instcode` is pruned before it
+/// touches a book. Yields `BookEvent`.
 #[napi(js_name = "BookIterator")]
 pub struct JsBookIterator {
     inner: CoreBookIterator<BookSource>,

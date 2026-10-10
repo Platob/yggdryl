@@ -457,18 +457,18 @@ pub enum Function {
     ///     unit: TimeUnit::Nanosecond,
     ///     timezone: Timezone::UTC,
     /// };
-    /// let schema = StructType::from_fields([ns.clone().required_field("currunix")])
+    /// let schema = StructType::from_fields([ns.clone().required_field("transunix")])
     ///     .map(DataType::from)?
     ///     .required_field("row");
-    /// let selector: Selector = "time_bucket('15 minutes', currunix) as partunix".parse()?;
-    /// assert_eq!(selector.to_string(), "time_bucket('15 minutes', currunix) as partunix");
+    /// let selector: Selector = "time_bucket('15 minutes', transunix) as partunix".parse()?;
+    /// assert_eq!(selector.to_string(), "time_bucket('15 minutes', transunix) as partunix");
     /// assert_eq!(selector.apply_field(&schema)?.fields()[0].dtype(), &ns);
     /// // 00:14:59.999999999 floors to midnight.
     /// let at = |count| Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC);
     /// let row = Scalar::from_sequence([at(899_999_999_999)?]);
     /// let floored = selector.apply_scalar(&schema, &row)?;
     /// assert_eq!(floored.as_sequence().unwrap()[0], at(0)?);
-    /// assert!("time_bucket('15m', currunix)".parse::<Selector>()?.apply_field(&schema).is_err());
+    /// assert!("time_bucket('15m', transunix)".parse::<Selector>()?.apply_field(&schema).is_err());
     /// # Ok(())
     /// # }
     /// ```
@@ -1031,9 +1031,18 @@ pub(crate) fn filter_after_select<'a>(
     })
 }
 
-/// Place each conjunction at the schema its columns belong to. This keeps
-/// native source pruning available beside predicates on selected aliases.
-pub(crate) fn filter_phases<'filter, 'name>(
+/// Place each conjunction of `filter` at the schema its columns belong to:
+/// the early phase, over the stored columns `input` names, which a medium
+/// pushes into its read and prunes by; and the late phase, over the rows the
+/// `select` publishes, for a conjunction naming an alias or a column only
+/// the projection lays out. A filter nothing in it reads from the projection
+/// is the early phase whole, the late one always true.
+///
+/// What a medium outside the core reads to split a `where` clause the way
+/// the core's media do, beside
+/// [`IORecordOptions::apply_columns`](crate::media::IORecordOptions::apply_columns)
+/// and [`Bounds`].
+pub fn filter_phases<'filter, 'name>(
     filter: &'filter Filter,
     select: &Selector,
     input: impl IntoIterator<Item = &'name str>,

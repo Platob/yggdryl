@@ -45,7 +45,7 @@ pub(crate) use display::{elide_display, elide_to, expected_got};
 pub use entry::{TextEntries, TextEntry};
 pub use format::Format;
 pub use formatting::{Formatting, Indent};
-pub use handle::Text;
+pub use handle::{PlainTextCodec, TEXT_CODEC, Text};
 pub use io::{
     Plan, from_io, from_io_all, from_io_all_with_limits, from_io_with, from_io_with_field,
     from_io_with_field_and_limits, from_io_with_limits, into_io, into_io_all,
@@ -863,12 +863,8 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
             | Scalar::Ccy(_)
             | Scalar::Mic(_)
             | Scalar::Cfi(_)
-            | Scalar::Side(_)
+            | Scalar::Market(_)
             | Scalar::State(_)
-            | Scalar::MarketDataKind(_)
-            | Scalar::MarketDataType(_)
-            | Scalar::TimeInForce(_)
-            | Scalar::PluginSide(_)
             | Scalar::Isin(_)
             | Scalar::Cusip(_)
             | Scalar::Sedol(_)

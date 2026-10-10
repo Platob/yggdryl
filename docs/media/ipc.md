@@ -8,14 +8,14 @@ The Arrow IPC streaming format: one schema message, then one record-batch messag
 | --- | --- |
 | Declared by | `application/vnd.apache.arrow.stream`, `.arrows` |
 | Build | default |
-| Rust | `yggdryl::ipc`: `Ipc<H>` over any handle, configured by `IpcOptions`, and the free `read_field`, `read_batch_reader` and `overwrite_arrow_reader` over any `IOBase` |
+| Rust | `yggdryl::ipc`: `Ipc<H>` over any handle, configured by `IpcOptions`, `IPC_CODEC`, the medium's [codec](index.md#registering-a-medium), and the free `read_field`, `read_batch_reader` and `overwrite_arrow_reader` over any `IOBase` |
 | Python, JavaScript | any `IOBase` whose name declares the stream, through the [calls every medium answers](index.md#read) |
 | Settings | the shared [`RecordOptions`](index.md#options) and nothing of its own; a coding suffix such as `.arrows.gz` compresses the whole stream ([Compression](compression.md)) |
 | Layouts | a union column crosses as itself, where [Parquet](parquet.md) refuses one by name |
 
 ## Read
 
-The stream carries its schema, so a read needs no declaration, and `read_arrow_field` stops at the schema message before any batch body. A narrower `field` is a column pushdown: skipped columns are never decoded. A stored batch reads back as long as its writer made it unless `batch_row_size` or `batch_byte_size` bounds the read, which cuts it into views over its own buffers. A stream that is not there reads as no batches.
+The stream carries its schema, so a read needs no declaration, and `read_arrow_field` stops at the schema message before any batch body - and an `Ipc<H>` keeps that schema and the dimensions in its [metadata cache](index.md#the-metadata-cache) while it is open, and on a closed handle for the options' `cache_ttl`. Under a declared `field`, what a read decodes is its children intersected with the columns the `select` and the early `filter` read: skipped columns are never decoded, so a full declaration under a `select` decodes the selected columns alone. With none declared every column is decoded, since the schema message is read off the same stream as the batches it frames. A stored batch reads back as long as its writer made it unless `batch_row_size` or `batch_byte_size` bounds the read, which cuts it into views over its own buffers. A stream that is not there reads as no batches.
 
 === "Rust"
 
@@ -262,7 +262,7 @@ PyArrow IPC write baseline       1.607 ms   40.8M rows/s
 python/.venv/bin/python python/benchmarks/media.py --filter ipc --filter "PyArrow IPC"
 ```
 
-Through the `Media` enum, which redirects to the same implementation:
+Through the `Media` enum, whose `Ipc` variant redirects to the same implementation:
 
 | operation through `Media::Ipc` | estimate | throughput |
 | --- | ---: | ---: |

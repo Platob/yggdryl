@@ -23,23 +23,27 @@ use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyDateTime, PyDict, PyInt, PyList, PyType};
 
-use yggdryl::graph::{Element, Event, Market, Operation};
+use yggdryl::graph::{Element, Event};
 use yggdryl::{
-    DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture as CoreFixCapture,
-    FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec,
-    FixEntry as CoreFixEntry, FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey, FixMerge,
-    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, FixSource as CoreFixSource,
-    IOBase as CoreIOBase, IdType, MsgType as CoreMsgType, PluginSide, Scalar, StructType, TimeUnit,
-    Timezone,
+    DataType as CoreDataType, Error as CoreError, Field as CoreField, IOBase as CoreIOBase,
+    MarketValue, Scalar, StructType, TimeUnit, Timezone,
 };
+use yggdryl_fix::{
+    FixCapture as CoreFixCapture, FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet,
+    FixCodec as CoreFixCodec, FixEntry as CoreFixEntry, FixField, FixFieldMut,
+    FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey, FixMerge, FixMsg as CoreFixMsg,
+    FixRegistry as CoreFixRegistry, FixSource as CoreFixSource, MsgType as CoreMsgType,
+};
+use yggdryl_market::graph::{Market, Operation};
+use yggdryl_market::{IdType, Side};
 
 use crate::field::{PyField, core_field_from_value};
 use crate::graph::market_data::{PyMarketData, PyMarketDataRowIterator};
 use crate::graph::{code_scalar, decimal_scalar, ellipsis, fxrates_dict, member, uuid_scalar};
 use crate::iceberg::folder_holder_from_value;
+use crate::instrument::PyInstruments;
 use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
-use crate::isin_registry::PyIsinRegistry;
 use crate::scalar::{PyScalar, from_py};
 use crate::serie::serie_source_of;
 use crate::stream_chunked_serie::PyStreamChunkedSerie;
@@ -116,7 +120,7 @@ fn entry_tuple<'py>(py: Python<'py>, entry: &CoreFixEntry) -> PyResult<Bound<'py
 
 /// One sources catalog entry as the record Python reads: `{"id", "file",
 /// "pluginside"}`, every key stated - `file` `None` where none is known, the
-/// role the `PluginSide` member - so one record reads like the next.
+/// role the `Side` member - so one record reads like the next.
 fn source_record<'py>(py: Python<'py>, source: &CoreFixSource) -> PyResult<Bound<'py, PyDict>> {
     let record = PyDict::new(py);
     record.set_item("id", source.id())?;
@@ -125,20 +129,25 @@ fn source_record<'py>(py: Python<'py>, source: &CoreFixSource) -> PyResult<Bound
     Ok(record)
 }
 
-/// The plugin role one Python value names: a `PluginSide` member, its code
-/// or a spelling, read through the datatype's own value door so a spelling
-/// the column refuses is refused here too.
-pub(crate) fn pluginside_from_py(given: &Bound<'_, PyAny>) -> PyResult<PluginSide> {
-    match CoreDataType::PluginSide
+/// The plugin role one Python value names: a `Side` member, its code or a
+/// spelling - `BuySide`, `sell-side`, `BUYS`, `2` - read through the
+/// datatype's own value door so a spelling the column refuses is refused
+/// here too.
+pub(crate) fn pluginside_from_py(given: &Bound<'_, PyAny>) -> PyResult<Side> {
+    let value = Side::dtype()
         .scalar(from_py(given)?)
-        .map_err(value_error)?
-    {
-        Scalar::PluginSide(side) => Ok(side),
-        other => Err(value_error(format!(
-            "expected a PluginSide, got {}",
-            other.kind()
-        ))),
-    }
+        .map_err(|error| value_error(format!("pluginside: {error}")))?;
+    <Side as MarketValue>::from_scalar(&value)
+        .ok_or_else(|| value_error(format!("expected a Side, got {}", value.kind())))
+}
+
+/// The side one plugin class names: a `CBlock` root's `type`, whose last
+/// `.`-separated segment, folded, holding `buyside` is `Side.BUYS`,
+/// holding `sellside` is `Side.SELL`, and anything else `Side.UKNW`.
+/// Never raises.
+#[pyfunction]
+pub(crate) fn fix_plugin_side(py: Python<'_>, plugin_type: &str) -> PyResult<Py<PyAny>> {
+    member(py, yggdryl_fix::plugin_side(plugin_type))
 }
 
 /// An optional text as a `repr` spells it: `None`, or the quoted text.
@@ -1176,8 +1185,8 @@ impl PyFixRegistry {
 
     /// The sources catalog, in id order: one record per source this
     /// dictionary was built from - `{"id": "venue", "file": "venue.cfb",
-    /// "pluginside": PluginSide.SELL}` - `file` `None` where none is known
-    /// and `pluginside` always a `PluginSide` member, `UKNW` where the
+    /// "pluginside": Side.SELL}` - `file` `None` where none is known
+    /// and `pluginside` always a `Side` member, `UKNW` where the
     /// source states no role. A store writes it as `sources.json`.
     fn sources<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         self.inner
@@ -1200,7 +1209,7 @@ impl PyFixRegistry {
     /// `id` is held to the id grammar - non-empty, no quote, backslash or
     /// control character - and folded to ASCII lowercase; `file` is the file
     /// the source was read from, and `pluginside` its plugin's role, a
-    /// `PluginSide` member, its code or a spelling. An id already held keeps
+    /// `Side` member, its code or a spelling. An id already held keeps
     /// its entry and takes only what it lacked - a file where it stated
     /// none, a role where it stated `UKNW` - and a role disagreeing with a
     /// stated one keeps the held one, logged at warn. A field names its
@@ -1588,7 +1597,7 @@ impl PyFixFieldIterator {
         // The cursor is the canonical identifier every registered field
         // carries; a field without one cannot be advanced past, so the walk
         // stops there rather than answering it forever.
-        match field.as_fix().id() {
+        match FixField::new(field).id() {
             Ok(Some(id)) => self.after = Some(id),
             _ => self.done = true,
         }
@@ -1746,9 +1755,9 @@ impl PyFixMsg {
         // The core publishes what a message holds typed, so this walk never
         // keeps a list of its own: a tag lifted or retired there would
         // otherwise drop out of a pickle without a word.
-        let tags = yggdryl::FIX_TYPED_TAGS
+        let tags = yggdryl_fix::FIX_TYPED_TAGS
             .into_iter()
-            .chain(yggdryl::CRATE_TAG_MIN..yggdryl::CRATE_TAG_MAX);
+            .chain(yggdryl_fix::CRATE_TAG_MIN..yggdryl_fix::CRATE_TAG_MAX);
         for tag in tags {
             let Some(value) = self.inner.get_by_tag(tag) else {
                 continue;
@@ -1763,7 +1772,9 @@ impl PyFixMsg {
                     .dtype()
                     .map_err(value_error)?
                     .nullable_field(format!("{tag}"));
-                field.as_fix_mut().set_tag(tag).map_err(value_error)?;
+                FixFieldMut::new(&mut field)
+                    .set_tag(tag)
+                    .map_err(value_error)?;
                 field
             };
             fields.push(field);
@@ -1784,9 +1795,9 @@ impl PyFixMsg {
     /// of the FIX fields a message lifts, `Text(58)` - fills the holder that
     /// owns it and leaves the row. The clocks settle: `SendingTime` is the stated one,
     /// else UTC now, so a message meant to compare equal to another states
-    /// one; the instant `currunix` is the stated one, else the official
-    /// transaction clock standing within the crate's default one-second
-    /// delay of `SendingTime` - a `TransactTime`, else a ranked
+    /// one; the instant `transunix` is the stated one, else the official
+    /// transaction clock standing less than the crate's default half-second
+    /// delay from `SendingTime` - a `TransactTime`, else a ranked
     /// `TrdRegTimestamp` - else `SendingTime` itself, and the creation the
     /// stated one, else the instant. What `OrigSendingTime` says is the
     /// lifecycle's to read.
@@ -2143,7 +2154,7 @@ impl PyFixMsg {
     }
 
     /// The role of the FIX plugin whose session produced the message, as
-    /// the `PluginSide` member - `BUYS`, `SELL`, or `UKNW` where none is
+    /// the `Side` member - `BUYS`, `SELL`, or `UKNW` where none is
     /// stated: the codec's source entry, a row-header capture or a row cell
     /// named `msgpluginside` being the row's word over it. Never a FIX
     /// tag's, and independent of `Side(54)`.
@@ -2191,11 +2202,11 @@ impl PyFixMsg {
     }
 
     /// The message's `UUIDv7` identity: its millisecond and sequence lead an
-    /// XXH3 payload over `currhashcode` and the whole sequence, seeded by
+    /// XXH3 payload over `hashcode` and the whole sequence, seeded by
     /// `crosshashcode`.
     #[getter]
-    fn curruuid(&self) -> PyScalar {
-        uuid_scalar(self.inner.get_curruuid())
+    fn uuid(&self) -> PyScalar {
+        uuid_scalar(self.inner.get_uuid())
     }
 
     /// The identity every message of one lifecycle shares: derived from
@@ -2223,8 +2234,8 @@ impl PyFixMsg {
     /// message lifted and its named content - everything but the standard
     /// header and trailer, and never the chain it is in.
     #[getter]
-    fn currhashcode(&self) -> u64 {
-        self.inner.get_currhashcode()
+    fn hashcode(&self) -> u64 {
+        self.inner.get_hashcode()
     }
 
     /// The XXH3-64 of the cross code, zero where the message names none.
@@ -2233,13 +2244,14 @@ impl PyFixMsg {
         self.inner.get_crosshashcode()
     }
 
-    /// When the message happened: nanoseconds since the Unix epoch, UTC -
+    /// When the operation the message states happened - its transaction
+    /// instant: nanoseconds since the Unix epoch, UTC -
     /// the stated instant, else the official transaction clock standing
-    /// within the codec's `official_time_delay_ms` of `SendingTime`, else
-    /// that `SendingTime`.
+    /// less than the codec's `official_time_delay_ms` from `SendingTime`,
+    /// else that `SendingTime`.
     #[getter]
-    fn currunix(&self) -> i64 {
-        self.inner.get_currunix()
+    fn transunix(&self) -> i64 {
+        self.inner.get_transunix()
     }
 
     /// The state the order is in, as the `State` member it is.
@@ -2275,10 +2287,11 @@ impl PyFixMsg {
         self.inner.get_execunix()
     }
 
-    /// When the message was recorded, where stated.
+    /// When the message crossed the wire - its carrier's clock, else its
+    /// stated `SendingTime` - where stated.
     #[getter]
-    fn recdunix(&self) -> Option<i64> {
-        self.inner.get_recdunix()
+    fn sendunix(&self) -> Option<i64> {
+        self.inner.get_sendunix()
     }
 
     /// When the order expires, where it has an expiry.
@@ -2345,7 +2358,7 @@ impl PyFixMsg {
 
     /// The currency the instrument originates in - the one it was issued
     /// in - as the `ccy` code it is, where the message states it (the crate
-    /// field `origccy`) or a registry filled it; `None` where neither did,
+    /// field `origccy`) or the instruments filled it; `None` where neither did,
     /// never the currency.
     #[getter]
     fn origccy(&self) -> Option<PyScalar> {
@@ -2429,6 +2442,16 @@ impl PyFixMsg {
     #[getter]
     fn isincode(&self) -> Option<&str> {
         self.inner.get_isincode()
+    }
+
+    /// The cross code of the instrument the message is about - a stated
+    /// real ISIN, the `class:body` of a detected FX pair (`IF:EUR/USD`),
+    /// written at the parse from the message alone, else the code a
+    /// lifecycle filled from the instruments - what the instruments
+    /// table's `crosscode` joins on; `None` where nothing resolved it.
+    #[getter]
+    fn instcode(&self) -> Option<&str> {
+        self.inner.get_instcode()
     }
 
     /// The rates an amount in `currency` is divided by to state it in
@@ -2790,9 +2813,9 @@ impl PyFixCodec {
     /// `logging`, so the thread waiting on that worker must not hold it:
     /// held, the two wait on each other for good. One thread never showed
     /// it, because the worker was this thread. A parse door also takes the
-    /// instrument registry's lock as it opens, and a registry verb run
-    /// detached under that lock may warn, so no door takes the lock with
-    /// the GIL held either.
+    /// instruments' lock as it opens, and an instruments verb run detached
+    /// under that lock may warn, so no door takes the lock with the GIL
+    /// held either.
     fn released<T, F>(py: Python<'_>, door: F) -> T
     where
         F: FnOnce() -> T + Send,
@@ -2810,8 +2833,8 @@ impl PyFixCodec {
     const __hash__: Option<Py<PyAny>> = None;
 
     /// A codec over the registry the process environment names,
-    /// `FixRegistry.from_env()`, sharing the instrument registry it names
-    /// too, `IsinRegistry.from_env()` - unless the `isin_registry` pin
+    /// `FixRegistry.from_env()`, sharing the instruments it names too,
+    /// `Instruments.from_env()` - unless the `instruments` pin
     /// names another - pinned by the keywords the constructor takes. The
     /// one constructor that attaches the process's own; `FixCodec(...)`
     /// attaches none, and a commit of what the walks learned is always the
@@ -2830,11 +2853,11 @@ impl PyFixCodec {
             Some(pins) => pins.copy()?,
             None => PyDict::new(py),
         };
-        if !pins.contains("isin_registry")? {
+        if !pins.contains("instruments")? {
             let instruments = py
-                .detach(|| yggdryl::IsinRegistry::from_env().map(PyIsinRegistry::from_shared))
+                .detach(|| yggdryl_market::Instruments::from_env().map(PyInstruments::from_shared))
                 .map_err(value_error)?;
-            pins.set_item("isin_registry", instruments)?;
+            pins.set_item("instruments", instruments)?;
         }
         cls.call((registry,), Some(&pins))
     }
@@ -2861,7 +2884,7 @@ impl PyFixCodec {
     /// Every pin is the core's, spelled once here.
     /// `default_sending_time` is the `SendingTime` a genuinely new
     /// message takes when it states no valid one and nothing it was read
-    /// with dates it, neither a capture reaching tag 52 nor the `currunix`
+    /// with dates it, neither a capture reaching tag 52 nor the `transunix`
     /// of the line it was read out of - a native `Scalar` crosses as itself
     /// and must already be a nanosecond UTC `datetime64`, a `datetime` is
     /// read once into that clock, and any other layout is the core's
@@ -2906,15 +2929,16 @@ impl PyFixCodec {
     /// collecting and sorting the whole capture, off by default;
     /// `official_time_delay_ms` is how far from `SendingTime(52)` an
     /// official transaction clock may stand and still date the message, the
-    /// core's one second when unstated, and a nonpositive delay admits only
-    /// a transaction clock equal to the sending clock; `dedup_window_ms` is
+    /// gap less than it - the core's half second when unstated - and a
+    /// nonpositive delay admits only a transaction clock equal to the
+    /// sending clock; `dedup_window_ms` is
     /// how long, in milliseconds of event time, `lifecycle` remembers an
     /// identity it yielded so it yields that identity once - not given, the
     /// core's one minute, and `None`, zero or a negative window remembering
-    /// none; `isin_registry` is the `IsinRegistry` every `lifecycle` learns
-    /// into and fills from, shared so a walk run after another starts from
-    /// what the first learned - `None`, each walk learning into its own,
-    /// starting empty; `market_metadata`
+    /// none; `instruments` is the `Instruments` every `lifecycle` learns
+    /// into and fills from - every row's `instcode` among it - shared so a
+    /// walk run after another starts from what the first learned - `None`,
+    /// each walk learning into its own, starting empty; `market_metadata`
     /// is whether a market operation the codec builds carries, in its
     /// metadata, what its message states that no typed column reads and no
     /// identifier map of the leaf holds - its parties, its `Account(1)` and
@@ -2942,7 +2966,7 @@ impl PyFixCodec {
         sorted_lifecycle=false,
         official_time_delay_ms=None,
         dedup_window_ms=ellipsis(),
-        isin_registry=None,
+        instruments=None,
         market_metadata=true,
     ))]
     #[allow(clippy::too_many_arguments)]
@@ -2966,7 +2990,7 @@ impl PyFixCodec {
         sorted_lifecycle: bool,
         official_time_delay_ms: Option<i64>,
         dedup_window_ms: Py<PyAny>,
-        isin_registry: Option<PyRef<'_, PyIsinRegistry>>,
+        instruments: Option<PyRef<'_, PyInstruments>>,
         market_metadata: bool,
     ) -> PyResult<Self> {
         let registry = registry_or_env(registry)?;
@@ -3019,8 +3043,8 @@ impl PyFixCodec {
             let window: Option<i64> = window.extract()?;
             inner = inner.with_dedup_window_ms(window.unwrap_or(0));
         }
-        if let Some(held) = isin_registry {
-            inner = inner.with_isin_registry(Arc::clone(&held.inner));
+        if let Some(held) = instruments {
+            inner = inner.with_instruments(Arc::clone(&held.inner));
         }
         inner = inner.with_market_metadata(market_metadata);
         Ok(Self { inner, registry })
@@ -3032,12 +3056,12 @@ impl PyFixCodec {
         PyFixRegistry::from_arc(Arc::clone(&self.registry))
     }
 
-    /// The `IsinRegistry` every `lifecycle` this codec runs shares, the same
+    /// The `Instruments` every `lifecycle` this codec runs shares, the same
     /// table the caller holds, or `None` where each walk learns into its
     /// own.
     #[getter]
-    fn isin_registry(&self) -> Option<PyIsinRegistry> {
-        self.inner.isin_registry().map(PyIsinRegistry::from_shared)
+    fn instruments(&self) -> Option<PyInstruments> {
+        self.inner.instruments().map(PyInstruments::from_shared)
     }
 
     /// The nanosecond UTC `SendingTime` an undated new message takes - one
@@ -3135,7 +3159,7 @@ impl PyFixCodec {
 
     /// This codec with its lifecycle stating, or no longer stating, that the
     /// messages it is handed arrive in instant order - a table read hour
-    /// partition by hour partition, sorted by `currunix`. Every other
+    /// partition by hour partition, sorted by `transunix`. Every other
     /// setting, the dictionary included, is this codec's.
     #[pyo3(signature = (sorted))]
     fn with_sorted_lifecycle(&self, sorted: bool) -> Self {
@@ -3276,14 +3300,14 @@ impl PyFixCodec {
     /// capture's name reaches. `capture_names` is what decides which capture
     /// is which, once for the whole run, because a line answers its captures
     /// by position. A `timestamp` capture is context and stamps nothing; the
-    /// line's own clock does. Its `currunix` - an `mtime` capture, else its
-    /// handle's modification time - is the message's `recdunix`, and the
+    /// line's own clock does. Its `transunix` - an `mtime` capture, else its
+    /// handle's modification time - is the message's `sendunix`, and the
     /// sending clock of a message stating none: `SendingTime` is the
     /// message's own, else a `SendingTime` capture, else the line's
-    /// `currunix`, else the codec's `default_sending_time`, else UTC now,
-    /// and the instant `currunix` is read against it - the stated one, else
-    /// the official clock standing within `official_time_delay_ms` of it,
-    /// else it. A clock the parse supplied is never the message's own:
+    /// `transunix`, else the codec's `default_sending_time`, else UTC now,
+    /// and the instant `transunix` is read against it - the stated one, else
+    /// the official clock standing less than `official_time_delay_ms` from
+    /// it, else it. A clock the parse supplied is never the message's own:
     /// `header().stated_sendingtime` is false, and neither the wire nor the
     /// row's `sendingtime` column states it.
     ///
@@ -3342,8 +3366,8 @@ impl PyFixCodec {
     /// `pyarrow.RecordBatchReader` pulling one batch at a time. The schema is
     /// decided before the first row: the capture's own columns lead and the
     /// fixed FIX columns follow. Every row is parsed as the line door
-    /// parses one - a row's `currunix` cell is its line's clock, so it is
-    /// the messages' `recdunix` and the sending clock of one stating none -
+    /// parses one - a row's `transunix` cell is its line's clock, so it is
+    /// the messages' `sendunix` and the sending clock of one stating none -
     /// and batches close on the bytes each row lands as
     /// against `batch_byte_size`. With more than one `threads`, at most that
     /// many jobs run at once - an input batch, or one of the row ranges, the
@@ -3448,11 +3472,14 @@ impl PyFixCodec {
     ///
     /// `snapshot_millis` enables epoch-aligned book snapshots, at which a
     /// complete book is emitted; every other book is a delta book, stating
-    /// its delta and its events alone. One book
-    /// is kept per book key - the instrument's ISIN, else its ticker, else
-    /// `XX0000000000`. `filter` - a `Filter`, a `Term`, an `Expression` or
-    /// the text of a predicate over the `marketdata` row - narrows what the
-    /// books fold, and never admits a kind they do not; `None` keeps every
+    /// its delta and its events alone. One book is kept per instrument's
+    /// cross code (`instcode`): a message stating none - a ticker-only line
+    /// no lifecycle filled, a masked number - is pruned before it is
+    /// expanded, and a `W` or `X` message's entries are admitted one by
+    /// one, an entry stating its own `SecurityID(48)` booked by the code it
+    /// spells. `filter` - a `Filter`, a `Term`, an `Expression` or the text
+    /// of a predicate over the `marketdata` row - narrows what the books
+    /// fold, and never admits a kind they do not; `None` keeps every
     /// booked leaf. Lifecycle enrichment is explicit: pass
     /// `codec.lifecycle(messages)` when it is wanted. Each leaf carries its
     /// message's unmapped fields where `market_metadata` says so.
@@ -3491,7 +3518,7 @@ impl PyFixCodec {
     /// `codec.lifecycle(messages)` for the walk. `messages` is any iterable
     /// of `FixMsg`, collected when this is called; the operations are then
     /// sorted, stably, by the instant a book folds them at - `snapunix`,
-    /// else `currunix` - so a book message's entry clock standing before an
+    /// else `transunix` - so a book message's entry clock standing before an
     /// earlier message's cannot regress. Nothing a message states is
     /// refused: an entry that cannot stand is left out with a warning to
     /// `logging`; a failure of the iterable itself raises as itself once
@@ -3826,8 +3853,8 @@ fn sending_time_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 /// Columns are spelled by the dictionary's
 /// folded canonical names - `msgtype`, never `35` - so a row reads the way a
 /// message reads; the tag stays each column's identity, on its `FIX:tag`,
-/// and is what fills it. `beginstring`, `currunix`, `creaunix`, `currhashcode`,
-/// `crosshashcode`, `curruuid` and `crossuuid` are the non-null columns,
+/// and is what fills it. `beginstring`, `transunix`, `creaunix`, `hashcode`,
+/// `crosshashcode`, `uuid` and `crossuuid` are the non-null columns,
 /// because every message settles them; a tag the dictionary does not hold
 /// is skipped rather than invented.
 #[pyfunction]
@@ -3837,7 +3864,7 @@ pub(crate) fn fix_schema(
     name: &str,
 ) -> PyResult<PyField> {
     let registry = registry_or_env(registry)?;
-    yggdryl::fix_schema(&registry, name.to_owned())
+    yggdryl_fix::fix_schema(&registry, name.to_owned())
         .map(PyField::from_inner)
         .map_err(value_error)
 }
@@ -3866,7 +3893,7 @@ pub(crate) fn fix_schema_carrying(
 ) -> PyResult<PyField> {
     let carrier = core_field_from_value(carrier)?;
     let read = core_field_from_value(read)?;
-    yggdryl::fix_schema_carrying(&carrier, &read)
+    yggdryl_fix::fix_schema_carrying(&carrier, &read)
         .map(PyField::from_inner)
         .map_err(value_error)
 }
@@ -3875,14 +3902,14 @@ pub(crate) fn fix_schema_carrying(
 #[pyfunction]
 #[pyo3(name = "fix_schema_tags")]
 pub(crate) fn fix_schema_tags() -> Vec<i32> {
-    yggdryl::fix_schema_tags()
+    yggdryl_fix::fix_schema_tags()
 }
 
 /// The definitions this crate lists, in tag order from 65001.
 ///
-/// The event's clocks - `currunix`, `creaunix`, `recdunix`,
-/// `prevunix`, `snapunix`, `exprunix` - its identities - `currhashcode`,
-/// `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid`, the `crosscode` they
+/// The event's clocks - `transunix`, `creaunix`, `sendunix`,
+/// `prevunix`, `snapunix`, `exprunix` - its identities - `hashcode`,
+/// `crosshashcode`, `uuid`, `crossuuid`, `prevuuid`, the `crosscode` they
 /// derive from, its `seqnum` - the `state` it reached and the `marketdatakind` it is
 /// filed under - the `srcuuids` of the lines it was read from - what a
 /// bridge's own log states about a line - the `msgpluginid`, the `msgctxid`,
@@ -3897,7 +3924,7 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
-    yggdryl::fix_crate_fields()
+    yggdryl_fix::fix_crate_fields()
         .map(|held| held.iter().cloned().map(PyField::from_inner).collect())
         .map_err(value_error)
 }
@@ -4117,7 +4144,7 @@ impl PyFixCapture {
         self.inner.msgpluginid()
     }
 
-    /// The role of that plugin, as the `PluginSide` member: the codec's
+    /// The role of that plugin, as the `Side` member: the codec's
     /// source entry's, a capture or a row cell named `msgpluginside` being
     /// the line's word over it, and `UKNW` where neither states one.
     #[getter]

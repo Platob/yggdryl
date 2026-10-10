@@ -60,7 +60,6 @@ impl WriteCount {
 
     /// Count `rows` the destination pulled and declined to store: they were
     /// counted as written when it pulled them, and are skipped instead.
-    #[cfg(feature = "iceberg")]
     pub(crate) fn skip(&self, rows: u64) {
         self.0.declined.fetch_add(rows, Ordering::Relaxed);
     }
@@ -138,8 +137,7 @@ pub(crate) fn append_arrow_reader_default(
     };
     let container = handle.is_container();
     if container {
-        #[cfg(feature = "iceberg")]
-        if let Some(mut table) = crate::iceberg::located(handle)? {
+        if let Some(mut table) = crate::media::format::locate(handle)? {
             return table.append_arrow_reader(batches, options);
         }
         return append_arrow_reader_folder(handle, batches, options);
@@ -179,8 +177,7 @@ pub(crate) fn merge_arrow_reader_default(
     };
     let container = handle.is_container();
     if container {
-        #[cfg(feature = "iceberg")]
-        if let Some(mut table) = crate::iceberg::located(handle)? {
+        if let Some(mut table) = crate::media::format::locate(handle)? {
             return table.merge_arrow_reader(batches, options);
         }
         return merge_arrow_reader_folder(handle, batches, options);
@@ -259,12 +256,14 @@ pub fn overwrite_serie_default(
 
 /// Run the default overwrite and return the logical field actually published.
 ///
-/// Stateful media use this to refresh an already-open metadata cache without
-/// rereading the encoded value. The field is resolved by the same shaping pass
-/// that consumes `batches`: declared-field casting and selection happen once,
-/// then an existing stored field completes the result. `None` is reserved for
-/// a table-format redirection whose own commit owns its metadata cache.
-/// The rows read and written travel beside it.
+/// A media wrapper hands this field to its
+/// [`MediaCache`](crate::media::MediaCache) as the origin the write left,
+/// beside the rows written, so a later schema or count asks the store
+/// nothing. The field is resolved by the same shaping pass that consumes
+/// `batches`: declared-field casting and selection happen once, then an
+/// existing stored field completes the result. `None` is reserved for a
+/// table-format redirection whose own commit owns its metadata cache. The
+/// rows read and written travel beside it.
 pub(crate) fn overwrite_arrow_reader_default_with_field(
     handle: &mut (impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
@@ -277,8 +276,7 @@ pub(crate) fn overwrite_arrow_reader_default_with_field(
     options.require_num_threads()?;
     let container = handle.is_container();
     if container {
-        #[cfg(feature = "iceberg")]
-        if let Some(mut table) = crate::iceberg::located(handle)? {
+        if let Some(mut table) = crate::media::format::locate(handle)? {
             let result = table.overwrite_arrow_reader(batches, options)?;
             return Ok((None, result));
         }
@@ -541,10 +539,10 @@ fn prepare_leaf_arrow_write(
 /// source chunk, then temporarily pass the same handle back to [`push`](Self::push)
 /// or [`finish`](Self::finish). Complete cadences publish synchronously before
 /// either method returns; [`abort`](Self::abort) drops only the unpublished
-/// remainder. A table's cadences commit through the table the session locates
-/// off the handle - a held [`IcebergTable`](crate::iceberg::IcebergTable), a
-/// warehouse table - which is closed after each one, so it lets go of the
-/// document it read and reads the commits on its next verb.
+/// remainder. A table's cadences commit through the table a claimed format
+/// locates off the handle - a held Iceberg table, a warehouse table - which
+/// is closed after each one, so it lets go of the document it read and reads
+/// the commits on its next verb.
 ///
 /// This is hidden because it is a narrow runtime bridge, not another write
 /// operation. Its mode is the same public [`crate::IOMode`] accepted by the
@@ -584,13 +582,13 @@ enum ArrowWriteTarget {
     Folder {
         writer: Box<crate::media::partition::FolderWriter>,
     },
-    #[cfg(feature = "iceberg")]
-    Iceberg {
-        located: Box<crate::iceberg::Located>,
+    /// A table a claimed format located, held for the session's life: what
+    /// its cadences replaced so far is the located table's own state, so an
+    /// overwrite, or a merge keyed by the partition alone, replaces each
+    /// partition once.
+    Table {
+        located: Box<dyn crate::media::LocatedTable>,
         stored: crate::Field,
-        /// What this write's cadences replaced so far, so an overwrite, or
-        /// a merge keyed by the partition alone, replaces each partition once.
-        replaced: crate::iceberg::ReplacedPartitions,
     },
 }
 
@@ -600,8 +598,7 @@ impl ArrowWriteTarget {
         match self {
             Self::Leaf { stored } => Some(stored),
             Self::EmptyLeaf | Self::TextLeaf | Self::Folder { .. } => None,
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg { stored, .. } => Some(stored),
+            Self::Table { stored, .. } => Some(stored),
         }
     }
 
@@ -610,8 +607,7 @@ impl ArrowWriteTarget {
     fn derives(&self) -> bool {
         match self {
             Self::Leaf { .. } | Self::EmptyLeaf | Self::TextLeaf | Self::Folder { .. } => false,
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg { .. } => true,
+            Self::Table { .. } => true,
         }
     }
 }
@@ -876,14 +872,9 @@ impl ArrowWriteSession {
             return Ok(());
         }
         if handle.is_container() {
-            #[cfg(feature = "iceberg")]
-            if let Some(located) = crate::iceberg::located(handle)? {
+            if let Some(located) = crate::media::format::locate(handle)? {
                 let stored = located.stored_field()?;
-                self.target = Some(ArrowWriteTarget::Iceberg {
-                    located: Box::new(located),
-                    stored,
-                    replaced: crate::iceberg::ReplacedPartitions::default(),
-                });
+                self.target = Some(ArrowWriteTarget::Table { located, stored });
                 return Ok(());
             }
             let mut writer = crate::media::partition::FolderWriter::new(handle, &self.options)?;
@@ -1055,21 +1046,14 @@ impl ArrowWriteSession {
                     });
                 }
             },
-            #[cfg(feature = "iceberg")]
             // The session's own mode, not the cadence's: every cadence of
-            // an overwrite goes through the one door, and `replaced` is what
-            // tells a first commit from a later one, partition by partition
-            // where the table is addressed whole.
-            ArrowWriteTarget::Iceberg {
-                located, replaced, ..
-            } => {
+            // an overwrite goes through the one door, and the located table's
+            // own record of what it replaced tells a first commit from a
+            // later one, partition by partition where it is addressed whole.
+            ArrowWriteTarget::Table { located, .. } => {
                 match self.mode {
                     crate::IOMode::Overwrite => {
-                        located.overwrite_prepared(
-                            batches,
-                            replaced,
-                            self.delegated.num_threads(),
-                        )?;
+                        located.overwrite_prepared(batches, self.delegated.num_threads())?;
                     }
                     crate::IOMode::Append => {
                         // A keyed table leaves out a row whose key it holds:
@@ -1081,7 +1065,6 @@ impl ArrowWriteSession {
                         batches,
                         self.delegated.merge_by(),
                         self.delegated.safe(),
-                        replaced,
                         self.delegated.num_threads(),
                     )?,
                     crate::IOMode::ReadOnly | crate::IOMode::Random => {
@@ -1176,18 +1159,9 @@ pub(crate) fn leaf_reader(
 
     let declared = options.field();
     let declared = declared.as_ref();
-    let reader = match options {
-        RecordOptions::Ipc(ipc) => crate::ipc::read_batch_reader(handle, declared, ipc)?,
-        #[cfg(feature = "parquet")]
-        RecordOptions::Parquet(parquet) => {
-            crate::parquet::read_batch_reader(handle, declared, parquet)?
-        }
-        RecordOptions::Avro(avro) => crate::avro::read_batch_reader(handle, declared, avro)?,
-        RecordOptions::Text(text) => crate::text::arrow::read_arrow_reader(handle, text)?,
-        RecordOptions::Xmla(xmla) => crate::xmla::read_batch_reader(handle, declared, xmla)?,
-        RecordOptions::Csv(csv) => crate::csv::read_batch_reader(handle, declared, csv)?,
-        RecordOptions::Excel(excel) => crate::excel::read_batch_reader(handle, declared, excel)?,
-    };
+    let reader = options
+        .codec()
+        .read_batch_reader(handle.as_io_base(), declared, options)?;
     match declared {
         // A declared root is the cast alone, and an exact schema hands the
         // reader back untouched.
@@ -1204,16 +1178,7 @@ pub(crate) fn leaf_row_size(
     handle: &(impl IOBase + ?Sized),
     options: &RecordOptions,
 ) -> Result<u64> {
-    match options {
-        RecordOptions::Ipc(ipc) => crate::ipc::row_size(handle, ipc),
-        #[cfg(feature = "parquet")]
-        RecordOptions::Parquet(parquet) => crate::parquet::row_size(handle, parquet),
-        RecordOptions::Avro(avro) => crate::avro::row_size(handle, avro),
-        RecordOptions::Text(text) => crate::text::arrow::row_size(handle, text),
-        RecordOptions::Xmla(xmla) => crate::xmla::row_size(handle, xmla),
-        RecordOptions::Csv(csv) => crate::csv::row_size(handle, csv),
-        RecordOptions::Excel(excel) => crate::excel::row_size(handle, excel),
-    }
+    options.codec().row_size(handle.as_io_base(), options)
 }
 
 /// Read one encoded leaf's canonical Struct field from format metadata.
@@ -1230,24 +1195,7 @@ pub(crate) fn leaf_field(
     if let Some(field) = options.field() {
         return Ok(field.clone());
     }
-    match options {
-        RecordOptions::Ipc(ipc) => Ok(crate::ipc::read_field(handle, ipc)?),
-        // The Parquet reader lands its rows under a root stating no
-        // metadata - neither the file's key-value pairs nor the root's own
-        // the Arrow schema message carries - so the schema answers that
-        // same root, and a schema read and the rows never disagree.
-        #[cfg(feature = "parquet")]
-        RecordOptions::Parquet(parquet) => {
-            let mut field = crate::parquet::read_field(handle, parquet)?;
-            field.clear_metadata();
-            Ok(field)
-        }
-        RecordOptions::Avro(avro) => Ok(crate::avro::read_field(handle, avro)?),
-        RecordOptions::Text(text) => text.source_field(),
-        RecordOptions::Xmla(xmla) => crate::xmla::read_field(handle, xmla),
-        RecordOptions::Csv(csv) => crate::csv::read_field(handle, csv),
-        RecordOptions::Excel(excel) => crate::excel::read_field(handle, excel),
-    }
+    options.codec().read_field(handle.as_io_base(), options)
 }
 
 /// Encode one leaf's complete contents.
@@ -1260,66 +1208,31 @@ pub(crate) fn leaf_writer(
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
 ) -> Result<()> {
-    match options {
-        RecordOptions::Ipc(ipc) => crate::ipc::overwrite_arrow_reader(handle, batches, ipc)?,
-        #[cfg(feature = "parquet")]
-        RecordOptions::Parquet(parquet) => {
-            crate::parquet::overwrite_arrow_reader(handle, batches, parquet)?;
-        }
-        RecordOptions::Avro(avro) => crate::avro::overwrite_arrow_reader(handle, batches, avro)?,
-        RecordOptions::Text(text) => {
-            crate::text::arrow::write_arrow_reader(handle, batches, text)?;
-        }
-        RecordOptions::Xmla(xmla) => crate::xmla::overwrite_arrow_reader(handle, batches, xmla)?,
-        RecordOptions::Csv(csv) => crate::csv::overwrite_arrow_reader(handle, batches, csv)?,
-        RecordOptions::Excel(excel) => {
-            crate::excel::overwrite_arrow_reader(handle, batches, excel)?
-        }
-    }
-    Ok(())
+    options
+        .codec()
+        .overwrite_arrow_reader(handle.as_io_base_mut(), batches, options)
 }
 
 /// Read the root Field a leaf's own bytes declare, if it holds any.
 ///
 /// The declared schema is deliberately not consulted: this asks what is stored,
 /// which is the only thing that can say whether a write is filling a resource
-/// that already has a shape or giving one to a resource that has none.
+/// that already has a shape or giving one to a resource that has none. It is
+/// the origin [`IOMedia::read_origin_field`](crate::IOMedia::read_origin_field)
+/// answers, read under the write's own options - a CSV's dialect, a
+/// workbook's sheet - since the write holds them: asking the medium's origin
+/// door instead would ask a bare handle for its options once more.
 pub(crate) fn stored_field(
     handle: &(impl IOBase + ?Sized),
     options: &RecordOptions,
 ) -> Result<Option<crate::Field>> {
-    use crate::media::IORecordOptions;
-
     if handle.is_empty() {
         return Ok(None);
     }
-    // Text lines store no record shape of their own: any row shape writes,
-    // rendered line by line, so there is nothing to complete a cast onto.
-    if matches!(options, RecordOptions::Text(_)) {
-        return Ok(None);
-    }
-    // A rowset document may state no schema at all (a `Content` of `Data`),
-    // which is a resource with no shape yet rather than one that cannot be
-    // read.
-    if matches!(options, RecordOptions::Xmla(_)) {
-        return crate::xmla::media::stated_field(handle);
-    }
-    // A CSV states its shape by its header and its sample, read under the
-    // dialect the options state - a probe under the default separator would
-    // read a `;`-separated header as one column. That is a reading, which a
-    // folder's schema is derived from; a write completes onto the header
-    // alone (`crate::csv::write_target`).
-    if let RecordOptions::Csv(csv) = options {
-        return crate::csv::stated_field(handle, csv);
-    }
-    // A workbook's sheet may hold no rows, which is a resource with no
-    // shape yet, never one that cannot be read.
-    if let RecordOptions::Excel(excel) = options {
-        return crate::excel::stated_field(handle, excel);
-    }
-    let mut probe = RecordOptions::for_mime_type(&options.mime_type())?;
-    probe.set_name(smol_str::SmolStr::new(options.name()));
-    Ok(Some(leaf_field(handle, &probe)?))
+    // The medium answers what its bytes state: text lines no record shape,
+    // a rowset document or a sheet with no rows none yet, a CSV its header
+    // under the options' dialect, every other medium its probe.
+    options.codec().stated_field(handle.as_io_base(), options)
 }
 
 /// Merge `incoming` into a leaf's rows on the options' match key.
@@ -1329,15 +1242,28 @@ fn merge_leaf(
     options: &RecordOptions,
     merge_by: &crate::Selector,
 ) -> Result<()> {
-    // A text line has no row identity: re-parsing the resource yields
-    // projection rows, not the rows a caller wrote, so a key match would
-    // silently compare against the wrong thing. Refused rather than guessed.
-    if matches!(options, RecordOptions::Text(_)) {
+    // A medium whose rows have no identity - text lines, re-parsed into
+    // projection rows rather than the rows a caller wrote - would match a
+    // key against the wrong thing. Refused rather than guessed, naming the
+    // media that can.
+    let codec = options.codec();
+    if !codec.has_row_identity() {
+        let identified: Vec<&str> = crate::media::codecs()
+            .into_iter()
+            .filter(|medium| medium.has_row_identity())
+            .map(crate::media::MediaCodec::title)
+            .collect();
         return Err(Error::InvalidRecord {
             path: smol_str::SmolStr::new_static("$.merge_by"),
             reason: crate::text::expected_got(
-                "a record encoding with row identity to merge by (Arrow IPC, Parquet, Avro)",
-                "text lines, which have none - use overwrite or append",
+                format_args!(
+                    "a record encoding with row identity to merge by ({})",
+                    identified.join(", ")
+                ),
+                format_args!(
+                    "{} rows, which have none - use overwrite or append",
+                    codec.title()
+                ),
             ),
         });
     }

@@ -51,12 +51,12 @@ fn malformed_bounds_are_unknown_instead_of_zero() {
 
 #[test]
 fn a_bound_is_read_under_the_one_iceberg_mapping_and_a_decimal_s_stays_unknown() {
-    use yggdryl::Side;
+    use yggdryl::State;
     // An enum column is Iceberg's `int` - the one mapping's word - so its
     // bound reads back as the member the code names.
     assert_eq!(
-        single_to_value(&2_i32.to_le_bytes(), &DataType::Side),
-        Some(Scalar::Side(Side::Sell))
+        single_to_value(&2001_i32.to_le_bytes(), &DataType::State),
+        Some(Scalar::State(State::New))
     );
     // A text column is a string whatever its layout, a code too.
     assert_eq!(

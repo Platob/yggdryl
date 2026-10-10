@@ -52,15 +52,15 @@ pub(crate) fn parser_benchmarks(criterion: &mut Criterion) {
         });
     });
     // The logical names: the registry lookup the grammar falls back to, and
-    // one FIX row declaration, which is what a registry-driven schema costs.
+    // one row declared in them, which is what a registry-driven schema costs.
     group.bench_function("logical_name", |bencher| {
         bencher.iter(|| {
-            DataType::from_logical_name(black_box("UTCTimestamp"))
+            DataType::from_logical_name(black_box("Exchange"))
                 .expect("a registered logical name must resolve")
         });
     });
     group.bench_function("logical_row", |bencher| {
-        bencher.iter(|| DataType::from_str(black_box(FIX_ROW)).expect("the FIX row must parse"));
+        bencher.iter(|| DataType::from_str(black_box(LOGICAL_ROW)).expect("the row must parse"));
     });
     group.bench_function("iceberg_row", |bencher| {
         bencher.iter(|| {
@@ -79,10 +79,9 @@ const ICEBERG_ROW: &str = concat!(
     "7: attrs: optional map<string, fixed[16]>, 8: later: optional unknown>"
 );
 
-/// One row declared in FIX's own datatype names, across the four families a
-/// registration resolves into: an ASCII width, a decimal, a temporal, and an
-/// integer.
-const FIX_ROW: &str = concat!(
-    "struct<ccy:Ccy,venue:Exchange,px:Price,qty:Qty,",
-    "at:UTCTimestamp,day:LocalMktDate,seq:SeqNum>"
+/// One row declared in the core's own logical names, across the families a
+/// registration resolves into: the registered codes and the enum leaf.
+const LOGICAL_ROW: &str = concat!(
+    "struct<ccy:Ccy,venue:Exchange,isin:Isin,cfi:Cfi,",
+    "lei:Lei,state:State,unit:Unit>"
 );

@@ -1189,7 +1189,7 @@ mod roles {
     fn a_holder_walks_a_store_through_one_type() {
         let store = store();
         store.put(BUCKET, "lake/year=2026/part.parquet", b"PAR1");
-        let root = yggdryl::holder::Holder::S3Folder(folder(&store, ""));
+        let root = yggdryl::holder::Holder::from(folder(&store, ""));
 
         assert!(root.is_container());
         assert_eq!(root.kind(), IOKind::Directory);
@@ -1200,7 +1200,10 @@ mod roles {
         assert_eq!(entries.len(), 3, "two containers and the leaf");
         let leaf = entries.last().expect("the leaf");
         assert_eq!(leaf.read_all_bytes().expect("the object"), b"PAR1");
-        assert!(matches!(leaf, yggdryl::holder::Holder::S3File(_)));
+        assert!(
+            leaf.downcast_ref::<yggdryl::s3::S3File>().is_some(),
+            "{leaf:?}"
+        );
 
         // Resolving down the tree stays in one type the whole way.
         let child = root

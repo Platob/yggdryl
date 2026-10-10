@@ -16,9 +16,10 @@
 
 use napi::bindgen_prelude::{BigInt, ClassInstance, Either, Either3, Env, Object, Result};
 use napi_derive::napi;
+use yggdryl::iceberg::{IcebergCatalog, IcebergNamespace, IcebergTable};
 use yggdryl::{
     Catalog as CoreCatalog, CatalogValue as _, FolderCatalog, FolderLayout, FolderNamespace,
-    IntoObjectPath, MediaTable, MemoryCatalog, MemoryNamespace, Names as CoreNames,
+    Handle, IntoObjectPath, MediaTable, MemoryCatalog, MemoryNamespace, Names as CoreNames,
     Namespace as CoreNamespace, NamespaceValue, Namespaces as CoreNamespaces, Object as CoreObject,
     ObjectValue, Objects as CoreObjects, Properties, SystemWarehouse as CoreSystemWarehouse,
     Table as CoreTable, TableValue as _, Tables as CoreTables, Warehouse as CoreWarehouse,
@@ -382,7 +383,7 @@ impl JsWarehouseCatalog {
         match &self.inner {
             CoreCatalog::Memory(_) => "MemoryCatalog",
             CoreCatalog::Folder(_) => "FolderCatalog",
-            CoreCatalog::Iceberg(_) => "IcebergCatalog",
+            catalog if catalog.downcast_ref::<IcebergCatalog>().is_some() => "IcebergCatalog",
             _ => "Catalog",
         }
         .to_owned()
@@ -637,7 +638,9 @@ impl JsWarehouseNamespace {
         match &self.inner {
             CoreNamespace::Memory(_) => "MemoryNamespace",
             CoreNamespace::Folder(_) => "FolderNamespace",
-            CoreNamespace::Iceberg(_) => "IcebergNamespace",
+            namespace if namespace.downcast_ref::<IcebergNamespace>().is_some() => {
+                "IcebergNamespace"
+            }
             _ => "Namespace",
         }
         .to_owned()
@@ -871,7 +874,7 @@ impl JsWarehouseTable {
     pub fn implementation(&self) -> String {
         match &self.inner {
             CoreTable::Media(_) => "MediaTable",
-            CoreTable::Iceberg(_) => "IcebergTable",
+            table if table.downcast_ref::<IcebergTable<Handle>>().is_some() => "IcebergTable",
             _ => "Table",
         }
         .to_owned()

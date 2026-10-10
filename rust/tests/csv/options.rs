@@ -1,6 +1,7 @@
 //! `rust/src/csv/options.rs`: the dialect a CSV read or write takes, its
 //! defaults, its builders and every refusal a setter makes.
 
+use yggdryl::avro::AvroOptions;
 use yggdryl::csv::CsvOptions;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::text::LineSep;
@@ -272,7 +273,10 @@ fn record_options_of_another_encoding_answer_none_and_refuse_a_setting() {
     );
     // And the other way round: a CSV value refuses another encoding's knob.
     let mut csv = RecordOptions::for_mime_type(&MimeType::CSV).unwrap();
-    let (path, reason) = refusal(csv.set_avro_block_codec("null").unwrap_err());
+    let (path, reason) = refusal(
+        csv.require_settings_mut::<AvroOptions>("$.block_codec", "a block codec")
+            .unwrap_err(),
+    );
     assert_eq!(path, "$.block_codec");
     assert_eq!(
         reason,

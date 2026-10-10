@@ -74,6 +74,15 @@ def guards(path: pathlib.Path) -> list[str]:
     return found
 
 
+def crates() -> list[pathlib.Path]:
+    """Every crate's source tree: the core's, then each leaf's under `rust/`."""
+    return [ROOT / "rust" / "src", *sorted(lib.parent for lib in (ROOT / "rust").glob("*/src/lib.rs"))]
+
+
+def crate_name(src: pathlib.Path) -> str:
+    return "yggdryl" if src.parent.name == "rust" else f"yggdryl_{src.parent.name}"
+
+
 def block() -> str:
     owners = []
     for path in sorted(SRC.rglob("*.rs")):
@@ -90,12 +99,13 @@ def block() -> str:
             body.append(f"    {cfg}")
         body.append(f"    pub use crate::{crate_path}::internals as {alias};")
 
+    tests = SRC.parent.relative_to(ROOT).as_posix() + "/tests/"
     return (
         START
         + "/// What the test suite pins and a caller cannot reach.\n"
         + "///\n"
-        + "/// Every test lives in `rust/tests/` and reaches the crate through\n"
-        + "/// `yggdryl::`. The handful that pin something no caller can name reach it\n"
+        + f"/// Every test lives in `{tests}` and reaches the crate through\n"
+        + f"/// `{crate_name(SRC)}::`. The handful that pin something no caller can name reach it\n"
         + "/// here instead, under a feature no published build turns on. This is not\n"
         + "/// API: it carries no stability promise, and an item is `pub` only because\n"
         + "/// its own module is unreachable without the feature.\n"
@@ -109,30 +119,32 @@ def block() -> str:
 
 
 def main() -> int:
-    text = LIB.read_text(encoding="utf-8")
-    generated = block()
-    if START in text:
-        start = text.index(START)
-        end = text.index(END, start) + len(END)
-        current = text[start:end]
-        updated = text[:start] + generated + text[end:]
-    else:
-        anchor = "\n#[cfg(test)]\nmod tests {"
-        if anchor not in text:
-            print("lib.rs: no anchor to place the generated block before", file=sys.stderr)
-            return 1
-        current = ""
-        updated = text.replace(anchor, "\n" + generated + anchor)
-
+    global SRC, LIB
+    stale = []
+    for src in crates():
+        SRC, LIB = src, src / "lib.rs"
+        text = LIB.read_text(encoding="utf-8")
+        generated = block()
+        if START in text:
+            start = text.index(START)
+            end = text.index(END, start) + len(END)
+            current = text[start:end]
+            updated = text[:start] + generated + text[end:]
+        else:
+            current = ""
+            updated = text.rstrip("\n") + "\n\n" + generated
+        if "--check" in sys.argv:
+            if current != generated:
+                stale.append(crate_name(src))
+            continue
+        if updated != text:
+            LIB.write_text(updated, encoding="utf-8")
+        print(f"{LIB.relative_to(ROOT)}: internals re-exports {generated.count('pub use')} module(s)")
     if "--check" in sys.argv:
-        if current != generated:
-            print("yggdryl::internals is stale; run scripts/generate_internals.py", file=sys.stderr)
+        if stale:
+            print(f"internals stale in {', '.join(stale)}; run scripts/generate_internals.py", file=sys.stderr)
             return 1
-        print("yggdryl::internals is current")
-        return 0
-
-    LIB.write_text(updated, encoding="utf-8")
-    print(f"lib.rs: internals re-exports {generated.count('pub use')} module(s)")
+        print("internals are current")
     return 0
 
 

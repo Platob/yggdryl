@@ -133,7 +133,7 @@ impl<'a> Record<'a> {
         self.message
     }
 
-    /// The Rust target the record was logged under - `yggdryl::fix::build` -
+    /// The Rust target the record was logged under - `yggdryl_fix::build` -
     /// or the logger's name for a record logged on a [`Logger`](super::Logger).
     pub const fn target(&self) -> &'a str {
         self.target

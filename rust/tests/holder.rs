@@ -6,6 +6,8 @@ mod counting;
 #[path = "support/server.rs"]
 mod server;
 
+#[path = "holder/backend.rs"]
+mod backend;
 #[path = "holder/buffer.rs"]
 mod buffer;
 #[path = "holder/buffered/mod_.rs"]

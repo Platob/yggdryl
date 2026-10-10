@@ -33,15 +33,15 @@ MTIME = datetime.datetime(2026, 8, 14, 12, 34, 56, 789_000, tzinfo=datetime.time
 # graph element states, then the event's nine - the same fifteen a FIX row
 # parsed out of the line opens with.
 EVENT_COLUMNS = [
-    "curruuid",
+    "uuid",
     "crossuuid",
     "crosscode",
-    "currhashcode",
+    "hashcode",
     "crosshashcode",
     "srcuuids",
-    "currunix",
+    "transunix",
     "creaunix",
-    "recdunix",
+    "sendunix",
     "exprunix",
     "prevunix",
     "snapunix",
@@ -185,14 +185,14 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
     # names it under `crosscode` rather than in a column of its own.
     assert reader.schema.field("crosscode").type == pa.string()
     assert reader.schema.field("seqnum").type == pa.uint64()
-    assert reader.schema.field("currunix").type == pa.timestamp("ns", "UTC")
+    assert reader.schema.field("transunix").type == pa.timestamp("ns", "UTC")
     assert reader.schema.field("body").type == pa.string()
     assert reader.schema.field("level").type == pa.string()
     assert reader.schema.field("id").type == pa.int64()
 
     table = reader.read_all()
     assert table.column("seqnum").to_pylist() == [10, 11, 12]
-    assert table.column("currunix").to_pylist() == [MTIME, MTIME, MTIME]
+    assert table.column("transunix").to_pylist() == [MTIME, MTIME, MTIME]
     # The body is the line past its row header; the edges are what stripping
     # removes, and the header is what the reader took off.
     assert table.column("body").to_pylist() == [" first", " second", "plain"]
@@ -211,18 +211,18 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
     # columns beside them.
     def event(row: int, seqnum: int) -> dict[str, object]:
         # A record spells an identity as text, where the table holds a UUID.
-        identity = str(table.column("curruuid")[row].as_py())
+        identity = str(table.column("uuid")[row].as_py())
         return {
-            "currunix": MTIME,
+            "transunix": MTIME,
             "creaunix": MTIME,
-            "recdunix": None,
+            "sendunix": None,
             "exprunix": None,
             "prevunix": None if row == 0 else MTIME,
             "snapunix": None,
-            "curruuid": identity,
+            "uuid": identity,
             "crossuuid": str(table.column("crossuuid")[row].as_py()),
             "crosscode": table.column("crosscode")[row].as_py(),
-            "currhashcode": table.column("currhashcode")[row].as_py(),
+            "hashcode": table.column("hashcode")[row].as_py(),
             "crosshashcode": table.column("crosshashcode")[row].as_py(),
             "prevuuid": None,
             "seqnum": seqnum,
@@ -358,14 +358,14 @@ def test_mtime_dates_each_record_from_the_handle_that_holds_it(
     # On by default, and the line's instant is where the event states it.
     reader = source.read_arrow_reader(options=options)
     assert reader.schema.names == EVENT_COLUMNS + ["body", "level", "id"]
-    assert reader.schema.field("currunix") == pa.field(
-        "currunix", pa.timestamp("ns", "UTC"), nullable=False
+    assert reader.schema.field("transunix") == pa.field(
+        "transunix", pa.timestamp("ns", "UTC"), nullable=False
     )
 
     # No capture is spelled `mtime`, so the handle's own modification time is
     # read once and dates every row it answers with.
-    assert reader.read_all().column("currunix").to_pylist() == [MTIME, MTIME]
-    assert [row["currunix"] for row in source.read_records(options=options)] == [
+    assert reader.read_all().column("transunix").to_pylist() == [MTIME, MTIME]
+    assert [row["transunix"] for row in source.read_records(options=options)] == [
         MTIME,
         MTIME,
     ]
@@ -376,7 +376,7 @@ def test_mtime_dates_each_record_from_the_handle_that_holds_it(
     table = buffered.read_arrow_reader(options=options).read_all()
     assert table.schema.names == EVENT_COLUMNS + ["body", "level", "id"]
     epoch = datetime.datetime.fromtimestamp(0, tz=datetime.timezone.utc)
-    assert table.column("currunix").to_pylist() == [epoch, epoch]
+    assert table.column("transunix").to_pylist() == [epoch, epoch]
     # It is still somewhere - in memory - and that location is the chain it
     # stands in.
     assert str(buffered.url).startswith("mem://")
@@ -403,9 +403,9 @@ def test_an_mtime_capture_owns_the_column_it_names(tmp_path: pathlib.Path) -> No
     # handle's own modification time.
     reader = source.read_arrow_reader(options=options)
     assert reader.schema.names == EVENT_COLUMNS + ["body"]
-    assert reader.schema.field("currunix").type == pa.timestamp("ns", "UTC")
+    assert reader.schema.field("transunix").type == pa.timestamp("ns", "UTC")
     table = reader.read_all()
-    assert table.column("currunix").to_pylist() == [captured, MTIME]
+    assert table.column("transunix").to_pylist() == [captured, MTIME]
     # The object's lines are one chain, created when its first line was dated.
     assert table.column("creaunix").to_pylist() == [captured, captured]
 
@@ -413,7 +413,7 @@ def test_an_mtime_capture_owns_the_column_it_names(tmp_path: pathlib.Path) -> No
     # there on: the earliest instant the read dated a line of the object by.
     reversed_source = handle(tmp_path, b"undated\n2026-08-14T09:30:15 dated\n", "reversed.log")
     table = reversed_source.read_arrow_reader(options=options).read_all()
-    assert table.column("currunix").to_pylist() == [MTIME, captured]
+    assert table.column("transunix").to_pylist() == [MTIME, captured]
     assert table.column("creaunix").to_pylist() == [MTIME, captured]
 
     # Off, the name is an ordinary capture again: it trails the body in a
@@ -463,7 +463,7 @@ def test_retained_text_options_parse_the_real_execution_row(
     )
     # No capture is spelled `mtime`, so the file's own modification time dates
     # the row.
-    assert row["currunix"] == MTIME
+    assert row["transunix"] == MTIME
 
 
 def test_a_comma_fraction_is_a_timestamp_column_and_not_a_string(
@@ -663,7 +663,7 @@ def test_folders_decode_each_leaf_and_restart_row_numbers(tmp_path: pathlib.Path
     rows = list(IOBase(root).read_records(options=options))
     assert [row["seqnum"] for row in rows] == [1, 1]
     # Each leaf answers with its own modification time.
-    assert [row["currunix"] for row in rows] == [MTIME, MTIME]
+    assert [row["transunix"] for row in rows] == [MTIME, MTIME]
     assert [row["body"] for row in rows] == [" from a", " from b"]
     assert [row["id"] for row in rows] == [1, 2]
     assert [pathlib.PurePosixPath(row["crosscode"]).name for row in rows] == [
@@ -729,10 +729,10 @@ def test_a_nanosecond_modification_time_reaches_a_record_floored(
     # The batch path keeps every nanosecond of it, which is why the count and
     # not the `datetime` is what proves it.
     table = source.read_arrow_reader(options=TextOptions()).read_all()
-    assert table.column("currunix").cast(pa.int64()).to_pylist() == [stored_stamp, stored_stamp]
+    assert table.column("transunix").cast(pa.int64()).to_pylist() == [stored_stamp, stored_stamp]
 
     # The record path hands back the microsecond `datetime` holds.
-    assert [row["currunix"] for row in source.read_records(options=TextOptions())] == [
+    assert [row["transunix"] for row in source.read_records(options=TextOptions())] == [
         MTIME,
         MTIME,
     ]
@@ -799,7 +799,7 @@ def test_a_lines_row_number_is_its_place_and_orders_its_identity(tmp_path: pathl
     options.start_rownum = 1
     lines = list(source.read_text_lines(options=options))
     assert [line.seqnum for line in lines] == [1, 2, 3]
-    identities = [line.curruuid for line in lines]
+    identities = [line.uuid for line in lines]
     assert identities == sorted(identities)
     assert len(set(identities)) == 3
-    assert len({line.currhashcode for line in lines}) == 1
+    assert len({line.hashcode for line in lines}) == 1

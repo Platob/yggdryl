@@ -43,8 +43,8 @@ const execution: ExecutionEvent = new graph.ExecutionEvent(2n, { crosscode: 'O-1
 const restored: OrderEvent = graph.OrderEvent.fromJSON(event.toJSON())
 
 // Every fact is typed as the addon answers it.
-const curruuid: string = event.curruuid
-const currunix: bigint = event.currunix
+const uuid: string = event.uuid
+const transunix: bigint = event.transunix
 const seqnum: number = event.seqnum
 const creaunix: bigint | null = event.creaunix
 const price: string | null = event.price
@@ -54,6 +54,7 @@ const partyids: Identifiers = event.partyids
 const securityids: Identifiers = event.securityids
 const bidpx: string | null = event.bidpx
 const bidccy: string | null = event.bidccy
+const instcode: string | null = event.instcode
 const isincode: string | null = event.isincode
 const fxrates: Record<string, string> = event.fxrates
 const marketdatakind: string = event.marketdatakind
@@ -171,8 +172,8 @@ void bare
 void fromRecord
 void undated
 void restored
-void curruuid
-void currunix
+void uuid
+void transunix
 void seqnum
 void creaunix
 void price
@@ -180,7 +181,7 @@ void side
 void identifiers
 void partyids
 void securityids
-void [bidpx, bidccy, isincode, fxrates, marketdatakind]
+void [bidpx, bidccy, instcode, isincode, fxrates, marketdatakind]
 void kind
 void followed
 void leaf

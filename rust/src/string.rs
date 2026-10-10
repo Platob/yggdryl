@@ -106,7 +106,7 @@ mod arrow {
     /// document, written whole. Which is which is the leaf's identifier's
     /// [`DataTypeId::arrow_extension_name`].
     pub(crate) const fn needs_extension(parameters: StringType) -> bool {
-        parameters.id().arrow_extension_name().is_some()
+        parameters.id().core_arrow_extension_name().is_some()
     }
 
     /// The Arrow storage one string datatype lays out.
@@ -307,7 +307,7 @@ pub(crate) mod casts {
                     budget,
                     |index| {
                         codes.is_valid(index).then(|| {
-                            crate::enums::read_enum_code($held.id(), i64::from(codes.value(index)))
+                            crate::enums::read_enum_code($held, i64::from(codes.value(index)))
                                 .and_then(|member| {
                                     read(Cell::Text(
                                         member.enum_name().expect("the leaf's own member"),
@@ -684,7 +684,7 @@ pub(crate) mod casts {
 // ASCII validity, which is all a *storage* layer needs. This is the rest of
 // it - what the six characters say - and it lives here rather than in any
 // protocol module because a CFI is a value, not a message: FIX's
-// `CFICode(461)`, an ISIN registry's classification and a lake column all
+// `CFICode(461)`, an instrument's classification and a lake column all
 // read the same six characters the same way, and a protocol that owned the
 // reading would be a second one.
 //
@@ -1438,7 +1438,7 @@ impl StringType {
     /// The canonical name of this leaf.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        self.id().as_str()
+        self.id().core_str()
     }
 
     /// The charset the stored bytes are written in.
@@ -2360,43 +2360,9 @@ impl StringEnum {
         "XZCE",
     ];
 
-    /// Every side of the market a text column may hold, sorted: the stored
-    /// four-letter codes of [`Side`](crate::Side)'s members, one per side
-    /// FIX's `Side(54)` code set names across every version, `UKNW` for a
-    /// side stated as none and `BOTH` for both sides at once.
-    ///
-    /// A `side` column stores its member's `int32` code; this listing is the
-    /// codes a `FIELD:enum` text column declares, never FIX's one-character
-    /// code: `BUYS` rather than `1`, `SSHT` rather than `5`, so a column
-    /// reads without a dictionary beside it and a 4.2 message and a newest
-    /// one agree about what a side is. A FIX code or the specification's
-    /// name reaches the member through
-    /// [`Side::from_spelling`](crate::Side::from_spelling).
-    pub const SIDES: &'static [&'static str] = &[
-        "ASDF", "BORR", "BOTH", "BUYM", "BUYS", "CROS", "CRSH", "CRSX", "LEND", "OPPO", "REDM",
-        "SELL", "SELP", "SELU", "SSEX", "SSHT", "SUBS", "UKNW", "UNDI",
-    ];
-
-    /// Which way a captured line moved.
-    ///
-    /// Two members and no third. A row whose line does not say which way it
-    /// moved has no direction, and the crate already spells "no answer" one
-    /// way: a member meaning *unknown* would be a second spelling of null,
-    /// two things to check at every read and the one a caller forgets.
-    pub const DIRECTIONS: &'static [&'static str] = &["RECV", "SENT"];
-
-    /// FIX's `TimeInForceCodeSet` as the shipped registry declares it, sorted.
-    ///
-    /// The wire values rather than the names, exactly as [`Self::SIDES`] is:
-    /// a code set's value is what a message carries, and the name is what a
-    /// dictionary translates it to. The member each stands for is the
-    /// [`TimeInForce`](crate::TimeInForce) enum's
-    /// ([`TimeInForce::from_fix`](crate::TimeInForce::from_fix)).
-    pub const TIMESINFORCE: &'static [&'static str] = &[
-        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C",
-    ];
-
-    /// The prebuilt vocabularies, by the logical name that spells them.
+    /// The core's own prebuilt vocabularies, by the logical name that spells
+    /// them; a crate above the core registers its own beside them through
+    /// [`Self::register_prebuilt`], and [`Self::prebuilt`] lists both.
     ///
     /// `exchange` and `mic` name one list because they name one thing: FIX
     /// calls the ISO 10383 code an `Exchange`, and ISO calls it a MIC.
@@ -2405,17 +2371,72 @@ impl StringEnum {
         ("country", Self::COUNTRIES),
         ("mic", Self::MICS),
         ("exchange", Self::MICS),
-        ("side", Self::SIDES),
-        ("timeinforce", Self::TIMESINFORCE),
     ];
+
+    /// Registers `values` as the listing the logical name `name` prebuilds,
+    /// for the crate `by`: once per name for the life of the process, read by
+    /// [`Self::prebuilt_values`], [`Self::from_logical_name`] and
+    /// [`Self::prebuilt`] after the core's own [`Self::PREBUILT`]. What a
+    /// crate claiming a kind registers for the text column that declares the
+    /// kind's codes - the market crate's `side` and `timeinforce`.
+    ///
+    /// ```
+    /// use yggdryl::StringEnum;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// // The core's own listings are claimed already.
+    /// assert!(StringEnum::register_prebuilt("ccy", &["USD"], "venue").is_err());
+    /// // A name folds as every logical name does, so it is stated folded.
+    /// assert!(StringEnum::register_prebuilt("Tick_Size", &["1"], "venue").is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Conflict`] naming the first claimant where `name`
+    /// prebuilds a listing already - the core's own or another crate's - and
+    /// [`Error::InvalidDataType`] where `name` is not in its folded spelling.
+    pub fn register_prebuilt(
+        name: &'static str,
+        values: &'static [&'static str],
+        by: &'static str,
+    ) -> Result<()> {
+        if parser::normalized(name) != name {
+            return Err(Error::InvalidDataType {
+                kind: "string enum",
+                reason: format_smolstr!(
+                    "expected a logical name in its folded spelling, got {name:?}"
+                ),
+            });
+        }
+        if Self::PREBUILT.iter().any(|(held, _)| *held == name) {
+            return Err(Error::Conflict {
+                expected: "prebuilt vocabulary",
+                actual: crate::plugin::CORE,
+                path: SmolStr::new(name),
+            });
+        }
+        PREBUILT_REGISTERED.claim(name, (name, values), by)
+    }
+
+    /// Every prebuilt vocabulary, by the logical name that spells it: the
+    /// core's own [`Self::PREBUILT`] in its order, then the ones crates
+    /// registered through [`Self::register_prebuilt`], by name.
+    #[must_use]
+    pub fn prebuilt() -> Vec<(&'static str, &'static [&'static str])> {
+        let mut lists = Self::PREBUILT.to_vec();
+        lists.extend(PREBUILT_REGISTERED.values());
+        lists
+    }
 
     /// Creates the enum a registered logical name prebuilds.
     ///
     /// The enum is named for the registration and holds one member per value
     /// of its constant, each named by [`StringEnum::member_name`] - which, for
     /// an ISO code, is the code itself. A registered name with no constant -
-    /// `language`, `monthyear`, `tenor` - answers an enum of no members,
-    /// because a listing is what it has to offer and it has none.
+    /// `isin`, `cfi`, `fisn` - answers an enum of no members, because a
+    /// listing is what it has to offer and it has none.
     ///
     /// ```
     /// use yggdryl::{StringEnum, DataType};
@@ -2438,7 +2459,7 @@ impl StringEnum {
     /// );
     ///
     /// // A name with no listing answers an enum of no members.
-    /// assert!(StringEnum::from_logical_name("tenor")?.is_empty());
+    /// assert!(StringEnum::from_logical_name("isin")?.is_empty());
     /// # Ok(())
     /// # }
     /// ```
@@ -2468,9 +2489,22 @@ impl StringEnum {
         Self::PREBUILT
             .iter()
             .find(|(registered, _)| *registered == folded)
-            .map_or(&[], |(_, values)| *values)
+            .map(|(_, values)| *values)
+            .or_else(|| {
+                PREBUILT_REGISTERED
+                    .get(folded.as_str())
+                    .map(|(_, values)| values)
+            })
+            .unwrap_or_default()
     }
 }
+
+/// The listings crates above the core registered through
+/// [`StringEnum::register_prebuilt`], each claimed once by its logical name.
+static PREBUILT_REGISTERED: crate::plugin::Register<
+    &'static str,
+    (&'static str, &'static [&'static str]),
+> = crate::plugin::Register::new("prebuilt vocabulary");
 
 /// The string value's characters, held compactly.
 ///

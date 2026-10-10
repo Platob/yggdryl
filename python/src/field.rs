@@ -10,6 +10,7 @@ use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyCapsule, PyDict, PyString};
 use yggdryl::{Field as CoreField, PythonKind as CorePythonKind, Scheme as CoreScheme};
+use yggdryl_fix::{FixField, FixFieldMut};
 
 use crate::datatype::{
     PyDataType, PyDataTypeIterator, PyStringEnum, arrow_scalar_to_pyarrow_type, core_arrow_scalar,
@@ -2327,7 +2328,10 @@ impl PyProtocolField {
     fn sources(&self, py: Python<'_>) -> PyResult<Vec<String>> {
         self.require_fix("sources")?;
         let field = self.borrow_field(py)?;
-        Ok(field.inner.as_fix().sources().map(str::to_owned).collect())
+        Ok(FixField::new(&field.inner)
+            .sources()
+            .map(str::to_owned)
+            .collect())
     }
 
     #[setter]
@@ -2338,9 +2342,7 @@ impl PyProtocolField {
             parsed.push(value?.extract::<String>()?);
         }
         let mut field = self.borrow_field_mut(sources.py())?;
-        field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut field.inner)
             .set_sources(parsed)
             .map_err(value_error)
     }
@@ -2351,9 +2353,7 @@ impl PyProtocolField {
     fn add_source(&self, py: Python<'_>, source: &str) -> PyResult<()> {
         self.require_fix("sources")?;
         let mut field = self.borrow_field_mut(py)?;
-        field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut field.inner)
             .add_source(source)
             .map_err(value_error)
     }
@@ -2363,7 +2363,7 @@ impl PyProtocolField {
     fn has_source(&self, py: Python<'_>, source: &str) -> PyResult<bool> {
         self.require_fix("sources")?;
         let field = self.borrow_field(py)?;
-        Ok(field.inner.as_fix().has_source(source))
+        Ok(FixField::new(&field.inner).has_source(source))
     }
 
     /// This field's identity, on the `fix` view.
@@ -2377,12 +2377,10 @@ impl PyProtocolField {
     fn id(&self, py: Python<'_>) -> PyResult<Option<i32>> {
         self.require_fix("id")?;
         let field = self.borrow_field(py)?;
-        Ok(field
-            .inner
-            .as_fix()
+        Ok(FixField::new(&field.inner)
             .id()
             .map_err(value_error)?
-            .map(yggdryl::FixId::digest))
+            .map(yggdryl_fix::FixId::digest))
     }
 
     /// The canonical FIX tag, on the `fix` view.
@@ -2397,7 +2395,7 @@ impl PyProtocolField {
     fn tag(&self, py: Python<'_>) -> PyResult<Option<i32>> {
         self.require_fix("tag")?;
         let field = self.borrow_field(py)?;
-        field.inner.as_fix().tag().map_err(value_error)
+        FixField::new(&field.inner).tag().map_err(value_error)
     }
 
     #[setter]
@@ -2405,9 +2403,7 @@ impl PyProtocolField {
         self.require_fix("tag")?;
         let value = tag.extract::<FixTag>()?;
         let mut field = self.borrow_field_mut(tag.py())?;
-        field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut field.inner)
             .set_tag(value.0)
             .map_err(value_error)
     }
@@ -2419,9 +2415,7 @@ impl PyProtocolField {
     #[getter]
     fn counter(&self, py: Python<'_>) -> PyResult<Option<i32>> {
         self.require_fix("counter")?;
-        self.borrow_field(py)?
-            .inner
-            .as_fix()
+        FixField::new(&self.borrow_field(py)?.inner)
             .counter()
             .map_err(value_error)
     }
@@ -2436,14 +2430,10 @@ impl PyProtocolField {
         };
         let mut field = self.borrow_field_mut(value.py())?;
         match tag {
-            Some(tag) => field
-                .inner
-                .as_fix_mut()
+            Some(tag) => FixFieldMut::new(&mut field.inner)
                 .set_counter(tag)
                 .map_err(value_error),
-            None => field
-                .inner
-                .as_fix_mut()
+            None => FixFieldMut::new(&mut field.inner)
                 .remove_counter()
                 .map(|_| ())
                 .map_err(value_error),
@@ -2453,10 +2443,7 @@ impl PyProtocolField {
     #[getter]
     fn component(&self, py: Python<'_>) -> PyResult<Option<String>> {
         self.require_fix("component")?;
-        Ok(self
-            .borrow_field(py)?
-            .inner
-            .as_fix()
+        Ok(FixField::new(&self.borrow_field(py)?.inner)
             .component()
             .map(str::to_owned))
     }
@@ -2467,13 +2454,11 @@ impl PyProtocolField {
         let text = value.extract::<Option<String>>()?;
         let mut field = self.borrow_field_mut(value.py())?;
         if let Some(text) = text {
-            field
-                .inner
-                .as_fix_mut()
+            FixFieldMut::new(&mut field.inner)
                 .set_component(&text)
                 .map_err(value_error)
         } else {
-            field.inner.as_fix_mut().remove_component();
+            FixFieldMut::new(&mut field.inner).remove_component();
             Ok(())
         }
     }
@@ -2481,10 +2466,7 @@ impl PyProtocolField {
     #[getter]
     fn field_ref(&self, py: Python<'_>) -> PyResult<Option<String>> {
         self.require_fix("field_ref")?;
-        Ok(self
-            .borrow_field(py)?
-            .inner
-            .as_fix()
+        Ok(FixField::new(&self.borrow_field(py)?.inner)
             .field_ref()
             .map(str::to_owned))
     }
@@ -2495,13 +2477,11 @@ impl PyProtocolField {
         let text = value.extract::<Option<String>>()?;
         let mut field = self.borrow_field_mut(value.py())?;
         if let Some(text) = text {
-            field
-                .inner
-                .as_fix_mut()
+            FixFieldMut::new(&mut field.inner)
                 .set_field_ref(&text)
                 .map_err(value_error)
         } else {
-            field.inner.as_fix_mut().remove_field_ref();
+            FixFieldMut::new(&mut field.inner).remove_field_ref();
             Ok(())
         }
     }
@@ -2509,10 +2489,7 @@ impl PyProtocolField {
     #[getter]
     fn group(&self, py: Python<'_>) -> PyResult<Option<String>> {
         self.require_fix("group")?;
-        Ok(self
-            .borrow_field(py)?
-            .inner
-            .as_fix()
+        Ok(FixField::new(&self.borrow_field(py)?.inner)
             .group()
             .map(str::to_owned))
     }
@@ -2523,13 +2500,11 @@ impl PyProtocolField {
         let text = value.extract::<Option<String>>()?;
         let mut field = self.borrow_field_mut(value.py())?;
         if let Some(text) = text {
-            field
-                .inner
-                .as_fix_mut()
+            FixFieldMut::new(&mut field.inner)
                 .set_group(&text)
                 .map_err(value_error)
         } else {
-            field.inner.as_fix_mut().remove_group();
+            FixFieldMut::new(&mut field.inner).remove_group();
             Ok(())
         }
     }
@@ -2537,10 +2512,7 @@ impl PyProtocolField {
     #[getter]
     fn msgtype(&self, py: Python<'_>) -> PyResult<Option<String>> {
         self.require_fix("msgtype")?;
-        Ok(self
-            .borrow_field(py)?
-            .inner
-            .as_fix()
+        Ok(FixField::new(&self.borrow_field(py)?.inner)
             .msgtype()
             .map(str::to_owned))
     }
@@ -2551,13 +2523,11 @@ impl PyProtocolField {
         let text = value.extract::<Option<String>>()?;
         let mut field = self.borrow_field_mut(value.py())?;
         if let Some(text) = text {
-            field
-                .inner
-                .as_fix_mut()
+            FixFieldMut::new(&mut field.inner)
                 .set_msgtype(&text)
                 .map_err(value_error)
         } else {
-            field.inner.as_fix_mut().remove_msgtype();
+            FixFieldMut::new(&mut field.inner).remove_msgtype();
             Ok(())
         }
     }
@@ -2565,10 +2535,7 @@ impl PyProtocolField {
     #[getter]
     fn msgcat(&self, py: Python<'_>) -> PyResult<Option<String>> {
         self.require_fix("msgcat")?;
-        Ok(self
-            .borrow_field(py)?
-            .inner
-            .as_fix()
+        Ok(FixField::new(&self.borrow_field(py)?.inner)
             .msgcat()
             .map(str::to_owned))
     }
@@ -2579,13 +2546,11 @@ impl PyProtocolField {
         let text = value.extract::<Option<String>>()?;
         let mut field = self.borrow_field_mut(value.py())?;
         if let Some(text) = text {
-            field
-                .inner
-                .as_fix_mut()
+            FixFieldMut::new(&mut field.inner)
                 .set_msgcat(&text)
                 .map_err(value_error)
         } else {
-            field.inner.as_fix_mut().remove_msgcat();
+            FixFieldMut::new(&mut field.inner).remove_msgcat();
             Ok(())
         }
     }
@@ -2600,7 +2565,7 @@ impl PyProtocolField {
     fn tags(&self, py: Python<'_>) -> PyResult<Vec<i32>> {
         self.require_fix("tags")?;
         let field = self.borrow_field(py)?;
-        field.inner.as_fix().tags().map_err(value_error)
+        FixField::new(&field.inner).tags().map_err(value_error)
     }
 
     #[setter]
@@ -2611,9 +2576,7 @@ impl PyProtocolField {
             parsed.push(value?.extract::<FixTag>()?.0);
         }
         let mut field = self.borrow_field_mut(tags.py())?;
-        field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut field.inner)
             .set_tags(&parsed)
             .map_err(value_error)
     }
@@ -2628,7 +2591,10 @@ impl PyProtocolField {
     fn names(&self, py: Python<'_>) -> PyResult<Vec<String>> {
         self.require_fix("names")?;
         let field = self.borrow_field(py)?;
-        Ok(field.inner.as_fix().names().map(str::to_owned).collect())
+        Ok(FixField::new(&field.inner)
+            .names()
+            .map(str::to_owned)
+            .collect())
     }
 
     #[setter]
@@ -2639,9 +2605,7 @@ impl PyProtocolField {
             parsed.push(value?.extract::<String>()?);
         }
         let mut field = self.borrow_field_mut(names.py())?;
-        field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut field.inner)
             .set_names(parsed)
             .map_err(value_error)
     }
@@ -2658,7 +2622,10 @@ impl PyProtocolField {
     fn parents(&self, py: Python<'_>) -> PyResult<Vec<String>> {
         self.require_fix("parents")?;
         let field = self.borrow_field(py)?;
-        Ok(field.inner.as_fix().parents().map(str::to_owned).collect())
+        Ok(FixField::new(&field.inner)
+            .parents()
+            .map(str::to_owned)
+            .collect())
     }
 
     #[setter]
@@ -2666,9 +2633,7 @@ impl PyProtocolField {
         self.require_fix("parents")?;
         let parsed = crate::enums::strings_from_iterable(parents, "parents")?;
         let mut field = self.borrow_field_mut(parents.py())?;
-        field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut field.inner)
             .set_parents(parsed)
             .map_err(value_error)
     }
@@ -2681,9 +2646,7 @@ impl PyProtocolField {
     fn identifiers(&self, py: Python<'_>) -> PyResult<Vec<String>> {
         self.require_fix("identifiers")?;
         let field = self.borrow_field(py)?;
-        Ok(field
-            .inner
-            .as_fix()
+        Ok(FixField::new(&field.inner)
             .identifiers()
             .map(str::to_owned)
             .collect())
@@ -2694,9 +2657,7 @@ impl PyProtocolField {
         self.require_fix("identifiers")?;
         let parsed = crate::enums::strings_from_iterable(identifiers, "identifiers")?;
         let mut field = self.borrow_field_mut(identifiers.py())?;
-        field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut field.inner)
             .set_identifiers(parsed)
             .map_err(value_error)
     }
@@ -2710,7 +2671,10 @@ impl PyProtocolField {
     fn nulls(&self, py: Python<'_>) -> PyResult<Vec<String>> {
         self.require_fix("nulls")?;
         let field = self.borrow_field(py)?;
-        Ok(field.inner.as_fix().nulls().map(str::to_owned).collect())
+        Ok(FixField::new(&field.inner)
+            .nulls()
+            .map(str::to_owned)
+            .collect())
     }
 
     #[setter]
@@ -2721,9 +2685,7 @@ impl PyProtocolField {
             parsed.push(value?.extract::<String>()?);
         }
         let mut field = self.borrow_field_mut(spellings.py())?;
-        field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut field.inner)
             .set_nulls(parsed)
             .map_err(value_error)
     }
@@ -2743,10 +2705,7 @@ impl PyProtocolField {
     #[getter]
     fn codeset(&self, py: Python<'_>) -> PyResult<Option<String>> {
         self.require_fix("codeset")?;
-        Ok(self
-            .borrow_field(py)?
-            .inner
-            .as_fix()
+        Ok(FixField::new(&self.borrow_field(py)?.inner)
             .codeset()
             .map(str::to_owned))
     }
@@ -2757,13 +2716,11 @@ impl PyProtocolField {
         let name = value.extract::<Option<String>>()?;
         let mut field = self.borrow_field_mut(value.py())?;
         if let Some(name) = name {
-            field
-                .inner
-                .as_fix_mut()
+            FixFieldMut::new(&mut field.inner)
                 .set_codeset(&name)
                 .map_err(value_error)
         } else {
-            field.inner.as_fix_mut().remove_codeset();
+            FixFieldMut::new(&mut field.inner).remove_codeset();
             Ok(())
         }
     }
@@ -2778,8 +2735,8 @@ impl PyProtocolField {
         self.require_fix("directions")?;
         let field = self.borrow_field(py)?;
         let mut records = Vec::new();
-        for entry in field.inner.as_fix().directions() {
-            let rule = yggdryl::FixDirection::from(entry.map_err(value_error)?);
+        for entry in FixField::new(&field.inner).directions() {
+            let rule = yggdryl_fix::FixDirection::from(entry.map_err(value_error)?);
             let record = PyDict::new(py);
             record.set_item("code", rule.code())?;
             let patterns: Vec<&str> = rule.patterns().iter().map(AsRef::as_ref).collect();
@@ -2800,12 +2757,10 @@ impl PyProtocolField {
             for pattern in item.get_item("patterns")?.try_iter()? {
                 patterns.push(pattern?.extract::<String>()?);
             }
-            rules.push(yggdryl::FixDirection::new(code, patterns));
+            rules.push(yggdryl_fix::FixDirection::new(code, patterns));
         }
         let mut field = self.borrow_field_mut(directions.py())?;
-        field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut field.inner)
             .set_directions(&rules)
             .map_err(value_error)
     }
@@ -2826,7 +2781,7 @@ impl PyProtocolField {
         self.require_fix("idmap")?;
         let field = self.borrow_field(py)?;
         let mut records = Vec::new();
-        for source in field.inner.as_fix().idmap() {
+        for source in FixField::new(&field.inner).idmap() {
             let source = source.map_err(value_error)?;
             let record = PyDict::new(py);
             record.set_item("map", source.map().as_str())?;
@@ -2847,12 +2802,12 @@ impl PyProtocolField {
             let map = item
                 .get_item("map")?
                 .extract::<String>()?
-                .parse::<yggdryl::FixIdMapKind>()
+                .parse::<yggdryl_fix::FixIdMapKind>()
                 .map_err(value_error)?;
             let key = item
                 .get_item("key")?
                 .extract::<String>()?
-                .parse::<yggdryl::IdType>()
+                .parse::<yggdryl_market::IdType>()
                 .map_err(value_error)?;
             let optional = |name: &str| -> PyResult<Option<Bound<'_, PyAny>>> {
                 match item.get_item(name) {
@@ -2870,16 +2825,14 @@ impl PyProtocolField {
                 .map(|value| value.extract::<bool>())
                 .transpose()?
                 .unwrap_or(false);
-            let mut source = yggdryl::FixIdSource::new(map, key).with_follow(follow);
+            let mut source = yggdryl_fix::FixIdSource::new(map, key).with_follow(follow);
             if let Some(role) = optional("role")? {
                 source = source.with_role(role.extract::<String>()?);
             }
             held.push(source);
         }
         let mut field = self.borrow_field_mut(sources.py())?;
-        field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut field.inner)
             .set_idmap(&held)
             .map_err(value_error)
     }
@@ -2895,9 +2848,7 @@ impl PyProtocolField {
     fn marketdatatypes(&self, py: Python<'_>) -> PyResult<Vec<(String, Py<PyAny>)>> {
         self.require_fix("marketdatatypes")?;
         let field = self.borrow_field(py)?;
-        field
-            .inner
-            .as_fix()
+        FixField::new(&field.inner)
             .marketdatatypes()
             .map(|(wire, held)| Ok((wire.to_owned(), crate::graph::member(py, held)?)))
             .collect()
@@ -2910,20 +2861,20 @@ impl PyProtocolField {
         for item in types.try_iter()? {
             let (wire, given) = item?.extract::<(String, Bound<'_, PyAny>)>()?;
             let member = match given.extract::<u16>() {
-                Ok(code) => yggdryl::MarketDataType::from_code(code),
-                Err(_) => yggdryl::MarketDataType::from_spelling(&given.extract::<String>()?),
+                Ok(code) => yggdryl_market::MarketDataType::from_code(code),
+                Err(_) => {
+                    yggdryl_market::MarketDataType::from_spelling(&given.extract::<String>()?)
+                }
             }
             .ok_or_else(|| value_error(format!("{given} names no MarketDataType")))?;
             held.push((wire, member));
         }
-        let borrowed: Vec<(&str, yggdryl::MarketDataType)> = held
+        let borrowed: Vec<(&str, yggdryl_market::MarketDataType)> = held
             .iter()
             .map(|(wire, member)| (wire.as_str(), *member))
             .collect();
         let mut field = self.borrow_field_mut(types.py())?;
-        field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut field.inner)
             .set_marketdatatypes(&borrowed)
             .map_err(value_error)
     }
@@ -2939,9 +2890,7 @@ impl PyProtocolField {
     fn timeinforces(&self, py: Python<'_>) -> PyResult<Vec<(String, Py<PyAny>)>> {
         self.require_fix("timeinforces")?;
         let field = self.borrow_field(py)?;
-        field
-            .inner
-            .as_fix()
+        FixField::new(&field.inner)
             .timeinforces()
             .map(|(wire, held)| Ok((wire.to_owned(), crate::graph::member(py, held)?)))
             .collect()
@@ -2954,20 +2903,18 @@ impl PyProtocolField {
         for item in types.try_iter()? {
             let (wire, given) = item?.extract::<(String, Bound<'_, PyAny>)>()?;
             let member = match given.extract::<u8>() {
-                Ok(code) => yggdryl::TimeInForce::from_code(code),
-                Err(_) => yggdryl::TimeInForce::from_spelling(&given.extract::<String>()?),
+                Ok(code) => yggdryl_market::TimeInForce::from_code(code),
+                Err(_) => yggdryl_market::TimeInForce::from_spelling(&given.extract::<String>()?),
             }
             .ok_or_else(|| value_error(format!("{given} names no TimeInForce")))?;
             held.push((wire, member));
         }
-        let borrowed: Vec<(&str, yggdryl::TimeInForce)> = held
+        let borrowed: Vec<(&str, yggdryl_market::TimeInForce)> = held
             .iter()
             .map(|(wire, member)| (wire.as_str(), *member))
             .collect();
         let mut field = self.borrow_field_mut(types.py())?;
-        field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut field.inner)
             .set_timeinforces(&borrowed)
             .map_err(value_error)
     }
@@ -2977,7 +2924,7 @@ impl PyProtocolField {
     fn description(&self, py: Python<'_>) -> PyResult<Option<String>> {
         self.require_fix("description")?;
         let field = self.borrow_field(py)?;
-        Ok(field.inner.as_fix().description().map(str::to_owned))
+        Ok(FixField::new(&field.inner).description().map(str::to_owned))
     }
 
     #[setter]
@@ -2985,9 +2932,7 @@ impl PyProtocolField {
         self.require_fix("description")?;
         let text = value.extract::<String>()?;
         let mut field = self.borrow_field_mut(value.py())?;
-        field
-            .inner
-            .as_fix_mut()
+        FixFieldMut::new(&mut field.inner)
             .set_description(text)
             .map_err(value_error)
     }

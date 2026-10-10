@@ -177,8 +177,10 @@ impl From<Url> for Location {
 /// written. The ones a holder reads - `media_type`, `codec`, an object
 /// store's endpoint and credentials - open the location; the ones a write
 /// reads - `safe`, `batch_row_size`, `commit_batch_num`, `max_row_size`,
-/// `row_offset` and their byte counterparts - shape the read or write. Anything else travels
-/// along unread, the way a catalog's properties do.
+/// `row_offset` and their byte counterparts - shape the read or write, and
+/// `cache_ttl`, a whole number of milliseconds (`0`, the default, realtime),
+/// says how long a closed handle serves the metadata it read. Anything else
+/// travels along unread, the way a catalog's properties do.
 #[derive(
     Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, ::serde::Serialize, ::serde::Deserialize,
 )]
@@ -2257,6 +2259,11 @@ mod arrow {
             if let Some(bytes) = self.knob_count("max_byte_size")? {
                 options.set_max_byte_size(Some(bytes));
             }
+            // Milliseconds through the one integer grammar, as every count
+            // here: a duration spelling would read a bare number as seconds.
+            if let Some(millis) = self.knob_count::<u64>("cache_ttl")? {
+                options.set_cache_ttl(crate::media::CacheTtl::from(millis));
+            }
             Ok(options)
         }
     }
@@ -2365,11 +2372,7 @@ mod arrow {
                     }
                     // The pushed plan declares no field, so a registered
                     // table's own declaration survives it, as on a plain read.
-                    let declared = options.declared().cloned();
                     options.set_plan(pushed)?;
-                    if declared.is_some() {
-                        options.set_declared(declared);
-                    }
                     let rows = holder
                         .read_arrow_reader(&options)
                         .map_err(|error| super::unreachable(target, error))?;
@@ -2413,12 +2416,7 @@ mod arrow {
                     // A registered table's own options declare its field; a
                     // pushed plan declaring none leaves that declaration
                     // standing, so the table's schema survives the read.
-                    let declared = options.declared().cloned();
-                    let declares = pushed.field()?.is_some();
                     options.set_plan(pushed)?;
-                    if !declares && declared.is_some() {
-                        options.set_declared(declared);
-                    }
                     let rows = holder
                         .read_arrow_reader(&options)
                         .map_err(|error| super::unreachable(target, error))?;

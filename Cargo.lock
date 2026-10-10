@@ -4353,7 +4353,7 @@ dependencies = [
 
 [[package]]
 name = "yggdryl"
-version = "0.1.21"
+version = "0.1.22"
 dependencies = [
  "arrow-array 59.2.0",
  "arrow-buffer 59.2.0",
@@ -4412,17 +4412,62 @@ dependencies = [
 
 [[package]]
 name = "yggdryl-cli"
-version = "0.1.21"
+version = "0.1.22"
 dependencies = [
+ "arrow-array 59.2.0",
+ "arrow-schema 59.2.0",
  "clap",
  "crossterm",
+ "log",
+ "parquet 59.2.0",
+ "serde_json",
  "shlex",
+ "smol_str",
+ "yggdryl",
+ "yggdryl-fix",
+ "yggdryl-market",
+]
+
+[[package]]
+name = "yggdryl-fix"
+version = "0.1.22"
+dependencies = [
+ "arrow-array 59.2.0",
+ "arrow-schema 59.2.0",
+ "criterion",
+ "log",
+ "memchr",
+ "quick-xml 0.41.0",
+ "regex",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "smol_str",
+ "yggdryl",
+ "yggdryl-market",
+]
+
+[[package]]
+name = "yggdryl-market"
+version = "0.1.22"
+dependencies = [
+ "arrow-array 59.2.0",
+ "arrow-buffer 59.2.0",
+ "arrow-schema 59.2.0",
+ "arrow-select 59.2.0",
+ "bytes",
+ "criterion",
+ "half",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "smol_str",
  "yggdryl",
 ]
 
 [[package]]
 name = "yggdryl-node"
-version = "0.1.21"
+version = "0.1.22"
 dependencies = [
  "arrow-array 59.2.0",
  "arrow-ipc 59.2.0",
@@ -4434,11 +4479,13 @@ dependencies = [
  "napi-derive",
  "serde_json",
  "yggdryl",
+ "yggdryl-fix",
+ "yggdryl-market",
 ]
 
 [[package]]
 name = "yggdryl-python"
-version = "0.1.21"
+version = "0.1.22"
 dependencies = [
  "arrow-array 59.2.0",
  "arrow-data 59.2.0",
@@ -4449,6 +4496,8 @@ dependencies = [
  "pyo3",
  "serde_json",
  "yggdryl",
+ "yggdryl-fix",
+ "yggdryl-market",
 ]
 
 [[package]]

@@ -3,7 +3,7 @@
 
 use pyo3::prelude::*;
 
-use yggdryl::graph::{EventIterator as CoreEventIterator, MarketData as CoreMarketData};
+use yggdryl_market::graph::{EventIterator as CoreEventIterator, MarketData as CoreMarketData};
 
 use super::market_data::{PyMarketData, market_data_of};
 use crate::{Failed, Pulled};
@@ -25,8 +25,8 @@ impl PyEventIterator {
     /// own order already; where they do not, the walk collects and sorts
     /// them first. `snapshot_ns`, given, is the grid step in nanoseconds the
     /// walk also yields living-identity snapshots at: each the live event as
-    /// of its tick, dated at it - `currunix` and `snapunix` both, so its
-    /// `curruuid` is the identity that tick derives - with the live event's
+    /// of its tick, dated at it - `transunix` and `snapunix` both, so its
+    /// `uuid` is the identity that tick derives - with the live event's
     /// content, `seqnum`, `prevuuid` and `crossuuid`, advancing no chain.
     #[new]
     #[pyo3(signature = (items, sorted=true, snapshot_ns=None))]

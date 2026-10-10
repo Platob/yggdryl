@@ -670,6 +670,48 @@ def test_scheme_compatibility_is_native_recursive_and_typed() -> None:
         source.into_scheme_compat("parquet")  # type: ignore[arg-type]
 
 
+# Mirrors rust/tests/root/compatibility.rs (doris_*): Apache Doris's Iceberg
+# catalog maps no `timestamp_ns` or `timestamptz_ns`, so a nanosecond instant
+# is laid out at microseconds under its own zone, and a type its mapping
+# table names nothing for is refused by path.
+def test_doris_lays_a_nanosecond_instant_out_at_microseconds_and_refuses_what_it_maps_nothing_for() -> None:
+    from yggdryl import enums
+
+    assert enums.COMPATIBILITY_SCHEMES[-1] == "doris"
+    for zone in ("UTC", "America/New_York"):
+        assert DataType(f"datetime64(ns, {zone})").into_scheme_compat("doris") == DataType(
+            f"datetime64(us, {zone})"
+        )
+        # Iceberg keeps the nanoseconds: the rewrite is Doris's alone.
+        assert DataType(f"datetime64(ns, {zone})").into_scheme_compat("iceberg") == DataType(
+            f"datetime64(ns, {zone})"
+        )
+    assert DataType("datetime64(ns)").into_scheme_compat("doris") == DataType("datetime64(us)")
+
+    source = Field(
+        "root",
+        DataType.from_fields(
+            (
+                Field("at", "datetime64(ns, UTC)", nullable=False),
+                Field("fills", "serie<datetime64(ns, UTC)>", nullable=True),
+                Field("small", "uint8", nullable=False),
+            )
+        ),
+        nullable=False,
+        metadata={"owner": "tests"},
+    )
+    doris = source.into_scheme_compat("doris")
+    assert doris.name == "root"
+    assert dict(doris.metadata.items()) == {"owner": "tests"}
+    assert doris.dtype["at"].dtype == DataType("datetime64(us, UTC)")
+    assert doris.dtype["fills"].dtype == DataType("serie<datetime64(us, UTC)>")
+    assert doris.dtype["small"].dtype == DataType("int32")
+
+    for refused in ("time64(us)", "null", "variant"):
+        with pytest.raises(ValueError, match=r"\$\.created.*Doris's Iceberg catalog maps no"):
+            DataType.from_fields((Field("created", refused),)).into_scheme_compat("doris")
+
+
 def test_an_unsigned_column_stating_bits_is_exchanged_as_the_signed_integer_of_its_width() -> None:
     digest = Field("digest", "uint64", nullable=False)
     digest.field_properties.representation = "bits"

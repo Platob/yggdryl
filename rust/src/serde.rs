@@ -1,6 +1,10 @@
 //! Stable structural serialization and deserialization.
 
-use serde::ser::SerializeSeq;
+use std::collections::BTreeMap;
+
+use serde::de::IgnoredAny;
+use serde::de::value::MapDeserializer;
+use serde::ser::{SerializeSeq, SerializeStruct};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
@@ -584,18 +588,7 @@ enum DataTypeRef<'a> {
     Sedol {},
     Bbg {},
     Figi {},
-    Side {},
     State {},
-    // One word on the wire, so it does not take the snake_case the rest
-    // of this enum derives.
-    #[serde(rename = "marketdatakind")]
-    MarketDataKind {},
-    #[serde(rename = "marketdatatype")]
-    MarketDataType {},
-    #[serde(rename = "timeinforce")]
-    TimeInForce {},
-    #[serde(rename = "pluginside")]
-    PluginSide {},
     Unit {},
     Ric {},
     Forex {},
@@ -605,6 +598,8 @@ enum DataTypeRef<'a> {
     Dti {},
     Fisn {},
     Decimal {},
+    // One word on the wire, so it does not take the snake_case the rest
+    // of this enum derives.
     #[serde(rename = "bigdecimal")]
     BigDecimal {},
     Uuid {},
@@ -612,7 +607,7 @@ enum DataTypeRef<'a> {
     Url {},
     Urn {},
     Timezone {},
-    // One word on the wire, as `timeinforce` is.
+    // One word on the wire, as `bigdecimal` is.
     #[serde(rename = "mimetype")]
     MimeType {},
     #[serde(rename = "mediatype")]
@@ -676,6 +671,26 @@ enum DataTypeRef<'a> {
         crs: &'a str,
         algorithm: crate::EdgeAlgorithm,
     },
+    // A registered kind's tag is its own name, read off its descriptor at
+    // run time rather than derived, and untagged so the derive writes
+    // nothing around the document `MarketTag` writes.
+    #[serde(untagged)]
+    Market(MarketTag),
+}
+
+/// The document of a registered kind: its name under `type` and nothing
+/// else, since a kind states no parameters.
+struct MarketTag(crate::MarketType);
+
+impl Serialize for MarketTag {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut document = serializer.serialize_struct("DataType", 1)?;
+        document.serialize_field(TYPE_KEY, self.0.name())?;
+        document.end()
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -756,12 +771,8 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Bbg => Self::Bbg {},
             D::Ric => Self::Ric {},
             D::Figi => Self::Figi {},
-            D::Side => Self::Side {},
             D::State => Self::State {},
-            D::MarketDataKind => Self::MarketDataKind {},
-            D::MarketDataType => Self::MarketDataType {},
-            D::TimeInForce => Self::TimeInForce {},
-            D::PluginSide => Self::PluginSide {},
+            D::Market(kind) => Self::Market(MarketTag(*kind)),
             D::Unit => Self::Unit {},
             D::Forex => Self::Forex {},
             D::Lei => Self::Lei {},
@@ -910,17 +921,8 @@ enum DataTypeWire {
     Sedol {},
     Bbg {},
     Figi {},
-    Side {},
     #[serde(rename = "state")]
     State {},
-    #[serde(rename = "marketdatakind")]
-    MarketDataKind {},
-    #[serde(rename = "marketdatatype")]
-    MarketDataType {},
-    #[serde(rename = "timeinforce")]
-    TimeInForce {},
-    #[serde(rename = "pluginside")]
-    PluginSide {},
     Unit {},
     Ric {},
     Forex {},
@@ -930,6 +932,8 @@ enum DataTypeWire {
     Dti {},
     Fisn {},
     Decimal {},
+    // One word on the wire, so it does not take the snake_case the rest
+    // of this enum derives.
     #[serde(rename = "bigdecimal")]
     BigDecimal {},
     Uuid {},
@@ -937,7 +941,7 @@ enum DataTypeWire {
     Url {},
     Urn {},
     Timezone {},
-    // One word on the wire, as `timeinforce` is.
+    // One word on the wire, as `bigdecimal` is.
     #[serde(rename = "mimetype")]
     MimeType {},
     #[serde(rename = "mediatype")]
@@ -1064,12 +1068,7 @@ impl TryFrom<DataTypeWire> for DataType {
             DataTypeWire::Bbg {} => Self::Bbg,
             DataTypeWire::Ric {} => Self::Ric,
             DataTypeWire::Figi {} => Self::Figi,
-            DataTypeWire::Side {} => Self::Side,
             DataTypeWire::State {} => Self::State,
-            DataTypeWire::MarketDataKind {} => Self::MarketDataKind,
-            DataTypeWire::MarketDataType {} => Self::MarketDataType,
-            DataTypeWire::TimeInForce {} => Self::TimeInForce,
-            DataTypeWire::PluginSide {} => Self::PluginSide,
             DataTypeWire::Unit {} => Self::Unit,
             DataTypeWire::Forex {} => Self::Forex,
             DataTypeWire::Lei {} => Self::Lei,
@@ -1134,11 +1133,112 @@ impl<'de> Deserialize<'de> for DataType {
     where
         D: Deserializer<'de>,
     {
-        let value = Self::try_from(DataTypeWire::deserialize(deserializer)?)
-            .map_err(::serde::de::Error::custom)?;
+        let DataTypeDocument::Read(read) = DataTypeDocument::deserialize(deserializer)?;
+        let value = read.map_err(::serde::de::Error::custom)?;
         value.validate().map_err(::serde::de::Error::custom)?;
         Ok(value)
     }
+}
+
+/// One datatype document, read as a core datatype and, where no core
+/// datatype reads its tag, as a registered kind's.
+///
+/// The untagged choice is what holds the document so it can be read twice:
+/// it hands its one variant a deserializer over what it holds, and that
+/// deserializer is `Clone` - which `read_document` states as a bound, so a
+/// serde that stopped handing one over fails to compile here rather than
+/// misread. The variant never fails, because an untagged choice trades a
+/// refusal for its own message: the reading's refusal travels as text and
+/// is raised again as the reader's own error, word for word.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum DataTypeDocument {
+    #[serde(deserialize_with = "read_document")]
+    Read(std::result::Result<DataType, String>),
+}
+
+/// The datatype one held document states, or the refusal of it: the core's
+/// own refusal, unless the document's tag is one no core datatype reads.
+// `deserialize_with` calls it for a `Result`, and the refusal it answers is
+// the inner one.
+#[allow(clippy::unnecessary_wraps)]
+fn read_document<'de, D>(
+    document: D,
+) -> std::result::Result<std::result::Result<DataType, String>, D::Error>
+where
+    D: Deserializer<'de> + Clone,
+{
+    Ok(match DataTypeWire::deserialize(document.clone()) {
+        Ok(wire) => DataType::try_from(wire).map_err(|error| error.to_string()),
+        Err(refused) => registered_document(document).unwrap_or_else(|| Err(refused.to_string())),
+    })
+}
+
+/// A document's `type` and the names of whatever else it states beside it.
+#[derive(Deserialize)]
+struct RegisteredTag {
+    #[serde(rename = "type")]
+    tag: SmolStr,
+    #[serde(flatten)]
+    rest: BTreeMap<SmolStr, IgnoredAny>,
+}
+
+/// The registered kind a document's tag names, or the refusal of the
+/// document; `None` where the tag is a core datatype's or no text at all,
+/// whose own refusal by the core stands.
+///
+/// A kind states no parameters, so one beside its tag is refused as an
+/// unknown field; a tag neither a core datatype nor a kind reads is refused
+/// naming the registration it lacks.
+fn registered_document<'de, D>(document: D) -> Option<std::result::Result<DataType, String>>
+where
+    D: Deserializer<'de>,
+{
+    let RegisteredTag { tag, rest } = RegisteredTag::deserialize(document).ok()?;
+    if let Some(kind) = crate::market::kind_named(&tag) {
+        return Some(match rest.keys().next() {
+            Some(name) => {
+                Err(<D::Error as ::serde::de::Error>::unknown_field(name, &[TYPE_KEY]).to_string())
+            }
+            None => Ok(kind.dtype()),
+        });
+    }
+    (!core_tag::<DataTypeWire>(&tag))
+        .then(|| Err(crate::market::unregistered(format_args!("{tag}")).to_string()))
+}
+
+/// Whether the derived, internally tagged wire `T` reads `tag`, asked of
+/// the wire itself so no second list of its tags exists to drift from it:
+/// a document holding the tag alone fails as an unknown variant exactly
+/// where the wire names none, and the probe keeps that one fact, building
+/// no message.
+pub(crate) fn core_tag<T: for<'de> Deserialize<'de>>(tag: &str) -> bool {
+    /// The one fact a probe keeps: whether the tag was unknown.
+    #[derive(Debug)]
+    struct Probe {
+        unknown: bool,
+    }
+
+    impl std::fmt::Display for Probe {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a probe of a wire's tags")
+        }
+    }
+
+    impl std::error::Error for Probe {}
+
+    impl ::serde::de::Error for Probe {
+        fn custom<M: std::fmt::Display>(_: M) -> Self {
+            Self { unknown: false }
+        }
+
+        fn unknown_variant(_: &str, _: &'static [&'static str]) -> Self {
+            Self { unknown: true }
+        }
+    }
+
+    let alone = MapDeserializer::<_, Probe>::new(std::iter::once((TYPE_KEY, tag)));
+    !matches!(T::deserialize(alone), Err(Probe { unknown: true }))
 }
 
 // ---------------------------------------------------------------------------
@@ -1213,12 +1313,9 @@ impl DataType {
             D::Bbg => tag("bbg"),
             D::Ric => tag("ric"),
             D::Figi => tag("figi"),
-            D::Side => tag("side"),
             D::State => tag("state"),
-            D::MarketDataKind => tag("marketdatakind"),
-            D::MarketDataType => tag("marketdatatype"),
-            D::TimeInForce => tag("timeinforce"),
-            D::PluginSide => tag("pluginside"),
+            // A registered kind states no parameters: its name is the tag.
+            D::Market(kind) => tag(kind.name()),
             D::Unit => tag("unit"),
             D::Forex => tag("forex"),
             D::Lei => tag("lei"),
@@ -1420,9 +1517,9 @@ impl DataType {
     /// # Errors
     ///
     /// Returns an error naming the path and the expectation when the value is
-    /// not a datatype mapping, its `type` names nothing this model holds, a
-    /// required parameter is missing or wrongly typed, or the resulting
-    /// datatype does not validate.
+    /// not a datatype mapping, its `type` names neither a core datatype nor
+    /// a registered kind, a required parameter is missing or wrongly typed,
+    /// or the resulting datatype does not validate.
     #[allow(clippy::too_many_lines)]
     pub fn from_value(value: Scalar) -> Result<Self> {
         if value.as_mapping().is_none() && value.as_struct().is_none() {
@@ -1490,12 +1587,7 @@ impl DataType {
             "bbg" => Self::Bbg,
             "ric" => Self::Ric,
             "figi" => Self::Figi,
-            "side" => Self::Side,
             "state" => Self::State,
-            "marketdatakind" => Self::MarketDataKind,
-            "marketdatatype" => Self::MarketDataType,
-            "timeinforce" => Self::TimeInForce,
-            "pluginside" => Self::PluginSide,
             "unit" => Self::Unit,
             "forex" => Self::Forex,
             "lei" => Self::Lei,
@@ -1662,13 +1754,20 @@ impl DataType {
                 };
                 Self::geography(crs, algorithm)?
             }
-            other => {
-                return Err(invalid(
-                    "$.type",
-                    "a datatype this model holds",
-                    format_smolstr!("{other:?}"),
-                ));
-            }
+            // A tag no core datatype holds is a registered kind's name, or
+            // the registration it lacks.
+            other => match crate::market::kind_named(other) {
+                Some(kind) => kind.dtype(),
+                None => {
+                    return Err(Error::InvalidRecord {
+                        path: SmolStr::new_static("$.type"),
+                        reason: format_smolstr!(
+                            "{}",
+                            crate::market::unregistered(format_args!("{other}"))
+                        ),
+                    });
+                }
+            },
         };
         dtype.validate()?;
         Ok(dtype)

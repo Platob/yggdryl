@@ -25,8 +25,10 @@ medium does the work before a byte is decoded.
 | --- | --- | --- | --- |
 | options for this handle's encoding | `handle.record_options()?` | `handle.record_options()` | `handle.recordOptions()` |
 | options from a name or type, no handle | `RecordOptions::for_media_type(&url.media_type())?`, `RecordOptions::for_mime_type(&MimeType::PARQUET)?` | `RecordOptions("trades.parquet")` | `RecordOptions.from('trades.parquet')`, `RecordOptions.forMimeType(MimeType.ARROW_STREAM)` |
-| stored schema, no rows decoded | `read_arrow_field(&options)?` | `read_arrow_field()` | `readArrowField()` |
+| stored schema, no rows decoded | `read_arrow_field(&options)?` (the declared root, else the origin's, narrowed by the `select`) | `read_arrow_field()` | `readArrowField()` |
+| the origin's whole stored root, no declaration or clause applied | `read_origin_field()?` -> `Option<Field>` (`None`: the origin states no shape) | - | - |
 | row and column counts from metadata | `row_size()?`, `column_size()?` | `.row_size()`, `.column_size()` | `.rowSize()`, `.columnSize()` |
+| serve a closed handle's cached metadata for a while (milliseconds; `0`, the default, asks the store every call) | `options.with_cache_ttl(1000_u64)` | `cache_ttl=1000` | - |
 | stream batches out | `read_arrow_reader(&options)?` -> `arrow::BatchReader` | `read_arrow_reader()` -> `pyarrow.RecordBatchReader` | `readArrowReader()` -> `BatchReader` of Arrow JS batches |
 | stream record columns out | `read_serie(Some(&options))?` (`None`: the handle's own) -> `Serie` | `read_serie()` -> `Serie` | `readSerie()` -> `Serie` |
 | rows out as native values | `read_serie` + `serie.child(name)` / `scalar(i)` | `read_records()`, `read_records(Cls)` | `readRecords()`, `readRecords(Cls)` |
@@ -41,10 +43,10 @@ medium does the work before a byte is decoded.
 | refuse values the declared field cannot convert | `options.with_field(root).with_safe(false)` | `read_arrow_reader(field=f, safe=False)` | `readArrowReader({ field, safe: false })` |
 | one setting for one call | `options.clone().with_select(["id"])?.with_filter("id > 3")?` | `read_arrow_reader(select=["id"], filter="id > 3")` | `readArrowReader({ select: ['id'], filter: 'id > 3' })` |
 | sections as one plan | `options.with_plan("select id where x > 1 limit 5")?` | `options.plan = "select ..."` | `options.withPlan('select ...')` |
-| Parquet page codec | `options.set_parquet_compression_name("zstd(3)")?`, `ParquetOptions::new().with_compression(..)` | `compression="zstd(3)"` | `{ compression: 'zstd(3)' }`, `withCompression` |
-| Parquet footer statistics | `read_parquet_statistics()?` | `read_parquet_statistics()` | `readParquetStatistics()` |
+| Parquet page codec | `options.require_settings_mut::<ParquetOptions>("$.compression", "a page compression")?.set_compression_name("zstd(3)")?`, `ParquetOptions::new().with_compression(..)` | `compression="zstd(3)"` | `{ compression: 'zstd(3)' }`, `withCompression` |
+| Parquet footer statistics | `parquet::read_media_statistics(&handle)?` | `read_parquet_statistics()` | `readParquetStatistics()` |
 | Avro bytes with a reader schema | `avro::read_container_resolved(&h, &schema)?` | `avro.loads(data, reader_schema=...)` | `avro.loads(data, { readerSchema })` |
-| Excel worksheet, header row and range on a `.xlsx` handle | `options.set_excel_sheet(Some("Trades"))?`, `set_header(false)?`, `set_excel_range(Some("A2:D".parse()?))?` | `read_arrow_reader(sheet="Trades", header=False, range="A2:D")` | `readArrowReader({ sheet: 'Trades', header: false, range: 'A2:D' })` |
+| Excel worksheet, header row and range on a `.xlsx` handle | `options.require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")?.set_sheet(Some("Trades"))?`, `set_header(false)?`, `…("$.range", "a cell range")?.set_range(Some("A2:D".parse()?))` | `read_arrow_reader(sheet="Trades", header=False, range="A2:D")` | `readArrowReader({ sheet: 'Trades', header: false, range: 'A2:D' })` |
 | any cell of a workbook, a sheet as a column set | `Workbook::open(h)?.sheet_mut("Trades")?.set_cell("B2".parse()?, 2.5)?`, `sheet.into_serie(Some(&field), true, Default::default())?`, `Sheet::from_serie("Notes", &serie, true)?` | `Workbook.open(p)["Trades"]["B2"]`, `sheet["B2"] = 2.5`, `sheet.into_serie(field)`, `Sheet.from_serie("Notes", table)` | `Workbook.open(p).sheet('Trades').cell('B2')`, `sheet.setCell('B2', 2.5)`, `sheet.intoSerie(field)`, `Sheet.fromSerie('Notes', table)` |
 | log lines as typed rows | `handle.into_text_with(TextOptions)` | `IOBase(p).into_text(TextOptions())`, or `read_arrow_reader(rowheader=...)` | `new IOBase(p).intoText(opts)`, or `readArrowReader({ rowheader })` |
 | a CSV dialect for one call | `options.set_csv_separator(b';')?`, `set_csv_quote(None)?`, `set_header(false)?`, `set_csv_null_values(["NA"])?`, `set_csv_trim(true)?`, `set_csv_comment(Some(b'#'))?`, `set_csv_infer_row_size(64)?` | `read_records(separator=";")`, `quote=None`, `header=False`, `null_values=["NA"]`, `trim=True`, `comment="#"`, `infer_row_size=64` | `readRecords({ separator: ';' })`, `{ quote: null, header: false, nullValues: ['NA'], trim: true, comment: '#', inferRowSize: 64 }` |
@@ -78,9 +80,14 @@ medium does the work before a byte is decoded.
    filter out; IPC skips decoding unprojected columns; a folder skips leaves
    whose `column=value` path contradicts a filter equality; Iceberg skips
    manifests and files. Filtering rows after the read throws all of that away.
-3. **Declare the `field` to cast once.** A narrower field is a projection; a
-   wider one fills missing nullable columns with nulls; the cast runs in the
-   same pass as the decode. A `not null` column refuses a value, a null or a
+3. **Declare the `field` to cast once.** What a read decodes is the declared
+   field's children - the stored ones with none declared, where the medium
+   knows them before it decodes (an Arrow IPC stream projects under a
+   declaration alone) - intersected with the
+   columns the `select` and the early `filter` read, so a narrower field is a
+   projection and a full one under a `select` still decodes only the selected
+   columns; a wider one fills missing nullable columns with nulls; the cast
+   runs in the same pass as the decode. A `not null` column refuses a value, a null or a
    missing column by name - it never stores a default. A `TRANSFORM:`,
    `PARTITION:` or `DIGEST:` declaration on the field is metadata the cast
    carries, never a column it fills. A nullable declared column takes a value
@@ -115,7 +122,11 @@ medium does the work before a byte is decoded.
    partition groups an Iceberg commit writes at once.
 6. **`row_size`/`column_size`/`read_arrow_field` read metadata only.** They
    answer from a footer, a stream header or the manifests; `open()` caches the
-   answer until `close()`. In Python and JavaScript they - and `size()`,
+   answer until `close()`, and on a closed handle the options' `cache_ttl`
+   (milliseconds, `0` realtime by default; Rust and Python) serves it while it
+   is younger - a write through the handle keeps it true or drops it, and
+   `remove`, `pwrite` and `truncate` drop it, so reserve a TTL for a resource
+   no other writer changes. In Python and JavaScript they - and `size()`,
    `kind()` - are methods, never properties: call them.
 7. **The name picks the encoding and the outer coding.** `.arrows` (IPC
    stream), `.arrow`/`.feather`/`.ipc` (IPC file), `.parquet`, `.avro`,
@@ -156,21 +167,21 @@ medium does the work before a byte is decoded.
     a batch, 3 ms as records, on the docs' reference machine). Keep rows for
     small or hand-built data, batches for everything else.
 14. **Plain text has a fixed shape.** A text read answers the fifteen element
-    and event columns (`curruuid` first, `state` last), then `body`, then one
+    and event columns (`uuid` first, `state` last), then `body`, then one
     column per named `rowheader` capture that feeds no event fact - a capture
-    named `state`, `creaunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix`
+    named `state`, `creaunix`, `sendunix`, `exprunix`, `prevunix`, `snapunix`
     or `prevuuid` fills that event column instead, and `mtime` fills
-    `currunix` - and the row header is the only thing that lifts a column out
+    `transunix` - and the row header is the only thing that lifts a column out
     of a line. `autotype` settles each capture's datatype from the
     regex before a byte is read. An object's lines are one chain: a line whose
-    own `creaunix` capture states none takes the earliest `currunix` the read
+    own `creaunix` capture states none takes the earliest `transunix` the read
     has dated a line of its object by so far; a `creaunix` capture stands. Each
-    line also states, as `prevunix`, the `currunix` the read dated the line
+    line also states, as `prevunix`, the `transunix` the read dated the line
     before it by - none for an object's first line or after an undated one, a
     `prevunix` capture standing, each object of a folder or glob starting
-    again - and never a `prevuuid`. A line's `currhashcode` is the XXH3-64
+    again - and never a `prevuuid`. A line's `hashcode` is the XXH3-64
     of its `body` alone, so byte-identical bodies share it; the instant, the
-    row number and the cross code tell them apart through `curruuid`. A
+    row number and the cross code tell them apart through `uuid`. A
     folder, a
     path ending in `/` or a glob reads leaf by leaf through
     `read_text_lines`, `row_size` and the record reads alike: every text leaf,

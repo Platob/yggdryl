@@ -66,6 +66,7 @@ use arrow_array::RecordBatch;
 use arrow_schema::{Schema, SchemaRef};
 use smol_str::SmolStr;
 
+use super::cache::CacheTtl;
 use crate::arrow::field_from_arrow_schema;
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred};
 use crate::expression::{Bound, BoundSelector, IntoFilter, IntoPlan, IntoSelector, Plan, Term};
@@ -132,6 +133,414 @@ impl Ord for FileThreads {
 
 impl std::hash::Hash for FileThreads {
     fn hash<H: std::hash::Hasher>(&self, _: &mut H) {}
+}
+
+/// What a medium's options state about their medium: the codec they drive,
+/// and the two settings a core door shares across media.
+///
+/// A medium's options struct implements this beside [`IORecordOptions`], and
+/// the blanket [`MediumOptions`] does the rest, so a medium adds nothing else
+/// to be held as [`RecordOptions::Registered`].
+pub trait MediumSettings {
+    /// The codec these options drive.
+    fn medium() -> &'static dyn crate::media::MediaCodec;
+
+    /// The MIME type these options describe: the codec's canonical one unless
+    /// a setting picks another, as a tab picks `text/tab-separated-values`.
+    fn mime_type(&self) -> MimeType {
+        Self::medium()
+            .mime_types()
+            .first()
+            .cloned()
+            .unwrap_or(MimeType::OCTET_STREAM)
+    }
+
+    /// Whether the first record names the columns, where the medium has a
+    /// header: a CSV's first record, a workbook's first row.
+    fn header(&self) -> Option<bool> {
+        None
+    }
+
+    /// Set whether the first record names the columns, answering whether
+    /// the medium took the setting.
+    fn set_header(&mut self, header: bool) -> bool {
+        let _ = header;
+        false
+    }
+
+    /// The thread share one file decodes or encodes on, when one was handed
+    /// down; `None` for a medium that decodes on one thread already.
+    fn file_threads(&self) -> Option<usize> {
+        None
+    }
+
+    /// Bound the threads one file decodes or encodes on.
+    ///
+    /// A table that already reads or writes several files at once hands each
+    /// file its share this way, so the two levels of parallelism never
+    /// multiply past what it resolved. Parquet splits its row groups and
+    /// columns across the share and Avro its blocks; Arrow IPC, text and an
+    /// XMLA document already decode on one thread.
+    fn set_file_threads(&mut self, threads: usize) {
+        let _ = threads;
+    }
+}
+
+/// The object-safe twin of [`IORecordOptions`], what [`RecordOptions`] holds a
+/// registered medium's options as.
+///
+/// Written once by the blanket impl over every `IORecordOptions +
+/// MediumSettings` struct: the fifteen shared sections, the medium, the
+/// stable hash, and what a trait object owes a derive-heavy enum - clone,
+/// equality, order, hash and the downcast.
+pub trait MediumOptions: std::fmt::Debug + Send + Sync + 'static {
+    /// The codec these options drive.
+    fn codec(&self) -> &'static dyn crate::media::MediaCodec;
+    /// The MIME type these options describe.
+    fn mime_type(&self) -> MimeType;
+    /// The deterministic hash of the medium's tag and the complete options.
+    fn stable_hash(&self) -> u64;
+    /// See [`MediumSettings::header`].
+    fn header(&self) -> Option<bool>;
+    /// See [`MediumSettings::set_header`].
+    fn set_header(&mut self, header: bool) -> bool;
+    /// See [`MediumSettings::file_threads`].
+    fn file_threads(&self) -> Option<usize>;
+    /// See [`MediumSettings::set_file_threads`].
+    fn set_file_threads(&mut self, threads: usize);
+
+    /// See [`IORecordOptions::declared`].
+    fn declared(&self) -> Option<&Field>;
+    /// See [`IORecordOptions::set_declared`].
+    fn set_declared(&mut self, field: Option<Field>);
+    /// See [`IORecordOptions::name`].
+    fn name(&self) -> &str;
+    /// See [`IORecordOptions::set_name`].
+    fn set_name(&mut self, name: SmolStr);
+    /// See [`IORecordOptions::safe`].
+    fn safe(&self) -> bool;
+    /// See [`IORecordOptions::set_safe`].
+    fn set_safe(&mut self, safe: bool);
+    /// See [`IORecordOptions::batch_row_size`].
+    fn batch_row_size(&self) -> Option<usize>;
+    /// See [`IORecordOptions::set_batch_row_size`].
+    fn set_batch_row_size(&mut self, batch_row_size: Option<usize>);
+    /// See [`IORecordOptions::batch_byte_size`].
+    fn batch_byte_size(&self) -> Option<u64>;
+    /// See [`IORecordOptions::set_batch_byte_size`].
+    fn set_batch_byte_size(&mut self, batch_byte_size: Option<u64>);
+    /// See [`IORecordOptions::max_row_size`].
+    fn max_row_size(&self) -> Option<u64>;
+    /// See [`IORecordOptions::set_max_row_size`].
+    fn set_max_row_size(&mut self, max_row_size: Option<u64>);
+    /// See [`IORecordOptions::row_offset`].
+    fn row_offset(&self) -> Option<u64>;
+    /// See [`IORecordOptions::set_row_offset`].
+    fn set_row_offset(&mut self, row_offset: Option<u64>);
+    /// See [`IORecordOptions::max_byte_size`].
+    fn max_byte_size(&self) -> Option<u64>;
+    /// See [`IORecordOptions::set_max_byte_size`].
+    fn set_max_byte_size(&mut self, max_byte_size: Option<u64>);
+    /// See [`IORecordOptions::commit_batch_num`].
+    fn commit_batch_num(&self) -> Option<usize>;
+    /// See [`IORecordOptions::set_commit_batch_num`].
+    fn set_commit_batch_num(&mut self, commit_batch_num: Option<usize>);
+    /// See [`IORecordOptions::num_threads`].
+    fn num_threads(&self) -> Option<usize>;
+    /// See [`IORecordOptions::set_num_threads`].
+    fn set_num_threads(&mut self, num_threads: Option<usize>);
+    /// See [`IORecordOptions::level`].
+    fn level(&self) -> Level;
+    /// See [`IORecordOptions::set_level`].
+    fn set_level(&mut self, level: Level);
+    /// See [`IORecordOptions::cache_ttl`].
+    fn cache_ttl(&self) -> CacheTtl;
+    /// See [`IORecordOptions::set_cache_ttl`].
+    fn set_cache_ttl(&mut self, ttl: CacheTtl);
+    /// See [`IORecordOptions::merge_by`].
+    fn merge_by(&self) -> &Selector;
+    /// See [`IORecordOptions::set_merge_by`].
+    fn set_merge_by(&mut self, merge_by: Selector);
+    /// See [`IORecordOptions::filter`].
+    fn filter(&self) -> &Filter;
+    /// See [`IORecordOptions::set_filter`].
+    fn set_filter(&mut self, filter: Filter);
+    /// See [`IORecordOptions::select`].
+    fn select(&self) -> &Selector;
+    /// See [`IORecordOptions::set_select`].
+    fn set_select(&mut self, select: Selector);
+
+    /// A boxed copy.
+    fn clone_box(&self) -> Box<dyn MediumOptions>;
+    /// Equality across the trait object: the same struct holding equal
+    /// options.
+    fn dyn_eq(&self, other: &dyn MediumOptions) -> bool;
+    /// Order across the trait object: the struct's own where the two are one
+    /// struct, else by the medium's rank and name.
+    fn dyn_cmp(&self, other: &dyn MediumOptions) -> std::cmp::Ordering;
+    /// The struct's own hash, into any hasher.
+    fn dyn_hash(&self, state: &mut dyn std::hash::Hasher);
+    /// The options as `Any`, for [`RecordOptions::settings`].
+    fn as_any(&self) -> &dyn std::any::Any;
+    /// The options as `Any`, mutably, for [`RecordOptions::settings_mut`].
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+}
+
+impl<T> MediumOptions for T
+where
+    T: IORecordOptions
+        + MediumSettings
+        + Clone
+        + Eq
+        + Ord
+        + std::hash::Hash
+        + std::fmt::Debug
+        + Send
+        + Sync
+        + 'static,
+{
+    fn codec(&self) -> &'static dyn crate::media::MediaCodec {
+        T::medium()
+    }
+
+    fn mime_type(&self) -> MimeType {
+        MediumSettings::mime_type(self)
+    }
+
+    fn stable_hash(&self) -> u64 {
+        // The tag then the whole struct, in declaration order: the feed every
+        // variant wrote, which is persisted.
+        crate::hashing::stable_hash_of(&(T::medium().name(), self))
+    }
+
+    fn header(&self) -> Option<bool> {
+        MediumSettings::header(self)
+    }
+
+    fn set_header(&mut self, header: bool) -> bool {
+        MediumSettings::set_header(self, header)
+    }
+
+    fn file_threads(&self) -> Option<usize> {
+        MediumSettings::file_threads(self)
+    }
+
+    fn set_file_threads(&mut self, threads: usize) {
+        MediumSettings::set_file_threads(self, threads);
+    }
+
+    fn declared(&self) -> Option<&Field> {
+        IORecordOptions::declared(self)
+    }
+
+    fn set_declared(&mut self, field: Option<Field>) {
+        IORecordOptions::set_declared(self, field);
+    }
+
+    fn name(&self) -> &str {
+        IORecordOptions::name(self)
+    }
+
+    fn set_name(&mut self, name: SmolStr) {
+        IORecordOptions::set_name(self, name);
+    }
+
+    fn safe(&self) -> bool {
+        IORecordOptions::safe(self)
+    }
+
+    fn set_safe(&mut self, safe: bool) {
+        IORecordOptions::set_safe(self, safe);
+    }
+
+    fn batch_row_size(&self) -> Option<usize> {
+        IORecordOptions::batch_row_size(self)
+    }
+
+    fn set_batch_row_size(&mut self, batch_row_size: Option<usize>) {
+        IORecordOptions::set_batch_row_size(self, batch_row_size);
+    }
+
+    fn batch_byte_size(&self) -> Option<u64> {
+        IORecordOptions::batch_byte_size(self)
+    }
+
+    fn set_batch_byte_size(&mut self, batch_byte_size: Option<u64>) {
+        IORecordOptions::set_batch_byte_size(self, batch_byte_size);
+    }
+
+    fn max_row_size(&self) -> Option<u64> {
+        IORecordOptions::max_row_size(self)
+    }
+
+    fn set_max_row_size(&mut self, max_row_size: Option<u64>) {
+        IORecordOptions::set_max_row_size(self, max_row_size);
+    }
+
+    fn row_offset(&self) -> Option<u64> {
+        IORecordOptions::row_offset(self)
+    }
+
+    fn set_row_offset(&mut self, row_offset: Option<u64>) {
+        IORecordOptions::set_row_offset(self, row_offset);
+    }
+
+    fn max_byte_size(&self) -> Option<u64> {
+        IORecordOptions::max_byte_size(self)
+    }
+
+    fn set_max_byte_size(&mut self, max_byte_size: Option<u64>) {
+        IORecordOptions::set_max_byte_size(self, max_byte_size);
+    }
+
+    fn commit_batch_num(&self) -> Option<usize> {
+        IORecordOptions::commit_batch_num(self)
+    }
+
+    fn set_commit_batch_num(&mut self, commit_batch_num: Option<usize>) {
+        IORecordOptions::set_commit_batch_num(self, commit_batch_num);
+    }
+
+    fn num_threads(&self) -> Option<usize> {
+        IORecordOptions::num_threads(self)
+    }
+
+    fn set_num_threads(&mut self, num_threads: Option<usize>) {
+        IORecordOptions::set_num_threads(self, num_threads);
+    }
+
+    fn level(&self) -> Level {
+        IORecordOptions::level(self)
+    }
+
+    fn set_level(&mut self, level: Level) {
+        IORecordOptions::set_level(self, level);
+    }
+
+    fn cache_ttl(&self) -> CacheTtl {
+        IORecordOptions::cache_ttl(self)
+    }
+
+    fn set_cache_ttl(&mut self, ttl: CacheTtl) {
+        IORecordOptions::set_cache_ttl(self, ttl);
+    }
+
+    fn merge_by(&self) -> &Selector {
+        IORecordOptions::merge_by(self)
+    }
+
+    fn set_merge_by(&mut self, merge_by: Selector) {
+        IORecordOptions::set_merge_by(self, merge_by);
+    }
+
+    fn filter(&self) -> &Filter {
+        IORecordOptions::filter(self)
+    }
+
+    fn set_filter(&mut self, filter: Filter) {
+        IORecordOptions::set_filter(self, filter);
+    }
+
+    fn select(&self) -> &Selector {
+        IORecordOptions::select(self)
+    }
+
+    fn set_select(&mut self, select: Selector) {
+        IORecordOptions::set_select(self, select);
+    }
+
+    fn clone_box(&self) -> Box<dyn MediumOptions> {
+        Box::new(self.clone())
+    }
+
+    fn dyn_eq(&self, other: &dyn MediumOptions) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<T>()
+            .is_some_and(|other| self == other)
+    }
+
+    fn dyn_cmp(&self, other: &dyn MediumOptions) -> std::cmp::Ordering {
+        match other.as_any().downcast_ref::<T>() {
+            Some(other) => self.cmp(other),
+            None => {
+                let (mine, theirs) = (T::medium(), other.codec());
+                (mine.rank(), mine.name()).cmp(&(theirs.rank(), theirs.name()))
+            }
+        }
+    }
+
+    fn dyn_hash(&self, mut state: &mut dyn std::hash::Hasher) {
+        std::hash::Hash::hash(self, &mut state);
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+}
+
+/// A registered medium's options, held whole behind one box: the struct the
+/// medium declares, shared sections included, so its hash and its order are
+/// the struct's own.
+#[derive(Debug)]
+pub struct RegisteredOptions(Box<dyn MediumOptions>);
+
+impl RegisteredOptions {
+    /// Hold `settings`, a registered medium's options struct; the core's own
+    /// are their variants, through [`RecordOptions::registered`].
+    pub(crate) fn new<T: MediumOptions>(settings: T) -> Self {
+        Self(Box::new(settings))
+    }
+}
+
+impl std::ops::Deref for RegisteredOptions {
+    type Target = dyn MediumOptions;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.0
+    }
+}
+
+impl std::ops::DerefMut for RegisteredOptions {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut *self.0
+    }
+}
+
+impl Clone for RegisteredOptions {
+    fn clone(&self) -> Self {
+        Self(self.0.clone_box())
+    }
+}
+
+impl PartialEq for RegisteredOptions {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.dyn_eq(&*other.0)
+    }
+}
+
+impl Eq for RegisteredOptions {}
+
+impl PartialOrd for RegisteredOptions {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for RegisteredOptions {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.dyn_cmp(&*other.0)
+    }
+}
+
+impl std::hash::Hash for RegisteredOptions {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.dyn_hash(state);
+    }
 }
 
 /// The read and write settings shared by every record encoding.
@@ -337,6 +746,21 @@ pub trait IORecordOptions: Sized {
     /// Set the compression level.
     fn set_level(&mut self, level: Level);
 
+    /// Return how long a closed handle serves the metadata its medium
+    /// cached - the origin's root, its row and column counts, a footer.
+    ///
+    /// [`CacheTtl::REALTIME`] (`0`, the default) reads them afresh on every
+    /// ask; `n` serves an entry younger than `n` milliseconds, so what
+    /// another writer changes is seen once the entry is that old. An open
+    /// handle serves what it read until it closes whatever this says, and a
+    /// write through the handle refreshes or drops the entry either way.
+    /// Outside the options' identity, like the thread share a file decodes
+    /// on: two options differing only here compare, hash and order as equal.
+    fn cache_ttl(&self) -> CacheTtl;
+
+    /// Set how long a closed handle serves the metadata its medium cached.
+    fn set_cache_ttl(&mut self, ttl: CacheTtl);
+
     /// Borrow the selector whose columns form an explicit merge's match key.
     ///
     /// A merge matches on it: a row whose key is already stored updates it,
@@ -395,10 +819,12 @@ pub trait IORecordOptions: Sized {
     ///
     /// A plan's `create` section declares the field, its `where` clause is
     /// the filter, its `select` clause the selector, its upsert keys the
-    /// merge key; a section the plan does not spell clears the property. A
-    /// `limit` is the row bound and an `offset` the row skip. The plan's
-    /// targets and source are not read:
-    /// the handle these options are given to is both.
+    /// merge key; a section the plan does not spell clears the property, but
+    /// for the declared field, which a plan with no `create` section leaves
+    /// as it was - the medium's own declaration survives a plan that only
+    /// narrows the read. A `limit` is the row bound and an `offset` the row
+    /// skip. The plan's targets and source are not read: the handle these
+    /// options are given to is both.
     ///
     /// # Errors
     ///
@@ -429,7 +855,9 @@ pub trait IORecordOptions: Sized {
                 ),
             });
         }
-        self.set_declared(declared);
+        if declared.is_some() {
+            self.set_declared(declared);
+        }
         self.set_filter(plan.filter_section().clone());
         self.set_select(plan.selector().clone());
         self.set_merge_by(plan.merge_by().clone());
@@ -458,15 +886,31 @@ pub trait IORecordOptions: Sized {
 
     /// The stored columns the plan reads, when it narrows them.
     ///
-    /// The `select` clause and the clauses beside it name the columns a read
-    /// has to decode; `None` - no selector, or one that keeps every column -
-    /// is the read that already happens. This is projection pushdown without
-    /// a declared field.
+    /// The columns the `select` clause reads, and the ones the `where`
+    /// clause reads before it: a conjunct naming only what the `select`
+    /// publishes - an alias - runs after it and reads no stored column. With
+    /// a declared field its children are the stored columns that split is
+    /// made against; without one every column the `where` names is asked
+    /// for, and a name the medium does not store is skipped by its
+    /// projection rather than read. `None` - no selector, or one with a `*` -
+    /// is every column, the read that already happens. This is projection
+    /// pushdown without a declared field.
     fn apply_columns(&self) -> Option<Vec<String>> {
         if self.select().has_star() {
             return None;
         }
-        let mut columns = self.filter().columns();
+        let filter = match self.declared() {
+            Some(declared) => {
+                crate::expression::filter_phases(
+                    self.filter(),
+                    self.select(),
+                    declared.fields().iter().map(Field::name),
+                )
+                .0
+            }
+            None => std::borrow::Cow::Borrowed(self.filter()),
+        };
+        let mut columns = filter.columns();
         for column in self.select().columns() {
             if !columns
                 .iter()
@@ -492,96 +936,7 @@ pub trait IORecordOptions: Sized {
         &self,
         reader: crate::arrow::BatchReader,
     ) -> Result<crate::arrow::BatchReader> {
-        use arrow_array::RecordBatchReader as _;
-        let schema = reader.schema();
-        let (early, late) = crate::expression::filter_phases(
-            self.filter(),
-            self.select(),
-            schema.fields().iter().map(|field| field.name().as_str()),
-        );
-        late.apply_arrow_reader(
-            self.select()
-                .apply_arrow_reader(early.apply_arrow_reader(reader)?)?,
-        )
-    }
-
-    /// Apply scan clauses and limits to a row stream.
-    ///
-    /// # Errors
-    /// Clause binding, schema and limit failures.
-    fn apply_stream(&self, mut rows: crate::StreamSerie) -> Result<crate::StreamSerie> {
-        rows.require_record_field()?;
-        self.require_write_limits()?;
-        let select = self.select().bind(rows.field())?;
-        // These operations require Arrow storage: a byte limit counts its
-        // buffers, and unnest multiplies one input into multiple output rows.
-        if self.max_byte_size().is_some() || select.unnested().is_some() {
-            let reader =
-                self.limit_arrow_reader(self.apply_arrow_expressions(rows.into_arrow_reader()?)?)?;
-            return crate::StreamChunkedSerie::from_arrow_reader(
-                None,
-                reader,
-                crate::ArrowCastOptions::new(),
-            )?
-            .into_stream();
-        }
-        let (early, late) = crate::expression::filter_phases(
-            self.filter(),
-            self.select(),
-            rows.field().fields().iter().map(|field| field.name()),
-        );
-        let early = if early.is_always_true() {
-            None
-        } else {
-            Some(early.bind(rows.field())?)
-        };
-        let late = if late.is_always_true() {
-            None
-        } else {
-            Some(late.bind(select.output())?)
-        };
-        let field = select.output().clone();
-        let mut limit =
-            WriteLimitState::new(self.row_offset().unwrap_or(0), self.max_row_size(), None);
-        Ok(crate::StreamSerie::from_rows(
-            field,
-            std::iter::from_fn(move || {
-                loop {
-                    if limit.satisfied() {
-                        return None;
-                    }
-                    let row = match rows.next()? {
-                        Ok(row) => row,
-                        Err(error) => return Some(Err(error)),
-                    };
-                    if let Some(filter) = &early {
-                        match filter.matches(&row) {
-                            Ok(false) => continue,
-                            Ok(true) => {}
-                            Err(error) => return Some(Err(error)),
-                        }
-                    }
-                    let row = if select.is_identity() {
-                        row
-                    } else {
-                        match select.apply_scalar(&row) {
-                            Ok(row) => row,
-                            Err(error) => return Some(Err(error)),
-                        }
-                    };
-                    if let Some(filter) = &late {
-                        match filter.matches(&row) {
-                            Ok(false) => continue,
-                            Ok(true) => {}
-                            Err(error) => return Some(Err(error)),
-                        }
-                    }
-                    if limit.apply_row() {
-                        return Some(Ok(row));
-                    }
-                }
-            }),
-        ))
+        expressions(self.filter(), self.select(), reader)
     }
 
     /// Build the declared field, or say that one is required.
@@ -845,6 +1200,14 @@ pub trait IORecordOptions: Sized {
         self
     }
 
+    /// Return these options serving a closed handle's cached metadata for
+    /// `ttl` milliseconds; `0` is realtime.
+    #[must_use]
+    fn with_cache_ttl(mut self, ttl: impl Into<CacheTtl>) -> Self {
+        self.set_cache_ttl(ttl.into());
+        self
+    }
+
     /// Return these options with a match key for an explicit merge.
     ///
     /// Text parses through the selector grammar and a list of names is a list
@@ -964,13 +1327,7 @@ pub trait IORecordOptions: Sized {
             return Ok(reader);
         }
         self.require_write_limits()?;
-        use arrow_array::RecordBatchReader as _;
-        let schema = reader.schema();
-        Ok(Box::new(Limited {
-            inner: reader,
-            schema,
-            state: WriteLimitState::new(skip, max_rows, max_bytes),
-        }))
+        Ok(limited(reader, skip, max_rows, max_bytes))
     }
 
     /// Validate deterministic write-limit combinations without an input.
@@ -1209,6 +1566,145 @@ pub(crate) fn partition_pairs(filter: &Filter) -> Vec<(String, String)> {
     pairs
 }
 
+/// Run `filter`, then `select`, over a reader: each conjunct of the filter
+/// at the schema its columns belong to - the ones over the reader's own
+/// columns before the projection, the ones naming what only the `select`
+/// publishes after it.
+///
+/// Each clause binds once against the schema the clause before it produced,
+/// so a stream pays for its plan once; a clause that keeps or publishes
+/// everything costs nothing. The one place a read's or a write's clauses
+/// meet its batches.
+pub(crate) fn expressions(
+    filter: &Filter,
+    select: &Selector,
+    reader: crate::arrow::BatchReader,
+) -> Result<crate::arrow::BatchReader> {
+    use arrow_array::RecordBatchReader as _;
+    let schema = reader.schema();
+    let (early, late) = crate::expression::filter_phases(
+        filter,
+        select,
+        schema.fields().iter().map(|field| field.name().as_str()),
+    );
+    late.apply_arrow_reader(select.apply_arrow_reader(early.apply_arrow_reader(reader)?)?)
+}
+
+/// `reader` skipping `skip` leading rows, then bounded by `max_rows` rows and
+/// `max_bytes` Arrow bytes, over one [`WriteLimitState`] - the reader itself
+/// where nothing bounds it: the one owner of a read's and a write's row
+/// bounds.
+pub(crate) fn limited(
+    reader: crate::arrow::BatchReader,
+    skip: u64,
+    max_rows: Option<u64>,
+    max_bytes: Option<u64>,
+) -> crate::arrow::BatchReader {
+    use arrow_array::RecordBatchReader as _;
+
+    if max_rows.is_none() && max_bytes.is_none() && skip == 0 {
+        return reader;
+    }
+    let schema = reader.schema();
+    Box::new(Limited {
+        inner: reader,
+        schema,
+        state: WriteLimitState::new(skip, max_rows, max_bytes),
+    })
+}
+
+/// [`expressions`] then [`limited`] over a row stream: the filter's
+/// conjuncts in their phases around the selection, then the skip and the
+/// bounds, row by row with no batch built. A byte bound counts Arrow
+/// buffers and an `unnest` lays out one row per element, so either crosses
+/// the stream through Arrow instead.
+///
+/// # Errors
+///
+/// Returns a stream that is not of records, or a clause that does not bind
+/// against its rows.
+pub(crate) fn shaped_stream(
+    mut rows: crate::StreamSerie,
+    filter: &Filter,
+    select: &Selector,
+    skip: u64,
+    max_rows: Option<u64>,
+    max_bytes: Option<u64>,
+) -> Result<crate::StreamSerie> {
+    rows.require_record_field()?;
+    let bound = select.bind(rows.field())?;
+    if max_bytes.is_some() || bound.unnested().is_some() {
+        let reader = limited(
+            expressions(filter, select, rows.into_arrow_reader()?)?,
+            skip,
+            max_rows,
+            max_bytes,
+        );
+        return crate::StreamChunkedSerie::from_arrow_reader(
+            None,
+            reader,
+            crate::ArrowCastOptions::new(),
+        )?
+        .into_stream();
+    }
+    let (early, late) = crate::expression::filter_phases(
+        filter,
+        select,
+        rows.field().fields().iter().map(|field| field.name()),
+    );
+    let early = if early.is_always_true() {
+        None
+    } else {
+        Some(early.bind(rows.field())?)
+    };
+    let late = if late.is_always_true() {
+        None
+    } else {
+        Some(late.bind(bound.output())?)
+    };
+    let field = bound.output().clone();
+    let mut limit = WriteLimitState::new(skip, max_rows, None);
+    Ok(crate::StreamSerie::from_rows(
+        field,
+        std::iter::from_fn(move || {
+            loop {
+                if limit.satisfied() {
+                    return None;
+                }
+                let row = match rows.next()? {
+                    Ok(row) => row,
+                    Err(error) => return Some(Err(error)),
+                };
+                if let Some(filter) = &early {
+                    match filter.matches(&row) {
+                        Ok(false) => continue,
+                        Ok(true) => {}
+                        Err(error) => return Some(Err(error)),
+                    }
+                }
+                let row = if bound.is_identity() {
+                    row
+                } else {
+                    match bound.apply_scalar(&row) {
+                        Ok(row) => row,
+                        Err(error) => return Some(Err(error)),
+                    }
+                };
+                if let Some(filter) = &late {
+                    match filter.matches(&row) {
+                        Ok(false) => continue,
+                        Ok(true) => {}
+                        Err(error) => return Some(Err(error)),
+                    }
+                }
+                if limit.apply_row() {
+                    return Some(Ok(row));
+                }
+            }
+        }),
+    ))
+}
+
 /// Implement [`IORecordOptions`] over one struct's own fields.
 ///
 /// Every encoding stores the same shared settings under the same names, so the
@@ -1333,46 +1829,197 @@ macro_rules! record_options_fields {
         fn set_level(&mut self, level: $crate::Level) {
             self.level = level;
         }
+
+        fn cache_ttl(&self) -> $crate::media::CacheTtl {
+            self.cache_ttl
+        }
+
+        fn set_cache_ttl(&mut self, ttl: $crate::media::CacheTtl) {
+            self.cache_ttl = ttl;
+        }
     };
 }
 
 /// One value naming every record encoding's options.
 ///
 /// The variant *is* the encoding: a record call takes `RecordOptions` and
-/// needs no separate format argument.
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+/// needs no separate format argument. The core's three media are variants of
+/// their own; every other medium is [`Self::Registered`], its options struct
+/// held whole behind [`RegisteredOptions`] and reached by type through
+/// [`Self::settings`].
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RecordOptions {
     /// Arrow IPC stream options.
     Ipc(IpcOptions),
-    /// Apache Parquet file options.
-    #[cfg(feature = "parquet")]
-    Parquet(crate::parquet::ParquetOptions),
-    /// Apache Avro container options.
-    Avro(crate::avro::AvroOptions),
     /// Plain-text row options.
     Text(Box<crate::text::TextOptions>),
-    /// XML for Analysis rowset document options.
-    Xmla(crate::xmla::XmlaOptions),
     /// CSV and TSV document options.
     Csv(crate::csv::CsvOptions),
-    /// Office Open XML workbook options.
-    Excel(crate::excel::ExcelOptions),
+    /// A registered medium's options: Parquet, Avro, XML for Analysis, a
+    /// workbook, or any medium a crate claims.
+    Registered(RegisteredOptions),
+}
+
+impl PartialOrd for RecordOptions {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for RecordOptions {
+    /// The medium first, by its rank - the position every variant held, so
+    /// `ipc < parquet < avro < text < xmla < csv < excel` - then the options.
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (Self::Ipc(mine), Self::Ipc(theirs)) => mine.cmp(theirs),
+            (Self::Text(mine), Self::Text(theirs)) => mine.cmp(theirs),
+            (Self::Csv(mine), Self::Csv(theirs)) => mine.cmp(theirs),
+            (Self::Registered(mine), Self::Registered(theirs)) => mine.cmp(theirs),
+            _ => self.rank().cmp(&other.rank()),
+        }
+    }
+}
+
+impl std::hash::Hash for RecordOptions {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.rank().hash(state);
+        match self {
+            Self::Ipc(options) => options.hash(state),
+            Self::Text(options) => options.hash(state),
+            Self::Csv(options) => options.hash(state),
+            Self::Registered(options) => options.hash(state),
+        }
+    }
 }
 
 impl RecordOptions {
+    /// Hold a medium's options struct: a registered medium's behind
+    /// [`RegisteredOptions`], one of the core's three as its own variant, so
+    /// one struct is one value whichever door built it and the enum's order
+    /// and equality agree.
+    pub fn registered<T: MediumOptions>(settings: T) -> Self {
+        let any = &settings as &dyn std::any::Any;
+        if let Some(ipc) = any.downcast_ref::<IpcOptions>() {
+            return Self::Ipc(ipc.clone());
+        }
+        if let Some(text) = any.downcast_ref::<crate::text::TextOptions>() {
+            return Self::Text(Box::new(text.clone()));
+        }
+        if let Some(csv) = any.downcast_ref::<crate::csv::CsvOptions>() {
+            return Self::Csv(csv.clone());
+        }
+        Self::Registered(RegisteredOptions::new(settings))
+    }
+
+    /// Borrow the options through the one object-safe contract every medium
+    /// answers.
+    pub(crate) fn as_medium(&self) -> &dyn MediumOptions {
+        match self {
+            Self::Ipc(options) => options,
+            Self::Text(options) => &**options,
+            Self::Csv(options) => options,
+            Self::Registered(options) => &**options,
+        }
+    }
+
+    /// Mutably borrow the options through the one object-safe contract.
+    pub(crate) fn as_medium_mut(&mut self) -> &mut dyn MediumOptions {
+        match self {
+            Self::Ipc(options) => options,
+            Self::Text(options) => &mut **options,
+            Self::Csv(options) => options,
+            Self::Registered(options) => &mut **options,
+        }
+    }
+
+    /// The medium these options drive: the one dispatcher past intake, which
+    /// every leaf door reads its medium through.
+    #[must_use]
+    pub fn codec(&self) -> &'static dyn crate::media::MediaCodec {
+        self.as_medium().codec()
+    }
+
+    /// Where the medium sorts among every medium's options.
+    fn rank(&self) -> u8 {
+        self.codec().rank()
+    }
+
+    /// Borrow one medium's own options struct, `None` for another medium.
+    ///
+    /// The one typed door onto a medium's settings: the struct of a core
+    /// variant as well as a registered one answers, so a binding's property
+    /// reads `options.settings::<ParquetOptions>()` whichever medium holds
+    /// them.
+    #[must_use]
+    pub fn settings<T: 'static>(&self) -> Option<&T> {
+        match self {
+            Self::Ipc(options) => (options as &dyn std::any::Any).downcast_ref::<T>(),
+            Self::Text(options) => (&**options as &dyn std::any::Any).downcast_ref::<T>(),
+            Self::Csv(options) => (options as &dyn std::any::Any).downcast_ref::<T>(),
+            Self::Registered(options) => options.as_any().downcast_ref::<T>(),
+        }
+    }
+
+    /// Mutably borrow one medium's own options struct, `None` for another
+    /// medium.
+    #[must_use]
+    pub fn settings_mut<T: 'static>(&mut self) -> Option<&mut T> {
+        match self {
+            Self::Ipc(options) => (options as &mut dyn std::any::Any).downcast_mut::<T>(),
+            Self::Text(options) => (&mut **options as &mut dyn std::any::Any).downcast_mut::<T>(),
+            Self::Csv(options) => (options as &mut dyn std::any::Any).downcast_mut::<T>(),
+            Self::Registered(options) => options.as_any_mut().downcast_mut::<T>(),
+        }
+    }
+
+    /// Borrow one medium's own options struct, refusing another medium's at
+    /// `$.encoding`: what a medium's leaf door reads its options back
+    /// through.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] naming the medium `T` belongs to and
+    /// the one these options describe: `expected Parquet options, got
+    /// text/csv options`.
+    pub fn require_settings<T: MediumSettings + 'static>(&self) -> Result<&T> {
+        self.settings::<T>().ok_or_else(|| Error::InvalidRecord {
+            path: SmolStr::new_static("$.encoding"),
+            reason: smol_str::format_smolstr!(
+                "expected {} options, got {} options",
+                T::medium().title(),
+                self.mime_type()
+            ),
+        })
+    }
+
+    /// Mutably borrow one medium's own options struct to set `setting`,
+    /// refusing another medium's at `path`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] at `path` naming the medium `T`
+    /// belongs to and the one these options describe: `expected Parquet
+    /// options to set a page compression, got text/csv options`.
+    pub fn require_settings_mut<T: MediumSettings + 'static>(
+        &mut self,
+        path: &'static str,
+        setting: &'static str,
+    ) -> Result<&mut T> {
+        let media_type = self.mime_type();
+        self.settings_mut::<T>()
+            .ok_or_else(|| Error::InvalidRecord {
+                path: SmolStr::new_static(path),
+                reason: smol_str::format_smolstr!(
+                    "expected {} options to set {setting}, got {media_type} options",
+                    T::medium().title()
+                ),
+            })
+    }
+
     /// Return a deterministic hash of the encoding and its complete options.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        match self {
-            Self::Ipc(options) => crate::hashing::stable_hash_of(&("ipc", options)),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => crate::hashing::stable_hash_of(&("parquet", options)),
-            Self::Avro(options) => crate::hashing::stable_hash_of(&("avro", options)),
-            Self::Text(options) => crate::hashing::stable_hash_of(&("text", options)),
-            Self::Xmla(options) => crate::hashing::stable_hash_of(&("xmla", options)),
-            Self::Csv(options) => crate::hashing::stable_hash_of(&("csv", options)),
-            Self::Excel(options) => crate::hashing::stable_hash_of(&("excel", options)),
-        }
+        self.as_medium().stable_hash()
     }
 
     fn text_mut(
@@ -1383,16 +2030,7 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Text(options) => Ok(options),
-            Self::Ipc(_) | Self::Avro(_) | Self::Xmla(_) | Self::Csv(_) | Self::Excel(_) => {
-                Err(Error::InvalidRecord {
-                    path: SmolStr::new_static(path),
-                    reason: smol_str::format_smolstr!(
-                        "expected text options to set {setting}, got {media_type} options"
-                    ),
-                })
-            }
-            #[cfg(feature = "parquet")]
-            Self::Parquet(_) => Err(Error::InvalidRecord {
+            _ => Err(Error::InvalidRecord {
                 path: SmolStr::new_static(path),
                 reason: smol_str::format_smolstr!(
                     "expected text options to set {setting}, got {media_type} options"
@@ -1405,9 +2043,7 @@ impl RecordOptions {
     pub const fn timezone(&self) -> Option<&crate::Timezone> {
         match self {
             Self::Text(options) => options.timezone(),
-            Self::Ipc(_) | Self::Avro(_) | Self::Xmla(_) | Self::Csv(_) | Self::Excel(_) => None,
-            #[cfg(feature = "parquet")]
-            Self::Parquet(_) => None,
+            _ => None,
         }
     }
 
@@ -1415,96 +2051,6 @@ impl RecordOptions {
     pub fn set_timezone(&mut self, timezone: Option<crate::Timezone>) -> Result<()> {
         self.text_mut("$.timezone", "an autotyping timezone")?
             .set_timezone(timezone);
-        Ok(())
-    }
-
-    fn avro_mut(
-        &mut self,
-        path: &'static str,
-        setting: &'static str,
-    ) -> Result<&mut crate::avro::AvroOptions> {
-        let media_type = self.mime_type();
-        match self {
-            Self::Avro(options) => Ok(options),
-            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) | Self::Csv(_) | Self::Excel(_) => {
-                Err(Error::InvalidRecord {
-                    path: SmolStr::new_static(path),
-                    reason: smol_str::format_smolstr!(
-                        "expected Avro options to set {setting}, got {media_type} options"
-                    ),
-                })
-            }
-            #[cfg(feature = "parquet")]
-            Self::Parquet(_) => Err(Error::InvalidRecord {
-                path: SmolStr::new_static(path),
-                reason: smol_str::format_smolstr!(
-                    "expected Avro options to set {setting}, got {media_type} options"
-                ),
-            }),
-        }
-    }
-
-    /// Return the Avro block codec name, or `None` for another encoding.
-    pub fn avro_block_codec(&self) -> Option<&str> {
-        match self {
-            Self::Avro(options) => Some(options.codec.as_str()),
-            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) | Self::Csv(_) | Self::Excel(_) => None,
-            #[cfg(feature = "parquet")]
-            Self::Parquet(_) => None,
-        }
-    }
-
-    /// Validate and set the Avro block codec.
-    ///
-    /// Validation uses the codec vocabulary the container encoder itself
-    /// dispatches through, so a binding can reject a bad name before it pulls
-    /// a one-shot record source.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error for a non-Avro variant or a codec this build does not
-    /// implement.
-    pub fn set_avro_block_codec(&mut self, codec: &str) -> Result<()> {
-        let options = self.avro_mut("$.block_codec", "a block codec")?;
-        crate::avro::container::BlockCoding::from_name(codec)?;
-        options.codec = SmolStr::new(codec);
-        Ok(())
-    }
-
-    /// Borrow the optional fixed Avro synchronization marker.
-    ///
-    /// `None` means either that a fresh marker will be generated for an Avro
-    /// write or that these options describe another encoding. A setter remains
-    /// encoding-checked, so the two cases cannot be confused while mutating.
-    pub const fn avro_sync_marker(&self) -> Option<&[u8; 16]> {
-        match self {
-            Self::Avro(options) => options.sync_marker.as_ref(),
-            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) | Self::Csv(_) | Self::Excel(_) => None,
-            #[cfg(feature = "parquet")]
-            Self::Parquet(_) => None,
-        }
-    }
-
-    /// Set or clear the fixed Avro synchronization marker.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error for a non-Avro variant or a marker whose length is not
-    /// exactly sixteen bytes.
-    pub fn set_avro_sync_marker(&mut self, marker: Option<&[u8]>) -> Result<()> {
-        let options = self.avro_mut("$.sync_marker", "a synchronization marker")?;
-        let marker = marker
-            .map(|marker| {
-                marker.try_into().map_err(|_| Error::InvalidRecord {
-                    path: SmolStr::new_static("$.sync_marker"),
-                    reason: smol_str::format_smolstr!(
-                        "expected exactly 16 bytes, got {}",
-                        marker.len()
-                    ),
-                })
-            })
-            .transpose()?;
-        options.sync_marker = marker;
         Ok(())
     }
 
@@ -1516,16 +2062,7 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Csv(options) => Ok(options),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) | Self::Excel(_) => {
-                Err(Error::InvalidRecord {
-                    path: SmolStr::new_static(path),
-                    reason: smol_str::format_smolstr!(
-                        "expected CSV options to set {setting}, got {media_type} options"
-                    ),
-                })
-            }
-            #[cfg(feature = "parquet")]
-            Self::Parquet(_) => Err(Error::InvalidRecord {
+            _ => Err(Error::InvalidRecord {
                 path: SmolStr::new_static(path),
                 reason: smol_str::format_smolstr!(
                     "expected CSV options to set {setting}, got {media_type} options"
@@ -1538,9 +2075,7 @@ impl RecordOptions {
     const fn csv(&self) -> Option<&crate::csv::CsvOptions> {
         match self {
             Self::Csv(options) => Some(options),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) | Self::Excel(_) => None,
-            #[cfg(feature = "parquet")]
-            Self::Parquet(_) => None,
+            _ => None,
         }
     }
 
@@ -1619,15 +2154,12 @@ impl RecordOptions {
             .set_comment(comment)
     }
 
-    /// Return whether the first record names the columns - a CSV's first
-    /// record, a workbook's first row - or `None` for an encoding whose
-    /// columns are named by its own schema.
-    pub const fn header(&self) -> Option<bool> {
-        match self {
-            Self::Csv(options) => Some(options.header()),
-            Self::Excel(options) => Some(options.header),
-            _ => None,
-        }
+    /// Whether the first record names the columns, for a medium with a
+    /// header - a CSV's first record, a workbook's first row - and `None`
+    /// for every other.
+    #[must_use]
+    pub fn header(&self) -> Option<bool> {
+        self.as_medium().header()
     }
 
     /// Set whether the first record names the columns: a CSV's first record,
@@ -1638,19 +2170,15 @@ impl RecordOptions {
     /// Returns an error for an encoding that is neither.
     pub fn set_header(&mut self, header: bool) -> Result<()> {
         let media_type = self.mime_type();
-        match self {
-            Self::Csv(options) => options.set_header(header),
-            Self::Excel(options) => options.header = header,
-            _ => {
-                return Err(Error::InvalidRecord {
-                    path: SmolStr::new_static("$.header"),
-                    reason: smol_str::format_smolstr!(
-                        "expected CSV or Excel options to set a header, got {media_type} options"
-                    ),
-                });
-            }
+        if self.as_medium_mut().set_header(header) {
+            return Ok(());
         }
-        Ok(())
+        Err(Error::InvalidRecord {
+            path: SmolStr::new_static("$.header"),
+            reason: smol_str::format_smolstr!(
+                "expected CSV or Excel options to set a header, got {media_type} options"
+            ),
+        })
     }
 
     /// Borrow the CSV spellings of an absent value, or `None` for another
@@ -1713,139 +2241,10 @@ impl RecordOptions {
             .set_infer_row_size(infer_row_size)
     }
 
-    #[cfg(feature = "parquet")]
-    fn parquet_mut(
-        &mut self,
-        path: &'static str,
-        setting: &'static str,
-    ) -> Result<&mut crate::parquet::ParquetOptions> {
-        let media_type = self.mime_type();
-        match self {
-            Self::Parquet(options) => Ok(options),
-            Self::Ipc(_)
-            | Self::Avro(_)
-            | Self::Text(_)
-            | Self::Xmla(_)
-            | Self::Csv(_)
-            | Self::Excel(_) => Err(Error::InvalidRecord {
-                path: SmolStr::new_static(path),
-                reason: smol_str::format_smolstr!(
-                    "expected Parquet options to set {setting}, got {media_type} options"
-                ),
-            }),
-        }
-    }
-
-    /// Return the Parquet page-compression name, or `None` for another encoding.
-    #[cfg(feature = "parquet")]
-    pub fn parquet_compression_name(&self) -> Option<String> {
-        match self {
-            Self::Parquet(options) => Some(options.compression_name()),
-            Self::Ipc(_)
-            | Self::Avro(_)
-            | Self::Text(_)
-            | Self::Xmla(_)
-            | Self::Csv(_)
-            | Self::Excel(_) => None,
-        }
-    }
-
-    /// Parse and set the Parquet page compression.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error for a non-Parquet variant or an invalid compression.
-    #[cfg(feature = "parquet")]
-    pub fn set_parquet_compression_name(&mut self, compression: &str) -> Result<()> {
-        self.parquet_mut("$.compression", "a page compression")?
-            .set_compression_name(compression)
-    }
-
-    /// Bound the threads one file decodes or encodes on.
-    ///
-    /// A table that already reads or writes several files at once hands each
-    /// file its share this way, so the two levels of parallelism never
-    /// multiply past what it resolved. Parquet splits its row groups and
-    /// columns across the share and Avro its blocks; Arrow IPC, text and an
-    /// XMLA document already decode on one thread.
+    /// Bound the threads one file decodes or encodes on, where the medium
+    /// splits a file's work ([`MediumSettings::set_file_threads`]).
     pub(crate) fn set_file_threads(&mut self, threads: usize) {
-        match self {
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.threads = Some(threads.max(1)),
-            Self::Avro(options) => options.threads = FileThreads(Some(threads.max(1))),
-            Self::Ipc(_) | Self::Text(_) | Self::Xmla(_) | Self::Csv(_) | Self::Excel(_) => {}
-        }
-    }
-
-    /// Return the Parquet row-group bound, or `None` for another encoding.
-    #[cfg(feature = "parquet")]
-    pub const fn parquet_max_row_group_size(&self) -> Option<usize> {
-        match self {
-            Self::Parquet(options) => Some(options.max_row_group_size),
-            Self::Ipc(_)
-            | Self::Avro(_)
-            | Self::Text(_)
-            | Self::Xmla(_)
-            | Self::Csv(_)
-            | Self::Excel(_) => None,
-        }
-    }
-
-    /// Set the maximum rows in one Parquet row group.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when these are not Parquet options.
-    #[cfg(feature = "parquet")]
-    pub fn set_parquet_max_row_group_size(&mut self, rows: usize) -> Result<()> {
-        self.parquet_mut("$.max_row_group_size", "a row-group size")?
-            .set_max_row_group_size(rows);
-        Ok(())
-    }
-
-    /// Borrow Parquet footer metadata, or return `None` for another encoding.
-    #[cfg(feature = "parquet")]
-    pub fn parquet_key_value_metadata(&self) -> Option<&[(String, String)]> {
-        match self {
-            Self::Parquet(options) => Some(&options.key_value_metadata),
-            Self::Ipc(_)
-            | Self::Avro(_)
-            | Self::Text(_)
-            | Self::Xmla(_)
-            | Self::Csv(_)
-            | Self::Excel(_) => None,
-        }
-    }
-
-    /// Replace Parquet footer metadata.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when these are not Parquet options.
-    #[cfg(feature = "parquet")]
-    pub fn set_parquet_key_value_metadata(
-        &mut self,
-        metadata: Vec<(String, String)>,
-    ) -> Result<()> {
-        self.parquet_mut("$.key_value_metadata", "footer metadata")?
-            .set_key_value_metadata(metadata);
-        Ok(())
-    }
-
-    /// Add one Parquet footer metadata entry.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when these are not Parquet options.
-    #[cfg(feature = "parquet")]
-    pub fn push_parquet_key_value(
-        &mut self,
-        key: impl Into<String>,
-        value: impl Into<String>,
-    ) -> Result<()> {
-        self.parquet_mut("$.key_value_metadata", "footer metadata")?
-            .push_key_value(key, value);
-        Ok(())
+        self.as_medium_mut().set_file_threads(threads);
     }
 
     /// Validate one explicit write mode before a runtime binding consumes input.
@@ -1962,142 +2361,42 @@ impl RecordOptions {
         Self::for_mime_type(media_type.base())
     }
 
-    /// Derive the options for the encoding a MIME type names.
+    /// Derive the options for the encoding a MIME type names: the default
+    /// options of the medium claimed under it.
     ///
     /// # Errors
     ///
-    /// Returns an error when no encoding in this build covers `base`.
+    /// Returns an error when no medium claims `base`, naming the media this
+    /// build implements and the crate to install; a structured text document
+    /// is named with its own doors, since it is one value rather than a
+    /// stream of batches.
     pub fn for_mime_type(base: &MimeType) -> Result<Self> {
-        if base == &MimeType::ARROW_STREAM || base == &MimeType::ARROW_FILE {
-            return Ok(Self::Ipc(IpcOptions::new()));
+        match crate::media::codec_for(base) {
+            Ok(codec) => Ok(codec.default_options(base)),
+            Err(refusal) => {
+                let Ok(format) = crate::text::Format::from_mime_type(base) else {
+                    return Err(refusal);
+                };
+                Err(Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: crate::text::expected_got(
+                        format_args!(
+                            "{}; a {} document is one value, read with read_serie or read_scalar \
+                             and written with write_serie (overwrite) or write_scalar",
+                            crate::media::codec::implemented(),
+                            format.as_str()
+                        ),
+                        base,
+                    ),
+                })
+            }
         }
-        #[cfg(feature = "parquet")]
-        if base == &MimeType::PARQUET {
-            return Ok(Self::Parquet(crate::parquet::ParquetOptions::new()));
-        }
-        if base == &MimeType::AVRO {
-            return Ok(Self::Avro(crate::avro::AvroOptions::new()));
-        }
-        // Plain text reads and writes as lines: the projection is the
-        // encoding, so a `.log` answers the record surface out of the box.
-        if base == &MimeType::PLAIN_TEXT {
-            return Ok(Self::Text(Box::default()));
-        }
-        if base == &MimeType::XMLA {
-            return Ok(Self::Xmla(crate::xmla::XmlaOptions::new()));
-        }
-        if base == &MimeType::CSV {
-            return Ok(Self::Csv(crate::csv::CsvOptions::new()));
-        }
-        if base == &MimeType::TSV {
-            return Ok(Self::Csv(crate::csv::CsvOptions::tsv()));
-        }
-        if base == &MimeType::XLSX {
-            return Ok(Self::Excel(crate::excel::ExcelOptions::new()));
-        }
-        let encodings = if cfg!(feature = "parquet") {
-            "a record encoding this build implements (application/vnd.apache.arrow.stream, application/vnd.apache.parquet, application/avro, text/plain, application/xmla+xml, text/csv, text/tab-separated-values, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet)"
-        } else {
-            "a record encoding this build implements (application/vnd.apache.arrow.stream, application/avro, text/plain, application/xmla+xml, text/csv, text/tab-separated-values, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; the `parquet` feature is not enabled)"
-        };
-        // A structured text document is one value around its rows, not a
-        // stream of batches: it has doors of its own, and the refusal names
-        // them rather than leaving a caller to guess.
-        let reason = match crate::text::Format::from_mime_type(base) {
-            Ok(format) => crate::text::expected_got(
-                format_args!(
-                    "{encodings}; a {} document is one value, read with read_serie or \
-                     read_scalar and written with write_serie (overwrite) or write_scalar",
-                    format.as_str()
-                ),
-                base,
-            ),
-            Err(_) => crate::text::expected_got(encodings, base),
-        };
-        Err(Error::InvalidRecord {
-            path: SmolStr::new_static("$"),
-            reason,
-        })
     }
 
     /// Return the MIME type of the encoding these options describe.
-    pub const fn mime_type(&self) -> MimeType {
-        match self {
-            Self::Ipc(_) => MimeType::ARROW_STREAM,
-            #[cfg(feature = "parquet")]
-            Self::Parquet(_) => MimeType::PARQUET,
-            Self::Avro(_) => MimeType::AVRO,
-            Self::Text(_) => MimeType::PLAIN_TEXT,
-            Self::Xmla(_) => MimeType::XMLA,
-            Self::Csv(options) => {
-                if options.separator() == b'\t' {
-                    MimeType::TSV
-                } else {
-                    MimeType::CSV
-                }
-            }
-            Self::Excel(_) => MimeType::XLSX,
-        }
-    }
-
-    /// The worksheet a workbook read or write addresses, or `None` for
-    /// another encoding or when none is named.
-    pub fn excel_sheet(&self) -> Option<&str> {
-        match self {
-            Self::Excel(options) => options.sheet.as_deref(),
-            _ => None,
-        }
-    }
-
-    /// Set or clear the worksheet a workbook read or write addresses.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error for a non-workbook variant, or a name Excel refuses
-    /// ([`validate_sheet_name`](crate::excel::validate_sheet_name)).
-    pub fn set_excel_sheet(&mut self, sheet: Option<&str>) -> Result<()> {
-        let options = self.excel_mut("$.sheet", "a worksheet")?;
-        if let Some(sheet) = sheet {
-            crate::excel::validate_sheet_name(sheet)?;
-        }
-        options.sheet = sheet.map(SmolStr::new);
-        Ok(())
-    }
-
-    /// The cells a workbook read or write addresses, or `None` for another
-    /// encoding or the whole sheet.
-    pub fn excel_range(&self) -> Option<crate::excel::CellRange> {
-        match self {
-            Self::Excel(options) => options.range,
-            _ => None,
-        }
-    }
-
-    /// Set or clear the cells a workbook read or write addresses.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error for a non-workbook variant.
-    pub fn set_excel_range(&mut self, range: Option<crate::excel::CellRange>) -> Result<()> {
-        self.excel_mut("$.range", "a cell range")?.range = range;
-        Ok(())
-    }
-
-    fn excel_mut(
-        &mut self,
-        path: &'static str,
-        setting: &'static str,
-    ) -> Result<&mut crate::excel::ExcelOptions> {
-        let media_type = self.mime_type();
-        match self {
-            Self::Excel(options) => Ok(options),
-            _ => Err(Error::InvalidRecord {
-                path: SmolStr::new_static(path),
-                reason: smol_str::format_smolstr!(
-                    "expected Excel options to set {setting}, got {media_type} options"
-                ),
-            }),
-        }
+    #[must_use]
+    pub fn mime_type(&self) -> MimeType {
+        self.as_medium().mime_type()
     }
 }
 
@@ -2155,15 +2454,6 @@ pub mod internals {
     /// `None` for an encoding that decodes on one thread already.
     #[must_use]
     pub fn file_threads(options: &RecordOptions) -> Option<usize> {
-        match options {
-            #[cfg(feature = "parquet")]
-            RecordOptions::Parquet(options) => options.threads,
-            RecordOptions::Avro(options) => options.threads.0,
-            RecordOptions::Ipc(_)
-            | RecordOptions::Text(_)
-            | RecordOptions::Xmla(_)
-            | RecordOptions::Csv(_)
-            | RecordOptions::Excel(_) => None,
-        }
+        options.as_medium().file_threads()
     }
 }

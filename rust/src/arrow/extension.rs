@@ -17,7 +17,7 @@ use arrow_schema::extension::{
 };
 use arrow_schema::{ArrowError, DataType as ArrowDataType};
 
-use crate::{BytesType, DataType, StringType};
+use crate::{BytesType, DataType, DataTypeId, StringType};
 
 /// The datatype `name`, `document` and `storage` state, as a field of them
 /// imports; `None` where they state none of this crate's.
@@ -48,16 +48,47 @@ fn unexpected_document(name: &str, document: &str) -> ArrowError {
     ArrowError::InvalidArgumentError(format!("expected no {name} document, got {document:?}"))
 }
 
+/// What a parameter-free marker's `deserialize_metadata` answers: no
+/// document, or the refusal of the one stated.
+pub fn marker_metadata(name: &str, metadata: Option<&str>) -> Result<(), ArrowError> {
+    match metadata {
+        None | Some("") => Ok(()),
+        Some(document) => Err(unexpected_document(name, document)),
+    }
+}
+
+/// What a parameter-free marker's `supports_data_type` answers: the storage
+/// the recognizer reads as the datatype `id` names, under the name `name`.
+pub fn marker_supports(
+    name: &str,
+    id: DataTypeId,
+    data_type: &ArrowDataType,
+) -> Result<(), ArrowError> {
+    match recognized(name, None, data_type)? {
+        Some(dtype) if dtype.id() == id => Ok(()),
+        _ => Err(unsupported(name, data_type)),
+    }
+}
+
 /// [`ExtensionType`] for parameter-free markers: the name the datatype's
 /// identifier rides, no document, and the storage the recognizer reads as
-/// that datatype.
+/// that datatype. A core marker reads its name off its identifier; a
+/// registered enum kind's marker is the claiming crate's, written beside
+/// its type through `market_extension!` below.
 macro_rules! marker_extension {
-    ($($marker:ident => $variant:ident),* $(,)?) => {$(
-        impl ExtensionType for crate::$marker {
-            const NAME: &'static str = match crate::DataTypeId::$variant.arrow_extension_name() {
+    (@one $marker:ident => $variant:ident) => {
+        marker_extension!(
+            @impl $marker,
+            match crate::DataTypeId::$variant.core_arrow_extension_name() {
                 Some(name) => name,
                 None => panic!("a marker's datatype rides an extension name"),
-            };
+            },
+            crate::DataTypeId::$variant
+        );
+    };
+    (@impl $marker:ident, $name:expr, $id:expr) => {
+        impl ExtensionType for crate::$marker {
+            const NAME: &'static str = $name;
 
             type Metadata = ();
 
@@ -70,23 +101,20 @@ macro_rules! marker_extension {
             }
 
             fn deserialize_metadata(metadata: Option<&str>) -> Result<Self::Metadata, ArrowError> {
-                match metadata {
-                    None | Some("") => Ok(()),
-                    Some(document) => Err(unexpected_document(Self::NAME, document)),
-                }
+                marker_metadata(Self::NAME, metadata)
             }
 
             fn supports_data_type(&self, data_type: &ArrowDataType) -> Result<(), ArrowError> {
-                match recognized(Self::NAME, None, data_type)? {
-                    Some(dtype) if dtype.id() == crate::DataTypeId::$variant => Ok(()),
-                    _ => Err(unsupported(Self::NAME, data_type)),
-                }
+                marker_supports(Self::NAME, $id, data_type)
             }
 
             fn try_new(data_type: &ArrowDataType, (): Self::Metadata) -> Result<Self, ArrowError> {
                 Self.supports_data_type(data_type).map(|()| Self)
             }
         }
+    };
+    ($($marker:ident => $($leaf:ident)+),* $(,)?) => {$(
+        marker_extension!(@one $marker => $($leaf)+);
     )*};
 }
 
@@ -98,11 +126,6 @@ marker_extension! {
     MimeTypeType => MimeType,
     MediaTypeType => MediaType,
     StateType => State,
-    MarketDataKindType => MarketDataKind,
-    MarketDataTypeType => MarketDataType,
-    SideType => Side,
-    TimeInForceType => TimeInForce,
-    PluginSideType => PluginSide,
     CountryType => Country,
     CcyType => Ccy,
     MicType => Mic,
@@ -120,6 +143,51 @@ marker_extension! {
     ElfType => Elf,
     DtiType => Dti,
     FisnType => Fisn,
+}
+
+/// [`ExtensionType`] for a registered enum kind's marker, written by the
+/// crate that claims the kind beside its type - a foreign trait is
+/// implemented only in the type's crate - as
+/// `market_extension!(SideType, Side)`: the name and the identifier are the
+/// kind's own, the storage the one the recognizer reads as that kind.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! market_extension {
+    ($marker:ident, $leaf:ident) => {
+        impl $crate::implementer::ExtensionType for $marker {
+            const NAME: &'static str = <$leaf>::EXTENSION_NAME;
+
+            type Metadata = ();
+
+            fn metadata(&self) -> &Self::Metadata {
+                &()
+            }
+
+            fn serialize_metadata(&self) -> Option<String> {
+                None
+            }
+
+            fn deserialize_metadata(
+                metadata: Option<&str>,
+            ) -> Result<Self::Metadata, $crate::implementer::ArrowError> {
+                $crate::implementer::marker_metadata(Self::NAME, metadata)
+            }
+
+            fn supports_data_type(
+                &self,
+                data_type: &$crate::implementer::ArrowDataType,
+            ) -> Result<(), $crate::implementer::ArrowError> {
+                $crate::implementer::marker_supports(Self::NAME, <$leaf>::ID, data_type)
+            }
+
+            fn try_new(
+                data_type: &$crate::implementer::ArrowDataType,
+                (): Self::Metadata,
+            ) -> Result<Self, $crate::implementer::ArrowError> {
+                Self.supports_data_type(data_type).map(|()| Self)
+            }
+        }
+    };
 }
 
 /// [`ExtensionType`] for a view whose leaf is its document: `yggdryl.string`

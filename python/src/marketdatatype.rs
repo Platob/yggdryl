@@ -2,7 +2,7 @@
 //! `yggdryl.MarketDataType` is built from.
 
 use pyo3::prelude::*;
-use yggdryl::{MarketDataKind, MarketDataType};
+use yggdryl_market::{MarketDataKind, MarketDataType};
 
 /// Every member of the core enum, in code order: its stored name, the code a
 /// column stores, and what it means.

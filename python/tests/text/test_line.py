@@ -81,12 +81,12 @@ class TestTextLine:
         # Every row of one read is addressed the same way, so they cross alike.
         assert str(lines[1].sourceuri) == str(lines[0].sourceuri)
         assert lines[1].crossuuid == lines[0].crossuuid
-        assert lines[1].curruuid != lines[0].curruuid
+        assert lines[1].uuid != lines[0].uuid
         # The identifier seeds the identity and stays out of the content code:
         # the same body held under none is the same code and another identity.
         bare = TextLine(lines[0].index, lines[0].body)
-        assert bare.currhashcode == lines[0].currhashcode
-        assert bare.curruuid != lines[0].curruuid
+        assert bare.hashcode == lines[0].hashcode
+        assert bare.uuid != lines[0].uuid
 
     def test_a_line_reads_itself_on_the_first_ask(self) -> None:
         lines = list(source().read_text_lines(options=TextOptions()))
@@ -105,25 +105,25 @@ class TestTextLine:
         assert line.body == "8=FIX|55=AAPL|35=D"
         assert line.captures == ("INFO",)
         assert line.mtime is None
-        assert line.currunix == 0
+        assert line.transunix == 0
         # The content code is the body's XXH3-64 and nothing else - not the
         # captures, the row or the source - and the identity derives from the
         # instant, the row and that code, so one body on two rows is two.
-        assert line.currhashcode == xxhash.xxh3(b"8=FIX|55=AAPL|35=D")
-        assert isinstance(line.curruuid, Scalar)
+        assert line.hashcode == xxhash.xxh3(b"8=FIX|55=AAPL|35=D")
+        assert isinstance(line.uuid, Scalar)
         later = TextLine(7, "[INFO] 8=FIX|55=AAPL|35=D", None, options)
         assert later.index == 7
-        assert later.currhashcode == line.currhashcode
-        assert line.curruuid != later.curruuid
+        assert later.hashcode == line.hashcode
+        assert line.uuid != later.uuid
         # A line read under no header holds the whole text as its body, so its
         # code is another one.
-        assert line.currhashcode != TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D").currhashcode
+        assert line.hashcode != TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D").hashcode
         # Another body is another code, and so another identity.
         other = TextLine(7, "[INFO] 8=FIX|55=MSFT|35=D", None, options)
-        assert other.currhashcode != line.currhashcode
-        assert other.curruuid != line.curruuid
+        assert other.hashcode != line.hashcode
+        assert other.uuid != line.uuid
         assert line.crosscode == "" and line.crosshashcode == 0
-        assert line.crossuuid != line.curruuid or line.crosscode == ""
+        assert line.crossuuid != line.uuid or line.crosscode == ""
         # Stated captures are the line's word over its own header.
         stated = TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D", ["WARN"], options)
         assert stated.captures == ("WARN",)
@@ -132,19 +132,19 @@ class TestTextLine:
         options = TextOptions()
         options.start_rownum = 10
         line = TextLine(0, "8=FIX|55=AAPL|35=D", None, options)
-        initial_uuid = line.curruuid
+        initial_uuid = line.uuid
         assert line.seqnum == 10
 
         line.index = 7
         assert line.index == 7
         assert line.seqnum == 17
-        assert line.curruuid != initial_uuid
+        assert line.uuid != initial_uuid
 
         maximum = (1 << 64) - 1
         widest = TextLine(maximum, "8=FIX|55=AAPL|35=D")
         assert widest.index == maximum
         assert widest.seqnum == maximum
-        assert widest.curruuid != TextLine(maximum - 1, widest.body).curruuid
+        assert widest.uuid != TextLine(maximum - 1, widest.body).uuid
 
     def test_a_line_with_no_body_is_no_line(self) -> None:
         # A line is the line it holds, so the door that makes one refuses a

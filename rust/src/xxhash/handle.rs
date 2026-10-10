@@ -150,10 +150,12 @@ impl<H: IOBase> IOBase for Hashed<H> {
     // answer. What the list leaves out is exactly what this wrapper owns: the
     // positional write that may extend the running prefix, the three
     // operations that can drop bytes the state has already folded in, and the
-    // digest read itself.
+    // digest read itself - and so the upload, which writes through the
+    // positional write, the discard, whose dropped stage the state may have
+    // folded in, and the two roles, whose handles drop the state.
     crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, read_tail_bytes,
         pstream_bytes,
-        size, capacity, reserve, uri, url,
+        size, set_known_size, capacity, reserve, uri, url,
         bound_location, mtime, media_type, set_media_type, applied_codec, flush, open, opened, close, parent,
         child_by_path, ls, kind, is_container, is_atomic, is_tabular, is_io);
 

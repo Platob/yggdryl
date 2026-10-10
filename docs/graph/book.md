@@ -1,6 +1,6 @@
 # Book
 
-A book is live depth over time: `BookEvent` one book at an instant - complete, holding the entries alive on both sides and each side read as its price levels, or a [delta book](#complete-books-and-delta-books) holding no sides: its `delta` - the orders and quotes it applied since the book before - its `events` - the executions and snapshot controls it recorded - and the top of book they settled on - `SnapshotEvent` the scope-replacing control, and `BookIterator` the fold of a sorted stream into books. Sorted books fold on into [candles](candle.md), and the [book display](serve.md) serves a table of them as candles, books and audits.
+A book is live depth over time: `BookEvent` one book at an instant - complete, holding the entries alive on both sides and each side read as its price levels, or a [delta book](#complete-books-and-delta-books) holding no sides: its `delta` - the orders and quotes it applied since the book before - its `events` - the executions and snapshot controls it recorded - and the top of book they settled on - `SnapshotEvent` the scope-replacing control, and `BookIterator` the fold of a sorted stream into books. Sorted books fold on into [candles](candle.md).
 
 ## Contract
 
@@ -9,9 +9,9 @@ A book is live depth over time: `BookEvent` one book at an instant - complete, h
 | `BookEvent` | on a [complete](#complete-books-and-delta-books) book the orders and quotes alive on its bid and ask sides; on every book its `delta` - the orders and quotes applied since the book before - and its `events` - every other event its instant recorded - each in the order applied, and the top of book they settled on | `Element`, `Event`, `Market` |
 | `SnapshotEvent` | an empty FIX `W`'s full-snapshot control: event + replaced scope, no entry | `Element`, `Event`, `Market` |
 | `BookIterator` | the [fold](#book-fold) from a sorted stream to books | `Iterator<Item = Result<BookEvent>>` |
-| `yggdryl::Limit` | one [price level](#limits) of a side, a root value type | - |
+| `yggdryl_market::Limit` | one [price level](#limits) of a side, a root value type | - |
 
-All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY_REF_ID` (`mdentryrefid`); `Limit` in the root `limit.rs`. A book is keyed by its [book key](market.md#the-book-key) - the instrument's ISIN, else the ticker, else `XX0000000000` - and stores it as its cross code `3:0:{key}`. A book holds both sides - its side is `Side::Both` (`BOTH`), whatever it is set to, a side set on it moving no price or level - and neither a book nor a snapshot control is [sided](market.md#sides-and-cross-codes): its stored cross code states side `0`, and a snapshot control over an order takes the order's base code under its own kind. A book places no execution: a fill moves it through its order's or quote's own report, and an execution of its instant is recorded among its `events`, resting on no side; every input [`MarketDataKind::is_recorded`](../types/enum/marketdatakind.md) does not admit - a trade, a batch - is pruned before it folds. Its row nests `alive`, `delta`, `events`, `bidlimits` and `asklimits`, and its `executions` cell is null ([Market data](market-data.md#arrow)).
+All in `yggdryl_market::graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY_REF_ID` (`mdentryrefid`); `Limit` in the market crate's root `limit.rs`. A book is keyed by its [book key](market.md#the-book-key) - the instrument's cross code the input states as its `instcode`, alone: a real ISIN, an FX pair's `IF:EUR/USD`, a derivative's `class:body` - stores it as its cross code `3:0:{key}` and states it as its own `instcode`; an input stating no `instcode` is pruned before the walk, as a kind a book does not record is. A book holds both sides - its side is `Side::Both` (`BOTH`), whatever it is set to, a side set on it moving no price or level - and neither a book nor a snapshot control is [sided](market.md#sides-and-cross-codes): its stored cross code states side `0`, and a snapshot control over an order takes the order's base code under its own kind. A book places no execution: a fill moves it through its order's or quote's own report, and an execution of its instant is recorded among its `events`, resting on no side; every input `booked` does not admit - a kind [`MarketDataKind::is_recorded`](../types/enum/marketdatakind.md) does not admit, a trade, a batch, and a recorded input stating no `instcode` - is pruned before it folds. Its row nests `alive`, `delta`, `events`, `bidlimits` and `asklimits`, and its `executions` cell is null ([Market data](market-data.md#arrow)).
 
 ## Complete books and delta books
 
@@ -21,9 +21,9 @@ All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY
 | A delta book | holds no sides and states its `delta()` and `events()` alone, beside the top-of-book facts they settled on - `bidpx`, `bidqty`, `bidccy`, `askpx`, `askqty`, `askccy`, `price`, `quantity` - and names the book it follows as its `prevuuid`, none for a code's first book, which follows the empty book; `alive()`, `alive_on`, `limits`, `depth` and `imbalance` answer nothing on it. An instant that recorded only an execution is a delta book whose `delta` is empty and whose `events` hold the execution |
 | Read in both forms | `best_price`, `best_quantity`, `spread`, `bbo_midpoint`, `median_quantity`, `is_crossed` and `is_locked` read the book's own top-of-book facts, never a side, so a delta book answers them as its rebuilt book does |
 | `with_previous(&previous)` | a delta book rebuilt over the complete book it follows: `previous`' sides taken, each `delta` entry replayed in the order applied, whole and under its own identity, its `events` kept and replaying nothing. A delta book naming no `prevuuid` - a code's first book - rebuilds over the empty book `BookEvent::keyed(unix, key)` every walk starts from, whatever `previous` holds. `None` where it cannot follow `previous`: another book code, a later instant than this book's, itself, another book than its `prevuuid` names, a `previous` holding no sides, a `delta` entry that does not replay, or a rebuild settling on another top of book than the one it states. A complete book is authoritative: it only takes the link - `prevuuid`, `prevunix`, `prevpx`, `prevqty` - and answers `None` where nothing moves |
-| `BookEvent::keyed(unix, key)` | an empty, complete book keyed `key` - an ISIN, a ticker or `XX0000000000` - stating neither a ticker nor an ISIN until its first input states each: the empty base a code's first book rebuilds over, `delta.with_previous(&BookEvent::keyed(unix, key))`. Python `graph.BookEvent.keyed(currunix, key)`, JavaScript `graph.BookEvent.keyed(currunix, key)` |
+| `BookEvent::keyed(unix, key)` | the one constructor: an empty, complete book keyed `key` - the instrument's cross code every input it takes states as its `instcode`, which the book states as its own - stating neither a ticker nor an ISIN until its first input states each; a key spelled as a stored book cross code (`3:0:IBM`) is read as one, its base the code; an empty `key` keys a book by nothing, whose cross code is empty, which takes nothing and which reads back from its row as written. The empty base a code's first book rebuilds over, `delta.with_previous(&BookEvent::keyed(unix, key))`. Python `graph.BookEvent(transunix, key)` and `graph.BookEvent.keyed(transunix, key)`, JavaScript `new graph.BookEvent(transunix, key)` and `graph.BookEvent.keyed(transunix, key)`, one door |
 | `add_operations` on a delta book | refused at `$.alive` (`a delta book takes no operations: rebuild it with with_previous first`) |
-| Identity | chain form: the book's market event - its state, the book it follows and every market fact, its top of book included - its instant, each side's digest only where it states a `snapunix`, then its `delta` count and each entry's operation word and `curruuid`, then its `events` count and each event's kind and `curruuid`. A delta book and the book rebuilt from it share one identity, and a book walks its sides only at a snapshot |
+| Identity | chain form: the book's market event - its state, the book it follows and every market fact, its top of book included - its instant, each side's digest only where it states a `snapunix`, then its `delta` count and each entry's operation word and `uuid`, then its `events` count and each event's kind and `uuid` - an execution's `uuid` digesting what it executed, its [`quantity`](market.md#one-quantity-per-kind). A delta book and the book rebuilt from it share one identity, and a book walks its sides only at a snapshot |
 | Its row | a complete book states `alive` - an empty list included - and its `bidlimits` and `asklimits`; a delta book leaves those three null; every book states its `delta` and `events`. One distinction is lost in every table, because a table may store a null list as an empty one and the reader takes one rule: a complete book holding no live entry that states a `delta` or `events` entry and no `snapunix` - one built or rebuilt, never one a walk emits - reads back as a delta book, its identity and both lists kept. An event-only row - `delta` empty, `events` holding an execution, no `snapunix` - is a delta book, never a snapshot control ([the leaf a row names](market-data.md#the-leaf-a-row-names)) |
 
 ## Entries
@@ -48,11 +48,11 @@ All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY
 | Orders among quotes | a change or overlay (`1`, `5`) keeps a matched `OrderEvent` when `orderid` is omitted and promotes an unidentified `QuoteEvent` when it is stated; an `orderid` other than the live entry's continues the entry only where a parent of `orderid` the input states - `parentorderid` or `origorderid`, [`Operation::parents_of`](operation.md#contract) of `orderid` ([Parentage](identifier.md#parentage)) - names the live order, as a replace under a new `OrderID` naming the one it replaced does, and is another order's otherwise; a contradiction - that unexplained `orderid`, at `$.operation.identifiers.orderid` (`expected the live order "O-1", got "O-2"`), or a continuation of the other kind no rule promotes, at `$.operation.kind` - is a located `InvalidRecord`, the book unchanged; a delete (`2`) keeps the matched kind and predecessor link. A [walked](market.md#sides-and-cross-codes) replace stands under its order's cross identity, and one under a new `OrderID` names the one before as its `parentorderid` ([`follow_parents`](identifier.md#parentage)), so either continues the entry where it stood |
 | Anonymous new | a new (`0`) without `mdentryid` never inserts into an occupied position: it states `mdentryid` or arrives in a snapshot |
 | Range deletes | delete-through and delete-from (`3`, `4`) take the positions of the range's symbol and scope on the side its entry type takes, each entry off every side it rests on; a missing or malformed position refuses atomically, and a range stating neither a bid nor an ask takes nothing off, warned of |
-| Its book | an input stands in a book where its own [book key](market.md#the-book-key) is the book's, or where it states neither an ISIN nor a ticker; another is refused at `$.operation.isincode` where it states an ISIN, else at `$.operation.ticker` (`expected book crosscode "AAPL", got "MSFT"`). An ISIN-keyed book so takes two listings' tickers, which stay apart inside it by their own partition |
+| Its book | an input stands in a book where its `instcode` is the book's [key](market.md#the-book-key); another is refused at `$.operation.instcode` (`expected book crosscode "US0378331005", got "CH0012214059"`), and so is an input stating none (`got none`). A book so takes two listings' tickers of one instrument, which stay apart inside it by their own partition |
 
 ## Limits
 
-`Limit { price: Option<Decimal>, quantity: Decimal, uuids: Vec<Uuid>, tradable: bool }` is one price level of a side: its price (`None` folds the unpriced entries), the sum of its entries' quantities on that side - an order's quantity, a quote's leg - their `curruuid`s in live order, and whether it can trade - read by equality and hash.
+`Limit { price: Option<Decimal>, quantity: Decimal, uuids: Vec<Uuid>, tradable: bool }` is one price level of a side: its price (`None` folds the unpriced entries), the sum of its entries' quantities on that side - an order's quantity, a quote's leg - their `uuid`s in live order, and whether it can trade - read by equality and hash.
 
 | Key | Rule |
 | --- | --- |
@@ -69,17 +69,16 @@ All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY
 
 | Key | Rule |
 | --- | --- |
-| `BookEvent::new(unix, symbol)` | an empty, complete book at that nanosecond, state `NEW`, keyed by the ticker `symbol`, which it states - stored `3:0:{symbol}` - taking the inputs stating that ticker and no ISIN, and those stating neither; an empty `symbol` keys it `XX0000000000` ([`Isin::NONE`](../types/codes/isin.md#the-check-digit-and-the-rank)) and states no ticker |
-| `BookEvent::keyed(unix, key)` | an empty, complete book keyed `key` ([above](#complete-books-and-delta-books)) |
+| `BookEvent::keyed(unix, key)` | an empty, complete book at that nanosecond, state `NEW`, keyed `key` ([above](#complete-books-and-delta-books)) - stored `3:0:{key}`, its own `instcode` the key - taking the inputs stating that code as their `instcode` |
 | Its instrument | a book takes its ticker and its ISIN - as its `isin` security identifier - from the first input stating each; no input moves them after |
-| `add_operations` | any `IntoIterator` of `MarketData`/`Result<MarketData>`, no-op if empty; every input `MarketDataKind::is_recorded` does not admit - a `TradeEvent` - is pruned first, so a group of nothing else changes nothing: the instant does not advance and the `delta` and `events` stand. `OrderEvent`/`QuoteEvent` fold into the sides and the `delta`, a `SnapshotEvent` replaces membership and is recorded among the `events`, and an `ExecutionEvent` is recorded among the `events`, resting on no side; any other variant - an undated leaf, a `BookEvent` - is refused at `$.operations[index].kind`; every `currunix` must agree, regression refused, applied in source order; atomic - the book is unchanged on every error; the refusals on this page are this explicit call's, which [the fold](#book-fold) answers by leaving what a book refuses out, with a warning |
+| `add_operations` | any `IntoIterator` of `MarketData`/`Result<MarketData>`, no-op if empty; every input `MarketDataKind::is_recorded` does not admit - a `TradeEvent` - is pruned first, so a group of nothing else changes nothing: the instant does not advance and the `delta` and `events` stand; a recorded input stating no `instcode`, or another book's, is refused at `$.operation.instcode`. `OrderEvent`/`QuoteEvent` fold into the sides and the `delta`, a `SnapshotEvent` replaces membership and is recorded among the `events`, and an `ExecutionEvent` is recorded among the `events`, resting on no side; any other variant - an undated leaf, a `BookEvent` - is refused at `$.operations[index].kind`; every `transunix` must agree, regression refused, applied in source order; atomic - the book is unchanged on every error; the refusals on this page are this explicit call's, which [the fold](#book-fold) answers by leaving what a book refuses out, with a warning |
 | A new instant | the book follows the book it was - its identity and instant as `prevuuid` and `prevunix`, its price and quantity as `prevpx` and `prevqty` - and its `delta`, `events`, place and snapshot stamp start again; live depth stays |
 | Snapshots | a full-snapshot order/quote/`SnapshotEvent` clears only its `(symbol, scope)` partition on both sides (an empty FIX `W` is one) before its group applies, and the book states the group's instant as its `snapunix`; which partitions the last snapshot replaced is walk state - no row states it, and neither the digest nor equality reads it |
-| Bounds | the highest place of its members at the book's own instant (reset when the instant advances), earliest creation/recording instants, latest execution instant (the book's [`execunix`](market.md#contract)) of the finalized generation, after any predecessor advanced it; a rehydrated book checks all four against every nested operation, the place only against those at its instant |
+| Bounds | the highest place of its members at the book's own instant (reset when the instant advances), earliest creation instant and wire clock, latest execution instant (the book's [`execunix`](market.md#contract)) of the finalized generation, after any predecessor advanced it; a rehydrated book checks all four against every nested operation, the place only against those at its instant |
 | As a market | `price`: `bbo_midpoint()` - the overflow-safe `(bid + offer) / 2` of a two-sided BBO, per [SEC](https://www.sec.gov/files/rules/sro/btnl/2026/34-106421-ex4.pdf) - else the one best price, `None` if crossed; `quantity`: `median_quantity()` - [NIST](https://www.itl.nist.gov/div898/handbook/eda/section3/eda351.htm) mean of the two best quantities, one-sided its own; currency the best legs agree on and unit the best entries agree on (one-sided: its own; else none); `bidpx`/`bidqty` and `askpx`/`askqty` the best tradable levels, `bidccy`/`askccy` the book's currency beside a best - nothing where no level of a side can trade |
 | Following | `with_previous`, [above](#complete-books-and-delta-books): a delta book rebuilt over the book it follows, a complete one linked to it |
-| Merging | only one book code at one instant, the reference chosen by its recording clock - the later `recdunix`, then `currunix`: two complete books join their sides - the reference's entries, then each of the other's identities it holds on neither side, unless the reference states a `snapunix`, which is authoritative - and union their `delta` and their `events`, each list apart; a complete book is authoritative over a delta book whichever records later; two delta books keep the reference's facts over the `delta` and `events` of both, the reference's first; self-merge changes nothing |
-| Bindings | Python `graph.BookEvent(currunix, symbol)`, `graph.BookEvent.keyed(currunix, key)`, `with_operations(items)` (a new book), `with_previous(previous)`, the properties `alive`, `delta`, `events`, `ordlive`, `orddelta`, `quotes`, `executions`, `controls` and `is_complete`, the method `alive_on(side)`; JavaScript `new graph.BookEvent(currunix, symbol)`, `graph.BookEvent.keyed(currunix, key)`, `withOperations(items)`, `withPrevious(previous)`, the methods `alive()`, `delta()`, `events()`, `ordlive()`, `orddelta()`, `quotes()`, `executions()`, `controls()`, `aliveOn(side)` and the property `isComplete` |
+| Merging | only one book code at one instant, the reference chosen by its wire clock - the later `sendunix`, then `transunix`: two complete books join their sides - the reference's entries, then each of the other's identities it holds on neither side, unless the reference states a `snapunix`, which is authoritative - and union their `delta` and their `events`, each list apart; a complete book is authoritative over a delta book whichever records later; two delta books keep the reference's facts over the `delta` and `events` of both, the reference's first; self-merge changes nothing |
+| Bindings | Python `graph.BookEvent(transunix, key)`, `graph.BookEvent.keyed(transunix, key)`, `with_operations(items)` (a new book), `with_previous(previous)`, the properties `alive`, `delta`, `events`, `ordlive`, `orddelta`, `quotes`, `executions`, `controls` and `is_complete`, the method `alive_on(side)`; JavaScript `new graph.BookEvent(transunix, key)`, `graph.BookEvent.keyed(transunix, key)`, `withOperations(items)`, `withPrevious(previous)`, the methods `alive()`, `delta()`, `events()`, `ordlive()`, `orddelta()`, `quotes()`, `executions()`, `controls()`, `aliveOn(side)` and the property `isComplete` |
 
 ## Snapshot controls
 
@@ -91,13 +90,13 @@ All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY
 
 | Key | Rule |
 | --- | --- |
-| Pruned | every input [`MarketDataKind::is_recorded`](../types/enum/marketdatakind.md) does not admit - a trade, a batch, a session message, `UKNW` - is dropped where it is pulled, a FIX message's leaves once it is split: a pruned input touches no book, no instant and no grid, so an instant only a trade reached emits no book |
+| Pruned | every input the walk's admission does not take is dropped where it is pulled, a FIX message's leaves once it is split - a `W`/`X` entry stating its own `SecurityID(48)` booked by the code it spells: a kind [`MarketDataKind::is_recorded`](../types/enum/marketdatakind.md) does not admit - a trade, a batch, a session message, `UKNW` - in silence, and a recorded input stating no `instcode` - a ticker-only line no lifecycle filled, a masked number such as `XX0000000001`, a line a full registry could not learn - with one deduplicated [warning](../fix/capture.md#warnings) per instrument it names; a pruned input touches no book, no instant and no grid, so an instant only a trade or a code-less input reached emits no book |
 | Recorded | an execution reaches the book its instrument keys and stands among the `events` of its instant, resting on no side and moving none - its fill moved the book through its order's or quote's own report - and dates the book's `execunix`; a book of its instant alone is an event-only delta book, its `delta` empty and its `events` the execution, and `with_previous` replays nothing of it. A snapshot control is recorded among the `events` of the book whose membership it replaced |
-| Input | what is kept and is no order, quote, execution or snapshot control - an undated leaf, a `BookEvent` - is refused by kind at `$.operation.kind`: a value that is no operation of a book is the caller's mistake, not data; that refusal and a source failure each follow the completed prefix once and fuse the iterator |
+| Input | what is kept and is no order, quote, execution or snapshot control - an undated leaf, a `BookEvent`, whatever `instcode` it states - is refused by kind at `$.operation.kind`: a value that is no operation of a book is the caller's mistake, not data; that refusal and a source failure each follow the completed prefix once and fuse the iterator |
 | `with_filter(filter)` | an expression [`Filter`](../expression/filters.md) - a filter, a term or its text - over the [`marketdata` row](market-data.md#arrow), bound once, answered by the expression engine over one batch per 1,024 recorded inputs the walk pulls ahead; the kind rule prunes first, so a filter narrows what a book folds and never admits a trade. A filter that keeps every row installs nothing. Refused where it is bound: its own parse error, a column the row does not carry, an answer that is no boolean; a filter that cannot answer a batch ends the walk as a source failure does |
-| Books | one per [book key](market.md#the-book-key): the input's ISIN where it holds one, else its ticker, else `XX0000000000`; each book opens keyed - `BookEvent::keyed` - stores its key as `3:0:{key}`, and takes its ticker and ISIN from the first input stating each |
-| Moving between books | an order or quote identity restated under another key - a chain stated by its ticker alone and then, its instrument learned, under its ISIN - is withdrawn from the book it stood in by an entry of its `delta` there: the entry as it stood, deleted in state `REMOVED`, reporting no fill, no execution, no recording and no snapshot instant - a snapshot's member as any other statement - and opens in its own book at the same instant, so an entry rests in one book at a time |
-| Groups | by effective instant (`snapunix`, else `currunix`) - one book per touched key, key order, atomic per instant and key; ordinary groups apply via `add_operations`, each chain where its first step arrived, its steps by place only where a step follows one of its chain at that instant, else in arrival order; supplied-membership stages replacement with its `delta` and expirations; a group the book refuses is left out whole, with a warning: none of its updates lands, the book and its pending expirations stand as they were, and the walk goes on |
+| Books | one per [book key](market.md#the-book-key), the input's `instcode` alone; each book opens keyed - `BookEvent::keyed` - stores its key as `3:0:{key}` and as its own `instcode`, and takes its ticker and ISIN from the first input stating each. `BookIterator` holds no registry and creates nothing: an element built by hand stating a real ISIN and no `instcode` is pruned until an [instruments fill](instrument.md#matching) or a stated `instcode` gives it a code, the FIX lifecycle fills every real-ISIN line's, so the book walk runs over lifecycle output, and a raw parse of ticker-only lines books nothing. A raw parse books each statement by what it states alone: an order booked by its ISIN whose cancel report states only its ticker stays alive, the report pruned - walk the lifecycle's output, which fills the report's code and ends the order |
+| Moving between books | an order or quote identity restated under another key - a chain stated under a placeholder's code and then, its body learned, under its instrument's own - is withdrawn from the book it stood in by an entry of its `delta` there: the entry as it stood, deleted in state `REMOVED`, reporting no fill, no execution, no recording and no snapshot instant - a snapshot's member as any other statement - and opens in its own book at the same instant, so an entry rests in one book at a time |
+| Groups | by effective instant (`snapunix`, else `transunix`) - one book per touched key, key order, atomic per instant and key; ordinary groups apply via `add_operations`, each chain where its first step arrived, its steps by place only where a step follows one of its chain at that instant, else in arrival order; supplied-membership stages replacement with its `delta` and expirations; a group the book refuses is left out whole, with a warning: none of its updates lands, the book and its pending expirations stand as they were, and the walk goes on |
 | Emitted | a book is yielded where it records an entry of its `delta` - every order and quote folded into it but a repeat of the live entry it continues, resting anywhere or not - or an event - an execution, a snapshot control - or at a snapshot tick where it holds an entry; a snapshot emptying a book is yielded too, empty and complete, its control among its `events`, for the books after it to rebuild over, and so is an empty snapshot of an empty book. An instant whose inputs only repeat what the book holds yields no book, and neither does a grid tick finding a book empty that nothing changed there: the next book follows the last one yielded |
 | Keyframes | a book is yielded complete - its alive entries, its limits, its instant as its `snapunix` - only at a snapshot tick: every grid tick `snapshot_millis` crosses, the ticks the walk catches up on and the quiet buckets included; and a group that replaced membership - a FIX `W` full refresh, an empty snapshot control, inputs stating `snapunix`. Every other book is a delta book naming the book it follows as its `prevuuid`; a code's first book names none and follows the empty book, `BookEvent::keyed(unix, key)`. With `snapshot_millis = 0` and no snapshot input, every book is a delta book |
 | Rebuilding | `with_previous` over the complete book before rebuilds a delta book whole; with no grid, rebuilding the book at an instant reads back to the code's first book or its last full refresh |
@@ -125,14 +124,18 @@ Three bids and three offers on Apple, plus a market order to buy 50.
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, Element, Market, MarketData, OrderEvent};
-    use yggdryl::{Decimal, Limit, Side};
+    use yggdryl_market::graph::{BookEvent, Market, MarketData, OrderEvent};
+    use yggdryl::graph::Element;
+    use yggdryl::Decimal;
+    use yggdryl_market::{Limit, Side};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let entry = |code: &str, side: Side, price: Option<&str>, quantity: i64| -> yggdryl::Result<MarketData> {
         let mut order = OrderEvent::at(T);
         order.set_crosscode(code.to_owned());
         order.set_ticker(Some("AAPL".into()), true);
+        order.set_instcode(Some("AAPL".into()), true);
         order.set_side(side, true);
         order.set_price(match price {
             Some(text) => Some(text.parse()?),
@@ -142,7 +145,7 @@ Three bids and three offers on Apple, plus a market order to buy 50.
         order.finalize();
         Ok(MarketData::from(order))
     };
-    let mut book = BookEvent::new(T, "AAPL");
+    let mut book = BookEvent::keyed(T, "AAPL");
     book.add_operations([
         entry("B-1", Side::Buy, Some("189.48"), 300)?,
         entry("B-2", Side::Buy, Some("189.47"), 500)?,
@@ -199,7 +202,7 @@ Three bids and three offers on Apple, plus a market order to buy 50.
         return graph.OrderEvent(
             T,
             crosscode=code,
-            ticker="AAPL",
+            ticker="AAPL", instcode="AAPL",
             side=side,
             price=None if price is None else Decimal(price),
             quantity=quantity,
@@ -254,7 +257,7 @@ Three bids and three offers on Apple, plus a market order to buy 50.
 
     const T = 1_700_000_000_000_000_000n
     const entry = (code, side, price, quantity) => new graph.OrderEvent(T, {
-      crosscode: code, ticker: 'AAPL', side, price, quantity,
+      crosscode: code, ticker: 'AAPL', instcode: 'AAPL', side, price, quantity,
     })
     const book = new graph.BookEvent(T, 'AAPL').withOperations([
       entry('B-1', 'BUYS', '189.48', 300),
@@ -296,8 +299,11 @@ The best bid is the best level that can trade: a halted top level is skipped, ne
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, Element, Market, MarketData, Operation, OrderEvent};
-    use yggdryl::{Ccy, Decimal, Side};
+    use yggdryl_market::graph::{BookEvent, Market, MarketData, Operation, OrderEvent};
+    use yggdryl::graph::Element;
+    use yggdryl::{Ccy, Decimal};
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let bid = |code: &str, price: &str, quantity: i64, tradable: Option<bool>| -> yggdryl::Result<MarketData> {
@@ -307,11 +313,12 @@ The best bid is the best level that can trade: a halted top level is skipped, ne
         order.set_price(Some(price.parse()?), true);
         order.set_quantity(Some(Decimal::from_int(quantity)), true);
         order.set_currency(Ccy::new("USD")?, true);
+        order.set_instcode(Some("AAPL".into()), true);
         order.set_tradable(tradable, true);
         order.finalize();
         Ok(MarketData::from(order))
     };
-    let mut book = BookEvent::new(T, "AAPL");
+    let mut book = BookEvent::keyed(T, "AAPL");
     book.add_operations([
         bid("B-1", "189.48", 300, Some(false)),
         bid("B-2", "189.47", 500, None),
@@ -330,7 +337,7 @@ The best bid is the best level that can trade: a halted top level is skipped, ne
     assert_eq!(book.get_bidccy().map(Ccy::as_str), Some("USD"));
 
     // No level that can trade: no best, and no bid.
-    let mut halted = BookEvent::new(T, "AAPL");
+    let mut halted = BookEvent::keyed(T, "AAPL");
     halted.add_operations([bid("B-1", "189.48", 300, Some(false))?])?;
     assert_eq!((halted.best_price(Side::Buy), halted.get_bidpx()), (None, None));
     ```
@@ -352,6 +359,7 @@ The best bid is the best level that can trade: a halted top level is skipped, ne
             price=Decimal(price),
             quantity=quantity,
             currency="USD",
+            instcode="AAPL",
             tradable=tradable,
         )
 
@@ -379,7 +387,7 @@ The best bid is the best level that can trade: a halted top level is skipped, ne
 
     const T = 1_700_000_000_000_000_000n
     const bid = (code, price, quantity, tradable) => new graph.OrderEvent(T, {
-      crosscode: code, side: 'BUYS', price, quantity, currency: 'USD', tradable,
+      crosscode: code, side: 'BUYS', price, quantity, currency: 'USD', instcode: 'AAPL', tradable,
     })
     const book = new graph.BookEvent(T, 'AAPL').withOperations([
       bid('B-1', '189.48', 300, false),
@@ -409,14 +417,18 @@ Two bids and an offer on Apple; a second later the first bid is cancelled, a fil
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, Element, Event, ExecutionEvent, Market, MarketData, OrderEvent, QuoteEvent};
-    use yggdryl::{Decimal, Side, State};
+    use yggdryl_market::graph::{BookEvent, ExecutionEvent, Market, MarketData, OrderEvent, QuoteEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl::{Decimal, State};
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let order = |unix: i64, code: &str, price: &str, state: State| -> yggdryl::Result<MarketData> {
         let mut order = OrderEvent::at(unix);
         order.set_crosscode(code.to_owned());
         order.set_ticker(Some("AAPL".into()), true);
+        order.set_instcode(Some("AAPL".into()), true);
         order.set_side(Side::Buy, true);
         order.set_price(Some(price.parse()?), true);
         order.set_quantity(Some(Decimal::from_int(100)), true);
@@ -428,6 +440,7 @@ Two bids and an offer on Apple; a second later the first bid is cancelled, a fil
         let mut quote = QuoteEvent::at(unix);
         quote.set_crosscode(code.to_owned());
         quote.set_ticker(Some("AAPL".into()), true);
+        quote.set_instcode(Some("AAPL".into()), true);
         quote.set_side(Side::Sell, true);
         quote.set_price(Some(price.parse()?), true);
         quote.set_quantity(Some(Decimal::from_int(200)), true);
@@ -437,12 +450,13 @@ Two bids and an offer on Apple; a second later the first bid is cancelled, a fil
     let mut fill = ExecutionEvent::at(T + 1);
     fill.set_crosscode("E-1".to_owned());
     fill.set_ticker(Some("AAPL".into()), true);
+    fill.set_instcode(Some("AAPL".into()), true);
     fill.set_side(Side::Buy, true);
     fill.set_lastpx(Some("189.47".parse()?), true);
     fill.set_lastqty(Some(Decimal::from_int(100)), true);
     fill.finalize();
 
-    let mut book = BookEvent::new(T, "AAPL");
+    let mut book = BookEvent::keyed(T, "AAPL");
     book.add_operations([
         order(T, "B-1", "189.48", State::New),
         order(T, "B-2", "189.47", State::New),
@@ -480,13 +494,13 @@ Two bids and an offer on Apple; a second later the first bid is cancelled, a fil
 
     def order(unix: int, code: str, price: str, state: str = "NEW") -> graph.OrderEvent:
         return graph.OrderEvent(
-            unix, crosscode=code, ticker="AAPL", side="BUYS", price=Decimal(price), quantity=100, state=state
+            unix, crosscode=code, ticker="AAPL", instcode="AAPL", side="BUYS", price=Decimal(price), quantity=100, state=state
         )
 
     def offer(unix: int, code: str, price: str) -> graph.QuoteEvent:
-        return graph.QuoteEvent(unix, crosscode=code, ticker="AAPL", side="SELL", price=Decimal(price), quantity=200)
+        return graph.QuoteEvent(unix, crosscode=code, ticker="AAPL", instcode="AAPL", side="SELL", price=Decimal(price), quantity=200)
 
-    fill = graph.ExecutionEvent(T + 1, crosscode="E-1", ticker="AAPL", side="BUYS", lastpx=Decimal("189.47"), lastqty=100)
+    fill = graph.ExecutionEvent(T + 1, crosscode="E-1", ticker="AAPL", instcode="AAPL", side="BUYS", lastpx=Decimal("189.47"), lastqty=100)
     book = (
         graph.BookEvent(T, "AAPL")
         .with_operations([order(T, "B-1", "189.48"), order(T, "B-2", "189.47"), offer(T, "Q-1", "189.53")])
@@ -514,13 +528,13 @@ Two bids and an offer on Apple; a second later the first bid is cancelled, a fil
 
     const T = 1_700_000_000_000_000_000n
     const order = (unix, code, price, state = 'NEW') => new graph.OrderEvent(unix, {
-      crosscode: code, ticker: 'AAPL', side: 'BUYS', price, quantity: 100, state,
+      crosscode: code, ticker: 'AAPL', instcode: 'AAPL', side: 'BUYS', price, quantity: 100, state,
     })
     const offer = (unix, code, price) => new graph.QuoteEvent(unix, {
-      crosscode: code, ticker: 'AAPL', side: 'SELL', price, quantity: 200,
+      crosscode: code, ticker: 'AAPL', instcode: 'AAPL', side: 'SELL', price, quantity: 200,
     })
     const fill = new graph.ExecutionEvent(T + 1n, {
-      crosscode: 'E-1', ticker: 'AAPL', side: 'BUYS', lastpx: '189.47', lastqty: 100,
+      crosscode: 'E-1', ticker: 'AAPL', instcode: 'AAPL', side: 'BUYS', lastpx: '189.47', lastqty: 100,
     })
     const book = new graph.BookEvent(T, 'AAPL')
       .withOperations([order(T, 'B-1', '189.48'), order(T, 'B-2', '189.47'), offer(T, 'Q-1', '189.53')])
@@ -547,26 +561,31 @@ An empty snapshot of the book's scope a second later: the stale depth goes, noth
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, Element, Market, MarketData, MdUpdateAction, OrderEvent, SnapshotEvent};
-    use yggdryl::{Decimal, Side};
+    use yggdryl_market::graph::{BookEvent, Market, MarketData, MdUpdateAction, OrderEvent, SnapshotEvent};
+    use yggdryl::graph::Element;
+    use yggdryl::Decimal;
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let order = |unix: i64, code: &str, side: Side, price: &str| -> yggdryl::Result<MarketData> {
         let mut order = OrderEvent::at(unix);
         order.set_crosscode(code.to_owned());
         order.set_ticker(Some("AAPL".into()), true);
+        order.set_instcode(Some("AAPL".into()), true);
         order.set_side(side, true);
         order.set_price(Some(price.parse()?), true);
         order.set_quantity(Some(Decimal::from_int(100)), true);
         order.finalize();
         Ok(MarketData::from(order))
     };
-    let mut book = BookEvent::new(T, "AAPL");
+    let mut book = BookEvent::keyed(T, "AAPL");
     book.add_operations([order(T, "B-1", Side::Buy, "189.48")?, order(T, "A-1", Side::Sell, "189.52")?])?;
     assert_eq!(book.alive().count(), 2);
 
     let mut at = OrderEvent::at(T + 1_000_000_000);
     at.set_ticker(Some("AAPL".into()), true);
+    at.set_instcode(Some("AAPL".into()), true);
     at.finalize();
     let control = SnapshotEvent::snapshot(&at, None);
     assert_eq!(control.book().action, Some(MdUpdateAction::Snapshot));
@@ -588,12 +607,12 @@ An empty snapshot of the book's scope a second later: the stale depth goes, noth
     T = 1_700_000_000_000_000_000
 
     def order(unix: int, code: str, side: str, price: str) -> graph.OrderEvent:
-        return graph.OrderEvent(unix, crosscode=code, ticker="AAPL", side=side, price=Decimal(price), quantity=100)
+        return graph.OrderEvent(unix, crosscode=code, ticker="AAPL", instcode="AAPL", side=side, price=Decimal(price), quantity=100)
 
     book = graph.BookEvent(T, "AAPL").with_operations([order(T, "B-1", "BUYS", "189.48"), order(T, "A-1", "SELL", "189.52")])
     assert len(book.alive) == 2
 
-    control = graph.SnapshotEvent.snapshot(graph.OrderEvent(T + 1_000_000_000, ticker="AAPL"))
+    control = graph.SnapshotEvent.snapshot(graph.OrderEvent(T + 1_000_000_000, ticker="AAPL", instcode="AAPL"))
     assert control.book.action == "snapshot"
 
     after = book.with_operations([control])
@@ -611,13 +630,13 @@ An empty snapshot of the book's scope a second later: the stale depth goes, noth
 
     const T = 1_700_000_000_000_000_000n
     const order = (unix, code, side, price) => new graph.OrderEvent(unix, {
-      crosscode: code, ticker: 'AAPL', side, price, quantity: 100,
+      crosscode: code, ticker: 'AAPL', instcode: 'AAPL', side, price, quantity: 100,
     })
     const book = new graph.BookEvent(T, 'AAPL')
       .withOperations([order(T, 'B-1', 'BUYS', '189.48'), order(T, 'A-1', 'SELL', '189.52')])
     assert.equal(book.alive().length, 2)
 
-    const control = graph.SnapshotEvent.snapshot(new graph.OrderEvent(T + 1_000_000_000n, { ticker: 'AAPL' }))
+    const control = graph.SnapshotEvent.snapshot(new graph.OrderEvent(T + 1_000_000_000n, { ticker: 'AAPL', instcode: 'AAPL' }))
     assert.equal(control.book.action, 'snapshot')
 
     const after = book.withOperations([control])
@@ -635,8 +654,11 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, BookIterator, Element, Event, ExecutionEvent, Market, MarketData, Order, OrderEvent};
-    use yggdryl::{Decimal, Side};
+    use yggdryl_market::graph::{BookEvent, BookIterator, ExecutionEvent, Market, MarketData, Order, OrderEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl::Decimal;
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     const SECOND: i64 = 1_000_000_000;
@@ -644,6 +666,7 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
         let mut order = OrderEvent::at(unix);
         order.set_crosscode(code.to_owned());
         order.set_ticker(Some("AAPL".into()), true);
+        order.set_instcode(Some("AAPL".into()), true);
         order.set_side(Side::Buy, true);
         order.set_price(Some(price.parse()?), true);
         order.set_quantity(Some(Decimal::from_int(quantity)), true);
@@ -653,6 +676,7 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     let mut fill = ExecutionEvent::at(T + SECOND);
     fill.set_crosscode("E-1".to_owned());
     fill.set_ticker(Some("AAPL".into()), true);
+    fill.set_instcode(Some("AAPL".into()), true);
     fill.set_side(Side::Buy, true);
     fill.set_lastpx(Some("189.52".parse()?), true);
     fill.set_lastqty(Some(Decimal::from_int(100)), true);
@@ -668,27 +692,29 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     assert_eq!(books.len(), 2);
     assert!(books.iter().all(|book| !book.is_complete()));
     let last = &books[1];
-    assert_eq!((last.get_currunix(), last.delta().len(), last.events().len(), last.alive().count()), (T + SECOND, 1, 1, 0));
+    assert_eq!((last.get_transunix(), last.delta().len(), last.events().len(), last.alive().count()), (T + SECOND, 1, 1, 0));
     assert_eq!(last.best_price(Side::Buy), Some("189.49".parse()?));
-    assert_eq!((books[0].get_prevuuid(), last.get_prevuuid()), (None, Some(books[0].get_curruuid())));
+    assert_eq!((books[0].get_prevuuid(), last.get_prevuuid()), (None, Some(books[0].get_uuid())));
 
     // Rebuilt: the first over the empty book a walk starts from, the next over it.
     let first = books[0].clone().with_previous(&BookEvent::keyed(T, "AAPL")).expect("a rebuild");
     let whole = last.clone().with_previous(&first).expect("a rebuild");
     assert!(whole.is_complete());
     assert_eq!(whole.alive().count(), 2, "depth persists");
-    assert_eq!(whole.get_curruuid(), last.get_curruuid(), "one book, one identity");
+    assert_eq!(whole.get_uuid(), last.get_uuid(), "one book, one identity");
 
     // A 500 ms grid yields every book whole, the crossed tick between included.
     let gridded = BookIterator::new(stream()?.into_iter(), 500)?.collect::<yggdryl::Result<Vec<_>>>()?;
     let ticks: Vec<(i64, usize, usize, bool)> = gridded
         .iter()
-        .map(|book| (book.get_currunix() - T, book.delta().len(), book.events().len(), book.is_complete()))
+        .map(|book| (book.get_transunix() - T, book.delta().len(), book.events().len(), book.is_complete()))
         .collect();
     assert_eq!(ticks, [(0, 1, 0, true), (500_000_000, 0, 0, true), (SECOND, 1, 1, true)]);
 
-    // A value a book does not fold is refused by its kind.
+    // A value a book does not fold is refused by its kind - stating its
+    // instcode, so it is admitted rather than pruned as code-less.
     let mut undated = Order::new();
+    undated.set_instcode(Some("AAPL".into()), true);
     undated.finalize();
     let mut refused = BookIterator::new([MarketData::from(undated)].into_iter(), 0)?;
     let error = refused.next().expect("one result").unwrap_err();
@@ -706,10 +732,10 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     SECOND = 1_000_000_000
 
     def bid(unix: int, code: str, price: str, quantity: int) -> graph.OrderEvent:
-        return graph.OrderEvent(unix, crosscode=code, ticker="AAPL", side="BUYS", price=Decimal(price), quantity=quantity)
+        return graph.OrderEvent(unix, crosscode=code, ticker="AAPL", instcode="AAPL", side="BUYS", price=Decimal(price), quantity=quantity)
 
     fill = graph.ExecutionEvent(
-        T + SECOND, crosscode="E-1", ticker="AAPL", side="BUYS", lastpx=Decimal("189.52"), lastqty=100
+        T + SECOND, crosscode="E-1", ticker="AAPL", instcode="AAPL", side="BUYS", lastpx=Decimal("189.52"), lastqty=100
     )
     stream = [bid(T, "B-1", "189.48", 300), bid(T + SECOND, "B-2", "189.49", 200), fill]
 
@@ -720,10 +746,10 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     assert len(books) == 2
     assert not any(book.is_complete for book in books)
     last = books[1]
-    assert (last.currunix, len(last.delta), len(last.events), len(last.alive)) == (T + SECOND, 1, 1, 0)
+    assert (last.transunix, len(last.delta), len(last.events), len(last.alive)) == (T + SECOND, 1, 1, 0)
     best = last.best_price(Side.BUYS)
     assert best is not None and best.as_py() == Decimal("189.49")
-    assert (books[0].prevuuid, last.prevuuid) == (None, books[0].curruuid)
+    assert (books[0].prevuuid, last.prevuuid) == (None, books[0].uuid)
 
     # Rebuilt: the first over the empty book a walk starts from, the next over it.
     first = books[0].with_previous(graph.BookEvent.keyed(T, "AAPL"))
@@ -731,19 +757,20 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     whole = last.with_previous(first)
     assert whole is not None and whole.is_complete
     assert len(whole.alive) == 2, "depth persists"
-    assert whole.curruuid == last.curruuid, "one book, one identity"
+    assert whole.uuid == last.uuid, "one book, one identity"
 
     # A 500 ms grid yields every book whole, the crossed tick between included.
     gridded = list(graph.BookIterator(stream, snapshot_millis=500))
-    assert [(book.currunix - T, len(book.delta), len(book.events), book.is_complete) for book in gridded] == [
+    assert [(book.transunix - T, len(book.delta), len(book.events), book.is_complete) for book in gridded] == [
         (0, 1, 0, True),
         (500_000_000, 0, 0, True),
         (SECOND, 1, 1, True),
     ]
 
-    # A value a book does not fold is refused by its kind.
+    # A value a book does not fold is refused by its kind - stating its
+    # instcode, so it is admitted rather than pruned as code-less.
     try:
-        list(graph.BookIterator([graph.Order()]))
+        list(graph.BookIterator([graph.Order(instcode="AAPL")]))
     except ValueError as error:
         assert "$.operation.kind" in str(error) and "got order" in str(error)
     else:
@@ -759,10 +786,10 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     const T = 1_700_000_000_000_000_000n
     const SECOND = 1_000_000_000n
     const bid = (unix, code, price, quantity) => new graph.OrderEvent(unix, {
-      crosscode: code, ticker: 'AAPL', side: 'BUYS', price, quantity,
+      crosscode: code, ticker: 'AAPL', instcode: 'AAPL', side: 'BUYS', price, quantity,
     })
     const fill = new graph.ExecutionEvent(T + SECOND, {
-      crosscode: 'E-1', ticker: 'AAPL', side: 'BUYS', lastpx: '189.52', lastqty: 100,
+      crosscode: 'E-1', ticker: 'AAPL', instcode: 'AAPL', side: 'BUYS', lastpx: '189.52', lastqty: 100,
     })
     const stream = [bid(T, 'B-1', '189.48', 300), bid(T + SECOND, 'B-2', '189.49', 200), fill]
 
@@ -773,27 +800,28 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     assert.equal(books.length, 2)
     assert.ok(books.every((book) => !book.isComplete))
     const last = books[1]
-    assert.equal(last.currunix, T + SECOND)
+    assert.equal(last.transunix, T + SECOND)
     assert.deepEqual([last.delta().length, last.events().length, last.alive().length], [1, 1, 0])
     assert.equal(last.bestPrice('BUYS'), '189.49')
     assert.equal(books[0].prevuuid, null)
-    assert.equal(last.prevuuid, books[0].curruuid)
+    assert.equal(last.prevuuid, books[0].uuid)
 
     // Rebuilt: the first over the empty book a walk starts from, the next over it.
     const first = books[0].withPrevious(graph.BookEvent.keyed(T, 'AAPL'))
     const whole = last.withPrevious(first)
     assert.equal(whole.isComplete, true)
     assert.equal(whole.alive().length, 2, 'depth persists')
-    assert.equal(whole.curruuid, last.curruuid, 'one book, one identity')
+    assert.equal(whole.uuid, last.uuid, 'one book, one identity')
 
     // A 500 ms grid yields every book whole, the crossed tick between included.
     const gridded = [...new graph.BookIterator(stream, 500)]
-    assert.deepEqual(gridded.map((book) => [book.currunix - T, book.delta().length, book.events().length, book.isComplete]), [
+    assert.deepEqual(gridded.map((book) => [book.transunix - T, book.delta().length, book.events().length, book.isComplete]), [
       [0n, 1, 0, true], [500_000_000n, 0, 0, true], [SECOND, 1, 1, true],
     ])
 
-    // A value a book does not fold is refused by its kind.
-    assert.throws(() => [...new graph.BookIterator([new graph.Order()])], /\$\.operation\.kind.*got order/)
+    // A value a book does not fold is refused by its kind - stating its
+    // instcode, so it is admitted rather than pruned as code-less.
+    assert.throws(() => [...new graph.BookIterator([new graph.Order({ instcode: 'AAPL' })])], /\$\.operation\.kind.*got order/)
     ```
 
 ### A filtered walk
@@ -803,14 +831,18 @@ A bid, an offer and a fill: the fill is recorded among its book's `events`, and 
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookIterator, Element, Event, ExecutionEvent, Market, MarketData, OrderEvent};
-    use yggdryl::{Decimal, Side};
+    use yggdryl_market::graph::{BookIterator, ExecutionEvent, Market, MarketData, OrderEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl::Decimal;
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let order = |unix: i64, code: &str, side: Side| -> yggdryl::Result<MarketData> {
         let mut order = OrderEvent::at(unix);
         order.set_crosscode(code.to_owned());
         order.set_ticker(Some("AAPL".into()), true);
+        order.set_instcode(Some("AAPL".into()), true);
         order.set_side(side, true);
         order.set_price(Some("189.50".parse()?), true);
         order.set_quantity(Some(Decimal::from_int(100)), true);
@@ -820,6 +852,7 @@ A bid, an offer and a fill: the fill is recorded among its book's `events`, and 
     let mut fill = ExecutionEvent::at(T + 2);
     fill.set_crosscode("E-1".to_owned());
     fill.set_ticker(Some("AAPL".into()), true);
+    fill.set_instcode(Some("AAPL".into()), true);
     fill.set_side(Side::Buy, true);
     fill.set_lastqty(Some(Decimal::from_int(100)), true);
     fill.finalize();
@@ -831,7 +864,7 @@ A bid, an offer and a fill: the fill is recorded among its book's `events`, and 
         if let Some(filter) = filter {
             walk = walk.with_filter(filter)?;
         }
-        walk.map(|book| book.map(|book| book.get_currunix() - T)).collect()
+        walk.map(|book| book.map(|book| book.get_transunix() - T)).collect()
     };
 
     // The fill's instant yields a delta book: its delta empty, its events the execution.
@@ -854,13 +887,13 @@ A bid, an offer and a fill: the fill is recorded among its book's `events`, and 
     T = 1_700_000_000_000_000_000
 
     def order(unix: int, code: str, side: str) -> graph.OrderEvent:
-        return graph.OrderEvent(unix, crosscode=code, ticker="AAPL", side=side, price=Decimal("189.50"), quantity=100)
+        return graph.OrderEvent(unix, crosscode=code, ticker="AAPL", instcode="AAPL", side=side, price=Decimal("189.50"), quantity=100)
 
-    fill = graph.ExecutionEvent(T + 2, crosscode="E-1", ticker="AAPL", side="BUYS", lastqty=100)
+    fill = graph.ExecutionEvent(T + 2, crosscode="E-1", ticker="AAPL", instcode="AAPL", side="BUYS", lastqty=100)
     inputs = [order(T, "B-1", "BUYS"), order(T + 1, "A-1", "SELL"), fill]
 
     def walk(filter: str | None = None) -> list[int]:
-        return [book.currunix - T for book in graph.BookIterator(inputs, filter=filter)]
+        return [book.transunix - T for book in graph.BookIterator(inputs, filter=filter)]
 
     # The fill's instant yields a delta book: its delta empty, its events the execution.
     assert walk() == [0, 1, 2]
@@ -885,11 +918,11 @@ A bid, an offer and a fill: the fill is recorded among its book's `events`, and 
 
     const T = 1_700_000_000_000_000_000n
     const order = (unix, code, side) => new graph.OrderEvent(unix, {
-      crosscode: code, ticker: 'AAPL', side, price: '189.50', quantity: 100,
+      crosscode: code, ticker: 'AAPL', instcode: 'AAPL', side, price: '189.50', quantity: 100,
     })
-    const fill = new graph.ExecutionEvent(T + 2n, { crosscode: 'E-1', ticker: 'AAPL', side: 'BUYS', lastqty: 100 })
+    const fill = new graph.ExecutionEvent(T + 2n, { crosscode: 'E-1', ticker: 'AAPL', instcode: 'AAPL', side: 'BUYS', lastqty: 100 })
     const inputs = [order(T, 'B-1', 'BUYS'), order(T + 1n, 'A-1', 'SELL'), fill]
-    const walk = (filter) => [...new graph.BookIterator(inputs, 0, filter)].map((book) => book.currunix - T)
+    const walk = (filter) => [...new graph.BookIterator(inputs, 0, filter)].map((book) => book.transunix - T)
 
     // The fill's instant yields a delta book: its delta empty, its events the execution.
     assert.deepEqual(walk(), [0n, 1n, 2n])
@@ -905,22 +938,26 @@ A bid, an offer and a fill: the fill is recorded among its book's `events`, and 
 
 ### Books by key
 
-One instant, three instruments: one with an ISIN and a ticker, one with a ticker alone, one stating neither.
+One instant, three inputs: a security stating its real ISIN as its code, an FX pair stating its class and body, and a ticker-only input no registry filled, which states no code and is pruned.
 
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookIterator, Element, Market, MarketData, OrderEvent};
-    use yggdryl::{Decimal, IdKey, IdType, Identifier, Side};
+    use yggdryl_market::graph::{BookIterator, Market, MarketData, OrderEvent};
+    use yggdryl::graph::Element;
+    use yggdryl::Decimal;
+    use yggdryl_market::{IdKey, IdType, Identifier, Side};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
-    let order = |code: &str, ticker: Option<&str>, isin: Option<&str>| -> yggdryl::Result<MarketData> {
+    let order = |code: &str, ticker: &str, isin: Option<&str>, instcode: Option<&str>| -> yggdryl::Result<MarketData> {
         let mut order = OrderEvent::at(T);
         order.set_crosscode(code.to_owned());
-        order.set_ticker(ticker.map(Into::into), true);
+        order.set_ticker(Some(ticker.into()), true);
         if let Some(isin) = isin {
             order.insert_securityid(Identifier::new(IdKey::base(IdType::Isin), isin)?)?;
         }
+        order.set_instcode(instcode.map(Into::into), true);
         order.set_side(Side::Buy, true);
         order.set_price(Some("42.10".parse()?), true);
         order.set_quantity(Some(Decimal::from_int(10)), true);
@@ -928,24 +965,27 @@ One instant, three instruments: one with an ISIN and a ticker, one with a ticker
         Ok(MarketData::from(order))
     };
     let inputs = [
-        order("B-1", Some("AAPL"), Some("US0378331005"))?,
-        order("B-2", Some("HOLN"), None)?,
-        order("B-3", None, None)?,
+        // A security: its real ISIN is its instrument's code.
+        order("B-1", "AAPL", Some("US0378331005"), Some("US0378331005"))?,
+        // An FX pair: its class and body, no ISIN stated.
+        order("B-2", "EUR/USD", None, Some("IF:EUR/USD"))?,
+        // A ticker nobody resolved: no code, no book.
+        order("B-3", "HOLN", None, None)?,
     ];
 
     let books = BookIterator::new(inputs.into_iter(), 0)?.collect::<yggdryl::Result<Vec<_>>>()?;
-    let keys: Vec<(&str, Option<&str>, Option<&str>)> = books
+    let keys: Vec<(&str, Option<&str>, Option<&str>, Option<&str>)> = books
         .iter()
-        .map(|book| (book.get_crosscode(), book.get_ticker(), book.get_isincode()))
+        .map(|book| (book.get_crosscode(), book.get_instcode(), book.get_ticker(), book.get_isincode()))
         .collect();
-    // The ISIN keys its book, else the ticker, else the number that states none;
-    // each book states the ticker and the ISIN its first input stated.
+    // The instcode alone keys a book, which states it as its own, in key order;
+    // each book states the ticker and the ISIN its first input stated, and the
+    // code-less input is pruned before the walk.
     assert_eq!(
         keys,
         [
-            ("3:0:HOLN", Some("HOLN"), None),
-            ("3:0:US0378331005", Some("AAPL"), Some("US0378331005")),
-            ("3:0:XX0000000000", None, None),
+            ("3:0:IF:EUR/USD", Some("IF:EUR/USD"), Some("EUR/USD"), None),
+            ("3:0:US0378331005", Some("US0378331005"), Some("AAPL"), Some("US0378331005")),
         ]
     );
     ```
@@ -959,21 +999,25 @@ One instant, three instruments: one with an ISIN and a ticker, one with a ticker
 
     T = 1_700_000_000_000_000_000
 
-    def order(code: str, ticker: str | None, isin: str | None) -> graph.OrderEvent:
-        facts: dict = {}
-        if ticker is not None:
-            facts["ticker"] = ticker
+    def order(code: str, ticker: str, isin: str | None, instcode: str | None) -> graph.OrderEvent:
+        facts: dict = {"ticker": ticker}
         if isin is not None:
             facts["securityids"] = [Identifier("isin", isin)]
+        if instcode is not None:
+            facts["instcode"] = instcode
         return graph.OrderEvent(T, crosscode=code, side="BUYS", price=Decimal("42.10"), quantity=10, **facts)
 
-    books = list(graph.BookIterator([order("B-1", "AAPL", "US0378331005"), order("B-2", "HOLN", None), order("B-3", None, None)]))
-    # The ISIN keys its book, else the ticker, else the number that states none;
-    # each book states the ticker and the ISIN its first input stated.
-    assert [(book.crosscode, book.ticker, book.isincode) for book in books] == [
-        ("3:0:HOLN", "HOLN", None),
-        ("3:0:US0378331005", "AAPL", "US0378331005"),
-        ("3:0:XX0000000000", None, None),
+    books = list(graph.BookIterator([
+        order("B-1", "AAPL", "US0378331005", "US0378331005"),  # a security: its real ISIN is its code
+        order("B-2", "EUR/USD", None, "IF:EUR/USD"),  # an FX pair: its class and body
+        order("B-3", "HOLN", None, None),  # a ticker nobody resolved: no code, no book
+    ]))
+    # The instcode alone keys a book, which states it as its own, in key order;
+    # each book states the ticker and the ISIN its first input stated, and the
+    # code-less input is pruned before the walk.
+    assert [(book.crosscode, book.instcode, book.ticker, book.isincode) for book in books] == [
+        ("3:0:IF:EUR/USD", "IF:EUR/USD", "EUR/USD", None),
+        ("3:0:US0378331005", "US0378331005", "AAPL", "US0378331005"),
     ]
     ```
 
@@ -984,44 +1028,52 @@ One instant, three instruments: one with an ISIN and a ticker, one with a ticker
     const { Identifier, graph } = require('yggdryl')
 
     const T = 1_700_000_000_000_000_000n
-    const order = (code, ticker, isin) => new graph.OrderEvent(T, {
+    const order = (code, ticker, isin, instcode) => new graph.OrderEvent(T, {
       crosscode: code,
       side: 'BUYS',
       price: '42.10',
       quantity: 10,
       ticker,
+      instcode,
       securityids: isin === undefined ? undefined : [new Identifier('isin', isin)],
     })
 
-    const books = [...new graph.BookIterator([order('B-1', 'AAPL', 'US0378331005'), order('B-2', 'HOLN'), order('B-3')])]
-    // The ISIN keys its book, else the ticker, else the number that states none;
-    // each book states the ticker and the ISIN its first input stated.
-    assert.deepEqual(books.map((book) => [book.crosscode, book.ticker, book.isincode]), [
-      ['3:0:HOLN', 'HOLN', null],
-      ['3:0:US0378331005', 'AAPL', 'US0378331005'],
-      ['3:0:XX0000000000', null, null],
+    const books = [...new graph.BookIterator([
+      order('B-1', 'AAPL', 'US0378331005', 'US0378331005'), // a security: its real ISIN is its code
+      order('B-2', 'EUR/USD', undefined, 'IF:EUR/USD'), // an FX pair: its class and body
+      order('B-3', 'HOLN'), // a ticker nobody resolved: no code, no book
+    ])]
+    // The instcode alone keys a book, which states it as its own, in key order;
+    // each book states the ticker and the ISIN its first input stated, and the
+    // code-less input is pruned before the walk.
+    assert.deepEqual(books.map((book) => [book.crosscode, book.instcode, book.ticker, book.isincode]), [
+      ['3:0:IF:EUR/USD', 'IF:EUR/USD', 'EUR/USD', null],
+      ['3:0:US0378331005', 'US0378331005', 'AAPL', 'US0378331005'],
     ])
     ```
 
 ### Moving between books
 
-An order stated by its ticker alone, then restated a millisecond later once its instrument is known: it leaves the ticker's book and rests in the ISIN's.
+An option stated under a placeholder number, then restated a millisecond later under its own code once its body is known: it leaves the placeholder's book and rests in the code's.
 
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookIterator, Element, Event, Market, MarketData, OrderEvent};
-    use yggdryl::{Decimal, IdKey, IdType, Identifier, Side, State};
+    use yggdryl_market::graph::{BookIterator, Market, MarketData, OrderEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl::{Decimal, State};
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     const MS: i64 = 1_000_000;
-    let order = |unix: i64, price: &str, state: State, isin: Option<&str>| -> yggdryl::Result<MarketData> {
+    const PLACEHOLDER: &str = "DE000C000001";
+    const OPTION: &str = "OC:US0378331005:2026-12-18:200";
+    let order = |unix: i64, price: &str, state: State, instcode: &str| -> yggdryl::Result<MarketData> {
         let mut order = OrderEvent::at(unix);
         order.set_crosscode("C-1".to_owned());
         order.set_ticker(Some("ACME".into()), true);
-        if let Some(isin) = isin {
-            order.insert_securityid(Identifier::new(IdKey::base(IdType::Isin), isin)?)?;
-        }
+        order.set_instcode(Some(instcode.into()), true);
         order.set_side(Side::Buy, true);
         order.set_price(Some(price.parse()?), true);
         order.set_quantity(Some(Decimal::from_int(10)), true);
@@ -1030,14 +1082,14 @@ An order stated by its ticker alone, then restated a millisecond later once its 
         Ok(MarketData::from(order))
     };
     let inputs = [
-        order(T, "100", State::New, None)?,
-        order(T + MS, "101", State::Replaced, Some("US0378331005"))?,
+        order(T, "100", State::New, PLACEHOLDER)?,
+        order(T + MS, "101", State::Replaced, OPTION)?,
     ];
 
     let books = BookIterator::new(inputs.into_iter(), 0)?.collect::<yggdryl::Result<Vec<_>>>()?;
-    let keyed: Vec<(i64, &str)> = books.iter().map(|book| (book.get_currunix() - T, book.get_crosscode())).collect();
-    assert_eq!(keyed, [(0, "3:0:ACME"), (MS, "3:0:ACME"), (MS, "3:0:US0378331005")]);
-    // The ticker's book takes the entry off by one entry of its delta, reporting no fill.
+    let keyed: Vec<(i64, &str)> = books.iter().map(|book| (book.get_transunix() - T, book.get_crosscode())).collect();
+    assert_eq!(keyed, [(0, "3:0:DE000C000001"), (MS, "3:0:DE000C000001"), (MS, "3:0:OC:US0378331005:2026-12-18:200")]);
+    // The placeholder's book takes the entry off by one entry of its delta, reporting no fill.
     assert_eq!(books[1].delta().len(), 1);
     let withdrawn = books[1].delta().next().and_then(MarketData::as_order_event).expect("an order");
     assert_eq!((withdrawn.get_state(), withdrawn.get_lastqty()), (&State::Removed, None));
@@ -1051,16 +1103,18 @@ An order stated by its ticker alone, then restated a millisecond later once its 
     ```python
     from decimal import Decimal
 
-    from yggdryl import Identifier, Side, State, graph
+    from yggdryl import Side, State, graph
 
     T = 1_700_000_000_000_000_000
     MS = 1_000_000
-    placed = graph.OrderEvent(T, crosscode="C-1", ticker="ACME", side="BUYS", price=Decimal("100"), quantity=10, state="NEW")
+    PLACEHOLDER = "DE000C000001"
+    OPTION = "OC:US0378331005:2026-12-18:200"
+    placed = graph.OrderEvent(T, crosscode="C-1", ticker="ACME", instcode=PLACEHOLDER, side="BUYS", price=Decimal("100"), quantity=10, state="NEW")
     restated = graph.OrderEvent(
         T + MS,
         crosscode="C-1",
         ticker="ACME",
-        securityids=[Identifier("isin", "US0378331005")],
+        instcode=OPTION,
         side="BUYS",
         price=Decimal("101"),
         quantity=10,
@@ -1068,12 +1122,12 @@ An order stated by its ticker alone, then restated a millisecond later once its 
     )
 
     books = list(graph.BookIterator([placed, restated]))
-    assert [(book.currunix - T, book.crosscode) for book in books] == [
-        (0, "3:0:ACME"),
-        (MS, "3:0:ACME"),
-        (MS, "3:0:US0378331005"),
+    assert [(book.transunix - T, book.crosscode) for book in books] == [
+        (0, "3:0:DE000C000001"),
+        (MS, "3:0:DE000C000001"),
+        (MS, "3:0:OC:US0378331005:2026-12-18:200"),
     ]
-    # The ticker's book takes the entry off by one entry of its delta, reporting no fill.
+    # The placeholder's book takes the entry off by one entry of its delta, reporting no fill.
     [delta] = books[1].delta
     withdrawn = delta.as_order_event()
     assert withdrawn is not None and withdrawn.state is State.REMOVED and withdrawn.lastqty is None
@@ -1087,17 +1141,19 @@ An order stated by its ticker alone, then restated a millisecond later once its 
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Identifier, graph } = require('yggdryl')
+    const { graph } = require('yggdryl')
 
     const T = 1_700_000_000_000_000_000n
     const MS = 1_000_000n
+    const PLACEHOLDER = 'DE000C000001'
+    const OPTION = 'OC:US0378331005:2026-12-18:200'
     const placed = new graph.OrderEvent(T, {
-      crosscode: 'C-1', ticker: 'ACME', side: 'BUYS', price: '100', quantity: 10, state: 'NEW',
+      crosscode: 'C-1', ticker: 'ACME', instcode: PLACEHOLDER, side: 'BUYS', price: '100', quantity: 10, state: 'NEW',
     })
     const restated = new graph.OrderEvent(T + MS, {
       crosscode: 'C-1',
       ticker: 'ACME',
-      securityids: [new Identifier('isin', 'US0378331005')],
+      instcode: OPTION,
       side: 'BUYS',
       price: '101',
       quantity: 10,
@@ -1105,10 +1161,10 @@ An order stated by its ticker alone, then restated a millisecond later once its 
     })
 
     const books = [...new graph.BookIterator([placed, restated])]
-    assert.deepEqual(books.map((book) => [book.currunix - T, book.crosscode]), [
-      [0n, '3:0:ACME'], [MS, '3:0:ACME'], [MS, '3:0:US0378331005'],
+    assert.deepEqual(books.map((book) => [book.transunix - T, book.crosscode]), [
+      [0n, '3:0:DE000C000001'], [MS, '3:0:DE000C000001'], [MS, '3:0:OC:US0378331005:2026-12-18:200'],
     ])
-    // The ticker's book takes the entry off by one entry of its delta, reporting no fill.
+    // The placeholder's book takes the entry off by one entry of its delta, reporting no fill.
     const [delta] = books[1].delta()
     const withdrawn = delta.asOrderEvent()
     assert.equal(withdrawn.state, 'REMOVED')

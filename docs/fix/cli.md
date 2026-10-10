@@ -38,12 +38,11 @@ yggdryl fix --root config/fix components list Order
 
 ## Install
 
-The published wheel includes the native executable, every namespace in it: `yggdryl market serve --help` is the book display's own usage. From a checkout, Cargo runs the same binary:
+The published wheel includes the native executable, every namespace in it. From a checkout, Cargo runs the same binary:
 
 ```bash
 pip install yggdryl
 yggdryl fix --help
-yggdryl market serve --help
 cargo run -p yggdryl-cli -- fix fields list Symbol
 ```
 
@@ -56,13 +55,12 @@ maturin build --manifest-path python/Cargo.toml --out dist
 
 ## Namespaces
 
-`yggdryl` is one binary over three namespaces, each a subcommand owning its own verbs and state; this page is `fix`'s.
+`yggdryl` is one binary over two namespaces, each a subcommand owning its own verbs and state; this page is `fix`'s.
 
 | Namespace | Serves | Page |
 | --- | --- | --- |
 | `fix` | a FIX dictionary: read it, change it, ingest a counterparty's configuration, check what came out - and with no verb, all of that interactively | this page |
 | `xmla` | `yggdryl xmla serve`: folders of record media as XML for Analysis catalogs over HTTP | [Provider](../media/xmla.md#provider) |
-| `market` | `yggdryl market serve`: tables of market data as the book display - bid and ask candles, books and audits over HTTP - each `--capture` folding a FIX bridge log into the first table before it serves | [Book display](../graph/serve.md) |
 
 ## Three category command trees
 
@@ -161,7 +159,7 @@ yggdryl fix --root scratch/catalog fields delete 453
 
 ## Ingest and sync
 
-`ingest PATH...` folds one or more Ullink `CBlock`s into all three categories; `sync DIR` folds another dictionary folder. Both fold, and the fold itself decides what stands: a declaration the dictionary already holds otherwise is passed over and named rather than overwritten, and everything else arrives or merges. `ingest` takes `--dialect NAME`, the id stamped into `FIX:sources` on every field, group, component and message a file produces, standard tags included, because membership means "this source speaks it", and recorded once as the file's entry in `sources.json` - the id, the file's name and the role its root's `type` names, a [`PluginSide`](../types/enum/pluginside.md) (`BUYS` for a `BuySideFIXCPluginCBlock`, `SELL` for a `SellSideFIXCPluginCBlock`, `UKNW` for neither); `sync` takes no `--dialect` at all, because a folder's fields already carry the membership they were written with, and its `sources.json` folds into this one's.
+`ingest PATH...` folds one or more Ullink `CBlock`s into all three categories; `sync DIR` folds another dictionary folder. Both fold, and the fold itself decides what stands: a declaration the dictionary already holds otherwise is passed over and named rather than overwritten, and everything else arrives or merges. `ingest` takes `--dialect NAME`, the id stamped into `FIX:sources` on every field, group, component and message a file produces, standard tags included, because membership means "this source speaks it", and recorded once as the file's entry in `sources.json` - the id, the file's name and the role its root's `type` names, a [`Side`](../types/enum/side.md#a-fix-plugins-role-is-a-side) (`BUYS` for a `BuySideFIXCPluginCBlock`, `SELL` for a `SellSideFIXCPluginCBlock`, `UKNW` for neither); `sync` takes no `--dialect` at all, because a folder's fields already carry the membership they were written with, and its `sources.json` folds into this one's.
 
 A path to `ingest` is a `.cfb` file, a folder or a glob pattern, handed to the core as the location it is. A folder folds the `.cfb` files directly inside it, the suffix in any case; a file folds whatever it is named. A quoted glob - `'cblocks/*.cfb'`, `'cblocks/**/*.cfb'` - is walked by the core itself: `*` stays inside one name, `**` spans folders, and a private entry is never matched. An unquoted one is expanded by the shell before the command ever sees it. Either way every file parses side by side, on every core, and folds into one staged dictionary in ascending URL order, resolved and committed once - so `cblocks/`, `cblocks/*.cfb` and the shell's own expansion of the glob all answer the same dictionary. A path naming nothing is refused, and so is a run whose paths hold no file at all. Without `--dialect` each file's own stem names its dialect (`MSFIX44.cfb` stamps `msfix44`); with it, every file folds under that one name instead. Where two files type one tag two ways, the first-sorting file's declaration is held: the later file's folds under it, counted as restated, where it states another precision of the held datatype - a CBlock's `float` against a `decimal128`, its `string` against a `ccy` - and is passed over and named with its own URL where it contradicts it, a `boolean` against an `int32`.
 
@@ -173,7 +171,7 @@ yggdryl fix --root scratch/catalog ingest cblocks/a.cfb cblocks/b.cfb
 yggdryl fix --root scratch/catalog ingest cblocks/
 ```
 
-One file is one mutation: a file that cannot be read, is not a well-formed CBlock, or whose fold refuses rather than passing a declaration over is left out and named, contributing nothing, while every other file still folds and commits. A path naming nothing is refused, and so is a run whose paths hold no `.cfb` file at all; a location beside others that holds none is named in a reader warning, and a run whose every file is left out exits nonzero once each is named, committing nothing.
+One file is one mutation: a file that cannot be read, is not a well-formed CBlock, or whose fold refuses rather than passing a declaration over is left out and named, contributing nothing, while every other file still folds and commits. A counter one file lists beside a group another file or the store holds is no such refusal: the member is left out and the file folds. A path naming nothing is refused, and so is a run whose paths hold no `.cfb` file at all; a location beside others that holds none is named in a reader warning, and a run whose every file is left out exits nonzero once each is named, committing nothing.
 
 `sync` folds a folder holding another dictionary; a `.cfb`, or any location that is not a folder, is refused naming `yggdryl fix ingest` and the role the location turned out to be.
 
@@ -203,7 +201,7 @@ A run that folds something prints, in order: what the fold did, what the reader 
 
 ## Schema, check, and diff
 
-`schema` renders the fixed capture row through [`fix_schema`](capture.md#the-columns-are-the-folded-names), the same native builder the codec and a reader's `schema()` answer with; `--out` writes native JSON. `--rowheader` prepends capture columns inferred from its regular expression, each named group typed by what its syntax can match: a group matching `2024-02-01 12:34:56.123456` is a microsecond UTC instant and not a string. A capture named after a FIX column is not carried in front and [fills that column](arrow.md#a-column-is-the-caller-speaking-per-row); a `timestamp` capture names no FIX column, so it is carried in front as context and never dates the message. An `mtime` capture leads no column: a read consumes it into each line's `currunix`, which is how `yggdryl::ULBRIDGE_ROWHEADER`, a [bridge log's own header](arrow.md#a-bridge-log-names-what-it-fills), dates each line it matches.
+`schema` renders the fixed capture row through [`fix_schema`](capture.md#the-columns-are-the-folded-names), the same native builder the codec and a reader's `schema()` answer with; `--out` writes native JSON. `--rowheader` prepends capture columns inferred from its regular expression, each named group typed by what its syntax can match: a group matching `2024-02-01 12:34:56.123456` is a microsecond UTC instant and not a string. A capture named after a FIX column is not carried in front and [fills that column](arrow.md#a-column-is-the-caller-speaking-per-row); a `timestamp` capture names no FIX column, so it is carried in front as context and never dates the message. An `mtime` capture leads no column: a read consumes it into each line's `transunix`, which is how `yggdryl_fix::ULBRIDGE_ROWHEADER`, a [bridge log's own header](arrow.md#a-bridge-log-names-what-it-fills), dates each line it matches.
 
 ```bash
 yggdryl fix --root config/fix schema --out fix-message.json
@@ -252,11 +250,8 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 
 ```bash
 cargo test -p yggdryl-cli --test fix
-cargo test -p yggdryl-cli --test market      # `yggdryl market serve`: the refusals and every example its help states; `-- --ignored` hosts the live display under `--path /book` and at the root
-cargo test -p yggdryl-cli --features iceberg --test market -- --ignored   # a ULBridge capture folded into an Iceberg table, then served
 cargo clippy -p yggdryl-cli --all-targets -- -D warnings
 cargo run -p yggdryl-cli -- fix groups create --help
-cargo run -p yggdryl-cli -- market serve --help
 ```
 
 ## Performance

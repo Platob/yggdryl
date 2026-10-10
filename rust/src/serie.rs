@@ -39,9 +39,10 @@
 //! whose Arrow storage it is: `Utf8String` holds each string leaf laid out as
 //! UTF-8, `DurationSecond` both duration widths, so which datatype a column
 //! is is its field's [`id`](crate::SerieValue::id), never its variant. A code,
-//! a version, a URI, a zone, a MIME or media type, a UUID and a geospatial
-//! reading keep a variant of their own over the leaf they are stored in,
-//! because a digest, a text body and a FIX payload each tell them apart:
+//! a version, a URI, a zone, a MIME or media type, a UUID, a geospatial
+//! reading and every registered market enum keep a variant of their own over
+//! the leaf they are stored in, because a digest, a text body and a FIX
+//! payload each tell them apart:
 //!
 //! | root variants | held | what a leaf lends |
 //! | --- | --- | --- |
@@ -50,6 +51,7 @@
 //! | `Date32`, `Date64` | [`Date32Serie`], [`Date64Serie`] | the counts |
 //! | `Time32Second` .. `Time64Nanosecond`, `DateTimeSecond` .. `DateTimeNanosecond`, `DurationSecond` .. `DurationNanosecond`, `IntervalYearMonth` .. `IntervalMonthDayNano` | [`Time32SecondSerie`] .. [`IntervalMonthDayNanoSerie`] | the counts, at the unit the leaf is |
 //! | `Utf8String` .. `FixedString` | [`Utf8StringSerie`] .. [`FixedStringSerie`] | the offsets and the character bytes |
+//! | `Market` | [`MarketSerie`] | the leaf of the storage its kind declares: an enum's codes in a `uint8` or `uint16` column |
 //! | `Binary` .. `FixedBytes` | [`BinarySerie`] .. [`FixedBytesSerie`] | the offsets and the payload bytes |
 //! | `Serie` .. `LargeSerieView`, `FixedSizeSerie` | [`SerieSerie`] .. [`FixedSizeSerieSerie`] | the offsets, and the item column under them |
 //! | `Dictionary` | [`DictionarySerie`] | the key column and the values column |
@@ -133,7 +135,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::expression::FieldSegment;
 use crate::shared_stream::SharedStream;
 use crate::value::{Children, ColumnRows, NestedValue, SerieValue, Value};
-use crate::{ChunkedSerie, DataType, Field, FieldPath, Result, Scalar, StreamSerie};
+use crate::{
+    ChunkedSerie, DataType, Field, FieldPath, MarketSerie, MarketStorage, Result, Scalar,
+    StreamSerie,
+};
 
 // ------------------------------------------------------------------------
 // The machinery every leaf reads and writes through, declared before the
@@ -218,6 +223,7 @@ mod join;
 pub(crate) mod layout;
 mod lit;
 mod mapping;
+mod market;
 mod null;
 mod order;
 mod partition;
@@ -432,9 +438,11 @@ pub(crate) fn require_window(name: &str, offset: usize, length: usize, len: usiz
 /// field's, read through [`SerieValue::id`]. A code, a version, a URI, a
 /// zone or a MIME or media type holds the UTF-8 column it is stored in, a
 /// UUID its sixteen fixed bytes and a geospatial reading its Well-Known
-/// Binary, each under a variant of its own - which is why
-/// [`Self::as_utf8`], [`Self::as_fixed_bytes`] and [`Self::as_binary`]
-/// reach those variants too.
+/// Binary, each under a variant of its own, and a registered market enum the
+/// `uint8` or `uint16` leaf its kind's storage names under [`Self::Market`] -
+/// which is why [`Self::as_utf8`], [`Self::as_uint8`], [`Self::as_uint16`],
+/// [`Self::as_fixed_bytes`] and [`Self::as_binary`] reach those variants
+/// too.
 ///
 /// The column leaves are shared behind one pointer each, so a [`Scalar`]
 /// carrying a serie is two words and a clone of one is a pointer bump. A
@@ -545,18 +553,11 @@ pub enum Serie {
     Cfi(Arc<Utf8StringSerie>),
     /// A column of `Isin` values, stored as their UTF-8 text.
     Isin(Arc<Utf8StringSerie>),
-    /// A column of `Side` values, stored as their `uint8` codes.
-    Side(Arc<UInt8Serie>),
     /// A column of `State` values, stored as their `uint16` codes.
     State(Arc<UInt16Serie>),
-    /// A column of `MarketDataKind` values, stored as their `uint8` codes.
-    MarketDataKind(Arc<UInt8Serie>),
-    /// A column of `MarketDataType` values, stored as their `uint16` codes.
-    MarketDataType(Arc<UInt16Serie>),
-    /// A column of `TimeInForce` values, stored as their `uint8` codes.
-    TimeInForce(Arc<UInt8Serie>),
-    /// A column of `PluginSide` values, stored as their `uint8` codes.
-    PluginSide(Arc<UInt8Serie>),
+    /// A column of one registered market enum - a `uint8` or `uint16` column
+    /// in the storage its kind declares.
+    Market(MarketSerie),
     /// A column of `Version` values, stored as their UTF-8 text.
     Version(Arc<Utf8StringSerie>),
     /// A column of `Url` values, stored as their UTF-8 text.
@@ -647,22 +648,10 @@ pub enum Serie {
     StreamKey(Arc<SharedStream<crate::StreamKeySerie>>),
     /// A retained native ipc scan, decoded only on demand.
     Ipc(Arc<crate::ipc::IpcSerie>),
-    #[cfg(feature = "parquet")]
-    /// A retained native parquet scan, decoded only on demand.
-    Parquet(Arc<crate::parquet::ParquetSerie>),
-    /// A retained native avro scan, decoded only on demand.
-    Avro(Arc<crate::avro::AvroSerie>),
     /// A retained native csv scan, decoded only on demand.
     Csv(Arc<crate::csv::CSVSerie>),
     /// A retained native text scan, decoded only on demand.
     Text(Arc<crate::text::TextSerie>),
-    /// A retained native excel scan, decoded only on demand.
-    Excel(Arc<crate::excel::ExcelSerie>),
-    /// A retained native xmla scan, decoded only on demand.
-    Xmla(Arc<crate::xmla::XmlaSerie>),
-    #[cfg(feature = "iceberg")]
-    /// A retained native iceberg scan, decoded only on demand.
-    IcebergTable(Arc<crate::iceberg::IcebergTableSerie>),
     /// A retained native warehouse scan, decoded only on demand.
     WarehouseTable(Arc<crate::warehouse::WarehouseTableSerie>),
     #[cfg(feature = "http")]
@@ -673,7 +662,8 @@ pub enum Serie {
 }
 
 // A run's window - one shared `Arc<[Scalar]>`, where it starts, how long -
-// inline beside a discriminant; every column leaf is one thin pointer.
+// inline beside a discriminant; every column leaf is one thin pointer, and a
+// market column one pointer beside the tag naming its storage.
 const _: () = assert!(size_of::<Serie>() == 40);
 
 /// Forward one verb to whichever column holds the rows, with the run's own
@@ -732,12 +722,9 @@ macro_rules! column {
             Serie::Mic($column) => $answer,
             Serie::Cfi($column) => $answer,
             Serie::Isin($column) => $answer,
-            Serie::Side($column) => $answer,
             Serie::State($column) => $answer,
-            Serie::MarketDataKind($column) => $answer,
-            Serie::MarketDataType($column) => $answer,
-            Serie::TimeInForce($column) => $answer,
-            Serie::PluginSide($column) => $answer,
+            Serie::Market($crate::MarketSerie::Code8($column)) => $answer,
+            Serie::Market($crate::MarketSerie::Code16($column)) => $answer,
             Serie::Version($column) => $answer,
             Serie::Url($column) => $answer,
             Serie::Urn($column) => $answer,
@@ -782,19 +769,12 @@ macro_rules! column {
             | Serie::Keys(_)
             | Serie::StreamKey(_)
             | Serie::Ipc(_)
-            | Serie::Avro(_)
             | Serie::Csv(_)
             | Serie::Text(_)
-            | Serie::Excel(_)
-            | Serie::Xmla(_)
             | Serie::WarehouseTable(_)
             | Serie::GenericMedia(_) => {
                 unreachable!("a held leaf is never a composite")
             }
-            #[cfg(feature = "parquet")]
-            Serie::Parquet(_) => unreachable!("a held leaf is never a composite"),
-            #[cfg(feature = "iceberg")]
-            Serie::IcebergTable(_) => unreachable!("a held leaf is never a composite"),
             #[cfg(feature = "http")]
             Serie::Http(_) => unreachable!("a held leaf is never a composite"),
         }
@@ -998,27 +978,15 @@ macro_rules! column_mut {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::Side(held) => {
-                let $column = Arc::make_mut(held);
-                $answer
-            }
             Serie::State(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::MarketDataKind(held) => {
+            Serie::Market($crate::MarketSerie::Code8(held)) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::MarketDataType(held) => {
-                let $column = Arc::make_mut(held);
-                $answer
-            }
-            Serie::TimeInForce(held) => {
-                let $column = Arc::make_mut(held);
-                $answer
-            }
-            Serie::PluginSide(held) => {
+            Serie::Market($crate::MarketSerie::Code16(held)) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
@@ -1177,19 +1145,12 @@ macro_rules! column_mut {
             | Serie::Keys(_)
             | Serie::StreamKey(_)
             | Serie::Ipc(_)
-            | Serie::Avro(_)
             | Serie::Csv(_)
             | Serie::Text(_)
-            | Serie::Excel(_)
-            | Serie::Xmla(_)
             | Serie::WarehouseTable(_)
             | Serie::GenericMedia(_) => {
                 unreachable!("a held leaf is never a composite")
             }
-            #[cfg(feature = "parquet")]
-            Serie::Parquet(_) => unreachable!("a held leaf is never a composite"),
-            #[cfg(feature = "iceberg")]
-            Serie::IcebergTable(_) => unreachable!("a held leaf is never a composite"),
             #[cfg(feature = "http")]
             Serie::Http(_) => unreachable!("a held leaf is never a composite"),
         }
@@ -1362,32 +1323,25 @@ impl Leaf for Int64Serie {
 impl Leaf for UInt8Serie {
     fn root(self) -> Serie {
         match SerieValue::field(&self).dtype() {
-            DataType::MarketDataKind => Serie::MarketDataKind(Arc::new(self)),
-            DataType::Side => Serie::Side(Arc::new(self)),
-            DataType::TimeInForce => Serie::TimeInForce(Arc::new(self)),
-            DataType::PluginSide => Serie::PluginSide(Arc::new(self)),
+            DataType::Market(kind) if kind.storage() == MarketStorage::Code8 => {
+                Serie::Market(MarketSerie::Code8(Arc::new(self)))
+            }
             _ => Serie::UInt8(Arc::new(self)),
         }
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::UInt8(held)
-            | Serie::MarketDataKind(held)
-            | Serie::Side(held)
-            | Serie::TimeInForce(held)
-            | Serie::PluginSide(held) => Some(held.as_ref()),
+            Serie::UInt8(held) | Serie::Market(MarketSerie::Code8(held)) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::UInt8(held)
-            | Serie::MarketDataKind(held)
-            | Serie::Side(held)
-            | Serie::TimeInForce(held)
-            | Serie::PluginSide(held) => Some(Arc::make_mut(held)),
+            Serie::UInt8(held) | Serie::Market(MarketSerie::Code8(held)) => {
+                Some(Arc::make_mut(held))
+            }
             _ => None,
         }
     }
@@ -1397,14 +1351,16 @@ impl Leaf for UInt16Serie {
     fn root(self) -> Serie {
         match SerieValue::field(&self).dtype() {
             DataType::State => Serie::State(Arc::new(self)),
-            DataType::MarketDataType => Serie::MarketDataType(Arc::new(self)),
+            DataType::Market(kind) if kind.storage() == MarketStorage::Code16 => {
+                Serie::Market(MarketSerie::Code16(Arc::new(self)))
+            }
             _ => Serie::UInt16(Arc::new(self)),
         }
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::UInt16(held) | Serie::State(held) | Serie::MarketDataType(held) => {
+            Serie::UInt16(held) | Serie::State(held) | Serie::Market(MarketSerie::Code16(held)) => {
                 Some(held.as_ref())
             }
             _ => None,
@@ -1413,7 +1369,7 @@ impl Leaf for UInt16Serie {
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::UInt16(held) | Serie::State(held) | Serie::MarketDataType(held) => {
+            Serie::UInt16(held) | Serie::State(held) | Serie::Market(MarketSerie::Code16(held)) => {
                 Some(Arc::make_mut(held))
             }
             _ => None,
@@ -3287,20 +3243,8 @@ impl Serie {
             (Self::Mic(mine), Self::Mic(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Cfi(mine), Self::Cfi(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Isin(mine), Self::Isin(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::Side(mine), Self::Side(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::State(mine), Self::State(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::MarketDataKind(mine), Self::MarketDataKind(theirs)) => {
-                Arc::make_mut(mine).append(theirs)
-            }
-            (Self::MarketDataType(mine), Self::MarketDataType(theirs)) => {
-                Arc::make_mut(mine).append(theirs)
-            }
-            (Self::TimeInForce(mine), Self::TimeInForce(theirs)) => {
-                Arc::make_mut(mine).append(theirs)
-            }
-            (Self::PluginSide(mine), Self::PluginSide(theirs)) => {
-                Arc::make_mut(mine).append(theirs)
-            }
+            (Self::Market(mine), Self::Market(theirs)) => mine.append(theirs),
             (Self::Version(mine), Self::Version(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Url(mine), Self::Url(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Urn(mine), Self::Urn(theirs)) => Arc::make_mut(mine).append(theirs),

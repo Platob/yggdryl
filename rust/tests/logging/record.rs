@@ -45,13 +45,13 @@ fn a_new_record_is_dated_now_and_located_nowhere() {
 #[test]
 fn a_record_takes_its_location_target_and_date() {
     let record = Record::new("yggdryl.fix.build", Level::DEBUG, &"merged")
-        .with_location("rust/src/fix/build.rs", 1098)
-        .with_target("yggdryl::fix::build", Some("yggdryl::fix::build"))
+        .with_location("rust/fix/src/build.rs", 1098)
+        .with_target("yggdryl_fix::build", Some("yggdryl_fix::build"))
         .with_created(1_700_000_000_000_000_000);
-    assert_eq!(record.file(), Some("rust/src/fix/build.rs"));
+    assert_eq!(record.file(), Some("rust/fix/src/build.rs"));
     assert_eq!(record.line(), Some(1098));
-    assert_eq!(record.target(), "yggdryl::fix::build");
-    assert_eq!(record.module_path(), Some("yggdryl::fix::build"));
+    assert_eq!(record.target(), "yggdryl_fix::build");
+    assert_eq!(record.module_path(), Some("yggdryl_fix::build"));
     assert_eq!(record.created(), 1_700_000_000_000_000_000);
     let debugged = format!("{record:?}");
     assert!(

@@ -372,13 +372,7 @@ impl IcebergTable<Handle> {
         let location = location.as_ref();
         #[cfg(feature = "s3tables")]
         if location.names_s3_tables() {
-            return match crate::s3tables::locate(location, properties)? {
-                crate::Object::Table(crate::Table::Iceberg(table)) => Ok(*table),
-                other => Err(crate::s3tables::not_a_table(
-                    location,
-                    ObjectValue::kind(&other),
-                )),
-            };
+            return crate::s3tables::open(location, properties);
         }
         let root = rooted_at(location, properties)?;
         Ok(Self::open(root)?.stating(properties))
@@ -2207,37 +2201,52 @@ impl<H: IOBase> IcebergTable<H> {
     }
 
     /// Read the rows the record options ask for, under one more predicate:
-    /// [`Self::read_rows`] as transport, the selector and the limit wrapping
-    /// it.
+    /// [`Self::read_rows`] as transport, the residual of the read's one
+    /// composition wrapping it.
     ///
-    /// This is the one door every options-driven read takes: the `where`
-    /// clause and `scope` - the partition a folder handle addresses - are
-    /// pushed into the scan plan whole, so a range, an `in` list or a null test
-    /// prunes manifests and files exactly as an equality does; the scan reads only the columns the clauses need; and
-    /// the selector and the limit wrap what comes back. A `where` that names
-    /// a column only the `select` publishes cannot prune - the scan does not
-    /// know the name - so it runs after the projection, as DuckDB lets a
-    /// `where` read an alias.
+    /// This is the one door every options-driven read takes, composed once
+    /// ([`compose`](crate::media_serie::compose)) against the stored schema:
+    /// the `where` conjuncts over stored columns and `scope` - the partition
+    /// a folder handle addresses - are pushed into the scan plan, so a
+    /// range, an `in` list or a null test prunes manifests and files exactly
+    /// as an equality does and a file's statistics settle what they prove
+    /// for its rows; a conjunct `scope` already fixes for every row is
+    /// dropped, the plan holding to that partition alone; the scan reads only
+    /// the columns the clauses need; and the selector, a `where` that names a
+    /// column only the `select` publishes - which the scan cannot prune by,
+    /// not knowing the name, so it runs after the projection, as DuckDB lets
+    /// a `where` read an alias - and the row bounds wrap what comes back,
+    /// once. The bounds wrap last, as on every handle, so they count result
+    /// rows and a satisfied read opens no partition past the one that
+    /// satisfied it.
     pub(crate) fn read_scoped(
         &self,
         scope: Filter,
         options: &RecordOptions,
     ) -> Result<BatchReader> {
-        let (rows, late) = self.read_rows(scope, options)?;
-        let reader = rows.into_arrow_reader()?;
-        // The limit wraps last, as on every handle, so it counts result rows
-        // and a satisfied read opens no partition past the one that
-        // satisfied it.
-        options.limit_arrow_reader(
-            late.apply_arrow_reader(options.select().apply_arrow_reader(reader)?)?,
-        )
+        let settled = scope_settled(&scope);
+        let composed = crate::media_serie::compose(
+            options,
+            &crate::media_serie::Scan::default(),
+            Some(self.schema()?),
+            &settled,
+        )?;
+        let reader = self
+            .read_rows(scope, &composed.handed)?
+            .into_arrow_reader()?;
+        // The scan answered the conjuncts over stored columns file by file;
+        // the selection, the conjuncts after it and the bounds run once here.
+        Ok(composed.residual.over_units().apply_reader(reader)?)
     }
 
     /// The rows an options-driven read yields before the `select`, a `where`
     /// that runs after it and the row bounds wrap them - partition after
     /// partition in ascending tuple order, each partition's rows in the
-    /// table's default sort order - and whether that `where` runs after the
-    /// `select` (`true`) or was pushed into the plan whole with `scope`.
+    /// table's default sort order. The options' `where` and `scope` are
+    /// pushed into the plan whole, so the `where` reads stored columns alone:
+    /// the options a composed read hands the scan ([`Self::read_scoped`]),
+    /// or a read publishing every column, where nothing waits for the
+    /// `select`.
     ///
     /// The plan is grouped by partition tuple ([`super::scan::partition_groups`]);
     /// a group is decoded only when the one before it has been yielded, its
@@ -2254,22 +2263,13 @@ impl<H: IOBase> IcebergTable<H> {
     ///
     /// The root declares what the stream proves ([`Self::read_order`]),
     /// which [`IOMedia::read_arrow_field`] declares too.
-    fn read_rows(
-        &self,
-        scope: Filter,
-        options: &RecordOptions,
-    ) -> Result<(super::scan::Partitions, Filter)> {
+    fn read_rows(&self, scope: Filter, options: &RecordOptions) -> Result<super::scan::Partitions> {
         let stored = self.schema()?.clone();
         let (landing, given) = self.read_landing(options)?;
-        let (early, late) = crate::expression::filter_phases(
-            options.filter(),
-            options.select(),
-            landing.fields().iter().map(Field::name),
-        );
         let pushed = if scope.is_always_true() {
-            early.into_owned()
+            options.filter().clone()
         } else {
-            Filter::all([scope, early.into_owned()])
+            Filter::all([scope, options.filter().clone()])
         };
         let metadata = &self.opened()?.metadata;
         let spec = metadata.default_spec()?;
@@ -2329,13 +2329,15 @@ impl<H: IOBase> IcebergTable<H> {
             sorting,
             std::sync::Arc::new(root),
         );
-        Ok((partitions, late.into_owned()))
+        Ok(partitions)
     }
 
     /// The root an options-driven read lands its rows under, declaring no
-    /// order, and whether the caller gave it: the declared field, else the
-    /// stored schema narrowed to the columns the clauses read and named as
-    /// the options name the root.
+    /// order, and whether the caller gave it: the declared field - which a
+    /// composed read hands narrowed to the columns its clauses read - else
+    /// the stored schema narrowed to those columns by the same rule
+    /// ([`apply_columns`](IORecordOptions::apply_columns)) and named as the
+    /// options name the root.
     fn read_landing(&self, options: &RecordOptions) -> Result<(Field, bool)> {
         if let Some(field) = options.field() {
             return Ok((field.with_metadata_removed("SORT:by"), true));
@@ -4821,7 +4823,7 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
     /// media type off, and its encoding is still not a guess: this module
     /// writes Parquet, so that is what an Iceberg table's rows are.
     fn record_options(&self) -> Result<RecordOptions> {
-        Ok(RecordOptions::Parquet(crate::parquet::ParquetOptions::new()))
+        Ok(RecordOptions::from(crate::parquet::ParquetOptions::new()))
     }
 
     /// The table's own match key: its identity partition columns, then the
@@ -4834,16 +4836,28 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
         merge_keys(self.schema()?, spec, &Selector::all()).map(|(keys, _)| keys)
     }
 
-    /// The stored schema as the metadata declares it, no data file opened.
+    /// The stored schema as the metadata declares it - field identifiers,
+    /// protocol metadata, the partition and sort declarations its writers
+    /// keep - with no data file opened: [`IcebergTable::schema`], off the
+    /// current document the table holds from its first verb until
+    /// [`IOBase::close`], each commit adopting the next.
+    fn read_origin_field(&self) -> Result<Option<Field>> {
+        Ok(Some(self.schema()?.clone()))
+    }
+
+    /// The root a record read of these options lands under, from metadata
+    /// alone, no data file opened.
     ///
-    /// A declared schema is returned as it stands, as on every handle, but
-    /// for its `SORT:by`. Otherwise the answer is [`IcebergTable::schema`]
-    /// renamed to the options' root name - field identifiers and protocol
-    /// metadata included - where the base implementation would build a
-    /// reader and take the shape off its batches. Either way its `SORT:by`
-    /// is the order a record read of these options proves, which the
-    /// stream's root declares - none where it proves none - rather than the
-    /// order the table's writers keep.
+    /// The rule every medium answers: the declared root, else
+    /// [`IcebergTable::schema`] renamed to the options' root name - field
+    /// identifiers and protocol metadata included - narrowed by the `where`
+    /// and the `select` in the phases a read runs them in. Its `SORT:by` is
+    /// the one thing answered here rather than by that rule: the root's own
+    /// declaration is the order the table's writers keep, which a read
+    /// proves only where its partitions arrive in tuple order and each is
+    /// sorted on keys it reads, so the answer declares the order a record
+    /// read of these options proves - the stream's root declares the same,
+    /// none where it proves none.
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
         let (landing, _) = self.read_landing(options)?;
         let sorted = self.read_sorting(&landing)?.len();
@@ -4852,7 +4866,8 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
             Some(field) => field,
             None => self.schema()?.clone().with_name(options.name()),
         };
-        super::scan::declaring(root.with_metadata_removed("SORT:by"), proven)
+        let shaped = crate::iomedia::field_under(options, &root.with_metadata_removed("SORT:by"))?;
+        super::scan::declaring(shaped, proven)
     }
 
     /// The table's rows partition after partition, in ascending partition
@@ -4884,7 +4899,6 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
             if options.select().is_all() && !bounded {
                 return Ok(self
                     .read_rows(Filter::always_true(), options)?
-                    .0
                     .chunked_stream()?);
             }
             // The selector, a `where` after it and the bounds are Arrow's, so
@@ -5276,8 +5290,8 @@ fn backoff_ms(attempt: u32, min: u64, max: u64) -> u64 {
 /// commit of a write that reaches it and append to it on every later one.
 /// An overwrite of a stated scope, or of an unpartitioned table, replaces
 /// on its first commit alone, which `scope` records. One value per write -
-/// a [`IcebergTable`] or [`super::Located`] stream, or a write session - and
-/// nothing a keyed merge records.
+/// an [`IcebergTable`] stream's, or the one a [`super::Located`] holds for
+/// the write session that located it - and nothing a keyed merge records.
 ///
 /// Bounded by the partitions the write's rows fall in: one tuple each,
 /// held until the write ends, because a later commit may reach any of them.
@@ -6168,7 +6182,7 @@ fn write_data_file(
                 .with_field(stored.clone());
             options.set_file_threads(threads);
             if parquet {
-                let RecordOptions::Parquet(parquet) = &options else {
+                let Some(parquet) = options.settings::<crate::parquet::ParquetOptions>() else {
                     return Err(not_encodable(mime_type));
                 };
                 let (metadata, length) = crate::parquet::overwrite_buffered(
@@ -6588,6 +6602,32 @@ fn partition_tuples_filter(spec: &PartitionSpec, schema: &Field, tuples: &[Vec<S
             }))
         }
     }
+}
+
+/// The values a location's scope fixes for every row a read of it yields:
+/// each `column = value` conjunct and each `column is null` one, as
+/// [`Filter::all_partitions_equal`] spells a partition directory's pairs,
+/// the value as the directory spells it. The plan holds to the files of
+/// that partition, so a conjunct of the read's own `where` these prove is
+/// settled before the scan is asked to prune by it again.
+fn scope_settled(scope: &Filter) -> Vec<(SmolStr, Scalar)> {
+    scope
+        .conjuncts()
+        .iter()
+        .filter_map(|conjunct| match conjunct.term() {
+            Term::IsNull(column) => Some((SmolStr::new(column.as_column()?), Scalar::Null)),
+            Term::Compare(column, crate::expression::Comparison::Eq, value) => {
+                // The directory's text, cast to the column's datatype where
+                // the scope is bound.
+                let value = match &**value {
+                    Term::Cast(text, _, _) => text.as_literal()?,
+                    literal => literal.as_literal()?,
+                };
+                Some((SmolStr::new(column.as_column()?), value.value().clone()))
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// Narrow a stored root to the columns one plan reads, in stored order.
@@ -7535,7 +7575,8 @@ impl std::error::Error for Forked {}
 /// `second`: two commits claimed it under two codecs, and a reader that
 /// chose between them would drop one acknowledged commit from the chain.
 fn forked(version: u32, first: &str, second: &str) -> Error {
-    Error::Iceberg {
+    Error::External {
+        origin: "Iceberg",
         reason: format_smolstr!(
             "expected one metadata document of version {version}, got two: {first} and \
              {second}; two commits claimed the version under two codecs and the table forked"
@@ -7546,7 +7587,7 @@ fn forked(version: u32, first: &str, second: &str) -> Error {
 
 /// Whether `error` is the refusal [`forked`] answers.
 fn is_forked(error: &Error) -> bool {
-    matches!(error, Error::Iceberg { source: Some(source), .. } if source.is::<Forked>())
+    matches!(error, Error::External { source: Some(source), .. } if source.is::<Forked>())
 }
 
 /// A commit's base no longer its version's one document, the source of the
@@ -7567,7 +7608,8 @@ impl std::error::Error for MovedBase {}
 /// longer stands alone at its version: `found` holds what the version is
 /// now, the other spelling's document or other bytes under its own name.
 fn moved_base(version: u32, name: &str, found: &str) -> Error {
-    Error::Iceberg {
+    Error::External {
+        origin: "Iceberg",
         reason: format_smolstr!(
             "expected the metadata document {name} a commit built on to stand alone at \
              version {version}, got {found} changed since it was read; the claim it built \
@@ -7609,7 +7651,7 @@ impl From<Error> for Unclaimed {
 
 /// Whether `error` is the refusal [`moved_base`] answers.
 fn is_moved_base(error: &Error) -> bool {
-    matches!(error, Error::Iceberg { source: Some(source), .. } if source.is::<MovedBase>())
+    matches!(error, Error::External { source: Some(source), .. } if source.is::<MovedBase>())
 }
 
 /// The document a listing of `metadata/` settles on, for a folder whose hint
@@ -8126,10 +8168,3 @@ pub mod internals {
         table.child_at(location)
     }
 }
-
-crate::media_serie::media_serie!(
-    IcebergTableSerie,
-    IcebergTable,
-    as_iceberg_table,
-    get_iceberg_table_mut
-);

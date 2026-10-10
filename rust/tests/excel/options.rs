@@ -344,7 +344,7 @@ fn a_plan_that_orders_rows_is_refused_and_leaves_the_options_unchanged() {
 #[test]
 fn the_xlsx_media_type_names_the_excel_variant() {
     let options = RecordOptions::for_mime_type(&MimeType::XLSX).unwrap();
-    assert_eq!(options, RecordOptions::Excel(ExcelOptions::new()));
+    assert_eq!(options, RecordOptions::from(ExcelOptions::new()));
     assert_eq!(options.mime_type(), MimeType::XLSX);
     assert_eq!(
         MimeType::XLSX.to_string(),
@@ -355,7 +355,7 @@ fn the_xlsx_media_type_names_the_excel_variant() {
     assert_eq!(media_type.base(), &MimeType::XLSX);
     assert_eq!(
         RecordOptions::for_media_type(&media_type).unwrap(),
-        RecordOptions::Excel(ExcelOptions::new())
+        RecordOptions::from(ExcelOptions::new())
     );
 
     // An encoding no variant covers names the workbook among those that are.
@@ -381,32 +381,60 @@ fn the_options_convert_into_the_excel_variant_unchanged() {
     assert_eq!(record.field(), Some(schema()));
     assert_eq!(record.name(), "row");
     assert_eq!(record.max_row_size(), Some(9));
-    assert_eq!(record.excel_sheet(), Some("Trades"));
+    assert_eq!(
+        record
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::sheet),
+        Some("Trades")
+    );
     assert_eq!(record.header(), Some(false));
-    assert_eq!(record.excel_range(), Some("C3:D".parse().unwrap()));
-    let RecordOptions::Excel(inner) = record else {
-        panic!("Excel options convert into the Excel variant");
+    assert_eq!(
+        record
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::range),
+        Some("C3:D".parse().unwrap())
+    );
+    let Some(inner) = record.settings::<ExcelOptions>() else {
+        panic!("Excel options convert into the registered Excel medium");
     };
-    assert_eq!(inner, options);
+    assert_eq!(inner, &options);
 }
 
 #[test]
 fn the_variant_reads_and_writes_the_workbook_settings() {
     let mut options = RecordOptions::from(ExcelOptions::new());
-    assert_eq!(options.excel_sheet(), None);
+    let sheet = |options: &RecordOptions| {
+        options
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::sheet)
+            .map(str::to_owned)
+    };
+    let range_of = |options: &RecordOptions| {
+        options
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::range)
+    };
+    assert_eq!(sheet(&options), None);
     assert_eq!(options.header(), Some(true));
-    assert_eq!(options.excel_range(), None);
+    assert_eq!(range_of(&options), None);
 
     let range: CellRange = "B2:C9".parse().unwrap();
-    options.set_excel_sheet(Some("Trades")).unwrap();
+    options
+        .require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")
+        .unwrap()
+        .set_sheet(Some("Trades"))
+        .unwrap();
     options.set_header(false).unwrap();
-    options.set_excel_range(Some(range)).unwrap();
-    assert_eq!(options.excel_sheet(), Some("Trades"));
+    options
+        .require_settings_mut::<ExcelOptions>("$.range", "a cell range")
+        .unwrap()
+        .set_range(Some(range));
+    assert_eq!(sheet(&options).as_deref(), Some("Trades"));
     assert_eq!(options.header(), Some(false));
-    assert_eq!(options.excel_range(), Some(range));
+    assert_eq!(range_of(&options), Some(range));
     assert_eq!(
         options,
-        RecordOptions::Excel(
+        RecordOptions::from(
             ExcelOptions::new()
                 .with_sheet("Trades")
                 .with_header(false)
@@ -415,10 +443,17 @@ fn the_variant_reads_and_writes_the_workbook_settings() {
     );
 
     // `None` clears the sheet and the range back to the defaults.
-    options.set_excel_sheet(None).unwrap();
-    options.set_excel_range(None).unwrap();
+    options
+        .require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")
+        .unwrap()
+        .set_sheet(None)
+        .unwrap();
+    options
+        .require_settings_mut::<ExcelOptions>("$.range", "a cell range")
+        .unwrap()
+        .set_range(None);
     options.set_header(true).unwrap();
-    assert_eq!(options, RecordOptions::Excel(ExcelOptions::new()));
+    assert_eq!(options, RecordOptions::from(ExcelOptions::new()));
 }
 
 #[test]
@@ -446,17 +481,26 @@ fn setting_a_sheet_name_excel_refuses_names_the_rule_and_leaves_the_sheet_as_it_
             "expected a sheet name other than the reserved `History`",
         ),
     ] {
-        let message = options.set_excel_sheet(Some(name)).unwrap_err().to_string();
+        let message = options
+            .require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")
+            .unwrap()
+            .set_sheet(Some(name))
+            .unwrap_err()
+            .to_string();
         assert!(message.contains("$.sheet"), "{name:?}: {message}");
         assert!(message.contains(reason), "{name:?}: {message}");
         assert_eq!(options, before, "{name:?}");
     }
     // Thirty-one characters is the longest name Excel keeps.
     options
-        .set_excel_sheet(Some("abcdefghijklmnopqrstuvwxyz01234"))
+        .require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")
+        .unwrap()
+        .set_sheet(Some("abcdefghijklmnopqrstuvwxyz01234"))
         .unwrap();
     assert_eq!(
-        options.excel_sheet(),
+        options
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::sheet),
         Some("abcdefghijklmnopqrstuvwxyz01234")
     );
 }
@@ -465,19 +509,31 @@ fn setting_a_sheet_name_excel_refuses_names_the_rule_and_leaves_the_sheet_as_it_
 fn another_encoding_answers_no_workbook_setting_and_refuses_to_set_one() {
     let mut options = RecordOptions::Ipc(IpcOptions::new());
     let before = options.clone();
-    assert_eq!(options.excel_sheet(), None);
+    assert_eq!(
+        options
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::sheet),
+        None
+    );
     assert_eq!(options.header(), None);
-    assert_eq!(options.excel_range(), None);
+    assert_eq!(
+        options
+            .settings::<ExcelOptions>()
+            .and_then(ExcelOptions::range),
+        None
+    );
 
     for (error, path, setting) in [
         (
-            options.set_excel_sheet(Some("Trades")).unwrap_err(),
+            options
+                .require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")
+                .unwrap_err(),
             "$.sheet",
             "a worksheet",
         ),
         (
             options
-                .set_excel_range(Some("A1:B2".parse().unwrap()))
+                .require_settings_mut::<ExcelOptions>("$.range", "a cell range")
                 .unwrap_err(),
             "$.range",
             "a cell range",
@@ -525,12 +581,12 @@ fn the_encoding_and_every_workbook_setting_are_part_of_the_stable_hash() {
 fn a_workbook_handle_answers_the_default_excel_options() {
     assert_eq!(
         xlsx().record_options().unwrap(),
-        RecordOptions::Excel(ExcelOptions::new())
+        RecordOptions::from(ExcelOptions::new())
     );
     let retained = Excel::new(Buffer::new()).with_sheet("Trades");
     assert_eq!(
         retained.record_options().unwrap(),
-        RecordOptions::Excel(ExcelOptions::new().with_sheet("Trades"))
+        RecordOptions::from(ExcelOptions::new().with_sheet("Trades"))
     );
 }
 

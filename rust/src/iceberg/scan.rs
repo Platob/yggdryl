@@ -915,7 +915,8 @@ impl Refine {
         use crate::media::IORecordOptions;
 
         let (options, footed) = self.file_options(part)?;
-        let (Some(footed), crate::media::RecordOptions::Parquet(parquet)) = (footed, &options)
+        let (Some(footed), Some(parquet)) =
+            (footed, options.settings::<crate::parquet::ParquetOptions>())
         else {
             return crate::IOMedia::read_arrow_reader(&part.handle, &options);
         };
@@ -1278,7 +1279,10 @@ fn file_root(
     use crate::IOBase;
     use crate::media::IORecordOptions;
 
-    if !matches!(options, crate::media::RecordOptions::Parquet(_)) {
+    if options
+        .settings::<crate::parquet::ParquetOptions>()
+        .is_none()
+    {
         return (crate::IOMedia::read_arrow_field(handle, options).ok(), None);
     }
     // A file the Parquet read would take whole - up to its

@@ -1744,13 +1744,18 @@ impl crate::IOMedia for Request {
 
     /// The rows of the resource under `options`: a structured document whose
     /// first page paginates - per the request's [`Pagination`], `Auto` by
-    /// default - reads one batch per page through [`Request::pages`], the
-    /// declared field and batch row size taken off `options` and its
-    /// clauses applied; every other resource reads through its bytes as
-    /// every leaf does, a structured document of one page included.
+    /// default - reads one batch per page through [`Request::pages`], laid
+    /// out under the declared field narrowed to the columns the clauses
+    /// read, the batch row size taken off `options`; every other resource
+    /// reads through its bytes as every leaf does, a structured document of
+    /// one page included.
     ///
-    /// The first page is read once to decide and handed to the walk when it
-    /// paginates, so a paginated read costs one `GET` per page and no more.
+    /// Either read is composed once, as every record read is: what the
+    /// pages or the leaf's encoding are handed, and the residual - the
+    /// `where`, the `select` and the row bounds - run once over what they
+    /// answer. The first page is read once to decide and handed to the walk
+    /// when it paginates, so a paginated read costs one `GET` per page and no
+    /// more.
     fn read_serie(&self, options: Option<&crate::media::RecordOptions>) -> Result<crate::Serie> {
         use crate::media::IORecordOptions;
 
@@ -1764,16 +1769,21 @@ impl crate::IOMedia for Request {
                 let options = options
                     .cloned()
                     .unwrap_or_else(|| crate::media::RecordOptions::Ipc(Default::default()));
+                let composed = crate::media_serie::compose(
+                    &options,
+                    &crate::media_serie::Scan::default(),
+                    None,
+                    &[],
+                )?;
+                // The pages filter no row: the whole residual runs over them.
                 let reader = self.pages_from(response)?.into_arrow_reader(
-                    options.field().as_ref(),
+                    composed.handed.declared(),
                     options
                         .batch_row_size()
                         .unwrap_or(crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE),
                 )?;
-                crate::iomedia::landed(
-                    options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)?,
-                )
-                .map(crate::Serie::from)
+                crate::iomedia::landed(composed.residual.apply_reader(reader)?)
+                    .map(crate::Serie::from)
             }
             Some(first) => crate::IOMedia::read_serie(&first.held()?, options),
             None if crate::text::Format::from_media_type(self.media_type()).is_ok() => {
@@ -1781,11 +1791,15 @@ impl crate::IOMedia for Request {
             }
             None => {
                 let options = crate::iomedia::own_options(self, options)?;
-                let reader = crate::iobase::leaf_reader(self, &options)?;
-                crate::iomedia::landed(
-                    options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)?,
-                )
-                .map(crate::Serie::from)
+                let composed = crate::media_serie::compose(
+                    &options,
+                    &crate::media_serie::Scan::default(),
+                    None,
+                    &[],
+                )?;
+                let reader = crate::iobase::leaf_reader(self, &composed.handed)?;
+                crate::iomedia::landed(composed.residual.apply_reader(reader)?)
+                    .map(crate::Serie::from)
             }
         }
     }
@@ -1988,4 +2002,4 @@ fn poisoned() -> Error {
     ))
 }
 
-crate::media_serie::media_serie!(HttpSerie, Http, as_http, get_http_mut);
+crate::media_serie::media_serie!(HttpSerie, Http, as_http, get_http_mut, accepts = None);

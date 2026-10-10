@@ -1,12 +1,13 @@
 //! One S3 location, whatever it turns out to be.
 
+use std::any::Any;
 use std::sync::{Arc, Mutex};
 
 use super::client::Client;
 use super::file::S3File;
 use super::folder::S3Folder;
-use crate::holder::Holder;
-use crate::logging::warning::warned;
+use crate::holder::{Holder, RegisteredHandle};
+use crate::warned;
 use crate::{Error, IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result, Uri, Url};
 
 /// An S3 location that resolves to the implementation it turns out to need.
@@ -143,7 +144,8 @@ impl S3Path {
         self.path_exists()
     }
 
-    /// Treat this location as a prefix, whether or not anything is under it.
+    /// Treat this location as a prefix, whether or not anything is under it:
+    /// what [`IOBase::as_container`] answers, as the prefix itself.
     ///
     /// # Errors
     ///
@@ -152,7 +154,8 @@ impl S3Path {
         S3Folder::new(self.client.clone(), self.url.clone())
     }
 
-    /// Treat this location as an object, whether or not it exists yet.
+    /// Treat this location as an object, whether or not it exists yet: what
+    /// [`IOBase::as_leaf`] answers, as the object itself.
     ///
     /// # Errors
     ///
@@ -439,6 +442,14 @@ impl IOBase for S3Path {
         self.with_resolved_mut(|handle| handle.append_bytes(bytes))?
     }
 
+    /// The resolved handle's upload, at the one listing that resolves the
+    /// location and the requests the object's own upload sends: one `PUT`
+    /// below the multipart threshold, a multipart upload above it holding one
+    /// part of the source at a time.
+    fn upload_from(&mut self, source: &mut dyn std::io::Read, length: u64) -> Result<()> {
+        self.with_resolved_mut(|handle| handle.upload_from(source, length))?
+    }
+
     /// The resolved handle's size; `0` where nothing is, and `0` with a
     /// warning where the store refused to say what is (`heard`).
     fn size(&self) -> u64 {
@@ -557,7 +568,7 @@ impl IOBase for S3Path {
         let parent = self.url.parent()?;
         S3Folder::new(self.client.clone(), parent)
             .ok()
-            .map(Holder::S3Folder)
+            .map(Holder::from)
     }
 
     /// Name a descendant without asking the store anything.
@@ -573,6 +584,25 @@ impl IOBase for S3Path {
             }
         }
         self.as_directory()?.child_by_path(name)
+    }
+
+    /// The object this location names, on the same client, with no request
+    /// ([`S3Path::as_file`]): what a caller who knows the location names a
+    /// file - a table's metadata names files and nothing else - takes
+    /// instead of the listing its first verb would pay to decide the role.
+    /// An undecided location keeps the default `discard` and
+    /// `set_known_size`, so a caller that stages or states a length takes the
+    /// object this answers first.
+    fn as_leaf(&self) -> Result<Option<Holder>> {
+        Ok(Some(Holder::from(self.as_file()?)))
+    }
+
+    /// The prefix this location names, on the same client, with no request
+    /// ([`S3Path::as_directory`]): what a caller who knows the location is a
+    /// directory by its own layout - a table's `metadata/` - takes instead of
+    /// the listing.
+    fn as_container(&self) -> Result<Option<Holder>> {
+        Ok(Some(Holder::from(self.as_directory()?)))
     }
 
     /// Empty whichever of the two the resolved kind names.
@@ -631,6 +661,48 @@ impl IOBase for S3Path {
             Ok(directory) => directory.ls(recursive, include_private),
             Err(error) => Listing::failing(error),
         }
+    }
+}
+
+/// A location is a handle the object-store backend ([`super::S3_BACKEND`])
+/// answers, held as [`Holder::Registered`]: what [`Holder::from_url`] holds
+/// an object-store location as.
+impl RegisteredHandle for S3Path {
+    fn implementation_name(&self) -> &'static str {
+        "S3Path"
+    }
+
+    /// Whether anything is at the location, as [`S3Path::exists`] answers
+    /// it.
+    fn exists(&self) -> bool {
+        self.path_exists()
+    }
+
+    /// The location again on the same client, built as the child its key's
+    /// last segment names under its prefix, sending nothing; the bucket
+    /// itself, or a location spelled with a trailing slash, is a container
+    /// by its spelling and is held as its prefix. Nothing it resolved or
+    /// staged travels.
+    fn reopen(&self) -> Result<Holder> {
+        match crate::holder::sibling(self)? {
+            Some(held) => Ok(held),
+            None => Ok(Holder::from(self.as_directory()?)),
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+/// A location, held as the registered handle it is.
+impl From<S3Path> for Holder {
+    fn from(path: S3Path) -> Self {
+        Self::Registered(Box::new(path))
     }
 }
 

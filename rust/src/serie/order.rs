@@ -49,7 +49,9 @@ use arrow_schema::DataType as ArrowDataType;
 use super::{Proof, Rows as _, Serie, land, proven_row};
 use crate::arrow::{array_memory_size, scalar_memory_size};
 use crate::expression::{self, IntoOrderings, Projection};
-use crate::{DataType, Error, Field, Result, Scalar, Selector, SortOptions, StreamChunkedSerie};
+use crate::{
+    DataType, Error, Field, MarketSerie, Result, Scalar, Selector, SortOptions, StreamChunkedSerie,
+};
 
 /// The name an index column answers: the positions a sort chose.
 const INDEX_NAME: &str = "index";
@@ -138,14 +140,11 @@ pub(crate) fn stored_order_is_value_order(dtype: &DataType) -> bool {
         | DataType::Decimal256 { .. }
         | DataType::Decimal
         | DataType::BigDecimal
-        // An enum member orders by its code, which is what the column
-        // stores, and a UUID by its 128 bits, stored big-endian.
-        | DataType::Side
+        // An enum member (a state, a registered kind's) orders by its code,
+        // which is what the column stores, and a UUID by its 128 bits, stored
+        // big-endian.
         | DataType::State
-        | DataType::TimeInForce
-        | DataType::PluginSide
-        | DataType::MarketDataKind
-        | DataType::MarketDataType
+        | DataType::Market(_)
         | DataType::Uuid
         | DataType::Binary
         | DataType::LargeBinary
@@ -530,14 +529,10 @@ macro_rules! primitive {
             Serie::Int16($column) => Some($answer),
             Serie::Int32($column) => Some($answer),
             Serie::Int64($column) => Some($answer),
-            Serie::UInt8($column)
-            | Serie::Side($column)
-            | Serie::MarketDataKind($column)
-            | Serie::TimeInForce($column)
-            | Serie::PluginSide($column) => Some($answer),
-            Serie::UInt16($column) | Serie::State($column) | Serie::MarketDataType($column) => {
-                Some($answer)
-            }
+            Serie::UInt8($column) | Serie::Market(MarketSerie::Code8($column)) => Some($answer),
+            Serie::UInt16($column)
+            | Serie::State($column)
+            | Serie::Market(MarketSerie::Code16($column)) => Some($answer),
             Serie::UInt32($column) => Some($answer),
             Serie::UInt64($column) => Some($answer),
             Serie::Float16($column) => Some($answer),
@@ -589,15 +584,11 @@ macro_rules! primitive_mut {
                 let $column = Arc::make_mut(held);
                 Some($answer)
             }
-            Serie::UInt8(held)
-            | Serie::Side(held)
-            | Serie::MarketDataKind(held)
-            | Serie::TimeInForce(held)
-            | Serie::PluginSide(held) => {
+            Serie::UInt8(held) | Serie::Market(MarketSerie::Code8(held)) => {
                 let $column = Arc::make_mut(held);
                 Some($answer)
             }
-            Serie::UInt16(held) | Serie::State(held) | Serie::MarketDataType(held) => {
+            Serie::UInt16(held) | Serie::State(held) | Serie::Market(MarketSerie::Code16(held)) => {
                 let $column = Arc::make_mut(held);
                 Some($answer)
             }

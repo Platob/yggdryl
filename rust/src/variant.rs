@@ -937,9 +937,9 @@ fn write_value(value: &Scalar, keys: &[SmolStr], depth: usize, out: &mut Vec<u8>
         Scalar::Variant(held) => write_value(&held.scalar()?, keys, depth, out)?,
         // An enum member is its stored name: a variant describes itself, and
         // the name does where the code would need the vocabulary beside it.
-        held @ crate::enum_scalars!() => {
-            write_text(out, held.enum_name().expect("an enum member names itself"))?;
-        }
+        Scalar::State(held) => write_text(out, held.as_str())?,
+        // A registered enum's member is its stored name.
+        Scalar::Market(held) => write_text(out, held.as_str())?,
         // A registered code is its text under the standard's string.
         code @ crate::code_scalars!() => {
             write_text(out, code.as_str().expect("a code borrows its text"))?;

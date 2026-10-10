@@ -9,15 +9,18 @@
 //! of. Writing streams each batch into the document as it arrives and hands
 //! the handle the whole once.
 
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use arrow_array::RecordBatchIterator;
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
-use crate::media::{IORecordOptions, RecordOptions};
+use crate::holder::Holder;
+use crate::media::{IORecordOptions, Media, MediaCodec, MediaWrapper, RecordOptions};
 use crate::soap::ENVELOPE_NAMESPACE;
 use crate::xml::Element;
-use crate::{ArrowCastOptions, Charset, Field, IOBase, IOMedia, Result, Serie, StreamChunkedSerie};
+use crate::{
+    ArrowCastOptions, Charset, Field, IOBase, IOMedia, MimeType, Result, Serie, StreamChunkedSerie,
+};
 
 use super::options::XmlaOptions;
 use super::response::Response;
@@ -224,13 +227,16 @@ pub fn overwrite_arrow_reader<H: IOBase + ?Sized>(
 ///
 /// Rows flow through the ordinary [`IOMedia`] methods, and the wrapper
 /// retains the [`XmlaOptions`] that [`IOMedia::record_options`] answers with.
-/// [`IOBase::open`] caches the document's schema until [`IOBase::close`].
+/// What the document states - the rowset's field, its row count - is held
+/// in a [`MediaCache`](crate::media::MediaCache) from [`IOBase::open`] until
+/// [`IOBase::close`], or for the options' `cache_ttl` on a closed handle.
 #[derive(Debug)]
 pub struct Xmla<H: IOBase> {
     handle: H,
     options: XmlaOptions,
-    opened: bool,
-    cached_schema: OnceLock<Field>,
+    /// What the document states, read in one parse of it; never held for a
+    /// container.
+    cache: crate::media::MediaCache,
 }
 
 impl<H: IOBase> Xmla<H> {
@@ -240,8 +246,7 @@ impl<H: IOBase> Xmla<H> {
         Self {
             handle,
             options: XmlaOptions::new(),
-            opened: false,
-            cached_schema: OnceLock::new(),
+            cache: crate::media::MediaCache::new(),
         }
     }
 
@@ -274,8 +279,10 @@ impl<H: IOBase> Xmla<H> {
         &self.handle
     }
 
-    /// Borrow the underlying byte handle mutably.
+    /// Borrow the underlying byte handle mutably, dropping what the cache
+    /// holds before any byte mutation can occur.
     pub fn handle_mut(&mut self) -> &mut H {
+        self.cache.invalidate();
         &mut self.handle
     }
 
@@ -285,17 +292,53 @@ impl<H: IOBase> Xmla<H> {
     }
 
     fn require_options<'a>(&self, options: &'a RecordOptions) -> Result<&'a XmlaOptions> {
-        match options {
-            RecordOptions::Xmla(options) => Ok(options),
-            _ => Err(crate::Error::InvalidRecord {
+        options
+            .settings::<XmlaOptions>()
+            .ok_or_else(|| crate::Error::InvalidRecord {
                 path: smol_str::SmolStr::new_static("$.encoding"),
                 reason: crate::text::expected_got("XMLA record options", options.mime_type()),
-            }),
-        }
+            })
     }
 
-    fn invalidate(&mut self) {
-        self.cached_schema = OnceLock::new();
+    /// One parse of the document as a cache entry: the field its rowset
+    /// states and its row count, or the empty entry for an empty handle. A
+    /// fault, or a rowset stating no schema, is refused here as the read
+    /// refuses it.
+    fn read_entry(&self) -> Result<crate::media::Entry> {
+        Ok(
+            match read_document(&self.handle, None, cast_of(&self.options))? {
+                Some((rowset, rows)) => {
+                    let origin = rowset.field().clone();
+                    crate::media::Entry {
+                        columns: Some(origin.field_len()),
+                        origin: Some(origin),
+                        rows: Some(rows.len() as u64),
+                        state: None,
+                    }
+                }
+                None => crate::media::Entry {
+                    origin: None,
+                    rows: Some(0),
+                    columns: Some(0),
+                    state: None,
+                },
+            },
+        )
+    }
+
+    /// The leaf's entry under `ttl`, `served` where the cache had one: the
+    /// cache's, read and kept where it holds none.
+    fn entry(
+        &self,
+        ttl: crate::media::CacheTtl,
+        served: Option<crate::media::Entry>,
+    ) -> Result<crate::media::Entry> {
+        match served {
+            Some(entry) => Ok(entry),
+            None => self
+                .cache
+                .get_or_fill(ttl, crate::media::cache::now(), || self.read_entry()),
+        }
     }
 }
 
@@ -308,72 +351,111 @@ impl<H: IOBase> IOMedia for Xmla<H> {
         self
     }
 
+    /// The rows of the document - typed by the declared field where one is
+    /// declared, which a document stating no schema needs, and then read
+    /// each time - or, over a container, of every rowset beneath it.
     fn row_size(&self) -> Result<u64> {
-        if self.handle.is_container() {
+        let ttl = self.options.cache_ttl;
+        let served = self.cache.entry(ttl, crate::media::cache::now());
+        let declared = self.options.field.is_some();
+        if !declared && let Some(rows) = served.as_ref().and_then(|entry| entry.rows) {
+            return Ok(rows);
+        }
+        // Past the cache, which only a leaf ever fills.
+        if served.is_none() && self.handle.is_container() {
             return crate::iomedia::container_row_size(
                 &self.handle,
                 &crate::iomedia::dimension_options(self)?,
             );
         }
-        row_size(&self.handle, &self.options)
+        if declared || !self.cache.keeps(ttl) {
+            return row_size(&self.handle, &self.options);
+        }
+        Ok(self.entry(ttl, served)?.rows.unwrap_or_default())
     }
 
     fn column_size(&self) -> Result<usize> {
         if let Some(field) = self.options.field() {
             return Ok(field.field_len());
         }
-        if self.opened
-            && let Some(cached) = self.cached_schema.get()
-        {
-            return Ok(cached.field_len());
+        let ttl = self.options.cache_ttl;
+        let served = self.cache.entry(ttl, crate::media::cache::now());
+        if let Some(columns) = served.as_ref().and_then(|entry| entry.columns) {
+            return Ok(columns);
         }
-        // Past the session's cache, which only a leaf ever fills.
-        if self.handle.is_container() {
-            return Ok(crate::iomedia::container_field(
+        // Past the cache, which only a leaf ever fills.
+        if served.is_none() && self.handle.is_container() {
+            return Ok(crate::iomedia::container_origin(
                 &self.handle,
-                &crate::iomedia::dimension_options(self)?,
+                crate::iomedia::dimension_options(self)?,
             )?
-            .field_len());
+            .map_or(0, |field| field.field_len()));
         }
-
+        if self.cache.keeps(ttl) {
+            return Ok(self.entry(ttl, served)?.columns.unwrap_or_default());
+        }
         // One read answers both an empty document (no columns) and a held
-        // one, so no size probe precedes it; while open, what it read is what
-        // the field and the width are answered from until close.
-        let field = read_document(&self.handle, None, cast_of(&self.options))?
-            .map(|(rowset, _)| rowset.field().clone());
-        match field {
-            Some(field) => {
-                if self.opened {
-                    let _ = self.cached_schema.set(field.clone());
-                }
-                Ok(field.field_len())
-            }
-            None => Ok(0),
-        }
+        // one, so no size probe precedes it.
+        Ok(read_document(&self.handle, None, cast_of(&self.options))?
+            .map_or(0, |(rowset, _)| rowset.field().field_len()))
     }
 
     fn record_options(&self) -> Result<RecordOptions> {
-        Ok(RecordOptions::Xmla(self.options.clone()))
+        Ok(self.options.clone().into())
     }
 
+    /// The one schema answer, the declared root else the rowset's own field,
+    /// as the plan's sections leave it - kept here because options of
+    /// another encoding are refused by name, and because a document holding
+    /// no rowset, or a fault, is refused as its read refuses it rather than
+    /// answered as a resource stating no shape.
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
-        let options = self.require_options(options)?;
-        if let Some(field) = options.field() {
-            return Ok(field.clone());
+        let xmla = self.require_options(options)?;
+        let root = match xmla.field() {
+            Some(field) => field,
+            None => {
+                let ttl = xmla.cache_ttl;
+                let served = self.cache.entry(ttl, crate::media::cache::now());
+                // Past the cache, which only a leaf ever fills.
+                if served.is_none() && self.handle.is_container() {
+                    return crate::iomedia::container_field(&self.handle, options);
+                }
+                if served.is_none() && !self.cache.keeps(ttl) {
+                    read_field(&self.handle, xmla)?
+                } else {
+                    self.entry(ttl, served)?
+                        .origin
+                        .ok_or_else(|| invalid("an empty document declares no schema"))?
+                        .with_name(xmla.name())
+                }
+            }
+        };
+        crate::iomedia::field_under(options, &root)
+    }
+
+    /// The field the document's rowset states, named as the options name
+    /// it; `None` for an empty document, a rowset stating no schema, or a
+    /// fault, as a write onto it reads it.
+    fn read_origin_field(&self) -> Result<Option<Field>> {
+        let ttl = self.options.cache_ttl;
+        let served = self.cache.entry(ttl, crate::media::cache::now());
+        if served.is_none() && self.handle.is_container() {
+            return crate::iomedia::container_origin(
+                &self.handle,
+                crate::iomedia::dimension_options(self)?,
+            );
         }
-        if self.opened
-            && let Some(cached) = self.cached_schema.get()
-        {
-            return Ok(cached.clone().with_name(options.name()));
-        }
-        if self.handle.is_container() {
-            return crate::iomedia::container_field(&self.handle, &options.clone().into());
-        }
-        let field = read_field(&self.handle, options)?;
-        if self.opened {
-            let _ = self.cached_schema.set(field.clone());
-        }
-        Ok(field)
+        let origin = match served {
+            Some(entry) => entry.origin,
+            None if self.cache.keeps(ttl) => match self.entry(ttl, None) {
+                Ok(entry) => entry.origin,
+                // A document the rowset read refuses - a fault, no schema -
+                // states no shape.
+                Err(_) => stated_field(&self.handle)?,
+            },
+            None => stated_field(&self.handle)?,
+        };
+        Ok(origin.map(|origin| origin.with_name(self.options.name())))
     }
 
     fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::Serie> {
@@ -391,9 +473,14 @@ impl<H: IOBase> IOMedia for Xmla<H> {
         let options = options.as_ref();
         let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_options(options)?;
-        self.invalidate();
-        crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options)
-            .map(|(_, result)| result)
+        let result =
+            crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options)
+                .map(|(_, result)| result);
+        // What a read states is the rowset the document carries - its schema
+        // only where the options' content wrote one - so the next ask reads
+        // the document afresh.
+        self.cache.invalidate();
+        result
     }
 
     fn overwrite_prepared_serie(
@@ -403,8 +490,9 @@ impl<H: IOBase> IOMedia for Xmla<H> {
     ) -> Result<()> {
         let batches = value.into_arrow_reader();
         self.require_options(options)?;
-        self.invalidate();
-        crate::iobase::leaf_writer(self, batches, options)
+        let result = crate::iobase::leaf_writer(self, batches, options);
+        self.cache.invalidate();
+        result
     }
 
     fn append_serie(
@@ -416,8 +504,9 @@ impl<H: IOBase> IOMedia for Xmla<H> {
         let options = options.as_ref();
         let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_options(options)?;
-        self.invalidate();
-        crate::iobase::append_arrow_reader_default(self, batches, options)
+        let result = crate::iobase::append_arrow_reader_default(self, batches, options);
+        self.cache.invalidate();
+        result
     }
 
     fn merge_serie(
@@ -429,34 +518,35 @@ impl<H: IOBase> IOMedia for Xmla<H> {
         let options = options.as_ref();
         let batches = crate::StreamChunkedSerie::from_serie(value)?.into_arrow_reader();
         self.require_options(options)?;
-        self.invalidate();
-        crate::iobase::merge_arrow_reader_default(self, batches, options)
+        let result = crate::iobase::merge_arrow_reader_default(self, batches, options);
+        self.cache.invalidate();
+        result
     }
 }
 
 impl<H: IOBase> IOBase for Xmla<H> {
     crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, read_tail_bytes,
         pstream_bytes,
-        size, capacity, reserve, uri, url, bound_location, mtime, media_type, applied_codec, flush, parent,
+        size, set_known_size, capacity, reserve, uri, url, bound_location, mtime, media_type, applied_codec, flush, parent,
         child_by_path, ls, kind, is_container);
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
-        self.invalidate();
+        self.cache.invalidate();
         self.handle.pwrite(offset, bytes)
     }
 
     fn truncate(&mut self, size: u64) -> Result<()> {
-        self.invalidate();
+        self.cache.invalidate();
         self.handle.truncate(size)
     }
 
     fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
-        self.invalidate();
+        self.cache.invalidate();
         self.handle.create_bytes(bytes)
     }
 
     fn set_media_type(&mut self, media_type: crate::MediaType) {
-        self.invalidate();
+        self.cache.invalidate();
         self.handle.set_media_type(media_type);
     }
 
@@ -471,36 +561,137 @@ impl<H: IOBase> IOBase for Xmla<H> {
         false
     }
 
+    /// Materialize the handle and hold what the document states, as it is
+    /// first asked, until [`close`](IOBase::close).
     fn open(&mut self) -> Result<()> {
-        if self.opened {
+        if self.cache.is_open() {
             return Ok(());
         }
         self.handle.open()?;
-        self.invalidate();
-        self.opened = true;
+        self.cache.invalidate();
+        self.cache.open();
         Ok(())
     }
 
     fn opened(&self) -> bool {
-        self.opened
+        self.cache.is_open()
     }
 
     fn close(&mut self) -> Result<()> {
-        self.invalidate();
-        self.opened = false;
+        self.cache.close();
         self.handle.close()
     }
 
+    /// Empty the document; the cache then holds what an empty document
+    /// states - no rowset, no row, no column - where it keeps.
     fn clear(&mut self) -> Result<()> {
-        self.invalidate();
-        self.handle.clear()
+        self.cache.invalidate();
+        self.handle.clear()?;
+        // A container caches nothing: its leaves answer for it on every ask.
+        if self.cache.keeps(self.options.cache_ttl) && !self.handle.is_container() {
+            self.cache.update(crate::media::cache::now(), |entry| {
+                entry.origin = None;
+                entry.rows = Some(0);
+                entry.columns = Some(0);
+                entry.state = None;
+            });
+        }
+        Ok(())
     }
 
     fn remove(&mut self, recursive: bool) -> Result<()> {
-        self.invalidate();
-        self.opened = false;
+        self.cache.close();
         self.handle.remove(recursive)
     }
 }
 
-crate::media_serie::media_serie!(XmlaSerie, Xmla, as_xmla, get_xmla_mut);
+/// The MIME type an XMLA rowset document answers.
+static XMLA_TYPES: [MimeType; 1] = [MimeType::XMLA];
+
+/// An XMLA rowset document as a record medium: [`read_batch_reader`],
+/// [`read_field`] and [`overwrite_arrow_reader`] behind the one contract
+/// every medium answers.
+#[derive(Debug)]
+pub struct XmlaCodec;
+
+/// The XMLA rowset medium, claimed by the core under its MIME type.
+pub static XMLA_CODEC: XmlaCodec = XmlaCodec;
+
+impl MediaCodec for XmlaCodec {
+    fn name(&self) -> &'static str {
+        "xmla"
+    }
+
+    fn title(&self) -> &'static str {
+        "XMLA"
+    }
+
+    fn rank(&self) -> u8 {
+        4
+    }
+
+    fn mime_types(&self) -> &'static [MimeType] {
+        &XMLA_TYPES
+    }
+
+    fn default_options(&self, _base: &MimeType) -> RecordOptions {
+        RecordOptions::registered(XmlaOptions::new())
+    }
+
+    fn read_batch_reader(
+        &self,
+        handle: &dyn IOBase,
+        declared: Option<&Field>,
+        options: &RecordOptions,
+    ) -> Result<BatchReader> {
+        let xmla = options.require_settings::<XmlaOptions>()?;
+        Ok(read_batch_reader(handle, declared, xmla)?)
+    }
+
+    fn row_size(&self, handle: &dyn IOBase, options: &RecordOptions) -> Result<u64> {
+        row_size(handle, options.require_settings::<XmlaOptions>()?)
+    }
+
+    fn read_field(&self, handle: &dyn IOBase, options: &RecordOptions) -> Result<Field> {
+        read_field(handle, options.require_settings::<XmlaOptions>()?)
+    }
+
+    /// A rowset document may state no schema at all (a `Content` of
+    /// `Data`), which is a resource with no shape yet rather than one that
+    /// cannot be read.
+    fn stated_field(&self, handle: &dyn IOBase, _options: &RecordOptions) -> Result<Option<Field>> {
+        stated_field(handle)
+    }
+
+    fn overwrite_arrow_reader(
+        &self,
+        handle: &mut dyn IOBase,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        let xmla = options.require_settings::<XmlaOptions>()?;
+        overwrite_arrow_reader(handle, batches, xmla)
+    }
+
+    fn open(&self, handle: Holder) -> Media {
+        Media::Registered(Box::new(Xmla::new(handle)))
+    }
+}
+
+impl MediaWrapper for Xmla<Holder> {
+    fn medium(&self) -> &'static dyn MediaCodec {
+        &XMLA_CODEC
+    }
+
+    fn handle(&self) -> &Holder {
+        &self.handle
+    }
+
+    fn into_handle(self: Box<Self>) -> Holder {
+        self.handle
+    }
+
+    fn with_field(self: Box<Self>, field: Field) -> Box<dyn MediaWrapper> {
+        Box::new(Xmla::with_field(*self, field))
+    }
+}

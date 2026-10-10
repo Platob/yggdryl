@@ -31,7 +31,8 @@ dictionary derived for it behind the ones that arrived; the frame states its
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -111,7 +112,7 @@ This section renders `assets/fix.json` and needs JavaScript.
   members of each occurrence; the count is the list's length. An empty list is
   the group stated empty and emits `802=0`; a null list is the group absent and
   emits nothing.
-- A settled value the codec supplied is the message's own fact rather than a pair it received: a `SendingTime` nothing stated is not emitted, and the identity - `currhashcode`, `curruuid`, `crossuuid` - is emitted nowhere.
+- A settled value the codec supplied is the message's own fact rather than a pair it received: a `SendingTime` nothing stated is not emitted, and the identity - `hashcode`, `uuid`, `crossuuid` - is emitted nowhere.
 - An arrival entry no dictionary resolved carries tag 0 and is emitted under its raw key, exactly where it arrived.
 - Direction verbs and surrounding capture prose are outside the emitted frame.
 - For streamed Arrow output, [`write_arrow_reader`](arrow.md#back-to-the-wire)
@@ -123,7 +124,7 @@ This section renders `assets/fix.json` and needs JavaScript.
 ## Commands
 
 ```bash
-cargo test -p yggdryl --test fix
+cargo test -p yggdryl-fix --test root
 node --test node/tests/fix.test.js node/tests/fix/catalog.test.js
 node scripts/build_docs_fix.js --check
 ```

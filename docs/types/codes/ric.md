@@ -314,7 +314,8 @@ An Arrow cast into the column is held to the canonical spelling: under the defau
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- ric::value:: ric::datatype:: code::datatypes securityid::a_ric_source
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- ric::value:: ric::datatype:: code::datatypes
+    cargo test -p yggdryl-market --test root -- securityid::a_symbol_reads_as_the_identifier_its_shape_is
     ```
 
 === "Python"

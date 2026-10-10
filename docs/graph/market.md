@@ -1,24 +1,24 @@
 # Market
 
-`Market` states thirty-six facts: the kind and type of the element, the instrument and an option's strike, the side, the price and quantity - shown, hidden and stopped at -, the bid and the ask, what has traded and when it last did, the currency the instrument was issued in, the rates to other currencies and free-form metadata.
+`Market` states thirty-seven facts: the kind and type of the element, the instrument - its code and its identifiers - and an option's strike, the side, the price and quantity - shown, hidden and stopped at -, the bid and the ask, what has traded and when it last did, the currency the instrument was issued in, the rates to other currencies and free-form metadata.
 
 ## Contract
 
 | Key | Rule |
 | --- | --- |
-| Owner | trait `yggdryl::graph::Market` (`graph::market`), no supertrait; Rust-only - [leaves](index.md#leaves) answer it in Python/JavaScript |
-| Price, quantity, numbers | `get_price`/`get_quantity` + `set_`: what the element states, exact as [`Decimal`](../types/numeric/decimal.md#decimal), `None` if none - never last-executed, never a default; likewise `lastpx`/`lastqty` (last executed price/quantity), `avgpx`, `cumqty`, `leavesqty`, `prevpx`/`prevqty` (prior step's settlement), `spotrate`/`forwardpoints` (FX parts), `stoppx` (the price a stop order triggers at) and `strikepx` (the strike price of the option the element is about - an instrument fact, which a follower of the same instrument [takes along its chain](#following-and-merging); a FIX message's `StrikePrice(202)`) |
-| Currency, unit | `get_currency`/`set_currency`: [`Ccy::none()`](../types/codes/ccy.md) if unstated; `get_unit`/`set_unit`: [`Unit::none()`](../types/codes/unit.md) if unstated; `get_origccy`/`set_origccy`: the currency the instrument was issued in, `Ccy::none()` where neither the element nor a registry stated one, and `origin_currency()` that or else the currency ([below](#origin-currency)) |
+| Owner | trait `yggdryl_market::graph::Market` (`graph::market`), no supertrait; Rust-only - [leaves](index.md#leaves) answer it in Python/JavaScript |
+| Price, quantity, numbers | `get_price`/`get_quantity` + `set_`: what the element states, exact as [`Decimal`](../types/numeric/decimal.md#decimal), `None` if none - the price never last-executed, never a default; the quantity has [one definition per kind](#one-quantity-per-kind) - what is still available on an order, a quote and a book entry, what executed on an execution and a trade; likewise `lastpx`/`lastqty` (last executed price/quantity), `avgpx`, `cumqty`, `leavesqty`, `prevpx`/`prevqty` (prior step's settlement), `spotrate`/`forwardpoints` (FX parts), `stoppx` (the price a stop order triggers at) and `strikepx` (the strike price of the option the element is about - an instrument fact, which a follower of the same instrument [takes along its chain](#following-and-merging); a FIX message's `StrikePrice(202)`) |
+| Currency, unit | `get_currency`/`set_currency`: [`Ccy::none()`](../types/codes/ccy.md) if unstated; `get_unit`/`set_unit`: [`Unit::none()`](../types/codes/unit.md) if unstated; `get_origccy`/`set_origccy`: the currency the instrument was issued in, `Ccy::none()` where neither the element nor an [instruments fill](instrument.md#matching) stated one, and `origin_currency()` that or else the currency ([below](#origin-currency)) |
 | Side | `get_side`/`set_side`: the [side](../types/enum/side.md) by value, never absent - `Side::Unknown` (code `0`) where none is stated, which means "not stated": nothing invents a side. An order's or an execution's side is the one side it takes, and its stored cross code states its code ([below](#sides-and-cross-codes)); any other element's is a tag - a [quote](#a-quotes-two-legs) holds its bid and its ask and tags the leg it states, a two-sided one `Side::Both` (`BOTH`, code `99`), and a [book](book.md) is always `BOTH` |
 | Kind | `marketdatakind()`: required - the [category](../types/enum/marketdatakind.md) the element is filed under and a [lifecycle](event.md#lifecycle-walk) chains within (a leaf answers its own kind, a [FIX message](../fix/message.md#market-data) the category its dictionary files its type under) |
 | Sided | `is_sided()`: provided as `marketdatakind().is_sided()` - whether the element's stored cross code states its side, true exactly for an order or an execution - any other kind, a quote among them, states `0` there: [`MarketDataKind::is_sided`](../types/enum/marketdatakind.md#sided-kinds-and-batches), the one owner of the rule |
 | Execution clock | `get_execunix`/`set_execunix` (`Option<i64>`): when the element last executed - the latest execution clock its lifecycle reached, nanoseconds since the Unix epoch, UTC, `None` where unknown; a market fact, not an event's: an undated order, quote or execution states one, a [text line](../media/text.md) none, and no digest feeds it. The `execunix` column is a nullable nanosecond UTC clock ([Market data](market-data.md#columns)) |
 | Bid and ask | `bidpx`, `bidqty`, `bidccy`, `askpx`, `askqty`, `askccy` ([below](#bid-and-ask)) |
 | FX rates | `get_fxrates`/`set_fxrates`/`insert_fxrate` ([below](#fx-rates)) |
-| Instrument | the security's [identifiers](#security-identifiers), `securityids`; `get_isincode`: their `isin`, borrowed; `get_cficode`/`get_miccode` + setters - a leaf keeps a [CFI](../types/codes/cfi.md) only when it is detailed (one of positions 3-6 not `X`): a coarse code states nothing, neither filling nor clearing, and a detailed code stated over another describing the same instrument takes what that one says where it says nothing ([`Cfi::refined`](../types/codes/cfi.md#two-statements-of-one-instrument)); a market of `XXXX` is unstated, so a stated one fills over it; `get_ticker`/`set_ticker`: an informal name, apart from the codes; `book_crosscode`: the [book key](#the-book-key) |
+| Instrument | the security's [identifiers](#security-identifiers), `securityids`; `get_isincode`: their `isin`, borrowed; `get_cficode`/`get_miccode` + setters - a leaf keeps a [CFI](../types/codes/cfi.md) only when it is detailed (one of positions 3-6 not `X`): a coarse code states nothing, neither filling nor clearing, and a detailed code stated over another describing the same instrument takes what that one says where it says nothing ([`Cfi::refined`](../types/codes/cfi.md#two-statements-of-one-instrument)); a market of `XXXX` is unstated, so a stated one fills over it; `get_ticker`/`set_ticker`: an informal name, apart from the codes; `get_instcode`/`set_instcode(code, overwrite)`: the cross code of the [instrument](instrument.md) the element is about (`US0378331005`, `IF:EUR/USD`, `OC:US0378331005:2026-12-18:200`), held as the crate's `Str` and filled by a parse where the message alone spells it or by an [instruments fill](instrument.md#matching), never over a held one - a lookup's answer, so it is followed along a chain and fed to no digest, and the [book key](#the-book-key) |
 | Metadata | `get_metadata`/`set_metadata`: a `BTreeMap<SmolStr, SmolStr>` of source facts no typed column reads, keyed by name/[path](../types/paths.md); never identifier/typed; `None`/empty alike; a FIX leaf's = [`FixMsg::market_data`](../fix/message.md#market-data)'s; a follower takes the chain's keys it lacks ([below](#following-and-merging)) |
 | `fill_market` | provided, idempotent, called by `finalize` pre-digest: never invents price/quantity/`cumqty`/`leavesqty`/bid/ask/rates; [derives](#security-identifiers) the national id a canonical ISIN embeds |
-| `digest_market` | provided (`Self: Element`): extends [`Element::digest`](element.md#contract) - price, currency, quantity, unit, side, security identifiers (each fed as source, type and value under the label `securityids`), classification, market, the stop and strike prices and the shown, hidden and cancelled quantities (each only if stated), last-trade/avg/progress/FX parts, bid/ask (each only if stated), FX rates (only if any), ticker, metadata (key order); excludes `prevpx`/`prevqty`, like the predecessor's instant/identity |
+| `digest_market` | provided (`Self: Element`): extends [`Element::digest`](element.md#contract) - price, currency, quantity, unit, side, security identifiers (each fed as source, type and value under the label `securityids`), classification, market, the stop and strike prices and the shown, hidden and cancelled quantities (each only if stated), last-trade/avg/progress/FX parts, bid/ask (each only if stated), FX rates (only if any), ticker, metadata (key order); excludes `prevpx`/`prevqty`, like the predecessor's instant/identity, and `instcode`, a reading of the facts it feeds |
 | Provided on events | where `Self: Event`: `digest_market_event`, `following_market`, `merging_market_event` ([below](#following-and-merging)) |
 
 ## Setting: fill or overwrite
@@ -48,10 +48,12 @@ A change carries what it implies onto the facts that follow it. A source *moves*
 | a predecessor's side, followed | a sided follower stating none takes it: the side is part of its identity | |
 | a predecessor's `strikepx`, followed | a follower of the same instrument stating none takes it: the strike is the option's | |
 | a predecessor's bid or ask, followed | an unsided follower tagging no side and stating neither the price nor the quantity of that leg: the leg whole, its currency with it ([A quote's two legs](#a-quotes-two-legs)) | |
-| a predecessor's `ordqty`, `cumqty`, `avgpx`, followed | an operation's follower stating none of them: what its chain ordered, traded and at what average - never a last fill, which no rise in `cumqty` invents | |
+| a predecessor's `ordqty`, `cumqty`, `avgpx`, followed | an operation's follower stating none of them: what its chain ordered, traded and at what average - never a last fill, which no rise in `cumqty` invents; a bare follower holds no ledger: a [lifecycle walk](event.md#lifecycle-walk) counts an order chain's fills once by execution identifier and writes `cumqty` and `leavesqty` from the count ([FIX](../fix/lifecycle.md#an-orders-fills-are-counted-once)) | |
 | `lastpx`, `spotrate`, `forwardpoints` | | the third, where two are stated: `lastpx` is spot plus points |
 | an operation's `ordqty`, `cumqty`, `leavesqty`, `cxlqty` and its state | | [by the state](#order-quantities-by-state) |
-| `leavesqty` | the quantity of an order: what is still open is what it is about - never an execution's or a trade's, whose quantity is its own | |
+| `leavesqty` | the quantity of an order: what is still open is what it is about - never an execution's or a trade's, whose quantity is what executed | |
+| `lastqty` | the quantity of an execution or a trade: what executed is what it is about - never an order's, whose quantity is what it has left | |
+| the kind, stamped by its holder | the quantity, where it followed the old kind's fact, to the new kind's: a report refiled as an execution takes its `lastqty`, an execution refiled as an order its `leavesqty` | |
 | `cumqty`, `lastqty`, `lastpx` | | `avgpx`, the last price, where all that traded is the last, positive fill |
 | `cficode` | | a detailed code over another describing one instrument, what that one says where it says nothing; a coarse code states nothing |
 
@@ -70,15 +72,31 @@ FIX's `LeavesQty(151) = OrderQty(38) - CumQty(14)` while an order works, and not
 | ended by someone or by the clock - the cancellation band, `DONE_FOR_DAY`, `EXPIRED` | `leavesqty` 0, `cxlqty` the rest of what was ordered (`ordqty` less `cumqty`), and the third of `ordqty`, `cumqty`, `cxlqty` |
 | ended any other way - `CALCULATED`, `REJECTED`, a failure | `leavesqty` 0, and the third of `ordqty`, `cumqty`, `cxlqty` |
 
-An order that ended has nothing left whatever else it states; any other element only where it states what it ordered or traded. An execution or a trade reports a fill rather than an order, so it reads as working whatever its state and its quantity is its own: a fill stating only its `lastqty` states nothing left, and an execution's `leavesqty` never becomes its quantity.
+An order that ended has nothing left whatever else it states; any other element only where it states what it ordered or traded. An execution or a trade reports a fill rather than an order, so it reads as working whatever its state and its quantity is the fill: a fill stating only its `lastqty` states nothing left, and an execution's `leavesqty` never becomes its quantity.
+
+Along a [lifecycle walk](event.md#lifecycle-walk) an order's state also moves by its count: a partial-fill-like state whose fills, counted once each by execution identifier, reach the accepted order quantity reads `FILLED` ([FIX](../fix/lifecycle.md#an-orders-fills-are-counted-once)).
+
+### One quantity per kind
+
+`quantity` is what the element is about, one definition per kind ([`MarketDataKind`](../types/enum/marketdatakind.md)), and every door that sets or derives it - a setter, a FIX parse, the lifecycle walk's count, the [book fold](book.md#entries), the [Arrow rows](schemas.md#the-marketdata-row) - follows it:
+
+| Kind | `quantity` is | Follows |
+| --- | --- | --- |
+| an order, a quote, a book entry | what is still available: an order's `leavesqty`, a quote leg's or an entry's remaining size | `leavesqty` |
+| an execution, a trade and their batches | what executed | `lastqty` |
+
+A quantity stated stands over either reading. A sided execution quotes what executed on its side - a buy's `bidqty`, a sell's `askqty` - as every sided element quotes its quantity, and a book recording an execution among its `events` digests that quantity.
 
 Every fill is part of the element, so it is a column of the [`marketdata` row](schemas.md#the-marketdata-row) and of the [FIX row](schemas.md#the-fix-row): a row read back through an Arrow reader answers the same facts without filling them again.
 
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Event, Market, Operation, OrderEvent};
-    use yggdryl::{Decimal, Side, State};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::{Market, Operation, OrderEvent};
+    use yggdryl::{Decimal, State};
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     let dec = |text: &str| text.parse::<Decimal>().expect("a decimal");
 
@@ -160,15 +178,14 @@ Every fill is part of the element, so it is a column of the [`marketdata` row](s
 
 ## The book key
 
-`book_crosscode()` is provided, and is the key of the book the element stands in - what [`BookIterator`](book.md#book-fold) keys books by, each storing it as its cross code `3:0:{key}` - borrowed, so no input allocates:
+The key of the book an element stands in is its instrument's cross code alone - `get_instcode()`, what [`BookIterator`](book.md#book-fold) keys books by, each book storing it as its cross code `3:0:{key}` and stating it as its own `instcode` - borrowed, so no input allocates:
 
-| The element states | Its book key |
+| The element states | Its book |
 | --- | --- |
-| an ISIN, as its `isin` security identifier, whatever its [rank](identifier.md#ranks) | the ISIN (`CH0012214059`): one book per instrument wherever an ISIN is known - a masked number keys a book too, since what a walk sees is what the lifecycle already corrected |
-| no ISIN and a non-empty ticker | the ticker (`HOLN`); a ticker-only statement joins its instrument's book once the lifecycle's [registry](isin-registry.md) has learned the pair and filled the ISIN |
-| neither | `XX0000000000`, [`Isin::NONE`](../types/codes/isin.md#the-check-digit-and-the-rank), the number that states none |
+| an `instcode` - a real ISIN (`CH0012214059`), an FX pair's `IF:EUR/USD`, a derivative's `OC:US0378331005:2026-12-18:200` | `3:0:{instcode}`: one book per instrument, whatever ticker, market or ISIN beside it the element states; an FX pair's book is its code, never its [minted number](instrument.md#the-minted-number) |
+| no `instcode` - a ticker-only statement no [instruments fill](instrument.md#matching) resolved, a masked number such as `XX0000000001`, a line a full registry could not learn | none: the element is pruned before the walk, as a kind a book does not record is, with one deduplicated warning per instrument it names - no fallback to the ISIN, the ticker or `XX0000000000` |
 
-A chain stated by its ticker alone and then under its ISIN moves to the ISIN's book, [withdrawn](book.md#book-fold) from the ticker's. An ISIN-keyed book takes two listings' tickers, which stay apart inside it by their own partition.
+A parse writes the `instcode` where the message alone spells it - a stated real ISIN, a detected FX pair - and the lifecycle fills it from the [instrument](instrument.md) it resolved, so every element stating a real ISIN is booked once walked, and a ticker-only statement joins its instrument's book once the lifecycle's instruments have learned the pair. A chain restated under another code - a placeholder's, then its body's - moves to that code's book, [withdrawn](book.md#book-fold) from the first. A book takes two listings' tickers of one instrument, which stay apart inside it by their own partition.
 
 ## A quote's two legs
 
@@ -197,10 +214,10 @@ A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy`
 
 | Key | Rule |
 | --- | --- |
-| Held | `get_origccy`/`set_origccy(ccy, overwrite)`: `Ccy::none()` (`XXX`) until a row's cell, a caller's `set_origccy(.., true)` or the [registry's fill](isin-registry.md#matching) states one; the fill writes with `overwrite = false`, so a statement stands |
+| Held | `get_origccy`/`set_origccy(ccy, overwrite)`: `Ccy::none()` (`XXX`) until a row's cell, a caller's `set_origccy(.., true)` or an [instruments fill](instrument.md#matching) states one; the fill writes with `overwrite = false`, so a statement stands |
 | Read | `origin_currency()`: `origccy` where held, else `currency` - never `XXX` where a currency is stated. It is the currency an amount converts *from*; [FX rates](#fx-rates) are where it converts *to*, and nothing converts yet |
 | One direction | `currency` is never filled from `origccy`, nor `origccy` from `currency`; an FX pair reads its `currency` like any other element |
-| Precedence | a statement, then the registry's stated instrument value, then `currency` at read |
+| Precedence | a statement, then the instrument's stated value, then `currency` at read |
 | Following | a follower carries it as it carries every market fact it lacks ([below](#following-and-merging)) |
 | Columns | `origccy` after `currency` in `MarketColumn::ALL`, `ccy`, null where unheld, on a [`marketdata` row](market-data.md#columns) and on a [FIX row](../fix/capture.md#the-crates-own-columns) (crate tag 65018); fed to the digest only where held, so an element stating none hashes as it did before the fact existed |
 | Bindings | Python `origccy` (a `Scalar`, `None` where unheld) and `origin_currency` (`Scalar`); JavaScript `origccy` (a `string`, `null` where unheld) and `originCurrency` (`string`); the constructors take `origccy` like any other column |
@@ -209,7 +226,8 @@ A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy`
 
     ```rust
     use yggdryl::Ccy;
-    use yggdryl::graph::{Market, OrderEvent};
+    use yggdryl_market::graph::{Market, OrderEvent};
+    yggdryl_market::install()?;
 
     let mut order = OrderEvent::at(1_700_000_000_000_000_000);
     order.set_currency(Ccy::new("EUR")?, true);
@@ -290,7 +308,7 @@ A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy`
 | `remove_securityid(&key)` | removes what an `IdKey` holds: a named source's key that identifier alone, the base key every key of its type; where no ISIN is left, every `derived` identifier is taken back too, since each hangs on it |
 | Building one | [`Identifier::new(key, code)`](identifier.md#contract) checks the code's shape by its type ([per-type checks](identifier.md#per-type-value-checks)) - a check digit that does not close is a [rank](identifier.md#ranks), not a refusal - and holds a type the crate does not know as given; [`IdType::from_security_source`](identifier.md#vocabularies) reads FIX's `SecurityIDSource(22)` - `4`, `isin`, `ISINNumber` are `isin` - and refuses `ticker` |
 | `forex` | the crate's own type, which FIX gives no source code: a [currency pair](../types/codes/forex.md) in any spelling `Forex::new` reads, stored canonical (`eurusd` is `EUR/USD`); `forexcode`, `ccypair` and `currencypair` read the type too |
-| Derived | an ISIN's embedded national number - CUSIP (`US`/`CA`), SEDOL (`GB`/`IE`/`GG`/`JE`/`IM`, behind `00`), WKN (`DE`, behind `000`), Valor (`CH`/`LI`) ([`securityid::embedded`](../types/codes/isin.md)) - plus what an [`IsinRegistry`](isin-registry.md) filled, each from `derived`; all hang on the `isin`, so removing it revokes them |
+| Derived | an ISIN's embedded national number - CUSIP (`US`/`CA`), SEDOL (`GB`/`IE`/`GG`/`JE`/`IM`, behind `00`), WKN (`DE`, behind `000`), Valor (`CH`/`LI`) ([`securityid::embedded`](../types/codes/isin.md)) - plus an FX pair's [minted number](instrument.md#the-minted-number) and what an [`Instruments`](instrument.md) filled, each from `derived`; all hang on the `isin`, so removing it revokes them |
 | From the ticker | a ticker of an identifier's own shape names it, read by its length before any check - 21 characters `{ISIN}_{MIC}_{CCY}` an instrument key (its ISIN derived, its market and currency filled where none is stated, a part its type refuses skipped), 12 a FIGI behind `BBG` else an ISIN, 9 a CUSIP, 7 a SEDOL, 6 upper-case letters a detailed CFI code, `AAPL.OQ` a RIC, `HOLN SW Equity` a Bloomberg identifier - each closing on its own type's check, so a ticker only the length of one names nothing; derived, never over a stated identifier of its type. `securityid::SymbolCode::from_symbol` is the reading, Rust only |
 | Unit of a pair | an element trading a currency pair (a `forex` identifier) and stating no unit states its quantity in the currency dealt: its currency where that is a leg of the pair, else the pair's base (`EUR` for `EUR/USD`) |
 | Provenance | a derived identifier is one from `derived`: a row carries it, and equality and the digest read it as they read a stated one |
@@ -302,7 +320,7 @@ A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy`
 | --- | --- |
 | `following_market` | [`Event::following`](event.md#following); `prevpx`/`prevqty`, currency, `origccy`, unit, a sided element's side (this element's where it states one, the chain's where it states `UKNW` - never a `BOTH` the chain held, which tags no one side) - any other element's side is its own tag, and a quote takes the [legs](#a-quotes-two-legs) it states nothing of - ticker, each security id it lacks and the strike price - neither where it names another instrument, below -, classification, market, and every metadata key it lacks - all from the predecessor where this event says nothing, this element's own values standing; always leads, even with the timed link unchanged |
 | A FIX message | follows the metadata too, as a [`FixMsg`](../fix/message.md) in the [lifecycle](../fix/lifecycle.md): its metadata is the bridge's namespaced keys its row's `metadata` column holds, so a followed message's row carries the chain's keys |
-| Identity | a follower's `currhashcode` and `curruuid` digest what it takes ([`digest_market`](#contract) feeds the metadata), so they move where it took a key |
+| Identity | a follower's `hashcode` and `uuid` digest what it takes ([`digest_market`](#contract) feeds the metadata), so they move where it took a key |
 | Two instruments | two stated real ISINs that differ - each closing under a listed prefix - name two instruments: no identifier and no strike price is taken from the predecessor, and a merge keeps the leading statement's identifiers whole. A number that is not real - a `ZZ`, a masked one, a typo - names no country's instrument, so it is never the other one: it yields to the higher-ranked ISIN, which replaces it and everything derived under it, whichever statement leads |
 | Execution clock | a market event whose state reports an execution ([`is_execution`](event.md#contract)) and states no `execunix` is dated from its own instant first - before it names a predecessor, so an inherited state is never read as its own execution; following then keeps the later of its own clock and its predecessor's, so a delayed report cannot regress it, and a non-execution carries the chain's latest |
 | Restating | a market event's [`restating`](event.md#restating) also takes the market's place: `prevpx`/`prevqty`, what the chain is about where this reading said nothing - the metadata keys included, as in following - and the execution clock - the earliest of the two statements' |
@@ -318,8 +336,11 @@ A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy`
 
     ```rust
     use smol_str::SmolStr;
-    use yggdryl::graph::{Element, Market, Metadata, OrderEvent};
-    use yggdryl::{Ccy, Cfi, Decimal, IdKey, IdSource, IdType, Identifier, Mic, Side};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Market, Metadata, OrderEvent};
+    use yggdryl::{Ccy, Cfi, Decimal, Mic};
+    use yggdryl_market::{IdKey, IdSource, IdType, Identifier, Side};
+    yggdryl_market::install()?;
 
     let mut order = OrderEvent::at(1_700_000_000_000_000_000);
     order.set_crosscode("O-1001".to_owned());
@@ -348,8 +369,10 @@ A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy`
     assert_eq!(order.get_isincode(), Some("US0378331005"));
     assert_eq!(order.get_securityids().get_from(&IdKey::new(IdSource::Derived, IdType::Cusip)), Some("037833100"));
     assert_eq!(order.get_metadata().get("ordtype").map(SmolStr::as_str), Some("2"));
-    // The ISIN names the book it stands in, ahead of the ticker.
-    assert_eq!(order.book_crosscode(), "US0378331005");
+    // The instrument's code - here the real ISIN the element states - is the
+    // book it stands in; a parse or an instruments fill writes it.
+    order.set_instcode(Some("US0378331005".into()), true);
+    assert_eq!(order.get_instcode(), Some("US0378331005"));
     ```
 
 === "Python"
@@ -429,8 +452,11 @@ One identifier, `O-1001`, on each side of the market: two cross codes, two chain
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, Element, ExecutionEvent, Market, OrderEvent, QuoteEvent, TradeEvent};
-    use yggdryl::{IdKey, IdType, Identifier, Isin, Side};
+    use yggdryl_market::graph::{BookEvent, ExecutionEvent, Market, OrderEvent, QuoteEvent, TradeEvent};
+    use yggdryl::graph::Element;
+    use yggdryl_market::{IdKey, IdType, Identifier, Side};
+    use yggdryl::Isin;
+    yggdryl_market::install()?;
 
     let order = |side: Side| {
         let mut order = OrderEvent::at(1_700_000_000_000_000_000);
@@ -453,7 +479,7 @@ One identifier, `O-1001`, on each side of the market: two cross codes, two chain
     // Only an order or an execution is sided: a quote, a book and a trade
     // state side 0 whatever side they take, and a trade built on the buy
     // order takes its base code under its own kind.
-    let mut book = BookEvent::new(1_700_000_000_000_000_000, "AAPL");
+    let mut book = BookEvent::keyed(1_700_000_000_000_000_000, "AAPL");
     book.set_side(Side::Buy, true);
     assert!(buy.is_sided() && !book.is_sided());
     assert_eq!(book.get_crosscode(), "3:0:AAPL");
@@ -469,13 +495,15 @@ One identifier, `O-1001`, on each side of the market: two cross codes, two chain
     assert_eq!((trade.get_crosscode(), trade.get_side()), ("21:0:O-1001", Side::Buy));
     assert_eq!(trade.executions()[0].get_crosscode(), "8:2:E-1");
 
-    // The book key: the ISIN, else the ticker, else the number that states none.
+    // The book key is the instrument's code alone: a ticker or an ISIN beside
+    // it keys nothing, and an element stating no code stands in no book.
     let mut listed = order(Side::Buy);
-    assert_eq!(listed.book_crosscode(), Isin::NONE);
     listed.set_ticker(Some("HOLN".into()), true);
-    assert_eq!(listed.book_crosscode(), "HOLN");
     listed.insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "CH0012214059")?)?;
-    assert_eq!(listed.book_crosscode(), "CH0012214059");
+    assert_eq!(listed.get_instcode(), None);
+    listed.set_instcode(Some("CH0012214059".into()), true);
+    assert_eq!(listed.get_instcode(), Some("CH0012214059"));
+    assert_eq!(listed.get_isincode(), Some("CH0012214059"));
     ```
 
 === "Python"
@@ -532,7 +560,7 @@ One identifier, `O-1001`, on each side of the market: two cross codes, two chain
     assert.equal(trade.executions[0].crosscode, '8:2:E-1')
     ```
 
-`is_sided`, `stored_crosscode` and `book_crosscode` are Rust-only; a binding reads the stored `crosscode`.
+`is_sided` and `stored_crosscode` are Rust-only; a binding reads the stored `crosscode`.
 
 ### Bid, ask and FX rates
 
@@ -541,8 +569,11 @@ A two-sided EUR/USD quote in dollars, and the rate a dollar amount is divided by
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Market, QuoteEvent};
-    use yggdryl::{Ccy, IdKey, IdType, Identifier, Side};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Market, QuoteEvent};
+    use yggdryl::Ccy;
+    use yggdryl_market::{IdKey, IdType, Identifier, Side};
+    yggdryl_market::install()?;
 
     let mut quote = QuoteEvent::at(1_700_000_000_000_000_000);
     quote.set_crosscode("Q-7".to_owned());
@@ -638,7 +669,9 @@ When an element last executed is one of its market facts, stated by an undated e
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Market, Order, OrderEvent};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Market, Order, OrderEvent};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     // An undated element states it like any market fact.
@@ -710,8 +743,10 @@ When an element last executed is one of its market facts, stated by an undated e
 Rust-only: a binding states identifiers when it builds a leaf.
 
 ```rust
-use yggdryl::graph::{Element, Market, OrderEvent};
-use yggdryl::{IdKey, IdType, Identifier};
+use yggdryl::graph::Element;
+use yggdryl_market::graph::{Market, OrderEvent};
+use yggdryl_market::{IdKey, IdType, Identifier};
+yggdryl_market::install()?;
 
 let isin = |code: &str| Identifier::new(IdKey::base(IdType::Isin), code);
 let ids = |order: &OrderEvent| -> Vec<String> {
@@ -751,8 +786,10 @@ An amendment to an Apple order, and one naming Microsoft's ISIN instead.
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Event, Market, OrderEvent};
-    use yggdryl::{IdKey, IdType, Identifier, Identifiers};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::graph::{Market, OrderEvent};
+    use yggdryl_market::{IdKey, IdType, Identifier, Identifiers};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let order = |unix: i64, stated: &[(IdType, &str)]| -> yggdryl::Result<OrderEvent> {
@@ -782,11 +819,11 @@ An amendment to an Apple order, and one naming Microsoft's ISIN instead.
     assert_eq!(keys(&other), ["cusip=594918104", "derived:cusip=594918104", "isin=US5949181045"]);
 
     // Two statements naming different ISINs never mix: the leading
-    // statement - here the later recording - keeps its identifiers whole.
+    // statement - here the one sent later - keeps its identifiers whole.
     let mut restated = placed.clone();
-    restated.set_recdunix(Some(T + 5));
+    restated.set_sendunix(Some(T + 5));
     restated.set_securityids(other.get_securityids().clone(), true)?;
-    let merged = placed.clone().merge_with(&restated).expect("the later recording leads");
+    let merged = placed.clone().merge_with(&restated).expect("the statement sent later leads");
     assert_eq!(keys(&merged), ["cusip=594918104", "derived:cusip=594918104", "isin=US5949181045"]);
     ```
 
@@ -849,7 +886,9 @@ An amendment states its own `desk` and leaves the `venue` the placement stated t
 
     ```rust
     use smol_str::SmolStr;
-    use yggdryl::graph::{Element, Market, Metadata, OrderEvent};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Market, Metadata, OrderEvent};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let order = |unix: i64, stated: &[(&str, &str)]| {
@@ -905,6 +944,6 @@ An amendment states its own `desk` and leaves the `venue` the placement stated t
 ## Edges
 
 - On an order or an execution, `set_side(Side::Unknown, true)` restates the code under side `0` (`10:0:O-1001`), the base kept. On any other element the code stays under side `0` whatever side `set_side` states.
-- A ticker stated empty is none: with no ISIN either, `book_crosscode` answers `XX0000000000`.
-- An ISIN keys the book whatever its rank: a masked number keys a book of its own until the lifecycle's registry fills the real one, which outranks it.
+- A ticker stated empty is none.
+- The `instcode` alone keys a book: a masked number such as `XX0000000001` keys none, and a ticker-only element is booked once an instruments fill gave it its instrument's code.
 - A zero rate is a statement like any other; dividing by it is the caller's refusal to make - `Decimal::checked_div` answers `None`.

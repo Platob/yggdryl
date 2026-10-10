@@ -315,14 +315,14 @@ assert.equal(uuid.scalar(text.toUpperCase()).asJs(), text)
 assert.deepEqual([...DataType.from('binary(2)').scalar(Buffer.from([1, 2])).asJs()], [1, 2])
 ```
 
-## Enums: side, marketdatakind, state, timeinforce, pluginside
+## Enums: side, marketdatakind, state, timeinforce
 
-`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` and
-`pluginside` are the `enum` family: each member is a code in a column - `uint8`
-for `side`, `marketdatakind`, `timeinforce` and `pluginside`, `uint16` for
-`state` and `marketdatatype` - and its stored name in text. A value answers the
-name; `Side`, `MarketDataKind`, `MarketDataType`, `State`, `TimeInForce` and
-`PluginSide` at the package root are frozen name-to-code objects. A side's name is a four-letter code (`BUYS`, `SELL`, `SSHT`); the stored
+`side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are the
+`enum` family: each member is a code in a column - `uint8` for `side`,
+`marketdatakind` and `timeinforce`, `uint16` for `state` and `marketdatatype` -
+and its stored name in text. A value answers the name; `Side`,
+`MarketDataKind`, `MarketDataType`, `State` and `TimeInForce` at the package
+root are frozen name-to-code objects. A side's name is a four-letter code (`BUYS`, `SELL`, `SSHT`); the stored
 names before the codes (`BUY`, `SSHORT`, ...) are still read and never written. A
 side is never absent - `UKNW` (code 0) is unstated.
 
@@ -331,11 +331,10 @@ const assert = require('node:assert/strict')
 const {
   DataType,
   MarketDataKind,
-  PluginSide,
   Side,
   TimeInForce,
   fields,
-  pluginSideFromPluginType,
+  fix,
   timeInForceFromFix,
 } = require('yggdryl')
 
@@ -359,11 +358,11 @@ assert.equal(fields.timeinforce('tif').scalar('0').asJs(), 'DAY')
 assert.equal(timeInForceFromFix('Z'), 'OTHER', "a venue's own value")
 assert.equal(TimeInForce.GTC, 2)
 
-// A FIX plugin's role, read off a CBlock's plugin class; no `Side`, though
-// `BUYS` and `SELL` are spelled alike.
-assert.equal(pluginSideFromPluginType('x.SellSideFIXCPluginCBlock'), 'SELL')
-assert.equal(new DataType('pluginside').scalar('buy-side').asJs(), 'BUYS')
-assert.equal(PluginSide.SELL, 2)
+// A FIX plugin's role is a side, read off a CBlock's plugin class; the
+// role's own name is one of the side's spellings.
+assert.equal(fix.pluginSide('x.SellSideFIXCPluginCBlock'), 'SELL')
+assert.equal(new DataType('side').scalar('buy-side').asJs(), 'BUYS')
+assert.equal(Side.SELL, 2)
 ```
 
 ## Nested values: serie, map, union, dictionary
@@ -571,7 +570,7 @@ assert.throws(() => DataType.from('datetime64(ns)').intoSchemeCompat('spark'), /
   child.
 - `DataType.kind` is the family (`DataType.time('ms').kind === 'temporal'`);
   the leaf is `id` (`'time32'`).
-- No `Eusipa`: an `IsinRegistry` row crosses a structured product's
+- No `Eusipa`: an instrument row of `Instruments` crosses a structured product's
   `eusipacode` as its number, which Rust's and Python's `Eusipa` name.
 - No `validateStructRoot`, `applyArrowBatch`, `pretty`, YAML/TOML schema
   writers, `uuidPacked`, `FieldScalar` or `FieldRecord`. A nullable struct

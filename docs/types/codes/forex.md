@@ -247,7 +247,8 @@ FIX gives a currency pair no `SecurityIDSource(22)` code, so the identifier type
 === "Rust"
 
     ```rust
-    use yggdryl::{IdKey, IdType, Identifier};
+    use yggdryl_market::{IdKey, IdType, Identifier};
+    yggdryl_market::install()?;
 
     let key = "ccypair".parse::<IdType>()?;
     assert_eq!(key, IdType::Forex);
@@ -341,7 +342,7 @@ A pair has no neutral member, so the empty text is refused at the value door rat
 === "Rust"
 
     ```bash
-    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test root -- forex:: securityid::forex
+    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test root -- forex::
     ```
 
 === "Python"

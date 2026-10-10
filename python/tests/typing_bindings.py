@@ -47,7 +47,6 @@ from yggdryl import (
     MimeType,
     Parameters,
     Plan,
-    PluginSide,
     ProtocolField,
     PythonMetadata,
     RecordOptions,
@@ -863,6 +862,9 @@ record_options.commit_batch_num = 10
 record_options.num_threads = 4
 record_options.num_threads = None
 record_num_threads: int | None = record_options.num_threads
+record_options.cache_ttl = 1000
+record_options.cache_ttl = "1000"
+record_cache_ttl: int = record_options.cache_ttl
 record_options.name = "trade"
 record_options.safe = True
 record_mime_type: MimeType = record_options.mime_type
@@ -893,7 +895,7 @@ record_handle.write_arrow_reader(record_batches, "invalid")  # type: ignore[arg-
 record_handle.overwrite_arrow_reader(ForeignArrowReader())
 record_handle.overwrite_arrow_reader(NotArrowReader())  # type: ignore[arg-type]
 record_series: StreamChunkedSerie = StreamChunkedSerie.from_serie(record_handle.read_serie())
-record_series = StreamChunkedSerie.from_serie(record_handle.read_serie(options=record_options, num_threads=2))
+record_series = StreamChunkedSerie.from_serie(record_handle.read_serie(options=record_options, num_threads=2, cache_ttl=1000))
 record_handle.write_serie(record_series)
 record_handle.write_serie(record_batches, "append", options=record_options, num_threads=...)
 record_handle.overwrite_serie(lit_serie, commit_batch_num=1)
@@ -941,6 +943,8 @@ text_rownum: int | None = text_record_options.start_rownum
 text_parse_mtime: bool = text_record_options.parse_mtime
 text_record_options.num_threads = 2
 text_num_threads: int | None = text_record_options.num_threads
+text_record_options.cache_ttl = 1000
+text_cache_ttl: int = text_record_options.cache_ttl
 regex_dtype: DataType = DataType.from_regex(r"(?<id>\d+)")
 text_handle: IOBase = IOBase(Path("app.log")).into_text(text_record_options)
 line_batches: pa.RecordBatchReader = text_handle.read_arrow_reader(
@@ -1495,10 +1499,10 @@ tif_wire: TimeInForce = TimeInForce.from_fix("1")
 tif_code: str | None = TimeInForce.GTC.fix_code
 tif_description: str = TimeInForce.GTC.description
 tif_field: yggdryl.TimeInForceField = yggdryl.timeinforce("tif", nullable=False)
-role_member: PluginSide | None = PluginSide.from_spelling("SellSide")
-role_from_type: PluginSide = PluginSide.from_plugin_type("x.BuySideFIXCPluginCBlock")
-role_description: str = PluginSide.SELL.description
-role_field: yggdryl.PluginSideField = yggdryl.pluginside("pluginside", nullable=False)
+role_member: Side | None = Side.from_spelling("SellSide")
+role_from_type: Side = yggdryl.fix.plugin_side("x.BuySideFIXCPluginCBlock")
+role_description: str = Side.SELL.description
+role_field: yggdryl.SideField = yggdryl.side("pluginside", nullable=False)
 fix_names: list[str] = fix_field.fix.names
 fix_field.fix.parents = ["ParentOrderID", "origorderid"]
 fix_parents: list[str] = fix_field.fix.parents
@@ -1547,15 +1551,15 @@ fix_registry_parent_sources: list[FixParentSource] = fix_registry.parent_sources
 fix_registry_parents: list[str] = fix_registry.parents_of("orderid")
 fix_registry_parent_of: tuple[str, int] | None = fix_registry.parent_of("origorderid")
 fix_registry_added_source: bool = fix_registry.add_source(
-    "venue", file="venue.cfb", pluginside=PluginSide.SELL
+    "venue", file="venue.cfb", pluginside=Side.SELL
 )
 fix_registry_sources: list[FixSource] = fix_registry.sources()
 fix_registry_source: FixSource | None = fix_registry.get_source("VENUE")
-fix_registry_source_side: PluginSide | None = (
+fix_registry_source_side: Side | None = (
     None if fix_registry_source is None else fix_registry_source["pluginside"]
 )
 fix_registry_removed_source: FixSource | None = fix_registry.remove_source("venue")
-assert fix_registry_added_source and fix_registry_source_side is PluginSide.SELL
+assert fix_registry_added_source and fix_registry_source_side is Side.SELL
 assert fix_parents == ["parentorderid", "origorderid"] and fix_registry_parents == ["parentorderid", "origorderid"]
 assert fix_registry_parent_of == ("orderid", 1) and isinstance(fix_registry_parent_sources, list)
 fix_registry_from_fields: fix.FixRegistry = fix.FixRegistry.from_fields([fix_field])
@@ -1631,15 +1635,15 @@ fix_message_header: fix.FixHeader = fix_message.header()
 fix_message_capture: fix.FixCapture = fix_message.capture()
 fix_message_text: str | None = fix_message.text
 fix_message_marketdatakind: MarketDataKind = fix_message.marketdatakind
-fix_message_msgpluginside: PluginSide = fix_message.msgpluginside
+fix_message_msgpluginside: Side = fix_message.msgpluginside
 fix_message_strikepx: Scalar | None = fix_message.strikepx
 fix_message_metadata: dict[str, str] = fix_message.metadata
-fix_message_curruuid: Scalar = fix_message.curruuid
+fix_message_uuid: Scalar = fix_message.uuid
 fix_message_crossuuid: Scalar = fix_message.crossuuid
 fix_message_crosscode: str = fix_message.crosscode
-fix_message_currhashcode: int = fix_message.currhashcode
+fix_message_hashcode: int = fix_message.hashcode
 fix_message_crosshashcode: int = fix_message.crosshashcode
-fix_message_currunix: int = fix_message.currunix
+fix_message_transunix: int = fix_message.transunix
 fix_message_state: State = fix_message.state
 fix_message_seqnum: int = fix_message.seqnum
 fix_message_prevuuid: Scalar | None = fix_message.prevuuid
@@ -1651,6 +1655,7 @@ fix_message_unit: str = fix_message.unit
 fix_message_side: Side = fix_message.side
 fix_message_securityids: yggdryl.Identifiers = fix_message.securityids
 fix_message_isincode: str | None = fix_message.isincode
+fix_message_instcode: str | None = fix_message.instcode
 fix_message_fxrates: dict[str, Scalar] = fix_message.fxrates
 fix_message_bidpx: Scalar | None = fix_message.bidpx
 fix_message_bidqty: Scalar | None = fix_message.bidqty
@@ -1696,23 +1701,23 @@ fix_header_possdupflag: bool | None = fix_message_header.possdupflag
 fix_header_msgdirection: str | None = fix_message_header.msgdirection
 
 fix_capture_msgpluginid: str | None = fix_message_capture.msgpluginid
-fix_capture_msgpluginside: PluginSide = fix_message_capture.msgpluginside
+fix_capture_msgpluginside: Side = fix_message_capture.msgpluginside
 fix_capture_msgctxid: str | None = fix_message_capture.msgctxid
 fix_capture_msgsessionid: str | None = fix_message_capture.msgsessionid
 fix_capture_msgsesseventid: str | None = fix_message_capture.msgsesseventid
 
-fix_event_curruuid: Scalar = fix_message_event.curruuid
+fix_event_uuid: Scalar = fix_message_event.uuid
 fix_event_crossuuid: Scalar = fix_message_event.crossuuid
 fix_event_crosscode: str = fix_message_event.crosscode
-fix_event_currhashcode: int = fix_message_event.currhashcode
+fix_event_hashcode: int = fix_message_event.hashcode
 fix_event_crosshashcode: int = fix_message_event.crosshashcode
 fix_event_srcuuids: list[Scalar] = fix_message_event.srcuuids
-fix_event_currunix: int = fix_message_event.currunix
+fix_event_transunix: int = fix_message_event.transunix
 fix_event_state: State = fix_message_event.state
 fix_event_seqnum: int = fix_message_event.seqnum
 fix_event_creaunix: int | None = fix_message_event.creaunix
 fix_event_execunix: int | None = fix_message_event.execunix
-fix_event_recdunix: int | None = fix_message_event.recdunix
+fix_event_sendunix: int | None = fix_message_event.sendunix
 fix_event_exprunix: int | None = fix_message_event.exprunix
 fix_event_prevunix: int | None = fix_message_event.prevunix
 fix_event_prevuuid: Scalar | None = fix_message_event.prevuuid
@@ -1787,12 +1792,12 @@ text_line_text: TextLine = TextLine(1, "35=D|", ["FIX.4.4", None])
 text_line_under_options: TextLine = TextLine(2, "35=D|", None, TextOptions())
 text_line_mtime: int | None = text_line_under_options.mtime
 text_line_bodytype: MimeType = text_line_under_options.bodytype
-text_line_identity: Scalar = text_line_text.curruuid
+text_line_identity: Scalar = text_line_text.uuid
 text_line_cross: Scalar = text_line_text.crossuuid
 text_line_crosscode: str = text_line_text.crosscode
-text_line_hashcode: int = text_line_text.currhashcode
+text_line_hashcode: int = text_line_text.hashcode
 text_line_crosshash: int = text_line_text.crosshashcode
-text_line_unix: int = text_line_text.currunix
+text_line_unix: int = text_line_text.transunix
 text_line_seqnum: int = text_line_text.seqnum
 text_line_mutable_index: TextLine = TextLine(0, "body")
 text_line_mutable_index.index = 1
@@ -1994,6 +1999,7 @@ assert fix_message_strikepx is None or isinstance(fix_message_strikepx, Scalar)
 assert isinstance(fix_message_metadata, dict) and isinstance(fix_message_identifiers, yggdryl.Identifiers)
 assert isinstance(fix_message_partyids, yggdryl.Identifiers)
 assert fix_message_isincode is None or isinstance(fix_message_isincode, str)
+assert fix_message_instcode is None or isinstance(fix_message_instcode, str)
 assert isinstance(fix_message_fxrates, dict)
 assert fix_message_bidpx is None or isinstance(fix_message_bidpx, Scalar)
 assert fix_message_bidqty is None or isinstance(fix_message_bidqty, Scalar)
@@ -2016,9 +2022,9 @@ assert fix_message_forwardpoints is None or isinstance(fix_message_forwardpoints
 assert fix_message_ticker is None or isinstance(fix_message_ticker, str)
 assert fix_message_tif is None or isinstance(fix_message_tif, str)
 assert fix_message_tradable is None or isinstance(fix_message_tradable, bool)
-assert isinstance(fix_message_curruuid, Scalar) and isinstance(fix_message_crossuuid, Scalar)
-assert isinstance(fix_message_currhashcode, int) and isinstance(fix_message_crosshashcode, int)
-assert isinstance(fix_message_currunix, int) and isinstance(fix_message_seqnum, int)
+assert isinstance(fix_message_uuid, Scalar) and isinstance(fix_message_crossuuid, Scalar)
+assert isinstance(fix_message_hashcode, int) and isinstance(fix_message_crosshashcode, int)
+assert isinstance(fix_message_transunix, int) and isinstance(fix_message_seqnum, int)
 assert isinstance(fix_message_state, State) and isinstance(fix_message_side, Side)
 assert isinstance(fix_message_price, Scalar) and isinstance(fix_message_quantity, Scalar)
 assert isinstance(fix_message_currency, Scalar)
@@ -2037,12 +2043,12 @@ assert fix_capture_msgpluginid is None or fix_capture_msgpluginid
 assert fix_capture_msgctxid is None or fix_capture_msgctxid
 assert fix_capture_msgsessionid is None or fix_capture_msgsessionid
 assert fix_capture_msgsesseventid is None or fix_capture_msgsesseventid
-assert isinstance(fix_event_currunix, int) and isinstance(fix_event_crosscode, str)
-assert isinstance(fix_event_currhashcode, int) and isinstance(fix_event_crosshashcode, int)
+assert isinstance(fix_event_transunix, int) and isinstance(fix_event_crosscode, str)
+assert isinstance(fix_event_hashcode, int) and isinstance(fix_event_crosshashcode, int)
 assert isinstance(fix_event_seqnum, int) and isinstance(fix_event_unit, str)
 assert fix_event_creaunix is None or isinstance(fix_event_creaunix, int)
 assert fix_event_execunix is None or isinstance(fix_event_execunix, int)
-assert fix_event_recdunix is None or isinstance(fix_event_recdunix, int)
+assert fix_event_sendunix is None or isinstance(fix_event_sendunix, int)
 assert fix_event_exprunix is None or isinstance(fix_event_exprunix, int)
 assert fix_event_prevunix is None or isinstance(fix_event_prevunix, int)
 assert fix_event_snapunix is None or isinstance(fix_event_snapunix, int)
@@ -2063,7 +2069,7 @@ assert fix_event_spotrate is None or isinstance(fix_event_spotrate, Scalar)
 assert fix_event_forwardpoints is None or isinstance(fix_event_forwardpoints, Scalar)
 assert isinstance(fix_event_securityids, yggdryl.Identifiers) and isinstance(fix_event_metadata, dict)
 assert isinstance(fix_event_identifiers, yggdryl.Identifiers) and isinstance(fix_event_partyids, yggdryl.Identifiers)
-assert isinstance(fix_event_curruuid, Scalar) and isinstance(fix_event_crossuuid, Scalar)
+assert isinstance(fix_event_uuid, Scalar) and isinstance(fix_event_crossuuid, Scalar)
 assert isinstance(fix_event_state, State) and isinstance(fix_event_side, Side)
 assert isinstance(fix_event_price, Scalar) and isinstance(fix_event_quantity, Scalar)
 assert isinstance(fix_event_currency, Scalar)
@@ -2106,25 +2112,26 @@ graph_order_event: graph.OrderEvent = graph.OrderEvent(
     quantity=100,
     currency="USD",
     ticker="IBM",
+    instcode="IBM",
     fxrates={"EUR": decimal.Decimal("1.1")},
     bidpx=decimal.Decimal("10.5"),
     bidqty=100,
 )
 graph_order_event_skipped: graph.OrderEvent = graph.OrderEvent(
-    graph_order_event.currunix, book=..., crosscode="G-1", side=...
+    graph_order_event.transunix, book=..., crosscode="G-1", side=...
 )
-graph_order_event_curruuid: Scalar = graph_order_event.curruuid
+graph_order_event_uuid: Scalar = graph_order_event.uuid
 graph_order_event_crossuuid: Scalar = graph_order_event.crossuuid
 graph_order_event_crosscode: str = graph_order_event.crosscode
-graph_order_event_currhashcode: int = graph_order_event.currhashcode
+graph_order_event_hashcode: int = graph_order_event.hashcode
 graph_order_event_crosshashcode: int = graph_order_event.crosshashcode
 graph_order_event_srcuuids: list[Scalar] = graph_order_event.srcuuids
-graph_order_event_currunix: int = graph_order_event.currunix
+graph_order_event_transunix: int = graph_order_event.transunix
 graph_order_event_state: State = graph_order_event.state
 graph_order_event_seqnum: int = graph_order_event.seqnum
 graph_order_event_creaunix: int | None = graph_order_event.creaunix
 graph_order_event_execunix: int | None = graph_order_event.execunix
-graph_order_event_recdunix: int | None = graph_order_event.recdunix
+graph_order_event_sendunix: int | None = graph_order_event.sendunix
 graph_order_event_exprunix: int | None = graph_order_event.exprunix
 graph_order_event_prevunix: int | None = graph_order_event.prevunix
 graph_order_event_prevuuid: Scalar | None = graph_order_event.prevuuid
@@ -2137,6 +2144,7 @@ graph_order_event_unit: str = graph_order_event.unit
 graph_order_event_side: Side = graph_order_event.side
 graph_order_event_securityids: yggdryl.Identifiers = graph_order_event.securityids
 graph_order_event_isincode: str | None = graph_order_event.isincode
+graph_order_event_instcode: str | None = graph_order_event.instcode
 graph_order_event_fxrates: dict[str, Scalar] = graph_order_event.fxrates
 graph_order_event_bidpx: Scalar | None = graph_order_event.bidpx
 graph_order_event_bidqty: Scalar | None = graph_order_event.bidqty
@@ -2179,15 +2187,15 @@ graph_order_event_pickle: tuple[object, tuple[bytes]] = graph_order_event.__redu
 graph_order: graph.Order = graph_order_event.into_element()
 graph_order_built: graph.Order = graph.Order(crosscode="G-1", price=1)
 graph_order_kind: Literal["order"] = graph_order.kind
-graph_order_at: graph.OrderEvent = graph_order.at(graph_order_event.currunix)
+graph_order_at: graph.OrderEvent = graph_order.at(graph_order_event.transunix)
 graph_order_with_previous: graph.Order | None = graph_order.with_previous(graph_order)
 graph_quote: graph.Quote = graph.Quote(crosscode="Q-1")
 graph_quote_event: graph.QuoteEvent = graph.QuoteEvent(
-    graph_order_event.currunix, crosscode="Q-1", side="SELL", price=11, quantity=50, ticker="IBM"
+    graph_order_event.transunix, crosscode="Q-1", side="SELL", price=11, quantity=50, ticker="IBM", instcode="IBM"
 )
 graph_quote_event_element: graph.Quote = graph_quote_event.into_element()
 graph_execution: graph.Execution = graph.Execution()
-graph_execution_event: graph.ExecutionEvent = graph_execution.at(graph_order_event.currunix)
+graph_execution_event: graph.ExecutionEvent = graph_execution.at(graph_order_event.transunix)
 graph_execution_kind: Literal["execution"] = graph_execution_event.kind
 
 graph_book_ref: graph.BookRef = graph.BookRef(action="0", scope="GLOBAL", position=1)
@@ -2203,14 +2211,14 @@ graph_book_ref_partial: bool = graph_book_ref.is_partial()
 graph_quote_event_booked: graph.QuoteEvent = graph_quote_event.with_book(graph_book_ref)
 
 graph_fill: graph.ExecutionEvent = graph.ExecutionEvent(
-    graph_order_event.currunix, crosscode="F-1", side="BUYS", lastpx=10, lastqty=5
+    graph_order_event.transunix, crosscode="F-1", side="BUYS", lastpx=10, lastqty=5
 )
 graph_trade: graph.TradeEvent = graph.TradeEvent.from_parts(graph_execution_event, [graph_fill])
 graph_trade_executions: list[graph.ExecutionEvent] = graph_trade.executions
 graph_trade_lastpx: Scalar | None = graph_trade.lastpx
 graph_trade_restated: graph.TradeEvent = graph_trade.restating(graph_trade)
 
-graph_book: graph.BookEvent = graph.BookEvent(graph_order_event.currunix, "IBM")
+graph_book: graph.BookEvent = graph.BookEvent(graph_order_event.transunix, "IBM")
 graph_book_with_operations: graph.BookEvent = graph_book.with_operations(
     [graph_order_event, graph.MarketData(graph_quote_event)]
 )
@@ -2226,7 +2234,7 @@ assert graph_book_events == [] and graph_book_controls == []
 graph_book_alive_on: list[graph.MarketData] = graph_book_with_operations.alive_on(Side.BUYS)
 graph_book_alive_on_text: list[graph.MarketData] = graph_book_with_operations.alive_on("SELL")
 graph_book_complete: bool = graph_book_with_operations.is_complete
-graph_book_keyed: graph.BookEvent = graph.BookEvent.keyed(graph_order_event.currunix, "XX0000000000")
+graph_book_keyed: graph.BookEvent = graph.BookEvent.keyed(graph_order_event.transunix, "IBM")
 graph_book_rebuilt: graph.BookEvent | None = graph_book_with_operations.with_previous(graph_book_keyed)
 graph_book_limits: list[Scalar] = graph_book_with_operations.limits(Side.BUYS)
 graph_book_best_price: Scalar | None = graph_book_with_operations.best_price("BUYS")
@@ -2254,7 +2262,7 @@ graph_data_book_event: graph.BookEvent | None = graph_data.as_book_event()
 graph_data_leaf: MarketLeaf = graph_data.into_leaf()
 graph_data_fix: fix.FixMsg | None = graph_data.as_fix()
 graph_data_of_fix: graph.MarketData = graph.MarketData(fix_message)
-graph_data_curruuid: Scalar = graph_data.curruuid
+graph_data_uuid: Scalar = graph_data.uuid
 graph_data_price: Scalar | None = graph_data.price
 graph_data_with_previous: graph.MarketData | None = graph_data.with_previous(graph_data)
 graph_data_field: Field = graph.MarketData.field()
@@ -2329,12 +2337,12 @@ graph_event_iterator_alive: list[graph.MarketData] = graph_event_iterator.alive(
 graph_entry_id: str = graph.ENTRY_ID
 graph_entry_ref_id: str = graph.ENTRY_REF_ID
 
-assert graph_order_event_skipped == graph.OrderEvent(graph_order_event.currunix, crosscode="G-1")
-assert graph_order_event_curruuid and graph_order_event_crossuuid and graph_order_event_state
-assert graph_order_event_currhashcode and graph_order_event_crosshashcode
+assert graph_order_event_skipped == graph.OrderEvent(graph_order_event.transunix, crosscode="G-1")
+assert graph_order_event_uuid and graph_order_event_crossuuid and graph_order_event_state
+assert graph_order_event_hashcode and graph_order_event_crosshashcode
 assert graph_order_event_srcuuids == [] and graph_order_event_seqnum == 0
 assert graph_order_event_creaunix is None and graph_order_event_prevuuid is None
-assert graph_order_event_execunix is None and graph_order_event_recdunix is None
+assert graph_order_event_execunix is None and graph_order_event_sendunix is None
 assert graph_order_event_exprunix is None and graph_order_event_prevunix is None
 assert graph_order_event_snapunix is None and not graph_order_event_is_execution
 assert graph_order_event_price is not None and graph_order_event_quantity is not None
@@ -2342,6 +2350,7 @@ assert graph_order_event_currency and graph_order_event_side is Side.BUYS
 assert graph_order_event_unit == "" and graph_order_event_state is State.UNKNOWN
 assert not graph_order_event_securityids and graph_order_event_ticker == "IBM"
 assert graph_order_event_isincode is None and set(graph_order_event_fxrates) == {"EUR"}
+assert graph_order_event_instcode is None
 assert graph_order_event_bidpx is not None and graph_order_event_bidqty is not None
 assert graph_order_event_bidccy is None and graph_order_event_askpx is None
 assert graph_order_event_askqty is None and graph_order_event_askccy is None
@@ -2360,7 +2369,7 @@ assert graph_order_event_with_previous is None and graph_order_event_merged is N
 assert graph_order_event_restated == graph_order_event
 assert not graph_order_event_after and not graph_order_event_before
 assert graph_order_event_pickle[0] == graph.OrderEvent._from_pickle
-assert graph_order.at(graph_order_event.currunix) == graph_order_at
+assert graph_order.at(graph_order_event.transunix) == graph_order_at
 assert graph_order_built.crosscode == "G-1" and graph_order_with_previous is None
 assert graph_order_event_crosscode == "10:1:G-1"
 assert graph_quote.kind == "quote" and graph_quote_event_element.kind == "quote"
@@ -2376,7 +2385,7 @@ assert graph_trade_restated == graph_trade
 assert graph_book_alive[0] == graph.MarketData(graph_order_event) and len(graph_book_delta) == 2
 assert graph_book_complete and not graph_book_crossed
 assert graph_book_alive_on == [graph.MarketData(graph_order_event)]
-assert graph_book_keyed.crosscode == "3:0:XX0000000000" and graph_book_keyed.is_complete
+assert graph_book_keyed.crosscode == "3:0:IBM" and graph_book_keyed.is_complete
 assert len(graph_book_limits) == 1 and graph_book_depth is not None
 assert graph_book_best_price is not None and graph_book_best_quantity is not None
 assert graph_book_kind is MarketDataKind.BOOK
@@ -2386,7 +2395,7 @@ assert graph_control_book.action == "snapshot" and graph_control_book.scope == "
 assert graph_data_kind == "order_event" and graph_data_kinds[3] == "order_event"
 assert graph_data_is_event and graph_data_book is None
 assert graph_data_order_event == graph_order_event and graph_data_book_event is None
-assert graph_data_leaf == graph_order_event and graph_data_curruuid == graph_order_event_curruuid
+assert graph_data_leaf == graph_order_event and graph_data_uuid == graph_order_event_uuid
 assert graph_data_price == graph_order_event_price and graph_data_with_previous is None
 assert graph_data_field.name == "marketdata"
 assert graph_data_rows_list == [
@@ -2804,53 +2813,61 @@ identifiers_dict: dict[str, str] = identifiers.into_dict()
 identifiers_from_dict: yggdryl.Identifiers = yggdryl.Identifiers.from_dict({"ullink:isin": "US0378331005"})
 identifiers_derived: bool = identifiers_from_dict.is_derived("isin")
 assert identifiers_dict == {"isin": "US0378331005", "orderid": "O-1"} and not identifiers_derived
-isin_registry: yggdryl.IsinRegistry = yggdryl.IsinRegistry(max_instruments=8)
-isin_registry_merged: bool = isin_registry.merge({"isin": "CH0012214059", "ric": "HOLN.S"})
-isin_registry_row: dict[str, Any] | None = isin_registry.get("CH0012214059")
-isin_registry_dirty: bool = isin_registry.is_dirty
-isin_registry_committed: yggdryl.IOResult = yggdryl.IsinRegistry.from_url("instruments.arrows", 8).commit()
-isin_registry_default: yggdryl.IsinRegistry = yggdryl.IsinRegistry.from_env()
-isin_registry_seeded: yggdryl.IsinRegistry = yggdryl.IsinRegistry.seeded()
-isin_registry_seeded_store: yggdryl.IsinRegistry = yggdryl.IsinRegistry.seeded_from_url("instruments.arrows", 16384)
-isin_registry_short_name: object = (isin_registry_seeded.get("US0378331005") or {}).get("fisn")
-isin_registry_listed: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN")
-isin_registry_on_market: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN", "XSWX")
-isin_registry_bound: int = isin_registry.max_instruments
-isin_registry_rows: int = isin_registry.rows
-isin_registry_listings: list[dict[str, Any]] = isin_registry.listings("CH0012214059")
-isin_registry_listing: dict[str, Any] | None = isin_registry.get_listing("CH0012214059", "XSWX")
-isin_registry_removed: list[dict[str, Any]] = yggdryl.IsinRegistry().remove("CH0012214059")
-isin_registry_removed_listing: dict[str, Any] | None = yggdryl.IsinRegistry().remove_listing("CH0012214059", "XSWX")
-isin_registry_reader: pa.RecordBatchReader = isin_registry.into_arrow_reader()
-isin_registry_loaded: int = yggdryl.IsinRegistry().extend_from_arrow_reader(isin_registry.into_arrow_reader())
-isin_registry_codec: fix.FixCodec = fix.FixCodec(fix_registry_from_fields, isin_registry=isin_registry)
-isin_registry_shared: yggdryl.IsinRegistry | None = isin_registry_codec.isin_registry
-assert isin_registry_merged and isin_registry_row is not None and isin_registry_bound == 8
-assert isin_registry_loaded == 1 and isin_registry_shared == isin_registry and len(isin_registry) == 1
-assert isin_registry_rows == len(isin_registry_listings) == 1 and isin_registry_listing is None
-isin_registry_by_code: dict[str, Any] | None = isin_registry_seeded.get_by_code("cusip", "037833100", "XNAS")
-isin_registry_lookup_codes: tuple[str, ...] = yggdryl.IsinRegistry.LOOKUP_CODES
-isin_registry_threshold: float = isin_registry.economic_threshold
-isin_registry.set_economic_threshold(yggdryl.IsinRegistry.DEFAULT_ECONOMIC_THRESHOLD)
-isin_registry_economic: bool = isin_registry.is_economic_match
-isin_registry.set_economic_match(False)
-isin_registry_resolution: yggdryl.Resolution = isin_registry_seeded.resolve(
+instruments: yggdryl.Instruments = yggdryl.Instruments(max_instruments=8)
+instruments_merged: bool = instruments.merge(
+    {"isin": "CH0012214059", "listings": [{"miccode": "XSWX", "codes": {"ric": "HOLN.S"}}], "metadata": {"issuer": "Holcim"}}
+)
+instruments_row: dict[str, Any] | None = instruments.get("CH0012214059")
+instruments_dirty: bool = instruments.is_dirty
+instruments_committed: yggdryl.IOResult = yggdryl.Instruments.from_url("instruments.arrows", 8).commit()
+instruments_default: yggdryl.Instruments = yggdryl.Instruments.from_env()
+instruments_seeded: yggdryl.Instruments = yggdryl.Instruments.seeded()
+instruments_seeded_store: yggdryl.Instruments = yggdryl.Instruments.seeded_from_url("instruments.arrows", 16384)
+instruments_short_name: object = (instruments_seeded.get("US0378331005") or {}).get("fisn")
+instruments_listed: dict[str, Any] | None = instruments.get_by_ticker("HOLN")
+instruments_on_market: dict[str, Any] | None = instruments.get_by_ticker("HOLN", "XSWX")
+instruments_bound: int = instruments.max_instruments
+instruments_rows: int = instruments.rows
+instruments_listings: list[dict[str, Any]] = instruments.listings("CH0012214059")
+instruments_listing: dict[str, Any] | None = instruments.get_listing("CH0012214059", "XSWX")
+instruments_removed: dict[str, Any] | None = yggdryl.Instruments().remove("CH0012214059")
+instruments_minted: str = yggdryl.Instruments.mint("IF:EUR/USD")
+instruments_by_uuid: dict[str, Any] | None = instruments.get_by_uuid((instruments_row or {}).get("uuid"))
+instruments_removed_listing: dict[str, Any] | None = yggdryl.Instruments().remove_listing("CH0012214059", "XSWX")
+instruments_reader: pa.RecordBatchReader = instruments.into_arrow_reader()
+instruments_loaded: int = yggdryl.Instruments().extend_from_arrow_reader(instruments.into_arrow_reader())
+instruments_codec: fix.FixCodec = fix.FixCodec(fix_registry_from_fields, instruments=instruments)
+instruments_shared: yggdryl.Instruments | None = instruments_codec.instruments
+assert instruments_merged and instruments_row is not None and instruments_bound == 8
+assert instruments_loaded == 1 and instruments_shared == instruments and len(instruments) == 1
+assert instruments_rows == len(instruments_listings) == 1 and instruments_listing is not None
+assert instruments_minted == "QYLTVIRYHNX5" and instruments_by_uuid == instruments_row
+assert instruments_row is not None and instruments_row["metadata"] == {"issuer": "Holcim"}
+instruments_by_code: dict[str, Any] | None = instruments_seeded.get_by_code("cusip", "037833100")
+instruments_lookup_codes: tuple[str, ...] = yggdryl.Instruments.LOOKUP_CODES
+instruments_threshold: float = instruments.economic_threshold
+instruments.set_economic_threshold(yggdryl.Instruments.DEFAULT_ECONOMIC_THRESHOLD)
+instruments_economic: bool = instruments.is_economic_match
+instruments.set_economic_match(False)
+instruments_resolution: yggdryl.Resolution = instruments_seeded.resolve(
     yggdryl.graph.Order(securityids=[identifier_security])
 )
-isin_registry_resolved_tier: str | None = isin_registry_resolution.tier
-isin_registry_resolved_kind: str | None = isin_registry_resolution.kind
-isin_registry_resolved_entry: dict[str, Any] | None = isin_registry_resolution.entry
-isin_registry_resolved_why: str | None = isin_registry_resolution.unmatched
-isin_registry_resolved_isins: list[str] | None = isin_registry_resolution.isins
-isin_registry_resolved_best: float | None = isin_registry_resolution.best
-isin_registry_origccy: yggdryl.Scalar | None = graph_root_order.origccy
-isin_registry_origin_currency: yggdryl.Scalar = graph_root_order.origin_currency
-assert isin_registry_by_code is not None and "cusip" in isin_registry_lookup_codes and not isin_registry_economic
-assert isin_registry_resolution.matched and isin_registry_resolved_tier == "isin" and isin_registry_resolved_why is None
-assert isin_registry_resolved_entry is not None and isin_registry_resolved_isins is None and isin_registry_resolved_best is None
-assert isin_registry_resolved_kind is None and yggdryl.Resolution is yggdryl.isin_registry.Resolution
-assert isin_registry_threshold == 0.85 and isin_registry_origccy is None and isin_registry_origin_currency.as_py() == "XXX"
-assert isin_registry_removed == [] and isin_registry_removed_listing is None
+instruments_resolved_tier: str | None = instruments_resolution.tier
+instruments_resolved_kind: str | None = instruments_resolution.kind
+instruments_resolved_entry: dict[str, Any] | None = instruments_resolution.entry
+instruments_resolved_why: str | None = instruments_resolution.unmatched
+instruments_resolved_codes: list[str] | None = instruments_resolution.codes
+instruments_resolved_code: str | None = instruments_resolution.code
+instruments_resolved_best: float | None = instruments_resolution.best
+instruments_origccy: yggdryl.Scalar | None = graph_root_order.origccy
+instruments_origin_currency: yggdryl.Scalar = graph_root_order.origin_currency
+assert instruments_by_code is not None and "cusip" in instruments_lookup_codes and not instruments_economic
+assert instruments_resolution.matched and instruments_resolved_tier == "isin" and instruments_resolved_why is None
+assert instruments_resolved_entry is not None and instruments_resolved_codes is None and instruments_resolved_best is None
+assert instruments_resolved_code is None
+assert instruments_resolved_kind is None and yggdryl.Resolution is yggdryl.instrument.Resolution
+assert instruments_threshold == 0.85 and instruments_origccy is None and instruments_origin_currency.as_py() == "XXX"
+assert instruments_removed is None and instruments_removed_listing is None
 eusipa: yggdryl.Eusipa = yggdryl.Eusipa(2300)
 eusipa_text: yggdryl.Eusipa = yggdryl.Eusipa("1260")
 eusipa_code: int = eusipa.code

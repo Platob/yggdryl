@@ -10,9 +10,12 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 use yggdryl::FieldPath;
-use yggdryl::graph::{MarketData as CoreMarketData, MarketKind, MarketView as CoreMarketView};
 use yggdryl::holder::Buffer;
 use yggdryl::ipc::{self, IpcOptions};
+use yggdryl_fix::FixMsg;
+use yggdryl_market::graph::{
+    MarketData as CoreMarketData, MarketKind, MarketView as CoreMarketView,
+};
 
 use super::book::{JsBookEvent, JsSnapshotEvent};
 use super::operation::{
@@ -48,8 +51,8 @@ type Leaf = Either10<
 >;
 
 /// The leaf object `data` holds, as the class of its variant.
-fn leaf_object(data: CoreMarketData) -> Leaf {
-    match data {
+fn leaf_object(data: CoreMarketData) -> Result<Leaf> {
+    Ok(match data {
         CoreMarketData::Order(leaf) => Leaf::A(JsOrder::from_core(leaf)),
         CoreMarketData::Quote(leaf) => Leaf::B(JsQuote::from_core(leaf)),
         CoreMarketData::Execution(leaf) => Leaf::C(JsExecution::from_core(leaf)),
@@ -59,8 +62,13 @@ fn leaf_object(data: CoreMarketData) -> Leaf {
         CoreMarketData::TradeEvent(leaf) => Leaf::G(JsTradeEvent::from_core(leaf)),
         CoreMarketData::BookEvent(leaf) => Leaf::H(JsBookEvent::from_core(*leaf)),
         CoreMarketData::SnapshotEvent(leaf) => Leaf::I(JsSnapshotEvent::from_core(leaf)),
-        CoreMarketData::Fix(message) => Leaf::J(JsFixMsg::from_core(*message)),
-    }
+        CoreMarketData::Fix(message) => {
+            let message = message.into_any().downcast::<FixMsg>().map_err(|_| {
+                napi_error("a held message is not a FixMsg: this binding has no class for it")
+            })?;
+            Leaf::J(JsFixMsg::from_core(*message))
+        }
+    })
 }
 
 /// The base64 text of `data`'s one-row `MarketData::arrow_reader` IPC
@@ -108,9 +116,9 @@ fn lifts_of(
 }
 
 /// The kind a caller named, read through the core vocabulary once.
-fn market_data_kind_of(kind: Option<String>) -> Result<Option<yggdryl::MarketDataKind>> {
+fn market_data_kind_of(kind: Option<String>) -> Result<Option<yggdryl_market::MarketDataKind>> {
     kind.as_deref()
-        .map(yggdryl::MarketDataKind::read)
+        .map(yggdryl_market::MarketDataKind::read)
         .transpose()
         .map_err(napi_error)
 }
@@ -272,14 +280,17 @@ impl JsMarketData {
     /// The FIX message this value holds whole, else `null`.
     #[napi]
     pub fn as_fix(&self) -> Option<JsFixMsg> {
-        self.inner.as_fix().cloned().map(JsFixMsg::from_core)
+        self.inner
+            .as_message::<FixMsg>()
+            .cloned()
+            .map(JsFixMsg::from_core)
     }
 
     /// The leaf this value holds, as its own class.
     #[napi(
         ts_return_type = "Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent | FixMsg"
     )]
-    pub fn into_leaf(&self) -> Leaf {
+    pub fn into_leaf(&self) -> Result<Leaf> {
         leaf_object(self.inner.clone())
     }
 
@@ -370,12 +381,12 @@ impl JsMarketData {
             .map_err(napi_error)
     }
 
-    /// `MarketData(<curruuid>, kind=.., crosscode=..)`.
+    /// `MarketData(<uuid>, kind=.., crosscode=..)`.
     #[napi(js_name = "toString")]
     pub fn js_string(&self) -> String {
         format!(
             "MarketData({}, kind={:?}, crosscode={:?})",
-            yggdryl::graph::Element::get_curruuid(&self.inner),
+            yggdryl::graph::Element::get_uuid(&self.inner),
             self.inner.kind().as_str(),
             yggdryl::graph::Element::get_crosscode(&self.inner),
         )

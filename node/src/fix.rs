@@ -45,19 +45,20 @@ use napi::bindgen_prelude::{
     Null, Object, Result, Unknown, ValueType,
 };
 use napi_derive::napi;
-use yggdryl::graph::{Element, Event, Market, Metadata, Operation};
-use yggdryl::{
-    DataType as CoreDataType, Field as CoreField, FixCapture, FixCode as CoreFixCode,
-    FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec, FixEntry, FixHeader,
-    FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar,
-    TimeUnit, Timezone,
+use yggdryl::graph::{Element, Event};
+use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar, TimeUnit, Timezone};
+use yggdryl_fix::{
+    FixCapture, FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec,
+    FixEntry, FixField, FixHeader, FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg,
+    FixRegistry as CoreFixRegistry,
 };
+use yggdryl_market::graph::{Market, Metadata, Operation};
 
 use crate::field::JsField;
 use crate::graph::{JsMarketData, JsMarketDataRowIterator};
+use crate::instrument::JsInstruments;
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
 use crate::iomedia::JsBatchReader;
-use crate::isin_registry::JsIsinRegistry;
 use crate::text::codec::JsScalar;
 use crate::text::line::{JsFieldPath, JsTextLine, path_from_input};
 use crate::{
@@ -244,14 +245,14 @@ pub struct FixSourceView {
     /// The file the source was read from, as it was named - `venue.cfb` -
     /// where one is known.
     pub file: Option<String>,
-    /// The role of the source's plugin, as the `pluginside` member's stored
+    /// The role of the source's plugin, as the `Side` member's stored
     /// name: `BUYS`, `SELL`, or `UKNW` where the source states none.
     pub pluginside: String,
 }
 
 impl FixSourceView {
     /// One borrowed catalog entry, as the object JavaScript reads.
-    fn from_core(source: &yggdryl::FixSource) -> Self {
+    fn from_core(source: &yggdryl_fix::FixSource) -> Self {
         Self {
             id: source.id().to_owned(),
             file: source.file().map(ToOwned::to_owned),
@@ -265,9 +266,9 @@ impl FixSourceView {
 pub struct FixSourceOptions {
     /// The file the source was read from, as it was named.
     pub file: Option<String>,
-    /// The role of the source's plugin: a `PluginSide` member's stored name
-    /// in any case, the role's own name - `BuySide`, `sell-side` - or its
-    /// code, what `PluginSide.BUYS` holds.
+    /// The role of the source's plugin: a `Side` member's stored name in
+    /// any case, the role's own name - `BuySide`, `sell-side` - or its
+    /// code, what `Side.BUYS` holds.
     #[napi(ts_type = "string | number")]
     pub pluginside: Option<Either<String, f64>>,
 }
@@ -860,7 +861,7 @@ impl JsFixRegistry {
     /// `["origclordid"]`; a parent type has none.
     #[napi]
     pub fn parents_of(&self, base: String) -> Result<Vec<String>> {
-        let base: yggdryl::IdType = base.parse().map_err(napi_error)?;
+        let base: yggdryl_market::IdType = base.parse().map_err(napi_error)?;
         Ok(self
             .inner
             .parents_of(&base)
@@ -875,7 +876,7 @@ impl JsFixRegistry {
     /// `null` for a type that is no one's parent.
     #[napi]
     pub fn parent_of(&self, kind: String) -> Result<Option<FixParentPlace>> {
-        let kind: yggdryl::IdType = kind.parse().map_err(napi_error)?;
+        let kind: yggdryl_market::IdType = kind.parse().map_err(napi_error)?;
         Ok(self
             .inner
             .parent_of(&kind)
@@ -1015,13 +1016,13 @@ impl JsFixRegistry {
     /// `field.fix.sources`.
     #[napi]
     pub fn add_source(&mut self, id: String, options: Option<FixSourceOptions>) -> Result<bool> {
-        let mut source = yggdryl::FixSource::new(&id).map_err(napi_error)?;
+        let mut source = yggdryl_fix::FixSource::new(&id).map_err(napi_error)?;
         if let Some(options) = options {
             if let Some(file) = options.file {
                 source = source.with_file(file);
             }
             if let Some(side) = options.pluginside {
-                source = source.with_pluginside(crate::pluginside::plugin_side_of(side)?);
+                source = source.with_pluginside(plugin_side_of(side)?);
             }
         }
         Ok(self.inner_mut()?.add_source(source))
@@ -1153,7 +1154,7 @@ impl Generator for JsFixFieldIterator {
         }
         let found = registry
             .next_field_after(self.after)
-            .map(|field| (field.clone(), field.as_fix().id().ok().flatten()));
+            .map(|field| (field.clone(), FixField::new(field).id().ok().flatten()));
         match found {
             // The cursor is the canonical identifier every registered field
             // carries; a field without one cannot be advanced past, so the
@@ -1328,7 +1329,7 @@ pub struct FixCaptureView {
     #[napi(ts_type = "string | null")]
     pub msgpluginid: Either<String, Null>,
     /// The role of the FIX plugin whose session produced the message, as
-    /// the `pluginside` member's stored name: `BUYS` for a Buy-Side plugin,
+    /// the `Side` member's stored name: `BUYS` for a Buy-Side plugin,
     /// `SELL` for a Sell-Side one, `UKNW` where the codec read under no
     /// source or one stating no role - never `null`. The codec stamps it from
     /// the source it reads under (`FixCodec`'s `source`), and a row-header
@@ -1389,11 +1390,11 @@ fn capture_view(capture: &FixCapture) -> FixCaptureView {
 /// Every message carries its identity settled: the cross code, the first
 /// stated of tags 37, 11, 41, 117, 131 and 262 stored as
 /// `{kind}:{side}:{base}`, the `crosshashcode` over that stored code, the
-/// `currhashcode` over everything the message says but the
-/// standard header and trailer, the `curruuid` ordered by millisecond and
+/// `hashcode` over everything the message says but the
+/// standard header and trailer, the `uuid` ordered by millisecond and
 /// sequence with a content payload seeded by the cross hash, and the
 /// `crossuuid` over the cross hash - or
-/// the `curruuid` itself when no cross code names a chain. Every write settles
+/// the `uuid` itself when no cross code names a chain. Every write settles
 /// it again.
 #[napi(js_name = "FixMsg")]
 pub struct JsFixMsg {
@@ -1427,8 +1428,8 @@ impl JsFixMsg {
     /// tag, a crate column, one of the FIX fields a message lifts,
     /// `Text(58)` - fills the holder that owns it and leaves the row. `SendingTime` reads UTC now
     /// when the value states none; the event's instant is the stated one,
-    /// else the official transaction clock standing within the core's default
-    /// one-second delay of that sending time - a `TransactTime(60)`, else a
+    /// else the official transaction clock standing less than the core's
+    /// default half-second delay from that sending time - a `TransactTime(60)`, else a
     /// ranked `TrdRegTimestamp(769)` - else the sending time itself, the
     /// creation the stated one, else the instant, and the execution of a
     /// report stating no execution clock that instant too. What
@@ -1580,12 +1581,12 @@ impl JsFixMsg {
     /// sequence with a content payload seeded by its cross hash, as
     /// hyphenated text.
     #[napi(getter)]
-    pub fn curruuid(&self) -> String {
-        self.inner.get_curruuid().to_string()
+    pub fn uuid(&self) -> String {
+        self.inner.get_uuid().to_string()
     }
 
     /// The identity of the chain this message belongs to, as its hyphenated
-    /// text: `curruuid` when no cross code names a chain.
+    /// text: `uuid` when no cross code names a chain.
     #[napi(getter)]
     pub fn crossuuid(&self) -> String {
         self.inner.get_crossuuid().to_string()
@@ -1602,8 +1603,8 @@ impl JsFixMsg {
 
     /// The XXH3-64 over everything this message says.
     #[napi(getter)]
-    pub fn currhashcode(&self) -> BigInt {
-        BigInt::from(self.inner.get_currhashcode())
+    pub fn hashcode(&self) -> BigInt {
+        BigInt::from(self.inner.get_hashcode())
     }
 
     /// The XXH3-64 of the stored cross code, `0n` where there is none.
@@ -1612,10 +1613,11 @@ impl JsFixMsg {
         BigInt::from(self.inner.get_crosshashcode())
     }
 
-    /// When the event happened, nanoseconds since the Unix epoch, UTC.
+    /// When the operation the message states happened - its transaction
+    /// instant: nanoseconds since the Unix epoch, UTC.
     #[napi(getter)]
-    pub fn currunix(&self) -> BigInt {
-        instant(self.inner.get_currunix())
+    pub fn transunix(&self) -> BigInt {
+        instant(self.inner.get_transunix())
     }
 
     /// The order state the message reached, ranked: `UNKNOWN` where it
@@ -1652,10 +1654,11 @@ impl JsFixMsg {
         self.inner.get_execunix().map(instant)
     }
 
-    /// When the message was recorded, where stated.
+    /// When the message crossed the wire - its carrier's clock, else its
+    /// stated `SendingTime` - where stated.
     #[napi(getter)]
-    pub fn recdunix(&self) -> Option<BigInt> {
-        self.inner.get_recdunix().map(instant)
+    pub fn sendunix(&self) -> Option<BigInt> {
+        self.inner.get_sendunix().map(instant)
     }
 
     /// When the order expires, where it has an expiry.
@@ -1711,6 +1714,15 @@ impl JsFixMsg {
     #[napi(getter, ts_return_type = "Identifiers")]
     pub fn securityids(&self) -> crate::identifier::JsIdentifiers {
         crate::identifier::JsIdentifiers::from_core(self.inner.get_securityids())
+    }
+
+    /// The cross code of the instrument the message is about - its real
+    /// ISIN, or the `class:body` an FX pair spells (`IF:EUR/USD`) - written
+    /// by a parse where the message alone spells it and by a lifecycle's
+    /// fill from the instrument it resolves; `null` where none is known.
+    #[napi(getter)]
+    pub fn instcode(&self) -> Option<String> {
+        self.inner.get_instcode().map(ToOwned::to_owned)
     }
 
     /// The instrument's ISIN, borrowed from `securityids`, or `null`.
@@ -2481,14 +2493,14 @@ impl std::io::Write for JsSink<'_> {
 /// fill, and
 /// the identity is derived. `SendingTime` is the message's valid tag 52,
 /// else a row cell reaching that tag, else the `mtime` of the `TextLine` it
-/// was read out of - on `parseTextArrowReader`, the row's `currunix` cell -
+/// was read out of - on `parseTextArrowReader`, the row's `transunix` cell -
 /// else `defaultSendingTime`, else UTC now read once for that new message,
 /// and it goes back on the wire only when the message stated it: a clock
 /// the parse supplied is never the message's own, so the row's `sendingtime`
 /// column states none either. The raw-byte doors read no line, so parsing
 /// undated bytes there without a default sending time is deliberately not
 /// deterministic. A message reporting an execution that states no execution
-/// clock executed at its instant: its `execunix` is its `currunix`.
+/// clock executed at its instant: its `execunix` is its `transunix`.
 #[napi(js_name = "FixCodec")]
 pub struct JsFixCodec {
     inner: CoreFixCodec,
@@ -2536,16 +2548,17 @@ impl JsFixCodec {
     /// epoch hour at a time rather than collecting and sorting the whole
     /// capture, off when unstated;
     /// `officialTimeDelayMs` is how far from `SendingTime(52)` an official
-    /// transaction clock may stand and still date the message, the core's
-    /// one second when unstated; `dedupWindowMs` is how long, in
-    /// milliseconds of event time, `lifecycle` remembers an identity it
-    /// yielded so it yields that identity once - the core's one minute when
-    /// unstated, and `null`, zero or a negative window remembering none;
+    /// transaction clock may stand and still date the message, the gap less
+    /// than it - the core's half second when unstated; `dedupWindowMs` is
+    /// how long, in milliseconds of event time, `lifecycle` remembers an
+    /// identity it yielded so it yields that identity once - the core's one
+    /// minute when unstated, and `null`, zero or a negative window
+    /// remembering none;
     /// `marketMetadata` is whether a market operation carries its message's
     /// unmapped fields - its parties, `Account(1)` and regulatory trade
     /// identifiers stay its `partyids` and `identifiers` - and lifts the
     /// identifiers among them into the set their type belongs to, on when
-    /// unstated; `isinRegistry` is the `IsinRegistry` every `lifecycle`
+    /// unstated; `instruments` is the `Instruments` every `lifecycle`
     /// learns into and fills from, shared so a walk run after another starts
     /// from what the first learned, each walk learning into its own when
     /// unstated; `source` is the id of the dictionary's source the codec
@@ -2563,8 +2576,8 @@ impl JsFixCodec {
     }
 
     /// A codec over the registry the process environment names,
-    /// `FixRegistry.fromEnv()`, sharing the instrument registry it names
-    /// too, `IsinRegistry.fromEnv()` - unless `isinRegistry` names another
+    /// `FixRegistry.fromEnv()`, sharing the instruments it names too,
+    /// `Instruments.fromEnv()` - unless `instruments` names another
     /// - pinned by the options the constructor takes. The one constructor
     /// that attaches the process's own; `new FixCodec(...)` attaches none,
     /// and a commit of what the walks learned is always the caller's.
@@ -2572,11 +2585,11 @@ impl JsFixCodec {
     pub fn from_env(options: Option<FixCodecOptions<'_>>) -> Result<Self> {
         let attach = options
             .as_ref()
-            .is_none_or(|options| options.isin_registry.is_none());
+            .is_none_or(|options| options.instruments.is_none());
         let mut codec = Self::open(None, options)?;
         if attach {
-            let instruments = yggdryl::IsinRegistry::from_env().map_err(napi_error)?;
-            codec.inner = codec.inner.with_isin_registry(Arc::clone(instruments));
+            let instruments = yggdryl_market::Instruments::from_env().map_err(napi_error)?;
+            codec.inner = codec.inner.with_instruments(Arc::clone(instruments));
         }
         Ok(codec)
     }
@@ -2656,8 +2669,8 @@ impl JsFixCodec {
                 .try_with_default_sending_time(Some(sending_time_from_js(held)?))
                 .map_err(napi_error)?;
         }
-        if let Some(held) = &options.isin_registry {
-            inner = inner.with_isin_registry(Arc::clone(&held.inner));
+        if let Some(held) = &options.instruments {
+            inner = inner.with_instruments(Arc::clone(&held.inner));
         }
         if let Some(held) = options.market_metadata {
             inner = inner.with_market_metadata(held);
@@ -2677,12 +2690,12 @@ impl JsFixCodec {
         JsFixRegistry::from_arc(Arc::clone(&self.registry))
     }
 
-    /// The `IsinRegistry` every `lifecycle` this codec runs shares - the
+    /// The `Instruments` every `lifecycle` this codec runs shares - the
     /// same table the caller holds - or `null` where each walk learns into
     /// its own.
     #[napi(getter)]
-    pub fn isin_registry(&self) -> Option<JsIsinRegistry> {
-        self.inner.isin_registry().map(JsIsinRegistry::from_shared)
+    pub fn instruments(&self) -> Option<JsInstruments> {
+        self.inner.instruments().map(JsInstruments::from_shared)
     }
 
     /// The byte a numeric frame splits on, or `null` where the line decides.
@@ -2779,7 +2792,7 @@ impl JsFixCodec {
 
     /// This codec with its lifecycle pinned to messages arriving in instant
     /// order - a table read hour partition by hour partition, sorted by
-    /// `currunix` - when `sorted`: the walk then holds one epoch hour at a
+    /// `transunix` - when `sorted`: the walk then holds one epoch hour at a
     /// time, sorts within it exactly as a whole capture is sorted, and walks
     /// an hour once a message two hours past it is read; a message dated
     /// before an hour already walked is walked where it arrives. `false`
@@ -2956,12 +2969,12 @@ impl JsFixCodec {
     /// the rest - the plugin that logged it, the version, and every field a
     /// capture's name reaches. A `timestamp` capture is context and stamps
     /// nothing; the line's own clock does. Its `mtime` - an `mtime` capture,
-    /// else its handle's modification time - is the message's `recdunix`,
+    /// else its handle's modification time - is the message's `sendunix`,
     /// and the sending clock of a message stating none: `SendingTime` is the
     /// message's own, else a capture reaching that field, else the line's
     /// `mtime`, else the codec's `defaultSendingTime`, else UTC now, and the
-    /// instant `currunix` is read against it - the stated one, else the
-    /// official clock standing within `officialTimeDelayMs` of it, else it.
+    /// instant `transunix` is read against it - the stated one, else the
+    /// official clock standing less than `officialTimeDelayMs` from it, else it.
     /// A clock the parse supplied is never the message's own: neither the
     /// wire nor the row's `sendingtime` column states it.
     /// `withCaptureNames` is what decides which capture is which, once for
@@ -3001,8 +3014,8 @@ impl JsFixCodec {
     ///
     /// The schema is decided before the first row: the capture's own columns
     /// lead and the fixed FIX columns follow. Every row is parsed as the
-    /// line door parses one - a row's `currunix` cell is its line's clock,
-    /// so it is the messages' `recdunix` and the sending clock of one
+    /// line door parses one - a row's `transunix` cell is its line's clock,
+    /// so it is the messages' `sendunix` and the sending clock of one
     /// stating none - and batches close on the bytes each row lands as
     /// against `batchByteSize`. The source is consumed.
     ///
@@ -3143,7 +3156,7 @@ impl JsFixCodec {
     /// message as `FixMsg.marketData` does, each leaf carrying its
     /// message's unmapped fields where `marketMetadata` says so. The capture
     /// is collected when this is called - it is bounded by its own size -
-    /// and the operations are stably sorted by `snapunix`, else `currunix`:
+    /// and the operations are stably sorted by `snapunix`, else `transunix`:
     /// the instant a book folds them at. A source error and the refusal of
     /// an admitted message's expansion are yielded first, in source order,
     /// each thrown by its own `next`; neither the lifecycle nor the msgtype
@@ -3408,11 +3421,11 @@ pub struct FixCodecOptions<'env> {
     /// into the set their type belongs to - part of the leaf's identity; the
     /// core's `true` when unstated.
     pub market_metadata: Option<bool>,
-    /// The `IsinRegistry` every `lifecycle` learns into and fills from,
+    /// The `Instruments` every `lifecycle` learns into and fills from,
     /// shared so a walk run after another starts from what the first
     /// learned; each walk learns into its own, starting empty, when unstated.
-    #[napi(ts_type = "IsinRegistry")]
-    pub isin_registry: Option<ClassInstance<'env, JsIsinRegistry>>,
+    #[napi(ts_type = "Instruments")]
+    pub instruments: Option<ClassInstance<'env, JsInstruments>>,
     /// The id of the dictionary's source this codec reads under, folded:
     /// the catalog entry (`FixRegistry.sources()`) whose plugin side every
     /// message the codec builds states as its `msgpluginside`, resolved
@@ -3438,6 +3451,26 @@ fn sending_time_from_js(value: Either<ClassInstance<'_, JsScalar>, JsDate<'_>>) 
     }
 }
 
+/// The role `side` names: a spelling read through the core `Side`
+/// vocabulary - the stored name in any case, `BuySide`, `sell-side`, a wire
+/// code - or a `Side` code, what `Side.BUYS` holds.
+fn plugin_side_of(side: Either<String, f64>) -> Result<yggdryl_market::Side> {
+    match side {
+        Either::A(text) => yggdryl_market::Side::read(&text),
+        Either::B(code) => yggdryl_market::Side::read_code(crate::exact_i64(code, "pluginside")?),
+    }
+    .map_err(|error| napi::Error::from_reason(format!("pluginside: {error}")))
+}
+
+/// The side one plugin class names, as its stored name: a `CBlock` root's
+/// `type`, whose last `.`-separated segment, folded, holding `buyside` is
+/// `BUYS`, holding `sellside` is `SELL`, and anything else `UKNW`. Never
+/// throws.
+#[napi(js_name = "fixPluginSide")]
+pub fn fix_plugin_side(plugin_type: String) -> String {
+    yggdryl_fix::plugin_side(&plugin_type).as_str().to_owned()
+}
+
 /// The fixed root every message answers as, built from one dictionary.
 ///
 /// The crate's own columns lead - its clocks, then its identities, then the
@@ -3447,8 +3480,8 @@ fn sending_time_from_js(value: Either<ClassInstance<'_, JsScalar>, JsDate<'_>>) 
 /// unresolved keys at tag 0. Columns are spelled by the dictionary's folded
 /// canonical names - `msgtype`, never `35` - so a row reads the way a
 /// message reads; the tag stays each column's identity, on its `FIX:tag`,
-/// and is what fills it. `beginstring` and the settled identity - `currunix`,
-/// `creaunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` - are
+/// and is what fills it. `beginstring` and the settled identity - `transunix`,
+/// `creaunix`, `hashcode`, `crosshashcode`, `uuid`, `crossuuid` - are
 /// required; every other column is nullable, because a message that carried
 /// nothing there must answer null rather than shift its neighbours.
 #[napi(js_name = "fixSchema")]
@@ -3458,7 +3491,7 @@ pub fn fix_schema(
 ) -> Result<JsField> {
     let registry = registry_or_env(registry)?;
     let name = name.unwrap_or_else(|| "fix".to_owned());
-    yggdryl::fix_schema(&registry, name)
+    yggdryl_fix::fix_schema(&registry, name)
         .map(JsField::from_core)
         .map_err(napi_error)
 }
@@ -3481,7 +3514,7 @@ pub fn fix_schema(
 /// refusing per row. The one-pass readers state every one of them.
 #[napi(js_name = "fixSchemaCarrying")]
 pub fn fix_schema_carrying(carrier: &JsField, read: &JsField) -> Result<JsField> {
-    yggdryl::fix_schema_carrying(&carrier.inner, &read.inner)
+    yggdryl_fix::fix_schema_carrying(&carrier.inner, &read.inner)
         .map(JsField::from_core)
         .map_err(napi_error)
 }
@@ -3491,7 +3524,7 @@ pub fn fix_schema_carrying(carrier: &JsField, read: &JsField) -> Result<JsField>
 /// and this is the half that carries the text across.
 #[napi(js_name = "_fixUlbridgeRowheaderNative", skip_typescript)]
 pub fn fix_ulbridge_rowheader_native() -> &'static str {
-    yggdryl::ULBRIDGE_ROWHEADER
+    yggdryl_fix::ULBRIDGE_ROWHEADER
 }
 
 /// One row's columns, in order, as tags: the crate's leading columns, then
@@ -3500,7 +3533,7 @@ pub fn fix_ulbridge_rowheader_native() -> &'static str {
 #[allow(clippy::cast_lossless)]
 #[napi(js_name = "fixSchemaTags")]
 pub fn fix_schema_tags() -> Vec<f64> {
-    yggdryl::fix_schema_tags()
+    yggdryl_fix::fix_schema_tags()
         .into_iter()
         .map(f64::from)
         .collect()
@@ -3509,9 +3542,9 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// The definitions this crate owns, in tag order, above every tag FIX or a
 /// venue publishes.
 ///
-/// The event's instant `currunix` and the chain's `creaunix`, `execunix`,
-/// `recdunix`, `prevunix`, `snapunix` and `exprunix`; the identities
-/// `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` and `prevuuid`;
+/// The event's instant `transunix` and the chain's `creaunix`, `execunix`,
+/// `sendunix`, `prevunix`, `snapunix` and `exprunix`; the identities
+/// `hashcode`, `crosshashcode`, `uuid`, `crossuuid` and `prevuuid`;
 /// the `srcuuids` list of the lines it was read from; the `crosscode`, the
 /// `seqnum` and the `state` reached; the `metadata` Map group; what a
 /// bridge's capture states - `msgctxid`, `msgpluginid`,
@@ -3527,14 +3560,14 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// bridge's own identifier keys are no crate field either: they arrive as
 /// unmapped entries and are read for the identifier name they end with.
 ///
-/// `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and
+/// `transunix`, `creaunix`, `hashcode`, `crosshashcode`, `uuid` and
 /// `crossuuid` are non-null; `state` is written on every row a message
 /// writes and stays nullable, a state having no neutral member. Every
 /// registry already holds them, so this is the listing a schema or a
 /// document walks rather than something a caller registers.
 #[napi(js_name = "fixCrateFields")]
 pub fn fix_crate_fields() -> Result<Vec<JsField>> {
-    yggdryl::fix_crate_fields()
+    yggdryl_fix::fix_crate_fields()
         .map(|held| held.iter().cloned().map(JsField::from_core).collect())
         .map_err(napi_error)
 }

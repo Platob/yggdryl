@@ -540,7 +540,7 @@ mod time_bucket {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::UTC,
         }
-        .nullable_field("currunix")])
+        .nullable_field("transunix")])
         .map(DataType::from)
         .unwrap()
         .required_field("row")
@@ -554,7 +554,7 @@ mod time_bucket {
         // and 00:15.
         let start = 1_704_067_200_000_000_000_i64;
         let bounds = Bounds::new(Some(10)).with_column(
-            "currunix",
+            "transunix",
             Some(nanos(start)),
             Some(nanos(start + 1_799_999_999_999)),
             Some(0),
@@ -566,7 +566,7 @@ mod time_bucket {
                 .unwrap()
                 .statistics_certainty(&bounds)
         };
-        let bucket = "time_bucket('15 minutes', currunix)";
+        let bucket = "time_bucket('15 minutes', transunix)";
         assert_eq!(
             certainty(&format!("{bucket} = '2024-01-01T00:15:00Z'")),
             None

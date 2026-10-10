@@ -10,13 +10,13 @@ A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as thre
 | Fields | `fields/<tag / 100>.json`, the shard written as nine digits with leading zeros - tag 55 in `fields/000000000.json`, tag 5001 in `fields/000000050.json` - so the shards list in tag order wherever they are listed; each document is an array of tagged scalar fields, tag-major, the holder of a shared tag first |
 | Named definitions | `components/<name>.json`, `groups/<name>.json`; a message is a component carrying `FIX:msgtype` and is written beside the others; one native `Field` per document, with a derived tag for a component or Serie/LargeSerie group and an own reserved tag for a Map group |
 | Code sets | `codesets/<name>.json`, one document per named [code set](registry.md#a-field-names-the-code-set-it-reads-by), stating the name it is filed under and its members in the set's own order; a scalar's `FIX:codeset` holds that name. Read first, because a field naming a set the dictionary does not hold is refused. Not a `FixCategory`: a set has no tag, no datatype and no reference, so nothing in it resolves against a field |
-| Documents | The `FIX:` properties that hold a canonical document - the entry documents `FIX:directions` and `FIX:idmap`, and the lists `FIX:names`, `FIX:parents`, `FIX:sources` and `FIX:tags` - are written as the JSON arrays they are rather than as one escaped line, so an indented document renders as a document and a person can edit one; a code set's `codes` array is written the same way, which is what makes the tree readable. Reading restates each as the compact canonical text a field's metadata holds, with each entry's keys put back into the order the grammar declares and each list held to its element grammar - a word, a positive tag - so a file may spell them in any order and the field still holds one text. One shape: a file spelling one of these keys as text is refused by name, and so is a field holding text no reader can parse. `yggdryl::into_fix_document`/`from_fix_document` are that pair on one field, which is what `yggdryl fix read --json` prints and `yggdryl fix ... --input` takes; `FIX:codeset` is not among them, because a name is one word |
+| Documents | The `FIX:` properties that hold a canonical document - the entry documents `FIX:directions` and `FIX:idmap`, and the lists `FIX:names`, `FIX:parents`, `FIX:sources` and `FIX:tags` - are written as the JSON arrays they are rather than as one escaped line, so an indented document renders as a document and a person can edit one; a code set's `codes` array is written the same way, which is what makes the tree readable. Reading restates each as the compact canonical text a field's metadata holds, with each entry's keys put back into the order the grammar declares and each list held to its element grammar - a word, a positive tag - so a file may spell them in any order and the field still holds one text. One shape: a file spelling one of these keys as text is refused by name, and so is a field holding text no reader can parse. `yggdryl_fix::into_fix_document`/`from_fix_document` are that pair on one field, which is what `yggdryl fix read --json` prints and `yggdryl fix ... --input` takes; `FIX:codeset` is not among them, because a name is one word |
 | Snapshots | `FixRegistry::into_json`/`from_json` render and read the whole catalog in that same shape, the `codesets` array leading the three category arrays and, where the registry holds an entry, a `sources` array after them; `add_json_file(handle)` folds one such file into a dictionary the way `merge_with` folds any, answering the same [`FixMerge`](registry.md#what-a-source-says-otherwise-than-the-dictionary-is-passed-over), and takes no dialect - a snapshot already carries the `FIX:sources` its writer meant and the catalog those ids name |
 | References | Ordinary compact child fields use `Null` as the unresolved datatype; a Map's referenced entries keep the Struct its datatype requires. Both retain reference metadata and resolve to canonical native fields at intake |
 | Identifiers | `FIX:identifiers` stays on its component; canonical member names and order resolve through the same owner after references load |
-| Sources | `sources.json` at the root, beside the category folders: one JSON array of entries sorted by id, each `{"id": ..., "file": ..., "pluginside": ...}` - the id a field's or definition's `FIX:sources` names, the file the source was read from, left out where none is known, and the role of its plugin, a [`PluginSide`](../types/enum/pluginside.md) stored name always written (`UKNW` where the source states none, and what an entry stating no `pluginside` reads as). Absent, the dictionary was built from no named source, which is the tracked seed; written when the registry holds any entry and removed when it holds none. `FIX:sources` inside each field and named definition document is the JSON array of ids, folded to ASCII lowercase and sorted, that names into it |
+| Sources | `sources.json` at the root, beside the category folders: one JSON array of entries sorted by id, each `{"id": ..., "file": ..., "pluginside": ...}` - the id a field's or definition's `FIX:sources` names, the file the source was read from, left out where none is known, and the role of its plugin, a [`Side`](../types/enum/side.md#a-fix-plugins-role-is-a-side) stored name always written (`UKNW` where the source states none, and what an entry stating no `pluginside` reads as). Absent, the dictionary was built from no named source, which is the tracked seed; written when the registry holds any entry and removed when it holds none. `FIX:sources` inside each field and named definition document is the JSON array of ids, folded to ASCII lowercase and sorted, that names into it |
 | Identity | Derived on every read from `FIX:tag` and the field's name; no document holds an id |
-| Builtins | The crate listing has 52 definitions: 51 scalar fields - 19 of them [derived](capture.md#a-derived-column-restates-a-fix-field), which a registry does not hold - and the `metadata(65037)` Map group. Every registry constructs them, and a write states them too - `fields/000000650.json`, `groups/metadata.json` - so a store is the whole row rather than the half it declared itself; a stored document never overrides them, because a reader takes the constructed definition over the one it finds |
+| Builtins | The crate listing has 54 definitions: 53 scalar fields - 19 of them [derived](capture.md#a-derived-column-restates-a-fix-field), which a registry does not hold - and the `metadata(65037)` Map group. Every registry constructs them, and a write states them too - `fields/000000650.json`, `groups/metadata.json` - so a store is the whole row rather than the half it declared itself; a stored document never overrides them, because a reader takes the constructed definition over the one it finds |
 | The fixed row | `commit` also writes `components/fixmsg.json`: the [row every message answers as](capture.md#the-columns-are-the-folded-names) under the name and tag of `FIXMSG_TAG_NAME` (65053), each column a `FIX:field` or `FIX:group` reference carrying its own `FIX:tag`. It is the crate's rather than the store's, so a read passes it over as it passes the crate's own fields; it is there for a consumer that reads the row's shape without running this crate |
 | Standard clocks | `SendingTime(52)` and `TransactTime(60)` are ordinary fields: a stored document defining either is loaded first and keeps its metadata, and only a clock the store does not define is seeded afterwards; a registry writes them like any other field in `fields/000000000.json` |
 | Validation | Category shape, shard arithmetic, tag and name identity, references, identifiers, code set names, cycles, and depth are checked before exposing the registry; a set's stem must equal the name its document states, the way a definition's does |
@@ -33,34 +33,36 @@ The counter is a scalar field; a reusable component defines one occurrence and t
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FixCode, FixRegistry, FixSource, IOBase, FieldPath, StructType};
+    use yggdryl::{DataType, FieldPath, IOBase, StructType};
+    use yggdryl_fix::{FixCode, FixField, FixFieldMut, FixRegistry, FixSource};
+    yggdryl_fix::install()?;
 
     let path = LocalFolder::temporary()?.path()?.join(format!("ygg-doc-store-{}", std::process::id()));
     let mut root = LocalFolder::new(&path)?;
     let mut count = DataType::Int32.nullable_field("NoPartyIDs");
-    count.as_fix_mut().set_tag(453)?;
+    FixFieldMut::new(&mut count).set_tag(453)?;
     let mut id = DataType::utf8().nullable_field("PartyID");
-    id.as_fix_mut().set_tag(448)?;
-    id.as_fix_mut().set_sources(["venue"])?;
+    FixFieldMut::new(&mut id).set_tag(448)?;
+    FixFieldMut::new(&mut id).set_sources(["venue"])?;
     let mut registry = FixRegistry::from_fields([count, id])?;
     let mut member = registry.field(448)?.clone();
-    member.as_fix_mut().set_field_ref("PartyID")?;
+    FixFieldMut::new(&mut member).set_field_ref("PartyID")?;
     let mut party = DataType::from(StructType::from_fields([member])?).required_field("Party");
-    party.as_fix_mut().set_identifiers(["448"])?;
+    FixFieldMut::new(&mut party).set_identifiers(["448"])?;
     registry.insert(party.clone())?;
     let mut group = DataType::serie(party).nullable_field("Parties");
-    group.as_fix_mut().set_counter(453)?;
-    group.as_fix_mut().set_component("Party")?;
+    FixFieldMut::new(&mut group).set_counter(453)?;
+    FixFieldMut::new(&mut group).set_component("Party")?;
     registry.insert(group)?;
     let mut order = DataType::from(StructType::from_fields([])?).required_field("Order");
-    order.as_fix_mut().set_msgtype("D")?;
+    FixFieldMut::new(&mut order).set_msgtype("D")?;
     registry.insert(order)?;
     // A vocabulary is the dictionary's own, stated before the field that
     // reads by it names it; the store writes it under that name.
     registry.set_codeset("partyidsourcecodeset", &[FixCode::new("Proprietary", "D")])?;
     let mut source = DataType::utf8().nullable_field("PartyIDSource");
-    source.as_fix_mut().set_tag(447)?;
-    source.as_fix_mut().set_codeset("partyidsourcecodeset")?;
+    FixFieldMut::new(&mut source).set_tag(447)?;
+    FixFieldMut::new(&mut source).set_codeset("partyidsourcecodeset")?;
     registry.insert(source)?;
     // What is known of the source is recorded once, in the catalog.
     registry.add_source(FixSource::new("venue")?.with_file("venue.cfb"));
@@ -87,16 +89,16 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     assert_eq!(std::fs::read_dir(&path)?.count(), 5);
     let reloaded = FixRegistry::from_handle(&root)?;
     assert_eq!(reloaded, registry);
-    assert_eq!(reloaded.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
+    assert_eq!(FixField::new(reloaded.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?).tag()?, Some(448));
     // The vocabulary comes back under its name, and the field by that name.
     let held = reloaded.codeset_of(reloaded.field(447)?).expect("the set the field reads by");
     assert_eq!(held.name(), "partyidsourcecodeset");
     assert_eq!(held.code_name("D"), Some("Proprietary"));
     // Membership travels inside the field's own document.
-    assert!(reloaded.field(448)?.as_fix().has_source("venue"));
+    assert!(FixField::new(reloaded.field(448)?).has_source("venue"));
     assert_eq!(reloaded.dialects(), ["venue"]);
     assert_eq!(reloaded.get_source("venue").and_then(FixSource::file), Some("venue.cfb"));
-    assert_eq!(reloaded.field_by_name("Party")?.as_fix().identifiers().collect::<Vec<_>>(), ["PartyID"]);
+    assert_eq!(FixField::new(reloaded.field_by_name("Party")?).identifiers().collect::<Vec<_>>(), ["PartyID"]);
     assert_eq!(reloaded.field_by_counter(65037)?.name(), "metadata");
     root.remove(true)?;
     ```
@@ -322,7 +324,7 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 messages carrying `FIX:msgtype` and `FIX:msgcat` - and 580 groups. Loading adds the crate's 32 held scalar definitions, including the `srcuuids` serie, the category `marketdatakind`, the origin currency `origccy`, five normalized instrument codes, the execution and recording clocks, the session-event key `msgsesseventid`, and a bridge's originating plugin and conversation, plus one Map group: 6,273 scalar fields, 581 groups, 928 components and 181 message types in the live registry, 7,782 definitions total. The generated catalog holds 735 shared code sets in `codesets/`; the four intrinsic sets `marketdatakindcodeset`, `marketdatatypecodeset`, `statecodeset` and `msgpluginsidecodeset` make 739 live sets.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 messages carrying `FIX:msgtype` and `FIX:msgcat` - and 580 groups. Loading adds the crate's 33 held scalar definitions, including the `srcuuids` serie, the instrument's code `instcode`, the category `marketdatakind`, the origin currency `origccy`, five normalized instrument codes, the execution and recording clocks, the session-event key `msgsesseventid`, and a bridge's originating plugin and conversation, plus one Map group: 6,274 scalar fields, 581 groups, 928 components and 181 message types in the live registry, 7,783 definitions total. The generated catalog holds 735 shared code sets in `codesets/`; the four intrinsic sets `marketdatakindcodeset`, `marketdatatypecodeset`, `statecodeset` and `msgpluginsidecodeset` make 739 live sets.
 
 Beside those 2,308 the tracked tree carries the crate's own dump, which `commit` writes and a read passes over: `fields/000000650.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json`. The generator neither writes nor removes them, and its `--check` ignores them.
 
@@ -336,7 +338,9 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{fix_crate_fields, FixId, FixRegistry, FieldPath};
+    use yggdryl_fix::{fix_crate_fields, FixField, FixId, FixRegistry};
+    use yggdryl::FieldPath;
+    yggdryl_fix::install()?;
 
     let seed = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("config").join("fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(seed)?)?;
@@ -346,22 +350,22 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert_eq!(registry.field_by_tag(55)?.name(), "symbol");
     assert_eq!(registry.field_by_name("SYMBOL")?.name(), "symbol");
     assert_eq!(registry.field_by_tag(150)?.display(), Some("ExecType"));
-    assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
+    assert_eq!(FixField::new(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?).tag()?, Some(448));
     assert_eq!(registry.field_by_name("ClOrdID")?.display(), Some("ClOrdID"));
     // The id is the tag and the folded name, derived on every read and held
     // in no document, so the stored dictionary spells it nowhere.
     let symbol = FixId::of(55, "Symbol")?;
-    assert_eq!(registry.field_by_tag(55)?.as_fix().id()?, Some(symbol));
+    assert_eq!(FixField::new(registry.field_by_tag(55)?).id()?, Some(symbol));
     assert_eq!(registry.field_by_id(symbol)?.name(), "symbol");
     // Every field is a specification field or one of the crate's own, so no
     // field names a dialect that contributed it.
     assert!(registry.dialects().is_empty());
-    assert!(registry.iter().all(|field| field.as_fix().sources().next().is_none()));
+    assert!(registry.iter().all(|field| FixField::new(field).sources().next().is_none()));
     // The crate's own definitions are in the store and in the registry alike:
     // 51 scalar fields, including `strikepx`, `msgpluginside` and the `srcuuids` serie, plus one Map group.
-    assert_eq!(fix_crate_fields()?.len(), 52);
-    assert_eq!(registry.iter().count(), 7_782, "the fields and the definitions");
-    assert_eq!(registry.len(), 7_782, "the fields, the components and the groups");
+    assert_eq!(fix_crate_fields()?.len(), 53);
+    assert_eq!(registry.iter().count(), 7_783, "the fields and the definitions");
+    assert_eq!(registry.len(), 7_783, "the fields, the components and the groups");
     assert_eq!(registry.field_by_counter(65_037)?.name(), "metadata");
     assert_eq!(registry.msgtype("D")?.name(), "newordersingle");
     // The vocabularies are held beside them, one per name, and a field
@@ -399,9 +403,9 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert all(field.fix.sources == [] for field in registry)
     # The crate's own definitions are in the store and in the registry alike:
     # 51 scalar fields, including `strikepx`, `msgpluginside` and the `srcuuids` serie, plus one Map group.
-    assert len(fix_crate_fields()) == 52
-    assert sum(1 for _ in registry) == 6_273
-    assert len(registry) == 7_782
+    assert len(fix_crate_fields()) == 53
+    assert sum(1 for _ in registry) == 6_274
+    assert len(registry) == 7_783
     assert registry.field_by_counter(65_037).name == "metadata"
     assert registry.msgtype("D").name == "newordersingle"
     # The vocabularies are held beside them, one per name, and a field reaches
@@ -440,8 +444,8 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     // 51 scalar fields, including `strikepx`, `msgpluginside` and the `srcuuids` serie, plus one Map group. A
     // Node registry sizes and iterates every field, the components and the
     // groups among them.
-    assert.equal(fix.crateFields().length, 52)
-    assert.equal(registry.size, 7782)
+    assert.equal(fix.crateFields().length, 53)
+    assert.equal(registry.size, 7783)
     assert.equal([...registry].length, registry.size)
     assert.equal(registry.fieldByCounter(65037).name, 'metadata')
     assert.equal(registry.msgtype('D').name, 'newordersingle')
@@ -496,9 +500,9 @@ python scripts/generate_fix_dictionary.py --check
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --test fix store
-    cargo test --features internals -p yggdryl --test fix -- mod_::internal::shard_arithmetic
-    cargo test -p yggdryl --test iobase_calls fix_catalog_storage_resolves_each_root_path_once
+    cargo test -p yggdryl-fix --test root store
+    cargo test --features internals -p yggdryl-fix --test root -- lib::internal::shard_arithmetic
+    cargo test -p yggdryl-fix --test iobase_calls fix_catalog_storage_resolves_each_root_path_once
     ```
 
 === "Python"
@@ -548,7 +552,7 @@ Root navigation is asserted with `Counted`: loading resolves `codesets/`, `sourc
 Regenerate with release bindings installed:
 
 ```bash
-cargo bench -p yggdryl --bench fix -- fix/store
+cargo bench -p yggdryl-fix --bench fix -- fix/store
 python python/benchmarks/fix.py --iterations 2000
 ```
 

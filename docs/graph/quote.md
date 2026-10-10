@@ -21,8 +21,11 @@ A two-sided Apple quote resting on both sides of a book, then a one-sided offer.
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, BookRef, Element, Event, Market, MarketData, MdUpdateAction, QuoteEvent};
-    use yggdryl::{Decimal, Side};
+    use yggdryl_market::graph::{BookEvent, BookRef, Market, MarketData, MdUpdateAction, QuoteEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl::Decimal;
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
 
@@ -31,6 +34,7 @@ A two-sided Apple quote resting on both sides of a book, then a one-sided offer.
     let mut quote = QuoteEvent::at(T);
     quote.set_crosscode("Q-7".to_owned());
     quote.set_ticker(Some("AAPL".into()), true);
+    quote.set_instcode(Some("AAPL".into()), true);
     quote.set_bidpx(Some("189.48".parse()?), true);
     quote.set_bidqty(Some(Decimal::from_int(300)), true);
     quote.set_askpx(Some("189.52".parse()?), true);
@@ -45,6 +49,7 @@ A two-sided Apple quote resting on both sides of a book, then a one-sided offer.
     let mut entry = QuoteEvent::at(T);
     entry.set_crosscode("MD-1".to_owned());
     entry.set_ticker(Some("AAPL".into()), true);
+    entry.set_instcode(Some("AAPL".into()), true);
     entry.set_side(Side::Sell, true);
     entry.set_price(Some("189.53".parse()?), true);
     entry.set_quantity(Some(Decimal::from_int(50)), true);
@@ -59,7 +64,7 @@ A two-sided Apple quote resting on both sides of a book, then a one-sided offer.
     assert_eq!((entry.get_askpx(), entry.get_bidpx()), (Some("189.53".parse()?), None));
 
     // The two-sided quote rests on both sides, one entry; the offer on the ask.
-    let mut book = BookEvent::new(T, "AAPL");
+    let mut book = BookEvent::keyed(T, "AAPL");
     book.add_operations([MarketData::from(quote), MarketData::from(entry)])?;
     assert_eq!(book.alive().count(), 2, "each entry once");
     assert_eq!((book.alive_on(Side::Buy).len(), book.alive_on(Side::Sell).len()), (1, 2));
@@ -82,7 +87,7 @@ A two-sided Apple quote resting on both sides of a book, then a one-sided offer.
     quote = graph.QuoteEvent(
         T,
         crosscode="Q-7",
-        ticker="AAPL",
+        ticker="AAPL", instcode="AAPL",
         bidpx=Decimal("189.48"),
         bidqty=300,
         askpx=Decimal("189.52"),
@@ -97,7 +102,7 @@ A two-sided Apple quote resting on both sides of a book, then a one-sided offer.
         T,
         book=graph.BookRef(action="0", scope="AAPL.XNAS", position=1),
         crosscode="MD-1",
-        ticker="AAPL",
+        ticker="AAPL", instcode="AAPL",
         side="SELL",
         price=Decimal("189.53"),
         quantity=50,
@@ -126,7 +131,7 @@ A two-sided Apple quote resting on both sides of a book, then a one-sided offer.
     // Two legs and no tag: the bid and the ask are the quote's own facts,
     // and it holds both sides.
     const quote = new graph.QuoteEvent(T, {
-      crosscode: 'Q-7', ticker: 'AAPL', bidpx: '189.48', bidqty: 300, askpx: '189.52', askqty: 100,
+      crosscode: 'Q-7', ticker: 'AAPL', instcode: 'AAPL', bidpx: '189.48', bidqty: 300, askpx: '189.52', askqty: 100,
     })
     assert.equal(quote.side, 'BOTH')
     assert.equal(quote.price, null)
@@ -137,7 +142,7 @@ A two-sided Apple quote resting on both sides of a book, then a one-sided offer.
     const entry = new graph.QuoteEvent(T, {
       book: new graph.BookRef({ action: '0', scope: 'AAPL.XNAS', position: 1 }),
       crosscode: 'MD-1',
-      ticker: 'AAPL',
+      ticker: 'AAPL', instcode: 'AAPL',
       side: 'SELL',
       price: '189.53',
       quantity: 50,

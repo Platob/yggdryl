@@ -1,0 +1,1680 @@
+//! The `FIX:` vocabulary, on the field views that carry it.
+//!
+//! [`FixField`] and [`FixFieldMut`] are minted here by the core's protocol
+//! view builder under [`Scheme::FIX`], so the views and their keys belong to
+//! the FIX code alone: a caller borrows one with `FixField::new(&field)` or
+//! `FixFieldMut::new(&mut field)`.
+//!
+//! One type reads each property and one type writes it, and both reach the
+//! metadata only through the view's own `get`, `insert` and `remove`, so
+//! [`Field`](yggdryl::Field)'s cache-aware mutation and metadata validation
+//! apply to every write. The property names are private to this module: a
+//! caller writes `set_tag(35)`, never `"FIX:tag"`.
+
+use std::iter::FusedIterator;
+use std::str::Split;
+
+use smol_str::{SmolStr, format_smolstr};
+
+use super::FixId;
+use super::directions::{FixDirection, FixDirections};
+use super::document::{Cursor, Numbers, Words, Writer, is_word, repeated_number, repeated_word};
+use super::idmap::{FixIdSource, FixIdSources};
+use yggdryl::implementer::folds_equal;
+use yggdryl::{DataType, Error, Result, Scheme};
+
+/// The sources that contributed this field, a JSON array of ids folded and
+/// sorted, each the id of an entry of the registry's sources catalog; absent
+/// for a field the specification alone defines.
+const SOURCES: &str = "sources";
+/// The membership key this release retired: a dictionary written under it
+/// is refused by name where a definition enters a registry, never loaded
+/// with its membership silently gone.
+const BRANCHES: &str = "branches";
+/// The full key the sources are stored under, which the id grammar in
+/// [`super::source`] names in its refusal.
+pub(super) const SOURCES_KEY: &str = "FIX:sources";
+/// The canonical tag.
+const TAG: &str = "tag";
+/// The key on a message child that is an alias spelling which did not fill
+/// its field - the canonical name or an earlier alias arrived too - naming
+/// that field: the child stays its own, re-emits as it arrived, and the tag
+/// resolution leaves it where it stands.
+pub(super) const ALIAS_OF: &str = "FIX:alias";
+/// The full key the canonical tag is stored under.
+pub(super) const TAG_KEY: &str = "FIX:tag";
+/// The alternate tags, a JSON array of tags, highest priority first.
+const TAGS: &str = "tags";
+/// The alternate names, a JSON array of words, highest priority first.
+const NAMES: &str = "names";
+/// The direct scalar members identifying one component, in member order.
+const IDENTIFIERS: &str = "identifiers";
+/// The spellings that mean "nothing was sent" for this field.
+const NULLS: &str = "nulls";
+/// The specification's own wording.
+/// What a field is for is not FIX's to own.
+///
+/// A description is a property of the *field*, not of the protocol quoting
+/// it: the same sentence is what an Iceberg doc, a SQL column comment and a
+/// FIX definition each publish. It is therefore read and written on the
+/// generic key every catalog already reads, rather than under `FIX:` where
+/// only a FIX reader would find it.
+/// The name of the FIX code set this field's values are drawn from; the
+/// dictionary holds its members.
+const CODESET: &str = "codeset";
+/// The FIX datatype the field was declared under, as the specification
+/// spells it - `TZTimeOnly`, `UTCTimestamp`, `Qty` - which the crate
+/// datatype does not recover.
+const DATATYPE: &str = "datatype";
+/// The rules naming a code of this field's set from the prose in front of a
+/// payload; tag 385's.
+const DIRECTIONS: &str = "directions";
+/// The identifier-map keys this field's value states.
+const IDMAP: &str = "idmap";
+/// The identifier types holding the parents of the identifier this field
+/// states, nearest first.
+const PARENTS: &str = "parents";
+/// The market data types a field's values type an element as.
+const MARKETDATATYPE: &str = "marketdatatype";
+const TIMEINFORCE: &str = "timeinforce";
+const COUNTER: &str = "counter";
+/// Whether this field travels from one message of a chain to the next.
+const TRANSIENT: &str = "transient";
+const DEPRECATED: &str = "deprecated";
+const COMPONENT: &str = "component";
+const FIELD_REF: &str = "field";
+const GROUP: &str = "group";
+const MSGTYPE: &str = "msgtype";
+const MSGCAT: &str = "msgcat";
+/// Whether a `FIX:msgcat` names a category: a member of the one owner of
+/// the set, [`yggdryl_market::MarketDataKind`].
+pub(super) fn is_msgcat(value: &str) -> bool {
+    yggdryl_market::MarketDataKind::from_name(value).is_some()
+}
+/// What separates the elements of a comma-separated property: the
+/// identifiers and the null spellings, whose elements can hold no comma. The
+/// names, the sources and the tags are JSON arrays instead.
+pub(super) const SEPARATOR: char = ',';
+
+/// What a tag is, spelled once for every refusal.
+const TAG_SHAPE: &str = "a FIX tag, a decimal integer from 1 to 2147483647";
+
+yggdryl::implementer::protocol_field_types!(
+    pub,
+    Scheme::FIX,
+    FixField,
+    FixFieldMut,
+    "Financial Information eXchange"
+);
+
+/// Parse one positive tag strictly: decimal digits only, never signed.
+///
+/// `i32::from_str` would also accept `+35`, which the writer never emits, so
+/// the digits are checked first and the width second.
+pub(super) fn parse_tag(text: &str) -> Option<i32> {
+    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    text.parse().ok().filter(|tag| *tag > 0)
+}
+
+impl<'field> FixField<'field> {
+    /// The component referenced by a catalog occurrence.
+    pub fn component(&self) -> Option<&'field str> {
+        self.get(COMPONENT)
+    }
+
+    /// The scalar field referenced by a catalog occurrence.
+    pub fn field_ref(&self) -> Option<&'field str> {
+        self.get(FIELD_REF)
+    }
+
+    /// The version at which the specification deprecated this field, where
+    /// it did: the dictionary keeps the field so an old message still
+    /// resolves, and a reader restates it under what replaced it - the
+    /// crate's own retirement table, never a rule on the field - and keeps
+    /// no value of its own for it.
+    pub fn deprecated(&self) -> Option<&'field str> {
+        self.get(DEPRECATED)
+    }
+
+    /// The repeating group referenced by a catalog occurrence.
+    pub fn group(&self) -> Option<&'field str> {
+        self.get(GROUP)
+    }
+
+    /// The wire message type declared by a message definition.
+    pub fn msgtype(&self) -> Option<&'field str> {
+        self.get(MSGTYPE)
+    }
+
+    /// The symbolic business-category name declared by a message definition.
+    pub fn msgcat(&self) -> Option<&'field str> {
+        self.get(MSGCAT)
+    }
+
+    /// The positive tag of a group's count field or intrinsic Map counter.
+    pub fn counter(&self) -> Result<Option<i32>> {
+        self.get(COUNTER)
+            .map(|stored| parse_tag(stored).ok_or_else(|| self.invalid(COUNTER, TAG_SHAPE, stored)))
+            .transpose()
+    }
+
+    /// Whether this field's value carries from one message of a chain to the
+    /// next, `true` where the field says nothing.
+    ///
+    /// A chain is one instrument's run of messages, and most of what a
+    /// message says about the instrument is still true of the next one: the
+    /// classification, the ISIN, the market, the currency. A field that is
+    /// *transient* in this sense is carried forward, so a venue that states
+    /// `CFICode` once and then sends twenty updates that do not repeat it
+    /// still has twenty rows that know what the instrument is.
+    ///
+    /// The default is `true`, and it is the safe one: carrying a fact that
+    /// is still true costs a column fill, while failing to carry one loses
+    /// what the capture knew. A field that is genuinely about the single
+    /// message rather than the instrument - a sequence number, a clock, an
+    /// identity - says `false` and is left where it was stated.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the full `FIX:transient` key when the stored
+    /// text is no boolean the crate reads: `true`/`false`, `yes`/`no`,
+    /// `y`/`n`, `on`/`off` or `1`/`0`.
+    pub fn is_transient(&self) -> Result<bool> {
+        match self.get(TRANSIENT) {
+            None => Ok(true),
+            Some(stored) => yggdryl::implementer::bool_from_text(stored).ok_or_else(|| {
+                self.invalid(TRANSIENT, yggdryl::implementer::BOOLEAN_SPELLINGS, stored)
+            }),
+        }
+    }
+
+    /// Iterates the sources that contributed this field, folded and sorted.
+    ///
+    /// Membership is provenance: a source folded into a registry names
+    /// itself on every field it touched, and a caller filters on it. It is
+    /// never consulted to resolve a tag or a name. Each id names an entry of
+    /// the registry's [sources catalog](crate::FixRegistry::sources), which
+    /// is where the file behind it is recorded once rather than on every
+    /// field. The iterator is lazy and allocates nothing: every id is a
+    /// slice of the stored array, which the field already owns. An absent
+    /// property - every field the specification alone defines - yields
+    /// nothing, and so does a stored text that is not the JSON array of ids
+    /// [`FixFieldMut::set_sources`] writes: the typed refusal belongs to the
+    /// write, and a read stays cheap.
+    pub fn sources(&self) -> Words<'field> {
+        Words::over(self.get(SOURCES).and_then(word_list).unwrap_or_default())
+    }
+
+    /// Whether `source` is one of the sources that contributed this field,
+    /// under the crate's one fold - the fold the list is deduplicated by, so
+    /// a spelling that would have folded into a listed id is a member.
+    pub fn has_source(&self, source: &str) -> bool {
+        self.sources().any(|held| folds_equal(held, source))
+    }
+
+    /// Holds the stored sources to what [`FixFieldMut::set_sources`] writes,
+    /// as [`Self::validate_names`] holds the names: the infallible read
+    /// above answers nothing for a text it cannot walk, and a dictionary
+    /// must not hold one. The setter writes the ids folded to ASCII
+    /// lowercase, each once under the crate's fold, sorted; a text that
+    /// states them otherwise (a hand edit, a document another writer wrote)
+    /// would list one id twice in [`FixRegistry::dialects`](crate::FixRegistry::dialects)
+    /// and hash apart from the registry the setter builds, so every door a
+    /// definition enters a registry through refuses it here. The retired
+    /// `FIX:branches` key is refused by name for the same reason: a
+    /// dictionary built under it is rebuilt from its sources, never loaded
+    /// with its membership silently gone.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the full `FIX:sources` key when the stored
+    /// text is not the compact JSON array of ids the setter writes, holds an
+    /// id that is not ASCII lowercase, names one twice under the fold or
+    /// lists them out of order, and one naming `FIX:branches` when the
+    /// field states that key.
+    pub(super) fn validate_sources(&self) -> Result<()> {
+        if let Some(stored) = self.get(BRANCHES) {
+            return Err(self.invalid(
+                BRANCHES,
+                "no `FIX:branches`, the retired membership key - membership is `FIX:sources` backed by `sources.json`, so rebuild the dictionary from its sources",
+                stored,
+            ));
+        }
+        let Some(stored) = self.get(SOURCES) else {
+            return Ok(());
+        };
+        let body = word_list(stored)
+            .ok_or_else(|| self.invalid(SOURCES, "a JSON array of source ids", stored))?;
+        let mut seen: Vec<&str> = Vec::new();
+        for id in Words::over(body) {
+            if id.bytes().any(|byte| byte.is_ascii_uppercase()) {
+                return Err(self.invalid(SOURCES, "each source id ASCII lowercase", stored));
+            }
+            if seen.iter().any(|held| folds_equal(held, id)) {
+                return Err(self.invalid(SOURCES, "each source once", stored));
+            }
+            if seen.last().is_some_and(|held| *held > id) {
+                return Err(self.invalid(SOURCES, "the source ids sorted", stored));
+            }
+            seen.push(id);
+        }
+        Ok(())
+    }
+
+    /// Builds this field's identity, absent exactly when `FIX:tag` is.
+    ///
+    /// Derived from the canonical tag and the field's own name on every ask;
+    /// nothing stores it, so a rename is never stale.
+    ///
+    /// # Errors
+    ///
+    /// Returns the failure [`Self::tag`] raises, or [`FixId::of`]'s refusal.
+    pub fn id(&self) -> Result<Option<FixId>> {
+        let Some(tag) = self.tag()? else {
+            return Ok(None);
+        };
+        FixId::of(tag, self.as_field().name()).map(Some)
+    }
+
+    /// Parses the canonical FIX tag.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the full `FIX:tag` key when the stored text is
+    /// not a tag: [`FixFieldMut::set_tag`] never writes one, so this can only
+    /// come from externally edited state.
+    pub fn tag(&self) -> Result<Option<i32>> {
+        self.get(TAG)
+            .map(|stored| parse_tag(stored).ok_or_else(|| self.invalid(TAG, TAG_SHAPE, stored)))
+            .transpose()
+    }
+
+    /// Parses the alternate tags, highest priority first.
+    ///
+    /// An absent property is an empty list: a field states alternate tags
+    /// only when it has them.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the full `FIX:tags` key when the stored text
+    /// is not the compact JSON array of tags [`FixFieldMut::set_tags`]
+    /// writes, holds a tag that is not positive, or names one twice.
+    pub fn tags(&self) -> Result<Vec<i32>> {
+        let Some(stored) = self.get(TAGS) else {
+            return Ok(Vec::new());
+        };
+        let mut cursor = Cursor::new(stored);
+        let body = cursor
+            .read_numbers(TAGS)
+            .ok()
+            .filter(|_| cursor.is_done())
+            .ok_or_else(|| self.invalid(TAGS, "a JSON array of FIX tags", stored))?;
+        if Numbers::over(body).any(|tag| tag <= 0) {
+            return Err(self.invalid(TAGS, TAG_SHAPE, stored));
+        }
+        if repeated_number(Numbers::over(body)).is_some() {
+            return Err(self.invalid(TAGS, "each tag once", stored));
+        }
+        Ok(Numbers::over(body).collect())
+    }
+
+    /// Iterates the alternate names, highest priority first.
+    ///
+    /// The iterator is lazy and allocates nothing: every name is a slice of
+    /// the stored array, which the field already owns, so reading them costs
+    /// the same whether one is taken or all are. An absent property yields
+    /// nothing, and so does a stored text that is not the JSON array of
+    /// words [`FixFieldMut::set_names`] writes: the typed refusal belongs to
+    /// the write, and a read stays cheap.
+    pub fn names(&self) -> Words<'field> {
+        Words::over(self.get(NAMES).and_then(word_list).unwrap_or_default())
+    }
+
+    /// Holds the stored alternate names to what [`FixFieldMut::set_names`]
+    /// writes, which is what a registry asks before it takes a field: the
+    /// infallible read above answers nothing for a text it cannot walk, and
+    /// a dictionary must not hold one.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the full `FIX:names` key when the stored text
+    /// is not the compact JSON array of words the setter writes, or names one
+    /// twice with ASCII case folded.
+    pub(super) fn validate_names(&self) -> Result<()> {
+        let Some(stored) = self.get(NAMES) else {
+            return Ok(());
+        };
+        let body = word_list(stored)
+            .ok_or_else(|| self.invalid(NAMES, "a JSON array of names", stored))?;
+        if repeated_word(Words::over(body)).is_some() {
+            return Err(self.invalid(NAMES, "each name once", stored));
+        }
+        Ok(())
+    }
+
+    /// Borrows the canonical identifier member names, in component order.
+    /// An absent declaration yields nothing; the iterator allocates nothing.
+    pub fn identifiers(&self) -> FixSpellings<'field> {
+        FixSpellings::over(self.get(IDENTIFIERS))
+    }
+
+    /// Resolves intake spellings once against this component's own children.
+    pub(super) fn identifier_positions<I, S>(&self, spellings: I) -> Result<Vec<usize>>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut positions = Vec::new();
+        for (offset, spelling) in spellings.into_iter().enumerate() {
+            let spelling = spelling.as_ref();
+            let refused = |expected: &str| {
+                self.invalid(
+                    IDENTIFIERS,
+                    &format!(
+                        "{expected} at {}.fix:identifiers[{offset}]",
+                        self.as_field().name()
+                    ),
+                    spelling,
+                )
+            };
+            if spelling.is_empty() || spelling.contains(SEPARATOR) {
+                return Err(refused("a nonempty member spelling without a comma"));
+            }
+            if !matches!(self.as_field().dtype(), DataType::Struct(_)) {
+                return Err(refused(
+                    "a Struct component declaring its own scalar members",
+                ));
+            }
+            let tag = parse_tag(spelling);
+            let mut reached = None;
+            for (position, child) in self.as_field().fields().iter().enumerate() {
+                let view = FixField::new(child);
+                let named = folds_equal(child.name(), spelling)
+                    || view.names().any(|name| folds_equal(name, spelling));
+                let tagged = match tag {
+                    Some(tag) => view.tag()? == Some(tag) || view.tags()?.contains(&tag),
+                    None => false,
+                };
+                if !named && !tagged {
+                    continue;
+                }
+                if reached.replace(position).is_some() {
+                    return Err(refused("one unambiguous direct scalar member"));
+                }
+                if child.dtype().is_nested() {
+                    return Err(refused("a direct scalar member, not a nested member"));
+                }
+                if child.name().is_empty() || child.name().contains(SEPARATOR) {
+                    return Err(refused(
+                        "a canonical member name without an empty element or comma",
+                    ));
+                }
+            }
+            let position = reached.ok_or_else(|| refused("an existing direct scalar member"))?;
+            if positions.contains(&position) {
+                return Err(refused("each identifier member exactly once"));
+            }
+            positions.push(position);
+        }
+        positions.sort_unstable();
+        Ok(positions)
+    }
+
+    pub(super) fn compiled_identifier_positions(&self) -> Result<Vec<usize>> {
+        self.identifier_positions(
+            self.get(IDENTIFIERS)
+                .into_iter()
+                .flat_map(|text| text.split(SEPARATOR)),
+        )
+    }
+
+    /// Iterates the spellings that mean "nothing was sent" for this field.
+    ///
+    /// A venue writes an absence in its own vocabulary - `N/A` on a price,
+    /// `0` on an identifier, `NONE` on a party - and which spelling means it
+    /// is a fact about the field rather than about the capture. A value the
+    /// list names types as null in the row while the entry keeps it exactly
+    /// as it arrived, because the row is the interpretation and the entries
+    /// are what the wire carried.
+    ///
+    /// This is the narrow half of the pair.
+    /// [`FixCodec::with_null_values`](crate::FixCodec::with_null_values) is
+    /// the capture's own convention and is applied to every key before one is
+    /// resolved at all; this is applied once the field is known. The iterator
+    /// is lazy and allocates nothing, and an absent property yields nothing.
+    pub fn nulls(&self) -> FixSpellings<'field> {
+        FixSpellings::over(self.get(NULLS))
+    }
+
+    /// Whether `value` is a spelling this field states as an absence.
+    ///
+    /// Compared ASCII case-insensitively against the trimmed text, exactly as
+    /// the capture-wide list compares: a venue writing `n/a` and `N/A` in one
+    /// file means the same absence twice.
+    pub fn is_null_value(&self, value: &str) -> bool {
+        spells_absence(self.nulls(), value)
+    }
+
+    /// Returns the specification's own wording for this field.
+    ///
+    /// Read from the generic `description` key rather than from `FIX:`,
+    /// because what a field is for belongs to the field. See
+    /// [`Field::description`](yggdryl::Field::description).
+    pub fn description(&self) -> Option<&'field str> {
+        self.as_field().description()
+    }
+
+    /// Returns the name of the FIX code set this field's values are drawn
+    /// from.
+    ///
+    /// A field states which vocabulary it reads by, never a copy of its
+    /// members: the [dictionary](super::FixRegistry) holds each set once
+    /// under this name, and
+    /// [`FixRegistry::codeset_of`](super::FixRegistry::codeset_of) is what
+    /// answers the members. A field drawing on no set answers nothing.
+    pub fn codeset(&self) -> Option<&'field str> {
+        self.get(CODESET)
+    }
+
+    /// Returns the FIX datatype this field was declared under, as the
+    /// specification spells it: `UTCTimestamp`, `TZTimeOnly`, `Qty`,
+    /// `MonthYear`; a field typed by a code set states the set's base type.
+    ///
+    /// The one fact the crate datatype does not recover: `UTCTimestamp`,
+    /// `TZTimestamp`, `UTCDateOnly` and `TZTimeOnly` are one
+    /// `datetime64(ns,"UTC")`, and only the last is a clock with no date,
+    /// which the FIX codec reads through
+    /// [`DateTime64::from_fix_clock`](yggdryl::DateTime64) rather than
+    /// through the datetime's own FIX door. The generator writes it on every
+    /// field; a field stating none reads as its crate datatype's reader
+    /// reads it.
+    pub fn datatype(&self) -> Option<&'field str> {
+        self.get(DATATYPE)
+    }
+
+    /// The shape the declared FIX datatype gives this field's wire text,
+    /// beyond what its crate datatype says - read off the metadata here,
+    /// once per field, and cached by the codec's memo so a value branches
+    /// on the enum and never on the metadata.
+    pub(super) fn shape(&self) -> FixShape {
+        FixShape::of(self.datatype())
+    }
+
+    /// Walks the rules naming a code of this field's set from the prose in
+    /// front of a payload, in document order.
+    ///
+    /// Tag 385's field carries them; the reading
+    /// [`FixRegistry::msgdirection`](crate::FixRegistry::msgdirection)
+    /// compiles them once and answers the defaults where the property is
+    /// absent. The iterator is lazy and allocates nothing: every spelling is
+    /// a slice of the stored document, which the field already owns. An
+    /// absent property yields nothing.
+    ///
+    /// ```
+    /// use yggdryl_fix::FixDirection;
+    /// use yggdryl::DataType;
+    /// use yggdryl_fix::{FixField, FixFieldMut};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// #     yggdryl_fix::install().unwrap();
+    /// let mut direction = DataType::utf8().nullable_field("msgdirection");
+    /// FixFieldMut::new(&mut direction).set_tag(385)?;
+    /// FixFieldMut::new(&mut direction).set_directions(&[
+    ///     FixDirection::new("S", ["^TX "]),
+    ///     FixDirection::new("R", ["^RX "]),
+    /// ])?;
+    ///
+    /// let entry = FixField::new(&direction).directions().next().expect("one rule")?;
+    /// assert_eq!(entry.code(), "S");
+    /// assert_eq!(entry.parse_patterns()?, ["^TX "]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn directions(&self) -> FixDirections<'field> {
+        FixDirections::over(self.get(DIRECTIONS))
+    }
+
+    /// Walks the identifier-map keys this field's value states, in document
+    /// order: each the map it lands in, the key it lands under, whether a
+    /// following operation carries it, and - on `PartyID(448)` - the
+    /// `PartyRole(452)` of the occurrence stating it. The registry compiles
+    /// every field's once into [`FixRegistry::idmap_sources`](crate::FixRegistry::idmap_sources).
+    /// An absent property yields nothing.
+    ///
+    /// ```
+    /// use yggdryl_fix::{FixIdMapKind, FixIdSource};
+    /// use yggdryl::DataType;
+    /// use yggdryl_fix::{FixField, FixFieldMut};
+    /// use yggdryl_market::IdType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// #     yggdryl_fix::install().unwrap();
+    /// let mut order = DataType::utf8().nullable_field("orderid");
+    /// FixFieldMut::new(&mut order).set_tag(37)?;
+    /// let source = FixIdSource::new(FixIdMapKind::Identifiers, IdType::OrderId).with_follow(true);
+    /// FixFieldMut::new(&mut order).set_idmap(&[source.clone()])?;
+    /// assert_eq!(
+    ///     order.get_metadata("FIX:idmap"),
+    ///     Some(r#"[{"map":"identifiers","key":"orderid","follow":true}]"#)
+    /// );
+    /// assert_eq!(FixField::new(&order).idmap().collect::<yggdryl::Result<Vec<_>>>()?, [source]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn idmap(&self) -> FixIdSources<'field> {
+        FixIdSources::over(self.get(IDMAP))
+    }
+
+    /// The identifier types holding the parents of the identifier this
+    /// field states, nearest first, as its `FIX:parents` states them:
+    /// `ClOrdID(11)`'s is `origclordid` alone, FIX's `OrigClOrdID(41)`. A
+    /// field stating none has the parents its identifier type has by name
+    /// ([`IdType::parents`](yggdryl_market::IdType::parents)), and a registry answers
+    /// either ([`FixRegistry::parents_of`](super::FixRegistry::parents_of)).
+    ///
+    /// The iterator borrows the stored array and allocates nothing; a stored
+    /// text that is not the JSON array of words
+    /// [`FixFieldMut::set_parents`] writes yields nothing, the refusal
+    /// belonging to the write.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    /// use yggdryl_fix::{FixField, FixFieldMut};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// #     yggdryl_fix::install().unwrap();
+    /// let mut orderid = DataType::utf8().nullable_field("orderid");
+    /// FixFieldMut::new(&mut orderid).set_tag(37)?;
+    /// FixFieldMut::new(&mut orderid).set_parents(["ParentOrderID", "origorderid"])?;
+    /// assert_eq!(orderid.get_metadata("FIX:parents"), Some(r#"["parentorderid","origorderid"]"#));
+    /// assert_eq!(FixField::new(&orderid).parents().collect::<Vec<_>>(), ["parentorderid", "origorderid"]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn parents(&self) -> Words<'field> {
+        Words::over(self.get(PARENTS).and_then(word_list).unwrap_or_default())
+    }
+
+    /// Holds the stored parents to what [`FixFieldMut::set_parents`]
+    /// writes, which is what a registry asks before it takes a field.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the full `FIX:parents` key when the stored
+    /// text is not the compact JSON array of identifier types the setter
+    /// writes - each folded, each once.
+    pub(super) fn validate_parents(&self) -> Result<()> {
+        let Some(stored) = self.get(PARENTS) else {
+            return Ok(());
+        };
+        let body = word_list(stored)
+            .ok_or_else(|| self.invalid(PARENTS, "a JSON array of identifier types", stored))?;
+        let folded = Words::over(body).all(|word| {
+            word.parse::<yggdryl_market::IdType>()
+                .is_ok_and(|kind| kind.as_str() == word)
+        });
+        if !folded || repeated_word(Words::over(body)).is_some() {
+            return Err(self.invalid(PARENTS, "each identifier type once, folded", stored));
+        }
+        Ok(())
+    }
+
+    /// The market data types this field's values type an element as, as its
+    /// `FIX:marketdatatype` states them: each `value=MEMBER` word a wire
+    /// value and the [`MarketDataType`](yggdryl_market::MarketDataType) member it
+    /// reads as. A word that names no member is passed over.
+    ///
+    /// A registry reads these before the crate's own table
+    /// ([`FixRegistry::marketdatatype_of`](crate::FixRegistry::marketdatatype_of)),
+    /// so a venue's own order type - or any field of its own - types an
+    /// element as the member it chooses.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    /// use yggdryl_fix::{FixField, FixFieldMut};
+    /// use yggdryl_market::MarketDataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// #     yggdryl_fix::install().unwrap();
+    /// let mut ordtype = DataType::utf8().nullable_field("ordtype");
+    /// FixFieldMut::new(&mut ordtype).set_tag(40)?;
+    /// FixFieldMut::new(&mut ordtype)
+    ///     .set_marketdatatypes(&[("Z", MarketDataType::OrdPegged)])?;
+    /// assert_eq!(ordtype.get_metadata("FIX:marketdatatype"), Some(r#"["Z=ORDPEGGED"]"#));
+    /// assert_eq!(
+    ///     FixField::new(&ordtype).marketdatatypes().collect::<Vec<_>>(),
+    ///     [("Z", MarketDataType::OrdPegged)]
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn marketdatatypes(
+        &self,
+    ) -> impl Iterator<Item = (&'field str, yggdryl_market::MarketDataType)> + use<'field> {
+        self.members(MARKETDATATYPE)
+    }
+
+    /// The time in force each wire value of this field stands for, under
+    /// `FIX:timeinforce`: `value=MEMBER` words, each the value and the
+    /// [`TimeInForce`](yggdryl_market::TimeInForce) member it reads as. A word that
+    /// names no member is passed over.
+    ///
+    /// A registry reads these before the crate's own reading of
+    /// `TimeInForce(59)`
+    /// ([`FixRegistry::timeinforce_of`](crate::FixRegistry::timeinforce_of)),
+    /// so a venue's own value - or a field of its own - stands for the member
+    /// it chooses.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    /// use yggdryl_fix::{FixField, FixFieldMut};
+    /// use yggdryl_market::TimeInForce;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// #     yggdryl_fix::install().unwrap();
+    /// let mut tif = DataType::utf8().nullable_field("timeinforce");
+    /// FixFieldMut::new(&mut tif).set_tag(59)?;
+    /// FixFieldMut::new(&mut tif)
+    ///     .set_timeinforces(&[("G", TimeInForce::GoodTillCancel)])?;
+    /// assert_eq!(tif.get_metadata("FIX:timeinforce"), Some(r#"["G=GTC"]"#));
+    /// assert_eq!(
+    ///     FixField::new(&tif).timeinforces().collect::<Vec<_>>(),
+    ///     [("G", TimeInForce::GoodTillCancel)]
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn timeinforces(
+        &self,
+    ) -> impl Iterator<Item = (&'field str, yggdryl_market::TimeInForce)> + use<'field> {
+        self.members(TIMEINFORCE)
+    }
+
+    /// The `value=MEMBER` words one enum property states, each read under
+    /// the enum's own spellings; a word naming no member is passed over.
+    fn members<E: yggdryl::EnumValue>(
+        &self,
+        key: &str,
+    ) -> impl Iterator<Item = (&'field str, E)> + use<'field, E> {
+        Words::over(self.get(key).and_then(word_list).unwrap_or_default()).filter_map(|word| {
+            let (wire, member) = word.split_once('=')?;
+            Some((wire, E::read(member).ok()?))
+        })
+    }
+
+    /// Name the full key a stored value failed under, and what it should be.
+    fn invalid(&self, name: &str, expected: &str, actual: &str) -> Error {
+        Error::InvalidMetadataValue {
+            key: SmolStr::new(self.key(name)),
+            reason: format_smolstr!("expected {expected}, got {actual:?}"),
+        }
+    }
+}
+
+impl FixFieldMut<'_> {
+    /// References one component by its catalog name.
+    pub fn set_component(&mut self, name: &str) -> Result<()> {
+        self.set_reference(COMPONENT, name)
+    }
+
+    /// References one scalar field by its catalog name.
+    pub fn set_field_ref(&mut self, name: &str) -> Result<()> {
+        self.set_reference(FIELD_REF, name)
+    }
+
+    /// Records the version at which the specification deprecated this
+    /// field; `None` states it is current.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidMetadataValue`] for an empty version.
+    pub fn set_deprecated(&mut self, version: Option<&str>) -> Result<()> {
+        match version {
+            None => {
+                self.remove(DEPRECATED);
+                Ok(())
+            }
+            Some(version) if version.trim().is_empty() => Err(Error::InvalidMetadataValue {
+                key: DEPRECATED.into(),
+                reason: "expected a version, got an empty text".into(),
+            }),
+            Some(version) => self.store(DEPRECATED, version.trim().to_owned()),
+        }
+    }
+
+    /// References one repeating group by its catalog name.
+    pub fn set_group(&mut self, name: &str) -> Result<()> {
+        self.set_reference(GROUP, name)
+    }
+
+    /// Declares the exact wire value of a message type.
+    pub fn set_msgtype(&mut self, value: &str) -> Result<()> {
+        super::msgtype::validate_code(value)?;
+        self.store(MSGTYPE, value.to_owned())
+    }
+
+    /// Declares one fixed FIX message category.
+    pub fn set_msgcat(&mut self, value: &str) -> Result<()> {
+        if !is_msgcat(value) {
+            return Err(self.rejected(
+                MSGCAT,
+                format_smolstr!("expected one fixed FIX message category, got {value:?}"),
+            ));
+        }
+        self.store(MSGCAT, value.to_owned())
+    }
+
+    /// Declares the positive tag of the group's count field or Map counter.
+    pub fn set_counter(&mut self, tag: i32) -> Result<()> {
+        if tag <= 0 {
+            return Err(self.rejected(COUNTER, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
+        }
+        self.store(COUNTER, tag.to_string())
+    }
+
+    /// Says whether this field carries from one message of a chain to the
+    /// next.
+    ///
+    /// `true` is the default, so setting it stores nothing and clears any
+    /// stored `false`: a property every field would carry identically is not
+    /// a property worth writing on every field.
+    ///
+    /// # Errors
+    ///
+    /// Returns the metadata layer's refusal when the write does not land.
+    pub fn set_transient(&mut self, transient: bool) -> Result<()> {
+        if transient {
+            self.remove(TRANSIENT);
+            return Ok(());
+        }
+        self.store(TRANSIENT, "false".to_owned())
+    }
+
+    /// Removes the component reference.
+    pub fn remove_component(&mut self) -> Option<String> {
+        self.remove(COMPONENT)
+    }
+
+    /// Removes the scalar field reference.
+    pub fn remove_field_ref(&mut self) -> Option<String> {
+        self.remove(FIELD_REF)
+    }
+
+    /// Removes the repeating group reference.
+    pub fn remove_group(&mut self) -> Option<String> {
+        self.remove(GROUP)
+    }
+
+    /// Removes the declared message type.
+    pub fn remove_msgtype(&mut self) -> Option<String> {
+        self.remove(MSGTYPE)
+    }
+
+    /// Removes the declared message category.
+    pub fn remove_msgcat(&mut self) -> Option<String> {
+        self.remove(MSGCAT)
+    }
+
+    /// Removes the counter reference after validating it.
+    pub fn remove_counter(&mut self) -> Result<Option<i32>> {
+        let tag = self.as_protocol().counter()?;
+        self.remove(COUNTER);
+        Ok(tag)
+    }
+
+    fn set_reference(&mut self, key: &str, name: &str) -> Result<()> {
+        if !super::catalog::is_catalog_name(name) {
+            return Err(self.rejected(key, format_smolstr!("expected a nonempty catalog name of ASCII letters, digits, underscore, hyphen or dot, got {name:?}")));
+        }
+        self.store(key, name.to_ascii_lowercase())
+    }
+
+    /// Records the sources that contributed this field.
+    ///
+    /// Each id is held to the id grammar - a non-empty word holding no
+    /// quote, backslash or control character - folded to ASCII lowercase
+    /// once, deduplicated under the crate fold, and the list is stored
+    /// sorted, so two registries built from the same sources in any order
+    /// hash alike. Empty input removes the property, so a field the
+    /// specification alone defines states nothing. The ids are the field's
+    /// statement alone: the catalog entry each one names is the registry's
+    /// to hold ([`FixRegistry::add_source`](crate::FixRegistry::add_source)).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the full `FIX:sources` key when an id is
+    /// empty or holds a quote, a backslash or a control character, leaving
+    /// the field unchanged.
+    pub fn set_sources<I, S>(&mut self, sources: I) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut held: Vec<SmolStr> = Vec::new();
+        for source in sources {
+            let folded = super::source::source_id(source.as_ref())?;
+            if !held.iter().any(|known| folds_equal(known, &folded)) {
+                held.push(folded);
+            }
+        }
+        if held.is_empty() {
+            self.remove(SOURCES);
+            return Ok(());
+        }
+        held.sort_unstable();
+        self.store(
+            SOURCES,
+            Writer::list_of_words(held.iter().map(SmolStr::as_str))?,
+        )
+    }
+
+    /// Adds one source to those that contributed this field.
+    ///
+    /// Idempotent under the fold: a source already listed is listed once.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`set_sources`](Self::set_sources)'s refusal.
+    pub fn add_source(&mut self, source: &str) -> Result<()> {
+        if self.as_protocol().has_source(source) {
+            return Ok(());
+        }
+        let mut held: Vec<String> = self.as_protocol().sources().map(str::to_owned).collect();
+        held.push(source.to_owned());
+        self.set_sources(held)
+    }
+
+    /// Records the canonical FIX tag.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the tag is not positive, or when the property write
+    /// fails the validation every metadata write goes through. Either leaves
+    /// the field unchanged.
+    pub fn set_tag(&mut self, tag: i32) -> Result<()> {
+        if tag <= 0 {
+            return Err(self.rejected(TAG, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
+        }
+        self.store(TAG, tag.to_string())
+    }
+
+    /// Records the alternate tags in the given order, highest priority first.
+    ///
+    /// An empty slice removes the property.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a tag is not positive or repeated, leaving the field
+    /// unchanged.
+    pub fn set_tags(&mut self, tags: &[i32]) -> Result<()> {
+        if tags.is_empty() {
+            self.remove(TAGS);
+            return Ok(());
+        }
+        if let Some(tag) = tags.iter().find(|tag| **tag <= 0) {
+            return Err(self.rejected(TAGS, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
+        }
+        if let Some(tag) = repeated_number(tags.iter().copied()) {
+            return Err(self.rejected(
+                TAGS,
+                format_smolstr!("expected each tag once, got {tag} twice"),
+            ));
+        }
+        self.store(TAGS, Writer::list_of_numbers(tags.iter().copied()))
+    }
+
+    /// Records the alternate names in the given order, highest priority
+    /// first.
+    ///
+    /// Empty input removes the property.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a name is empty, holds a quote, a backslash or
+    /// a control character, or repeats an earlier one with ASCII case folded,
+    /// leaving the field unchanged.
+    pub fn set_names<I, S>(&mut self, names: I) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let held: Vec<S> = names.into_iter().collect();
+        if let Some(text) = held.iter().map(AsRef::as_ref).find(|text| !is_word(text)) {
+            return Err(self.rejected(
+                NAMES,
+                format_smolstr!(
+                    "expected a non-empty name without a quote, a backslash or a control character, got {text:?}"
+                ),
+            ));
+        }
+        if let Some(text) = repeated_word(held.iter().map(AsRef::as_ref)) {
+            return Err(self.rejected(
+                NAMES,
+                format_smolstr!("expected each name once, got {text:?} twice"),
+            ));
+        }
+        if held.is_empty() {
+            self.remove(NAMES);
+            return Ok(());
+        }
+        self.store(
+            NAMES,
+            Writer::list_of_words(held.iter().map(AsRef::as_ref))?,
+        )
+    }
+
+    /// Declares direct scalar identifiers by member name, alias or decimal tag.
+    ///
+    /// Names are stored canonically in component order. Empty input removes
+    /// the declaration. Refused, ambiguous, repeated or nested members leave
+    /// the field unchanged.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    /// use yggdryl_fix::{FixField, FixFieldMut};
+    /// use yggdryl::StructType;
+    /// # fn main() -> yggdryl::Result<()> {
+    /// #     yggdryl_fix::install().unwrap();
+    /// let mut order = DataType::utf8().nullable_field("clordid");
+    /// FixFieldMut::new(&mut order).set_tag(11)?;
+    /// let mut component = DataType::from(StructType::from_fields([order])?).required_field("order");
+    /// FixFieldMut::new(&mut component).set_identifiers(["11"])?;
+    /// assert_eq!(FixField::new(&component).identifiers().collect::<Vec<_>>(), ["clordid"]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn set_identifiers<I, S>(&mut self, identifiers: I) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let positions = self.as_protocol().identifier_positions(identifiers)?;
+        self.store_identifier_positions(positions)
+    }
+
+    /// Reorders a stored declaration at a schema mutation's intake, keeping
+    /// malformed empty elements visible to the same resolver as the setter.
+    pub(super) fn normalize_identifiers(&mut self) -> Result<()> {
+        let positions = self.as_protocol().compiled_identifier_positions()?;
+        self.store_identifier_positions(positions)
+    }
+
+    fn store_identifier_positions(&mut self, positions: Vec<usize>) -> Result<()> {
+        if positions.is_empty() {
+            self.remove(IDENTIFIERS);
+            return Ok(());
+        }
+        let mut rendered = String::new();
+        for position in positions {
+            if !rendered.is_empty() {
+                rendered.push(SEPARATOR);
+            }
+            rendered.push_str(self.as_field().fields()[position].name());
+        }
+        self.store(IDENTIFIERS, rendered)
+    }
+
+    /// Records the spellings that mean "nothing was sent" for this field.
+    ///
+    /// Empty input removes the property. A spelling is stored exactly as
+    /// given, because a venue's own casing is what a reader recognizes it by,
+    /// and matched case-insensitively on the way back.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a spelling contains the separator or repeats an
+    /// earlier one with ASCII case folded, leaving the field unchanged. An
+    /// empty spelling is admitted, and is how a field states that the empty
+    /// value is its absence.
+    pub fn set_nulls<I, S>(&mut self, spellings: I) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut rendered = String::new();
+        let mut count = 0;
+        for spelling in spellings {
+            let spelling = spelling.as_ref();
+            if spelling.contains(SEPARATOR) {
+                return Err(self.rejected(
+                    NULLS,
+                    format_smolstr!("expected a spelling without {SEPARATOR:?}, got {spelling:?}"),
+                ));
+            }
+            if count > 0
+                && rendered
+                    .split(SEPARATOR)
+                    .any(|held| held.eq_ignore_ascii_case(spelling))
+            {
+                return Err(self.rejected(
+                    NULLS,
+                    format_smolstr!("expected each spelling once, got {spelling:?} twice"),
+                ));
+            }
+            if count > 0 {
+                rendered.push(SEPARATOR);
+            }
+            rendered.push_str(spelling);
+            count += 1;
+        }
+        if count == 0 {
+            self.remove(NULLS);
+            return Ok(());
+        }
+        self.store(NULLS, rendered)
+    }
+
+    /// Records the specification's own wording for this field.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the property write fails the validation every
+    /// metadata write goes through, leaving the field unchanged.
+    pub fn set_description(&mut self, value: impl Into<String>) -> Result<()> {
+        self.as_field_mut().set_description(value)
+    }
+
+    /// Names the FIX code set this field's values are drawn from.
+    ///
+    /// A field states which vocabulary it reads by; the
+    /// [dictionary](super::FixRegistry) holds the members, once, under this
+    /// name. So a set is named, documented and aliased in one place however
+    /// many fields draw on it, and
+    /// [`FixRegistry::set_codeset`](super::FixRegistry::set_codeset) is where
+    /// its members are stated.
+    ///
+    /// An empty name removes the property, exactly as an empty tag or alias
+    /// list removes its own.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] when the name is not one a store can
+    /// file - the rule a named definition's is held to - and the property
+    /// write's refusal otherwise. Either leaves the field unchanged.
+    pub fn set_codeset(&mut self, name: &str) -> Result<()> {
+        if name.is_empty() {
+            self.remove(CODESET);
+            return Ok(());
+        }
+        super::catalog::validate_definition_name(name)?;
+        self.store(CODESET, name.to_owned())
+    }
+
+    /// Removes the code set reference, answering the name it held.
+    pub fn remove_codeset(&mut self) -> Option<String> {
+        self.remove(CODESET)
+    }
+
+    /// Records the FIX datatype this field was declared under, as the
+    /// specification spells it. An empty name removes the property.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidMetadataValue`] when the name is not one
+    /// word of ASCII letters and digits, leaving the field unchanged.
+    pub fn set_datatype(&mut self, name: &str) -> Result<()> {
+        if name.is_empty() {
+            self.remove(DATATYPE);
+            return Ok(());
+        }
+        if !name.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
+            return Err(self.rejected(
+                DATATYPE,
+                format_smolstr!(
+                    "expected a FIX datatype name of ASCII letters and digits, got {name:?}"
+                ),
+            ));
+        }
+        self.store(DATATYPE, name.to_owned())
+    }
+
+    /// Removes the declared FIX datatype, answering the name it held.
+    pub fn remove_datatype(&mut self) -> Option<String> {
+        self.remove(DATATYPE)
+    }
+
+    /// Records the rules naming a code of this field's set from the prose in
+    /// front of a payload.
+    ///
+    /// Entries are rendered canonically in the order given. A rule's code is
+    /// any spelling of a code of the set this field declares - the value or
+    /// the name, else the specification's `S` and `R` where it declares
+    /// none - resolved here exactly as the reading resolves it, so the
+    /// door admits what the reading answers and each code is named once
+    /// under any spelling. Every pattern is compiled here as the reading
+    /// compiles it, so what is stored is what a codec can use.
+    ///
+    /// An empty slice removes the property, exactly as an empty tag or alias
+    /// list removes its own, and the reading answers its defaults again.
+    ///
+    /// ```
+    /// use yggdryl_fix::FixDirection;
+    /// use yggdryl::DataType;
+    /// use yggdryl_fix::FixFieldMut;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// #     yggdryl_fix::install().unwrap();
+    /// let mut direction = DataType::utf8().nullable_field("msgdirection");
+    /// FixFieldMut::new(&mut direction).set_tag(385)?;
+    /// FixFieldMut::new(&mut direction).set_directions(&[
+    ///     FixDirection::new("S", [r"^TX\b"]),
+    ///     FixDirection::new("R", [r"^RX\b"]),
+    /// ])?;
+    /// assert_eq!(
+    ///     direction.get_metadata("FIX:directions"),
+    ///     Some(concat!(
+    ///         r#"[{"code":"S","patterns":["^TX\\b"]},"#,
+    ///         r#"{"code":"R","patterns":["^RX\\b"]}]"#,
+    ///     ))
+    /// );
+    ///
+    /// FixFieldMut::new(&mut direction).set_directions(&[])?;
+    /// assert_eq!(direction.get_metadata("FIX:directions"), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when an entry names no code of the set, two
+    /// entries name one code under any spelling, an entry states an empty
+    /// code or one the reader would not read back as a word, an entry
+    /// states no pattern, or a pattern is empty or one the regex crate
+    /// refuses; and the property write's refusal otherwise. Either leaves
+    /// the field unchanged.
+    pub fn set_directions(&mut self, directions: &[FixDirection]) -> Result<()> {
+        if directions.is_empty() {
+            self.remove(DIRECTIONS);
+            return Ok(());
+        }
+        // Whether a code is one of the set is the dictionary's question, not
+        // the field's: a field names its set and the registry holds it, so
+        // `MsgDirection::from_registry` resolves every spelling against the
+        // set in force and drops - with this module's own refusal as the
+        // warning - a rule naming a code outside it. What the field can still
+        // answer alone is whether one spelling was stated twice.
+        let mut named: Vec<&str> = Vec::with_capacity(directions.len());
+        for direction in directions {
+            let code = direction.code().trim();
+            if let Some(held) = named.iter().find(|held| folds_equal(held, code)) {
+                return Err(super::directions::repeated(direction.code(), held));
+            }
+            named.push(code);
+        }
+        let rendered = FixDirections::render(directions)?;
+        self.store(DIRECTIONS, rendered)
+    }
+
+    /// States the market data types this field's values type an element as:
+    /// each wire value and the member it reads as, written as the
+    /// `value=MEMBER` words [`FixField::marketdatatypes`] reads. An empty
+    /// list removes them.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when a wire value is empty, holds a `=` or a
+    /// character a word cannot, or is stated twice; the field is unchanged.
+    pub fn set_marketdatatypes(
+        &mut self,
+        types: &[(&str, yggdryl_market::MarketDataType)],
+    ) -> Result<()> {
+        self.set_members(MARKETDATATYPE, types)
+    }
+
+    /// States the time in force this field's values stand for: each wire
+    /// value and the member it reads as, written as the `value=MEMBER` words
+    /// [`FixField::timeinforces`] reads. An empty list removes them.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when a wire value is empty, holds a `=` or a
+    /// character a word cannot, or is stated twice; the field is unchanged.
+    pub fn set_timeinforces(
+        &mut self,
+        values: &[(&str, yggdryl_market::TimeInForce)],
+    ) -> Result<()> {
+        self.set_members(TIMEINFORCE, values)
+    }
+
+    /// Writes one enum property's `value=MEMBER` words, refusing a wire
+    /// value no word can hold or one stated twice.
+    fn set_members<E: yggdryl::EnumValue>(&mut self, key: &str, types: &[(&str, E)]) -> Result<()> {
+        if types.is_empty() {
+            self.remove(key);
+            return Ok(());
+        }
+        let words: Vec<String> = types
+            .iter()
+            .map(|(wire, member)| format!("{wire}={}", member.as_str()))
+            .collect();
+        if let Some((wire, _)) = types
+            .iter()
+            .find(|(wire, _)| wire.is_empty() || wire.contains('=') || !is_word(wire))
+        {
+            return Err(self.rejected(
+                key,
+                format_smolstr!("expected a wire value without `=`, a quote or a control character, got {wire:?}"),
+            ));
+        }
+        if let Some((wire, _)) = types
+            .iter()
+            .enumerate()
+            .find(|(at, (wire, _))| types[..*at].iter().any(|(held, _)| held == wire))
+            .map(|(_, pair)| pair)
+        {
+            return Err(self.rejected(
+                key,
+                format_smolstr!("expected each wire value once, got {wire:?} twice"),
+            ));
+        }
+        let rendered = Writer::list_of_words(words.iter().map(String::as_str))?;
+        self.store(key, rendered)
+    }
+
+    /// Writes the identifier-map keys this field's value states; an empty
+    /// list removes the property.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when a source states a follow flag on a map
+    /// that is not `identifiers`, a role that is not a code of letters and
+    /// digits, or one key
+    /// of one map twice;
+    /// either leaves the field unchanged.
+    pub fn set_idmap(&mut self, sources: &[FixIdSource]) -> Result<()> {
+        if sources.is_empty() {
+            self.remove(IDMAP);
+            return Ok(());
+        }
+        let rendered = FixIdSources::render(sources)?;
+        self.store(IDMAP, rendered)
+    }
+
+    /// States the identifier types holding the parents of the identifier
+    /// this field states, nearest first: `FIX:parents`, each type folded as
+    /// [`IdType`](yggdryl_market::IdType) folds it. Empty input removes the property.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidMetadataValue`] for a spelling no identifier type
+    /// folds from or a type listed twice, leaving the field unchanged.
+    pub fn set_parents<I, S>(&mut self, parents: I) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut held: Vec<yggdryl_market::IdType> = Vec::new();
+        for spelled in parents {
+            let kind = spelled
+                .as_ref()
+                .parse::<yggdryl_market::IdType>()
+                .map_err(|error| {
+                    self.rejected(
+                        PARENTS,
+                        format_smolstr!("expected an identifier type, got {error}"),
+                    )
+                })?;
+            if held.contains(&kind) {
+                return Err(self.rejected(
+                    PARENTS,
+                    format_smolstr!("expected each identifier type once, got {kind} twice"),
+                ));
+            }
+            held.push(kind);
+        }
+        if held.is_empty() {
+            self.remove(PARENTS);
+            return Ok(());
+        }
+        self.store(
+            PARENTS,
+            Writer::list_of_words(held.iter().map(yggdryl_market::IdType::as_str))?,
+        )
+    }
+
+    /// Removes the field's stated parents, answering what it held.
+    pub fn remove_parents(&mut self) -> Option<String> {
+        self.remove(PARENTS)
+    }
+
+    /// Removes the direction rules, answering what they held.
+    ///
+    /// ```
+    /// use yggdryl_fix::FixDirection;
+    /// use yggdryl::DataType;
+    /// use yggdryl_fix::FixFieldMut;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// #     yggdryl_fix::install().unwrap();
+    /// let mut direction = DataType::utf8().nullable_field("msgdirection");
+    /// FixFieldMut::new(&mut direction).set_tag(385)?;
+    /// let rules = [FixDirection::new("S", [">>>"]), FixDirection::new("R", ["<<<"])];
+    /// FixFieldMut::new(&mut direction).set_directions(&rules)?;
+    ///
+    /// assert_eq!(FixFieldMut::new(&mut direction).remove_directions()?, Some(rules.to_vec()));
+    /// assert_eq!(FixFieldMut::new(&mut direction).remove_directions()?, None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] naming the byte position when the stored
+    /// document does not parse, having already removed it: a document a
+    /// reader refuses is one a caller asked to take away.
+    pub fn remove_directions(&mut self) -> Result<Option<Vec<FixDirection>>> {
+        let Some(stored) = self.remove(DIRECTIONS) else {
+            return Ok(None);
+        };
+        FixDirections::over(Some(stored.as_str()))
+            .map(|entry| entry.map(FixDirection::from))
+            .collect::<Result<Vec<_>>>()
+            .map(Some)
+    }
+
+    /// Folds another definition of the same field into this one.
+    ///
+    /// This field is the incoming definition and wins every shared key; the
+    /// other keeps only what it alone declares. Several sources describe one
+    /// tag - FIX Latest, a QuickFIX dictionary, a vendor orchestration, a
+    /// `.cfb` - and folding them is one pass with a rule per key, because
+    /// "merge" alone decides nothing:
+    ///
+    /// | key | rule |
+    /// | --- | --- |
+    /// | `FIX:tag` | MUST agree; a disagreement is a typed refusal naming both. Identity is not merged. |
+    /// | `FIX:sources` | union, folded, sorted: every source that contributed either side |
+    /// | `FIX:tags` | union, incoming first, order kept, deduplicated |
+    /// | `FIX:names` | union, folded, incoming first |
+    /// | `description` | not folded here at all: it is a generic key, so the metadata merge every protocol shares carries it |
+    /// | `FIX:codeset` | the stored set's name is kept; a stored field naming none takes the incoming name |
+    /// | `FIX:directions` | incoming wins whole: a rule table is one statement, and two tables have no order between them |
+    /// | `FIX:identifiers` | incoming wins whole: identifiers are one ordered component declaration |
+    /// | any other `FIX:` key | incoming wins; stored keeps what only it has |
+    ///
+    /// Precedence is the caller's ordering rather than a field on the merge:
+    /// a generator merges its lowest-priority source first, so the highest
+    /// wins by being the last one folded in. One concept, in the one place
+    /// that knows about sources.
+    ///
+    /// The description is deliberately absent from that table. It is a
+    /// property of the field rather than of FIX, so it folds through the
+    /// generic metadata merge with every other field-owned key - which is
+    /// also why a dictionary and an Iceberg catalog now disagree about a
+    /// field's meaning in exactly zero places.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed conflict naming both sides when the tag disagrees,
+    /// and the write's refusal otherwise. Either leaves the field exactly as
+    /// it was.
+    pub fn merge_with(&mut self, other: &FixField<'_>) -> Result<()> {
+        let held = self.as_protocol();
+        // Identity is checked before anything is built, so a refusal costs
+        // neither a render nor a write.
+        if held.tag()? != other.tag()? {
+            return Err(Error::conflict(
+                "fix field",
+                "fix field",
+                format_smolstr!("tag {:?} merged with {:?}", held.tag()?, other.tag()?),
+            ));
+        }
+        for key in [COUNTER, COMPONENT, FIELD_REF, GROUP, MSGTYPE] {
+            if let (Some(left), Some(right)) = (held.get(key), other.get(key)) {
+                let equal = if key == MSGTYPE {
+                    left == right
+                } else {
+                    left.eq_ignore_ascii_case(right)
+                };
+                if !equal {
+                    return Err(Error::conflict(
+                        "one FIX reference",
+                        "conflicting references",
+                        format_smolstr!("{key}: expected {left:?}, got {right:?}"),
+                    ));
+                }
+            }
+        }
+
+        // One pass over the `FIX:` key set, which is a const listing beside
+        // these accessors, so no held key name is ever collected into a
+        // `String` to be walked.
+        let mut tags = held.tags()?;
+        for tag in other.tags()? {
+            if !tags.contains(&tag) {
+                tags.push(tag);
+            }
+        }
+        // A names text the read walks as nothing would merge as nothing and
+        // be dropped; it is refused instead, as a tags text is.
+        held.validate_names()?;
+        other.validate_names()?;
+        let mut names: Vec<&str> = held.names().collect();
+        for name in other.names() {
+            if !names.iter().any(|kept| kept.eq_ignore_ascii_case(name)) {
+                names.push(name);
+            }
+        }
+        held.validate_sources()?;
+        other.validate_sources()?;
+        let sources = render_sources(held.sources().chain(other.sources()))?;
+
+        let mut merged: Vec<(&'static str, String)> = Vec::with_capacity(MERGED_KEYS.len());
+        for key in MERGED_KEYS {
+            let value = match key {
+                TAGS => render_tags(&tags),
+                NAMES => render_names(&names)?,
+                SOURCES => sources.clone(),
+                // The one key where the *stored* side wins, and `other` is
+                // the stored one: a registry fold hands the incoming field in
+                // as `self`. A field keeps the vocabulary it already reads by
+                // because the members are the dictionary's to fold -
+                // `unify_codeset` has already folded the incoming set into
+                // the held one under the held name - so taking the incoming
+                // name here would move the field to a set holding strictly
+                // less than the one it already reads by.
+                CODESET => other
+                    .get(CODESET)
+                    .or_else(|| held.get(CODESET))
+                    .map(str::to_owned),
+                // Every other key is "incoming wins, stored keeps what only
+                // it has".
+                _ => held.get(key).or_else(|| other.get(key)).map(str::to_owned),
+            };
+            if let Some(value) = value {
+                merged.push((key, value));
+            }
+        }
+        // A `FIX:` key this vocabulary does not name is still one side's
+        // statement, so it travels rather than being dropped by the replace.
+        let mut extra: Vec<(String, String)> = Vec::new();
+        for (name, value) in held.iter().chain(other.iter()) {
+            if MERGED_KEYS.contains(&name) || extra.iter().any(|(kept, _)| kept == name) {
+                continue;
+            }
+            extra.push((name.to_owned(), value.to_owned()));
+        }
+        // Every borrow of this field ends here, so the one write below is the
+        // only thing holding it.
+        drop(held);
+
+        // One write. `set` replaces this protocol's properties and validates
+        // the whole replacement first, so three rewrites and their Arrow
+        // invalidations collapse into one and a refusal changes nothing.
+        self.set(
+            merged
+                .iter()
+                .map(|(key, value)| (*key, value.as_str()))
+                .chain(
+                    extra
+                        .iter()
+                        .map(|(key, value)| (key.as_str(), value.as_str())),
+                ),
+        )
+    }
+
+    /// Write one property, dropping the prior value a generic insert answers.
+    fn store(&mut self, name: &str, value: impl Into<String>) -> Result<()> {
+        self.insert(name, value)?;
+        Ok(())
+    }
+
+    /// Name the full key a value was refused under.
+    fn rejected(&self, name: &str, reason: SmolStr) -> Error {
+        Error::InvalidMetadataValue {
+            key: SmolStr::new(self.key(name)),
+            reason,
+        }
+    }
+}
+
+/// How a field's wire text is shaped, beyond what its crate datatype says.
+///
+/// The crate datatype names the reader a value takes - a datetime's FIX
+/// door, a clock's, a number's - and every FIX datatype but one spells its
+/// values as that reader reads them. `TZTimeOnly` is the one: a clock with
+/// no date on a `datetime64` column, which the datetime's door refuses
+/// where it states no zone and which
+/// [`DateTime64::from_fix_clock`](yggdryl::DateTime64) reads on the epoch
+/// day. Read off `FIX:datatype` once per field ([`FixField::shape`]) and
+/// held beside the field's other facts, so the per-value path branches on
+/// this and never on metadata.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum FixShape {
+    /// The shape the crate datatype's own reader takes: every FIX datatype
+    /// but `TZTimeOnly`, and a field declaring none.
+    #[default]
+    Typed,
+    /// `TZTimeOnly`: a clock and no date, closed by a zone or by nothing.
+    TzTimeOnly,
+}
+
+impl FixShape {
+    /// The shape one declared FIX datatype name gives, under the crate's
+    /// one fold; none declared is [`Self::Typed`].
+    pub(super) fn of(datatype: Option<&str>) -> Self {
+        match datatype {
+            Some(name) if folds_equal(name, "TZTimeOnly") => Self::TzTimeOnly,
+            _ => Self::Typed,
+        }
+    }
+}
+
+/// Whether `text` is one of `nulls`, the spellings a field states as an
+/// absence: ASCII case-insensitively, against the trimmed text.
+///
+/// The one predicate behind [`FixField::is_null_value`] and the codec's
+/// memo of a field's facts, so a spelling reads as an absence the same way
+/// whether the field was looked up or remembered.
+pub(super) fn spells_absence<'a>(nulls: impl IntoIterator<Item = &'a str>, text: &str) -> bool {
+    let trimmed = text.trim_ascii();
+    nulls
+        .into_iter()
+        .any(|spelling| spelling.eq_ignore_ascii_case(trimmed))
+}
+
+/// The spellings one comma-separated `FIX:` property holds, in stored order.
+///
+/// Answered by [`FixField::identifiers`] and [`FixField::nulls`]. It walks the stored text as it goes and hands back
+/// slices of it, so nothing is parsed ahead of the spelling being asked for
+/// and nothing is allocated. An empty element, which the writer never
+/// produces, is skipped rather than reported: the typed rejection belongs to
+/// the write, and a read stays cheap.
+#[derive(Clone, Debug)]
+pub struct FixSpellings<'field> {
+    parts: Option<Split<'field, char>>,
+}
+
+impl<'field> FixSpellings<'field> {
+    /// Walk one stored comma-separated value, or nothing for an absent one.
+    fn over(stored: Option<&'field str>) -> Self {
+        Self {
+            parts: stored.map(|stored| stored.split(SEPARATOR)),
+        }
+    }
+}
+
+impl<'field> Iterator for FixSpellings<'field> {
+    type Item = &'field str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.parts.as_mut()?.find(|spelling| !spelling.is_empty())
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match &self.parts {
+            Some(parts) => (0, parts.size_hint().1),
+            None => (0, Some(0)),
+        }
+    }
+}
+
+impl DoubleEndedIterator for FixSpellings<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.parts.as_mut()?.rfind(|spelling| !spelling.is_empty())
+    }
+}
+
+impl FusedIterator for FixSpellings<'_> {}
+
+/// The `FIX:` keys a merge folds, as a `const` listing.
+///
+/// A merge walks this rather than collecting the keys a field holds, because
+/// the held names are owned `String`s behind a generic snapshot and building
+/// a vector of them to scan `O(n*m)` is what this replaced.
+const MERGED_KEYS: [&str; 10] = [
+    TAG,
+    SOURCES,
+    TAGS,
+    NAMES,
+    NULLS,
+    CODESET,
+    DIRECTIONS,
+    IDENTIFIERS,
+    MSGCAT,
+    DEPRECATED,
+];
+
+/// The body of one stored array of words, or nothing for a text that is not
+/// one: the setter never writes such a text, so a read walks nothing rather
+/// than mis-reading a hand edit.
+fn word_list(stored: &str) -> Option<&str> {
+    let mut cursor = Cursor::new(stored);
+    let body = cursor.read_words(NAMES).ok()?;
+    cursor.is_done().then_some(body)
+}
+
+/// Render alternate names the way the setter renders them.
+fn render_names(names: &[&str]) -> Result<Option<String>> {
+    if names.is_empty() {
+        return Ok(None);
+    }
+    Writer::list_of_words(names.iter().copied()).map(Some)
+}
+
+/// Render the sources that contributed a field the way the setter renders
+/// them: folded, deduplicated under the crate fold, sorted.
+fn render_sources<'a>(sources: impl IntoIterator<Item = &'a str>) -> Result<Option<String>> {
+    let mut held: Vec<String> = Vec::new();
+    for source in sources {
+        let folded = source.to_ascii_lowercase();
+        if !held.iter().any(|known| folds_equal(known, &folded)) {
+            held.push(folded);
+        }
+    }
+    if held.is_empty() {
+        return Ok(None);
+    }
+    held.sort_unstable();
+    Writer::list_of_words(held.iter().map(String::as_str)).map(Some)
+}
+
+/// Render alternate tags the way the setter renders them.
+fn render_tags(tags: &[i32]) -> Option<String> {
+    if tags.is_empty() {
+        return None;
+    }
+    Some(Writer::list_of_numbers(tags.iter().copied()))
+}

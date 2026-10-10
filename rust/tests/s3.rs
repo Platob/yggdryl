@@ -36,7 +36,7 @@ mod client;
 #[cfg(feature = "s3")]
 #[path = "s3/encryption.rs"]
 mod encryption;
-#[cfg(all(feature = "s3", feature = "internals"))]
+#[cfg(feature = "s3")]
 #[path = "s3/file.rs"]
 mod file;
 #[cfg(feature = "s3")]

@@ -127,6 +127,14 @@
 //! crate's: `create_*`, `get_*`, `remove_*`, and the two the service names
 //! for itself, `rename_table` and `update_table_metadata_location`.
 //!
+//! # The registers
+//!
+//! [`S3TABLES_FACTORY`] is the catalog factory an `s3tables://<bucket>`
+//! location is its bucket's [`S3TablesCatalog`] by, and [`S3TABLES_LOCATOR`]
+//! the locator an `s3tables:` location or an ARN of the service is the
+//! catalog, the namespace or the table it names by; the core claims both
+//! under the feature.
+//!
 //! The module is behind the non-default `s3tables` feature, which implies
 //! `s3` and `iceberg`.
 
@@ -138,9 +146,38 @@ mod namespace;
 mod table;
 
 pub use bucket::TableBucket;
-pub use catalog::{S3TablesCatalog, S3TablesNamespace};
-pub(crate) use catalog::{create, locate, not_a_table, open_or_create};
+pub use catalog::{S3TABLES_FACTORY, S3TablesCatalog, S3TablesFactory, S3TablesNamespace};
+pub(crate) use catalog::{create, locate, open, open_or_create};
 pub use client::S3Tables;
 pub use listing::{NamespaceSummaries, TableBuckets, TableSummaries};
 pub use namespace::NamespaceSummary;
 pub use table::{TableDescription, TableMetadataLocation, TableSummary, TableVersion};
+
+use crate::holder::{Holder, Locator};
+use crate::{Properties, Result, Scheme, Uri};
+
+/// What reaches the object an Amazon S3 Tables location names: an
+/// `s3tables:` location, or an ARN of the service, read as the ARN before it
+/// is lowered - a table's ARN lowers to a location that spells its
+/// identifier where a namespace goes.
+#[derive(Debug)]
+pub struct S3TablesLocator;
+
+/// The one [`S3TablesLocator`], claimed under the `s3tables` scheme.
+pub static S3TABLES_LOCATOR: S3TablesLocator = S3TablesLocator;
+
+impl Locator for S3TablesLocator {
+    fn scheme(&self) -> Scheme {
+        Scheme::S3TABLES
+    }
+
+    fn names(&self, location: &Uri) -> bool {
+        location.names_s3_tables()
+    }
+
+    /// The catalog, the namespace or the table, as the handle it is: it
+    /// declares no media type and takes no coding.
+    fn holder(&self, location: &Uri, properties: &Properties) -> Result<Holder> {
+        Ok(locate(location, properties)?.into_holder())
+    }
+}

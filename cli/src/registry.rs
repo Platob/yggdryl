@@ -8,7 +8,8 @@
 use std::path::{Path, PathBuf};
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{Field, FixCategory, FixCommit, FixKey, FixRegistry, FixSource, Result};
+use yggdryl::{Field, Result};
+use yggdryl_fix::{FixCategory, FixCommit, FixField, FixKey, FixRegistry, FixSource};
 
 use crate::style;
 
@@ -108,7 +109,7 @@ pub fn committed(report: &FixCommit) -> String {
 
 /// One field's row in a listing.
 fn row(field: &Field) -> Vec<String> {
-    let view = field.as_fix();
+    let view = FixField::new(field);
     let tag = view
         .tag()
         .ok()
@@ -143,13 +144,12 @@ pub fn list(
     let mut matched = 0_usize;
     for field in store.registry().definitions(category) {
         if let Some(dialect) = dialect
-            && !field.as_fix().has_source(dialect)
+            && !FixField::new(field).has_source(dialect)
         {
             continue;
         }
         if let Some(held) = &folded {
-            let tag = field
-                .as_fix()
+            let tag = FixField::new(field)
                 .tag()
                 .ok()
                 .flatten()
@@ -182,11 +182,11 @@ pub fn read(store: &Store, category: FixCategory, key: &str, json: bool) -> Resu
         // handed back through `--input` or dropped into a store tree.
         outln!(
             "{}",
-            yggdryl::into_json_scalar(&yggdryl::into_fix_document(field.clone())?)?
+            yggdryl::into_json_scalar(&yggdryl_fix::into_fix_document(field.clone())?)?
         );
         return Ok(());
     }
-    let view = field.as_fix();
+    let view = FixField::new(field);
 
     style::heading(field.name());
     style::entry("category", category.as_str());
@@ -235,7 +235,7 @@ pub fn list_codesets(store: &Store, filter: Option<&str>, limit: usize) {
     let registry = store.registry();
     let mut readers: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     for field in registry {
-        if let Some(name) = field.as_fix().codeset() {
+        if let Some(name) = FixField::new(field).codeset() {
             *readers.entry(name).or_default() += 1;
         }
     }
@@ -290,7 +290,7 @@ pub fn read_codeset(store: &Store, name: &str, json: bool) -> Result<()> {
 
 /// States one code set's members, replacing or folding into what it held.
 pub fn write_codeset(store: &mut Store, name: &str, document: &str, merge: bool) -> Result<()> {
-    let codes = yggdryl::FixCodes::parse(document)?;
+    let codes = yggdryl_fix::FixCodes::parse(document)?;
     let registry = store.registry_mut();
     if merge {
         registry.merge_codeset(name, &codes)?;
@@ -360,7 +360,7 @@ pub fn update(store: &mut Store, category: FixCategory, field: Field) -> Result<
 /// The source ids a definition names, owned, so the catalog can take them
 /// once the definition has landed.
 fn sources_of(field: &Field) -> Vec<String> {
-    field.as_fix().sources().map(str::to_owned).collect()
+    FixField::new(field).sources().map(str::to_owned).collect()
 }
 
 /// Holds the sources catalog to the ids a definition just stated, so no id

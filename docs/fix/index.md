@@ -36,9 +36,9 @@ and a CUSIP or a SEDOL is one more security identifier of its own type,
 in the message's `securityids`.
 
 The protocol view exposes the category beside the message type: Rust
-`field.as_fix().msgcat()`, Python `field.fix.msgcat`, and JavaScript
+`FixField::new(&field).msgcat()`, Python `field.fix.msgcat`, and JavaScript
 `field.fix.msgcat`, each the four-character text. Set it with Rust
-`field.as_fix_mut().set_msgcat("ORDR")?` or the corresponding Python/JavaScript
+`FixFieldMut::new(&mut field).set_msgcat("ORDR")?` or the corresponding Python/JavaScript
 property. The closed category set includes `ORDR`, `QUOT`, `EXEC`, `TRAD`,
 `BOOK` and the batches `ORDB`, `QUOB`, `EXEB` and `TRDB`; `MsgType::marketdatakind` answers the definition's member - Rust
 `Option<MarketDataKind>`, Python the `MarketDataKind` member or `None`,
@@ -50,14 +50,14 @@ a [market data leaf](message.md#market-data) states again as its
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `FixField` / `FixFieldMut` (`as_fix()` / `as_fix_mut()`), `FixId`; no second field class |
+| Owns | `FixField` / `FixFieldMut` (`FixField::new(&field)` / `FixFieldMut::new(&mut field)`, minted in `fix/field.rs` by the core's exported view builder, so `Field` carries no `as_fix`), `FixId`; no second field class |
 | Keys | `FIX:tag`, `FIX:tags`, `FIX:names`, `FIX:sources`, `FIX:identifiers`, `FIX:msgtype`, `FIX:msgcat`; name, datatype, `display` and `description` stay the field's own |
 | Identity | A field is its tag and its name, and nothing else. `FixId` is one `i32`: the signed XXH32 of the tag's four little-endian bytes followed by the folded name; `FixId::of(tag, name)` builds it and refuses a tag that is not positive; `Copy`, four bytes, its own hash key |
 | Spelling | Rendered as its decimal digest wherever it crosses a boundary - `FixKey::Id`, `FixMsg::get_by_id`, Python `int`, JavaScript `number`, a row column; `FixId::from_digest` reads that integer back; a bare integer anywhere else (`FixKey::from(i32)`, `registry.field(55)`, `msg.get(55)`) is a tag |
 | Fold | ASCII case, `_`, `-` and space are not part of the name, so `Msg_Type`, `msgtype` and `MsgType` under tag 35 are one id, the one every name lookup already answers |
 | Derived | Computed on every read from `FIX:tag` and the field's name, never stored (no `FIX:id` key), so a rename is never stale; `None` without a tag; read-only in every binding |
 | Membership | `FIX:sources` lists the ids of the sources that contributed a field, a compact JSON array - `["cme","globex"]` - each id a non-empty word holding no quote, backslash or control character, folded to ASCII lowercase, deduplicated under the fold and kept sorted, so registries built from the same sources in any order hash alike; each id names an entry of the registry's [sources catalog](registry.md#membership), which a store writes as [`sources.json`](store.md#membership); empty input removes the key |
-| Dialect | The source id `from_cfb_file(handle, Some("cme"))` stamps in `FIX:sources` on every field, group, component and message the file produces, standard tags included, recording the catalog entry for it - the file's name and its plugin's [`PluginSide`](../types/enum/pluginside.md); `FixRegistry::dialects()` lists the distinct ids the definitions name; provenance a caller filters on, never consulted by a lookup, and never part of the identity |
+| Dialect | The source id `from_cfb_file(handle, Some("cme"))` stamps in `FIX:sources` on every field, group, component and message the file produces, standard tags included, recording the catalog entry for it - the file's name and its plugin's role, a [`Side`](../types/enum/side.md#a-fix-plugins-role-is-a-side); `FixRegistry::dialects()` lists the distinct ids the definitions name; provenance a caller filters on, never consulted by a lookup, and never part of the identity |
 | Tag range | Any positive tag holds an identity; nothing gates a tag on its dictionary. `set_tag`, `set_tags` and `set_counter` refuse zero and negative tags, naming their key: tag 0 marks only an [unresolved arrival entry](capture.md#nothing-is-lost-at-the-end), never a definition. Derived definition tags take `FixId::DEFINITION_TAG_MIN..FixId::DEFINITION_TAG_MAX`, `[100000, 1100000)` |
 | Order | Tag-major, the tag's holder first, then id: `FixFieldIter`, `next_field_after`, the bindings' iteration and the store all follow it, so the bare tag comes back to the field that held it across a round trip |
 | List properties | `FIX:names`, `FIX:sources` and `FIX:tags` are compact JSON arrays, `["Qty","Quantity"]`, `["cme"]` and `[1088]`, crossed by a store as the arrays they are; `names()` and `sources()` walk the array lazily and `tags()` parses it to a `Vec`. `FIX:identifiers` and `FIX:nulls` stay comma-separated text, `identifiers()` and `nulls()` lazy slices of it. An empty list removes the key |
@@ -68,38 +68,42 @@ a [market data leaf](message.md#market-data) states again as its
 
 ## Use
 
+The FIX view is the `yggdryl-fix` crate's own: `FixField::new(&field)` reads and `FixFieldMut::new(&mut field)` writes, each borrowing the field it is given. The core's exported view builder mints both, so `Field` has no `as_fix` and the view works on any field, whichever crate built it.
+
 === "Rust"
 
     ```rust
     use yggdryl::DataType;
+    use yggdryl_fix::{FixField, FixFieldMut};
+    yggdryl_fix::install()?;
 
     let mut field = DataType::decimal128(20, 8)?.nullable_field("OrderQty");
-    field.as_fix_mut().set_tag(38)?;
-    field.as_fix_mut().set_names(["Qty", "Quantity"])?;
-    field.as_fix_mut().set_description("Quantity ordered.")?;
+    FixFieldMut::new(&mut field).set_tag(38)?;
+    FixFieldMut::new(&mut field).set_names(["Qty", "Quantity"])?;
+    FixFieldMut::new(&mut field).set_description("Quantity ordered.")?;
     field.set_display("Order quantity")?;
 
-    assert_eq!(field.as_fix().tag()?, Some(38));
-    assert_eq!(field.as_fix().tags()?, Vec::<i32>::new());
-    assert_eq!(field.as_fix().names().collect::<Vec<_>>(), ["Qty", "Quantity"]);
-    assert_eq!(field.as_fix().description(), Some("Quantity ordered."));
+    assert_eq!(FixField::new(&field).tag()?, Some(38));
+    assert_eq!(FixField::new(&field).tags()?, Vec::<i32>::new());
+    assert_eq!(FixField::new(&field).names().collect::<Vec<_>>(), ["Qty", "Quantity"]);
+    assert_eq!(FixField::new(&field).description(), Some("Quantity ordered."));
     // Stored as ordinary namespaced text, in the one metadata map: a list is
     // the compact JSON array it is.
     assert_eq!(field.get_metadata("FIX:names"), Some("[\"Qty\",\"Quantity\"]"));
     // Two, not three: a description is a fact about the column rather than a
     // FIX fact, so it lives on the generic key beside `display`.
     assert_eq!(field.get_metadata("description"), Some("Quantity ordered."));
-    assert_eq!(field.as_fix().len(), 2);
+    assert_eq!(FixField::new(&field).len(), 2);
 
     // A refusal names the full key and leaves the field unchanged.
-    let error = field.as_fix_mut().set_tags(&[152, 152]).unwrap_err();
+    let error = FixFieldMut::new(&mut field).set_tags(&[152, 152]).unwrap_err();
     assert!(error.to_string().contains("FIX:tags"), "{error}");
     assert!(!field.has_metadata("FIX:tags"));
     for tag in [0, -1] {
-        let error = field.as_fix_mut().set_tag(tag).unwrap_err();
+        let error = FixFieldMut::new(&mut field).set_tag(tag).unwrap_err();
         assert!(error.to_string().contains("FIX:tag"), "{error}");
     }
-    assert_eq!(field.as_fix().tag()?, Some(38));
+    assert_eq!(FixField::new(&field).tag()?, Some(38));
     ```
 
 === "Python"
@@ -217,7 +221,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `field_ref` / `fieldRef` | `FIX:field` | name | scalar field reference in a definition |
 | `group` | `FIX:group` | name | group reference in a definition |
 | `msgtype` | `FIX:msgtype` | text | complete case-sensitive wire code on a message Struct |
-| `msgcat` | `FIX:msgcat` | four-character symbolic code | business-category metadata on a message definition; Rust `field.as_fix().msgcat()`, Python `field.fix.msgcat`, JavaScript `field.fix.msgcat`. The crate row projects it through `marketdatakindcodeset` into the separate `marketdatakind(65016)` field, a `MarketDataKind` member |
+| `msgcat` | `FIX:msgcat` | four-character symbolic code | business-category metadata on a message definition; Rust `FixField::new(&field).msgcat()`, Python `field.fix.msgcat`, JavaScript `field.fix.msgcat`. The crate row projects it through `marketdatakindcodeset` into the separate `marketdatakind(65016)` field, a `MarketDataKind` member |
 | `directions` | `FIX:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults; see [Registry](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) |
 
 ## A message type is filed under one category
@@ -256,7 +260,9 @@ The committed dictionary files every standard message type under one [`MarketDat
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixRegistry, MarketDataKind};
+    use yggdryl_fix::FixRegistry;
+    use yggdryl_market::MarketDataKind;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
@@ -302,16 +308,18 @@ A tag is what identifies a field on the wire and a name is what identifies it to
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixId};
+    use yggdryl::DataType;
+    use yggdryl_fix::{FixField, FixFieldMut, FixId};
+    yggdryl_fix::install()?;
 
     let mut trade = DataType::utf8().nullable_field("TradeID");
     // No membership means the specification alone, and there is no
     // identity without a tag.
-    assert_eq!(trade.as_fix().sources().count(), 0);
-    assert_eq!(trade.as_fix().id()?, None);
+    assert_eq!(FixField::new(&trade).sources().count(), 0);
+    assert_eq!(FixField::new(&trade).id()?, None);
 
-    trade.as_fix_mut().set_tag(5001)?;
-    let id = trade.as_fix().id()?.expect("a tagged field has an identity");
+    FixFieldMut::new(&mut trade).set_tag(5001)?;
+    let id = FixField::new(&trade).id()?.expect("a tagged field has an identity");
     assert_eq!(id, FixId::of(5001, "TradeID")?);
     assert_eq!(std::mem::size_of::<FixId>(), 4);
     // Rendered as its decimal digest wherever it crosses a boundary, and
@@ -320,7 +328,7 @@ A tag is what identifies a field on the wire and a name is what identifies it to
     assert_eq!(FixId::from_digest(id.digest()), id);
     // Derived on every read from `FIX:tag` and the name; nothing stores it.
     assert!(!trade.has_metadata("FIX:id"));
-    assert_eq!(trade.as_fix().len(), 1);
+    assert_eq!(FixField::new(&trade).len(), 1);
 
     // One fold: ASCII case, `_`, `-` and space are not part of the name.
     let msgtype = FixId::of(35, "MsgType")?;
@@ -338,24 +346,24 @@ A tag is what identifies a field on the wire and a name is what identifies it to
 
     // Membership is provenance and no half of the identity: folded to
     // ASCII lowercase, deduplicated, sorted, stored as a JSON array.
-    trade.as_fix_mut().set_sources(["Globex", "CME", "cme"])?;
+    FixFieldMut::new(&mut trade).set_sources(["Globex", "CME", "cme"])?;
     assert_eq!(trade.get_metadata("FIX:sources"), Some(r#"["cme","globex"]"#));
-    assert!(trade.as_fix().has_source("CME"));
-    assert_eq!(trade.as_fix().id()?, Some(id));
-    trade.as_fix_mut().add_source("blp")?;
-    assert_eq!(trade.as_fix().sources().collect::<Vec<_>>(), ["blp", "cme", "globex"]);
+    assert!(FixField::new(&trade).has_source("CME"));
+    assert_eq!(FixField::new(&trade).id()?, Some(id));
+    FixFieldMut::new(&mut trade).add_source("blp")?;
+    assert_eq!(FixField::new(&trade).sources().collect::<Vec<_>>(), ["blp", "cme", "globex"]);
     // Held to the id grammar: a non-empty word holding no quote, backslash or
     // control character; a refusal names the key.
-    let error = trade.as_fix_mut().set_sources(["c\"me"]).unwrap_err();
+    let error = FixFieldMut::new(&mut trade).set_sources(["c\"me"]).unwrap_err();
     assert!(error.to_string().contains("FIX:sources"), "{error}");
     assert_eq!(trade.get_metadata("FIX:sources"), Some(r#"["blp","cme","globex"]"#));
 
     // A rename under the fold is the same identity; another name is another.
     trade.set_name("Trade_ID");
-    assert_eq!(trade.as_fix().id()?, Some(id));
+    assert_eq!(FixField::new(&trade).id()?, Some(id));
     trade.set_name("TradeReportID");
-    assert_eq!(trade.as_fix().id()?, Some(FixId::of(5001, "TradeReportID")?));
-    assert_ne!(trade.as_fix().id()?, Some(id));
+    assert_eq!(FixField::new(&trade).id()?, Some(FixId::of(5001, "TradeReportID")?));
+    assert_ne!(FixField::new(&trade).id()?, Some(id));
     ```
 
 === "Python"
@@ -473,7 +481,8 @@ A tag is what identifies a field on the wire and a name is what identifies it to
 `NoPartyIDs` is an `int32` field at tag 453. `Parties` is a separate Serie of the
 `Party` Struct, linked to that field through `FIX:counter`, which only frames the
 group on the wire. No component, message, row or entry lists the counter beside
-the group: the group's length is its count. Fields, components and groups are
+the group: the group's length is its count, and a CBlock grammar or a fold that
+lists one beside its group is read without it. Fields, components and groups are
 the three registry categories, a message being a component that carries
 `FIX:msgtype`.
 
@@ -496,7 +505,9 @@ names are folded; `display` keeps the specification's spelling.
 
     ```rust
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FixRegistry, FieldPath};
+    use yggdryl::{DataType, FieldPath};
+    use yggdryl_fix::{FixField, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
@@ -505,13 +516,13 @@ names are folded; `display` keeps the specification's spelling.
     // categories: a scalar, a component, a group.
     let parties = registry.field_by_counter(453)?;
     assert_eq!(parties.name(), "parties");
-    assert_eq!(parties.as_fix().counter()?, Some(453));
+    assert_eq!(FixField::new(parties).counter()?, Some(453));
     assert!(!registry.field_by_name("Party")?.fields().is_empty());
-    assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
-    assert_eq!(registry.field_by_name("PartyID")?.as_fix().tag()?, Some(448));
+    assert_eq!(FixField::new(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?).tag()?, Some(448));
+    assert_eq!(FixField::new(registry.field_by_name("PartyID")?).tag()?, Some(448));
     let metadata = registry.field_by_counter(65_037)?;
     assert_eq!(metadata.name(), "metadata");
-    assert_eq!(metadata.as_fix().counter()?, Some(65_037));
+    assert_eq!(FixField::new(metadata).counter()?, Some(65_037));
     assert!(registry.get_field_by_tag(65_037).is_none(), "a Map group is no scalar");
     ```
 
@@ -582,11 +593,11 @@ names are folded; `display` keeps the specification's spelling.
 === "Rust"
 
     ```bash
-    cargo test --features internals -p yggdryl --test fix -- mod_::internal
-    cargo test --features internals -p yggdryl --test fix -- mod_::internal::name_indexes_fold_ascii mod_::internal::three_spellings_of_one_name mod_::internal::an_identifier_is_one_integer mod_::internal::membership_folds_once mod_::internal::membership_round_trips mod_::internal::properties_round_trip mod_::internal::a_property_write mod_::internal::the_fold_table_holds mod_::internal::iteration_and_the_cursor_are_tag_major mod_::internal::a_corrupt_stored mod_::internal::a_path_reaches
-    cargo bench -p yggdryl --bench fix -- fix/mutate/set_
-    cargo bench -p yggdryl --bench fix -- fix/mutate/add_source
-    cargo bench -p yggdryl --bench fix -- fix/resolve/id_
+    cargo test --features internals -p yggdryl-fix --test root -- lib::internal
+    cargo test --features internals -p yggdryl-fix --test root -- lib::internal::name_indexes_fold_ascii lib::internal::three_spellings_of_one_name lib::internal::an_identifier_is_one_integer lib::internal::membership_folds_once lib::internal::membership_round_trips lib::internal::properties_round_trip lib::internal::a_property_write lib::internal::the_fold_table_holds lib::internal::iteration_and_the_cursor_are_tag_major lib::internal::a_corrupt_stored lib::internal::a_path_reaches
+    cargo bench -p yggdryl-fix --bench fix -- fix/mutate/set_
+    cargo bench -p yggdryl-fix --bench fix -- fix/mutate/add_source
+    cargo bench -p yggdryl-fix --bench fix -- fix/resolve/id_
     ```
 
 === "Python"

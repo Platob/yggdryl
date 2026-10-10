@@ -67,7 +67,12 @@ type MetadataMap = BTreeMap<String, String>;
 /// and in [`crate::protocol`] in the same change rather than in
 /// whichever of them someone remembered. `https` is deliberately absent: it
 /// shares the canonical `HTTP:` prefix, and one spelling of one namespace is
-/// what keeps a header from being stored twice.
+/// what keeps a header from being stored twice. A protocol the core does
+/// not own is not listed: its owner mints its views with the exported
+/// `protocol_field_types!` builder, as `rust/fix/src/field.rs` mints
+/// `FixField` and `FixFieldMut`, and a caller reaches them through the
+/// view's own `new` rather than an accessor here - the snapshot through
+/// [`Metadata::protocol`].
 ///
 /// Every emitter matches all six tokens even where it ignores some, which is
 /// what forces the accessors and the view types to grow together.
@@ -152,14 +157,6 @@ macro_rules! for_each_well_known_protocol {
             IcebergField,
             IcebergFieldMut,
             "Apache Iceberg"
-        );
-        $emit!(
-            as_fix,
-            as_fix_mut,
-            FIX,
-            FixField,
-            FixFieldMut,
-            "Financial Information eXchange"
         );
         $emit!(
             as_field_properties,

@@ -1,5 +1,5 @@
 {
-  "version": "0.1.21",
+  "version": "0.1.22",
   "spec": {
     "version": "5.0.2",
     "ep": 309,
@@ -96,19 +96,19 @@
     ]
   },
   "kpi": {
-    "fields": 6273,
+    "fields": 6274,
     "groups": 581,
     "enumFields": 2030,
     "codesets": 739,
-    "codes": 7938,
+    "codes": 7954,
     "aliases": 51,
     "alternates": 0,
     "messages": 181,
     "components": 928,
-    "columns": 153,
+    "columns": 154,
     "memberships": 0,
     "dialects": 0,
-    "datatypes": 29,
+    "datatypes": 28,
     "dtypes": [
       [
         "int32",
@@ -116,7 +116,7 @@
       ],
       [
         "utf8",
-        1929
+        1930
       ],
       [
         "decimal128(38,18)",
@@ -179,6 +179,10 @@
         2
       ],
       [
+        "side",
+        2
+      ],
+      [
         "bbg",
         1
       ],
@@ -207,15 +211,7 @@
         1
       ],
       [
-        "pluginside",
-        1
-      ],
-      [
         "serie(field(\"srcuuid\",uuid,nullable=false,metadata={}))",
-        1
-      ],
-      [
-        "side",
         1
       ],
       [
@@ -85260,10 +85256,10 @@
           "FIX:datatype": "String",
           "FIX:tag": "65001",
           "FIX:transient": "false",
-          "description": "The element's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash.",
-          "display": "Current UUID"
+          "description": "The element's own UUID: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash.",
+          "display": "UUID"
         },
-        "name": "curruuid",
+        "name": "uuid",
         "nullable": false
       },
       {
@@ -85303,9 +85299,9 @@
           "FIX:tag": "65004",
           "FIX:transient": "false",
           "description": "The XXH3-64 of what the event states and the named FIX content behind it.",
-          "display": "Current Hash Code"
+          "display": "Hash Code"
         },
-        "name": "currhashcode",
+        "name": "hashcode",
         "nullable": false
       },
       {
@@ -85353,10 +85349,10 @@
           "FIX:datatype": "UTCTimestamp",
           "FIX:tag": "65007",
           "FIX:transient": "false",
-          "description": "When the event happened: the settled instant, UTC.",
-          "display": "Current Time"
+          "description": "When the operation happened: the settled transaction instant, UTC.",
+          "display": "Transaction Time"
         },
-        "name": "currunix",
+        "name": "transunix",
         "nullable": false
       },
       {
@@ -85372,7 +85368,7 @@
           ],
           "FIX:tag": "65008",
           "FIX:transient": "false",
-          "description": "When the message was created: what it states, else when it happened; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed.",
+          "description": "When the message was created: what it states, else its transunix; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed.",
           "display": "Creation Time"
         },
         "name": "creaunix",
@@ -85388,10 +85384,10 @@
           "FIX:datatype": "UTCTimestamp",
           "FIX:tag": "65009",
           "FIX:transient": "false",
-          "description": "When the message was recorded: by its carrier, where the carrier states one, else by its sender, where it states a SendingTime; the earliest its statements know.",
-          "display": "Recording Time"
+          "description": "When the message crossed the wire: its carrier's clock where the carrier states one, else the sender's SendingTime; the earliest its statements know.",
+          "display": "Sending Time"
         },
-        "name": "recdunix",
+        "name": "sendunix",
         "nullable": true
       },
       {
@@ -85566,7 +85562,7 @@
           "FIX:datatype": "UTCTimestamp",
           "FIX:tag": "65024",
           "FIX:transient": "false",
-          "description": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know.",
+          "description": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its transunix; the latest its chain reached once followed, and the earliest two statements of it know.",
           "display": "Execution Time"
         },
         "name": "execunix",
@@ -85587,13 +85583,13 @@
       },
       {
         "dtype": {
-          "type": "pluginside"
+          "type": "side"
         },
         "metadata": {
           "FIX:codeset": "msgpluginsidecodeset",
           "FIX:datatype": "int",
           "FIX:tag": "65043",
-          "description": "The role of the FIX plugin whose session produced the message: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the dialect states none; a session fact read off the dialect's source entry, never off a FIX tag, and independent of Side(54).",
+          "description": "The role of the FIX plugin whose session produced the message, as a side: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the dialect states none; a session fact read off the dialect's source entry, never off a FIX tag, a column of its own beside Side(54), the order's side.",
           "display": "Message Plugin Side"
         },
         "name": "msgpluginside",
@@ -85716,6 +85712,19 @@
           "display": "Source URL"
         },
         "name": "sourceurl",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:datatype": "String",
+          "FIX:tag": "65054",
+          "description": "The cross code of the instrument the message is about, the instrument table's own key: the real ISIN of a security an agency numbered, class:body - the two CFI class letters, then the body the characteristics spell, IF:EUR/USD for a spot pair - for everything no agency numbers. Written at the parse where the code is a function of the message alone - a stated real ISIN, a detected currency pair - filled by the lifecycle from the instrument the message resolves to otherwise, followed along a chain, fed to no digest; a row stating one is the row's word.",
+          "display": "Instrument Code"
+        },
+        "name": "instcode",
         "nullable": true
       }
     ],
@@ -259116,19 +259125,99 @@
     {
       "codes": [
         {
-          "doc": "No plugin role found, or one no member names.",
+          "doc": "A side stated as none, which a merge takes the other side over.",
           "name": "UKNW",
           "value": "0"
         },
         {
-          "doc": "A Buy-Side plugin: it originates orders and cancels and receives execution reports.",
+          "doc": "Buy.",
           "name": "BUYS",
           "value": "1"
         },
         {
-          "doc": "A Sell-Side plugin: it receives orders and cancels and answers with execution reports.",
+          "doc": "Sell.",
           "name": "SELL",
           "value": "2"
+        },
+        {
+          "doc": "Buy minus.",
+          "name": "BUYM",
+          "value": "3"
+        },
+        {
+          "doc": "Sell plus.",
+          "name": "SELP",
+          "value": "4"
+        },
+        {
+          "doc": "Sell short.",
+          "name": "SSHT",
+          "value": "5"
+        },
+        {
+          "doc": "Sell short exempt.",
+          "name": "SSEX",
+          "value": "6"
+        },
+        {
+          "doc": "Undisclosed.",
+          "name": "UNDI",
+          "value": "7"
+        },
+        {
+          "doc": "Cross.",
+          "name": "CROS",
+          "value": "8"
+        },
+        {
+          "doc": "Cross short.",
+          "name": "CRSH",
+          "value": "9"
+        },
+        {
+          "doc": "Cross short exempt.",
+          "name": "CRSX",
+          "value": "10"
+        },
+        {
+          "doc": "As defined.",
+          "name": "ASDF",
+          "value": "11"
+        },
+        {
+          "doc": "Opposite.",
+          "name": "OPPO",
+          "value": "12"
+        },
+        {
+          "doc": "Subscribe.",
+          "name": "SUBS",
+          "value": "13"
+        },
+        {
+          "doc": "Redeem.",
+          "name": "REDM",
+          "value": "14"
+        },
+        {
+          "doc": "Lend.",
+          "name": "LEND",
+          "value": "15"
+        },
+        {
+          "doc": "Borrow.",
+          "name": "BORR",
+          "value": "16"
+        },
+        {
+          "doc": "Sell undisclosed.",
+          "name": "SELU",
+          "value": "17"
+        },
+        {
+          "doc": "Both sides at once: a book, or a quote holding its bid and its ask and tagging neither.",
+          "name": "BOTH",
+          "value": "99"
         }
       ],
       "name": "msgpluginsidecodeset"
@@ -284824,11 +284913,11 @@
   "row": {
     "columns": [
       {
-        "c": "curruuid",
+        "c": "uuid",
         "t": 65001,
-        "n": "Current UUID",
+        "n": "UUID",
         "y": "uuid",
-        "x": "The element's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash."
+        "x": "The element's own UUID: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash."
       },
       {
         "c": "crossuuid",
@@ -284845,9 +284934,9 @@
         "x": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and of the side an order or an execution takes, 10:1:ORD-1, side 0 on one of side UKNW and on every other kind, a quote among them: 14:0:Q-1, 21:0:T-1; its chain's once followed."
       },
       {
-        "c": "currhashcode",
+        "c": "hashcode",
         "t": 65004,
-        "n": "Current Hash Code",
+        "n": "Hash Code",
         "y": "uint64",
         "x": "The XXH3-64 of what the event states and the named FIX content behind it."
       },
@@ -284866,25 +284955,25 @@
         "x": "The identities of the elements this message was read from: the text line it was parsed out of, and for a message the parse split off another that message's identity beside its sources; none for one parsed from raw bytes. Provenance, never lineage: no walk moves it."
       },
       {
-        "c": "currunix",
+        "c": "transunix",
         "t": 65007,
-        "n": "Current Time",
+        "n": "Transaction Time",
         "y": "datetime64(ns,\"UTC\")",
-        "x": "When the event happened: the settled instant, UTC."
+        "x": "When the operation happened: the settled transaction instant, UTC."
       },
       {
         "c": "creaunix",
         "t": 65008,
         "n": "Creation Time",
         "y": "datetime64(ns,\"UTC\")",
-        "x": "When the message was created: what it states, else when it happened; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed."
+        "x": "When the message was created: what it states, else its transunix; once walked, a message that states no SendingTime and is dated by a TransactTime takes an earlier OrigSendingTime as its creation; the earliest its chain knows once followed."
       },
       {
-        "c": "recdunix",
+        "c": "sendunix",
         "t": 65009,
-        "n": "Recording Time",
+        "n": "Sending Time",
         "y": "datetime64(ns,\"UTC\")",
-        "x": "When the message was recorded: by its carrier, where the carrier states one, else by its sender, where it states a SendingTime; the earliest its statements know."
+        "x": "When the message crossed the wire: its carrier's clock where the carrier states one, else the sender's SendingTime; the earliest its statements know."
       },
       {
         "c": "exprunix",
@@ -285013,6 +285102,13 @@
         "x": "The security identifiers the message names, each a type, a source and a code: SecurityID under SecurityIDSource, the SecurityAltID group, a bridge's instrument key, the keyed aliases a bridge states - ISINCODE, OMS_RICCODE, SEDOL_CODE - and the codes an ISIN embeds. SecurityID, SecurityIDSource and the group stay in fixentries as sent, and a keyed alias under 0:key. Derived from the message's fields; a row stating one is the row's word."
       },
       {
+        "c": "instcode",
+        "t": 65054,
+        "n": "Instrument Code",
+        "y": "utf8",
+        "x": "The cross code of the instrument the message is about, the instrument table's own key: the real ISIN of a security an agency numbered, class:body - the two CFI class letters, then the body the characteristics spell, IF:EUR/USD for a spot pair - for everything no agency numbers. Written at the parse where the code is a function of the message alone - a stated real ISIN, a detected currency pair - filled by the lifecycle from the instrument the message resolves to otherwise, followed along a chain, fed to no digest; a row stating one is the row's word."
+      },
+      {
         "c": "isincode",
         "t": 65022,
         "n": "ISIN Code",
@@ -285038,7 +285134,7 @@
         "t": 65024,
         "n": "Execution Time",
         "y": "datetime64(ns,\"UTC\")",
-        "x": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its currunix; the latest its chain reached once followed, and the earliest two statements of it know."
+        "x": "When the message last executed: what it states, else ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp or, on a message reporting an execution, a TransactTime stating a clock, the first one stated - a day alone dates no execution; a message reporting an execution that states none and follows nothing executed at its transunix; the latest its chain reached once followed, and the earliest two statements of it know."
       },
       {
         "c": "lastpx",
@@ -285331,8 +285427,8 @@
         "c": "msgpluginside",
         "t": 65043,
         "n": "Message Plugin Side",
-        "y": "pluginside",
-        "x": "The role of the FIX plugin whose session produced the message: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the dialect states none; a session fact read off the dialect's source entry, never off a FIX tag, and independent of Side(54)."
+        "y": "side",
+        "x": "The role of the FIX plugin whose session produced the message, as a side: BUYS for a Buy-Side plugin, SELL for a Sell-Side one, UKNW where the dialect states none; a session fact read off the dialect's source entry, never off a FIX tag, a column of its own beside Side(54), the order's side."
       },
       {
         "c": "msgoriginator",
@@ -286085,9 +286181,9 @@
         }
       ],
       "event": {
-        "currunix": "1706790896123000000",
+        "transunix": "1706790896123000000",
         "creaunix": "1706790896123000000",
-        "recdunix": "1706790896000000000",
+        "sendunix": "1706790896000000000",
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -286106,6 +286202,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": "XNAS",
@@ -286424,9 +286521,9 @@
         }
       ],
       "event": {
-        "currunix": "1706790897900000000",
+        "transunix": "1706790897900000000",
         "creaunix": "1706790897900000000",
-        "recdunix": "1706790897880000000",
+        "sendunix": "1706790897880000000",
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -286445,6 +286542,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -286849,9 +286947,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -286870,6 +286968,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -289949,9 +290048,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -289970,6 +290069,7 @@
         "unit": "",
         "side": "UKNW",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -290261,9 +290361,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -290282,6 +290382,7 @@
         "unit": "",
         "side": "BOTH",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -290505,9 +290606,9 @@
         }
       ],
       "event": {
-        "currunix": "1706788800000000000",
+        "transunix": "1706788800000000000",
         "creaunix": "1706788800000000000",
-        "recdunix": "1706788800000000000",
+        "sendunix": "1706788800000000000",
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -290526,6 +290627,7 @@
         "unit": "",
         "side": "UKNW",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -290678,9 +290780,9 @@
         }
       ],
       "event": {
-        "currunix": "1706790901000000000",
+        "transunix": "1706790901000000000",
         "creaunix": "1706790901000000000",
-        "recdunix": "1706790901000000000",
+        "sendunix": "1706790901000000000",
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -290699,6 +290801,7 @@
         "unit": "",
         "side": "UKNW",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -290885,9 +290988,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -290906,6 +291009,7 @@
         "unit": "",
         "side": "UKNW",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -291157,9 +291261,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -291178,6 +291282,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -291473,9 +291578,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -291494,6 +291599,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": "US0378331005",
         "isincode": "US0378331005",
         "cficode": null,
         "miccode": "XNAS",
@@ -291773,9 +291879,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -291794,6 +291900,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -292174,9 +292281,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -292195,6 +292302,7 @@
         "unit": "",
         "side": "UKNW",
         "securityids": {},
+        "instcode": "GB00BN7SWP63",
         "isincode": "GB00BN7SWP63",
         "cficode": null,
         "miccode": "XLON",
@@ -292494,9 +292602,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -292515,6 +292623,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -292725,9 +292834,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -292746,6 +292855,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -292945,9 +293055,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -292966,6 +293076,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -293156,9 +293267,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -293177,6 +293288,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -293378,9 +293490,9 @@
       "size": 4,
       "columns": [],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -293399,6 +293511,7 @@
         "unit": "",
         "side": "UKNW",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -293615,9 +293728,9 @@
         }
       ],
       "event": {
-        "currunix": "1704190530000000000",
+        "transunix": "1704190530000000000",
         "creaunix": "1704190530000000000",
-        "recdunix": null,
+        "sendunix": null,
         "exprunix": null,
         "prevunix": null,
         "snapunix": null,
@@ -293636,6 +293749,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,

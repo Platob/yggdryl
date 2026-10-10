@@ -5,7 +5,7 @@ use yggdryl::{DataType, DataTypeId, DataTypeKind};
 
 #[test]
 fn names_round_trip_case_insensitively() {
-    for id in DataTypeId::ALL {
+    for id in DataTypeId::all() {
         assert_eq!(DataTypeId::from_str(id.as_str()).unwrap(), id);
         assert_eq!(
             DataTypeId::from_str(&id.as_str().to_uppercase()).unwrap(),
@@ -16,7 +16,7 @@ fn names_round_trip_case_insensitively() {
 
 #[test]
 fn names_are_unique() {
-    let mut names: Vec<_> = DataTypeId::ALL.iter().map(|id| id.as_str()).collect();
+    let mut names: Vec<_> = DataTypeId::all().iter().map(|id| id.as_str()).collect();
     names.sort_unstable();
     let total = names.len();
     names.dedup();
@@ -64,7 +64,11 @@ fn every_legacy_name_reads_as_its_identifier_and_is_never_written() {
             serde_json::to_string(&id).unwrap(),
             format!("\"{spelled}\"")
         );
-        assert!(DataTypeId::ALL.iter().all(|other| other.as_str() != legacy));
+        assert!(
+            DataTypeId::all()
+                .iter()
+                .all(|other| other.as_str() != legacy)
+        );
         assert_eq!(DataTypeId::from_legacy_name(spelled), None);
     }
     assert_eq!(DataTypeId::from_legacy_name("array"), None);
@@ -74,7 +78,7 @@ fn every_legacy_name_reads_as_its_identifier_and_is_never_written() {
 fn every_kind_is_reachable() {
     for kind in DataTypeKind::ALL {
         assert!(
-            DataTypeId::ALL.iter().any(|id| id.kind() == kind),
+            DataTypeId::all().iter().any(|id| id.kind() == kind),
             "no identifier maps to {kind}"
         );
     }
@@ -82,7 +86,9 @@ fn every_kind_is_reachable() {
 
 #[test]
 fn the_strings_and_the_codes_are_text() {
-    assert_eq!(DataTypeId::ALL.len(), 97);
+    // The core's own: the four kinds a market crate claims are listed only
+    // once it has claimed them.
+    assert_eq!(DataTypeId::all().len(), 92);
     for id in [
         DataTypeId::Utf8String,
         DataTypeId::FixedUtf8String,
@@ -293,14 +299,9 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::Geometry, 0xb1),
         (DataTypeId::Geography, 0xb2),
         (DataTypeId::State, 0xc1),
-        (DataTypeId::MarketDataKind, 0xc2),
-        (DataTypeId::Side, 0xc3),
-        (DataTypeId::MarketDataType, 0xc4),
-        (DataTypeId::TimeInForce, 0xc5),
-        (DataTypeId::PluginSide, 0xc6),
     ];
-    assert_eq!(pinned.len(), DataTypeId::ALL.len());
-    for ((id, byte), held) in pinned.into_iter().zip(DataTypeId::ALL) {
+    assert_eq!(pinned.len(), DataTypeId::all().len());
+    for ((id, byte), held) in pinned.into_iter().zip(DataTypeId::all()) {
         assert_eq!(id, held, "declaration order");
         assert_eq!(id.as_u8(), byte, "{id}");
     }
@@ -331,7 +332,7 @@ fn every_leaf_sits_in_its_familys_range_and_no_leaf_takes_the_familys_number() {
         );
         assert_eq!(DataTypeKind::of_u8(kind.id()), Some(kind), "{kind}");
     }
-    for id in DataTypeId::ALL {
+    for id in DataTypeId::all() {
         let family = id.kind();
         // The null leaf is the family's own number: a null has no leaf to
         // tell from another.
@@ -534,22 +535,12 @@ fn a_family_is_the_range_of_bytes_it_owns_and_the_ranges_tile_the_identifiers() 
             K::Geospatial,
             &[DataTypeId::Geometry, DataTypeId::Geography],
         ),
-        (
-            K::Enum,
-            &[
-                DataTypeId::State,
-                DataTypeId::MarketDataKind,
-                DataTypeId::Side,
-                DataTypeId::MarketDataType,
-                DataTypeId::TimeInForce,
-                DataTypeId::PluginSide,
-            ],
-        ),
+        (K::Enum, &[DataTypeId::State]),
     ];
     let listed: usize = members.iter().map(|(_, ids)| ids.len()).sum();
     assert_eq!(
         listed,
-        DataTypeId::ALL.len(),
+        DataTypeId::all().len(),
         "every identifier is listed once"
     );
     for (kind, ids) in members {
@@ -574,7 +565,7 @@ fn a_temporal_identifier_names_its_family_and_no_other_identifier_does() {
         (DataTypeId::Duration64, "duration"),
         (DataTypeId::Interval, "interval"),
     ];
-    for id in DataTypeId::ALL {
+    for id in DataTypeId::all() {
         let expected = families
             .iter()
             .find(|(temporal, _)| *temporal == id)
@@ -596,7 +587,7 @@ fn unknown_name_reports_the_input() {
 
 #[test]
 fn integer_predicates_partition_the_family() {
-    for id in DataTypeId::ALL.into_iter().filter(|id| id.is_integer()) {
+    for id in DataTypeId::all().into_iter().filter(|id| id.is_integer()) {
         assert_ne!(id.is_signed_integer(), id.is_unsigned_integer());
     }
 }

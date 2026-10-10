@@ -65,7 +65,7 @@ mod arrow {
     /// layout carries, and the second view width, which Arrow has one of -
     /// the leaf's identifier's [`DataTypeId::arrow_extension_name`].
     pub(crate) const fn needs_extension(parameters: BytesType) -> bool {
-        parameters.id().arrow_extension_name().is_some()
+        parameters.id().core_arrow_extension_name().is_some()
     }
 
     /// The Arrow storage one byte datatype lays out.
@@ -826,7 +826,7 @@ impl BytesType {
     /// The canonical name of this leaf.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        self.id().as_str()
+        self.id().core_str()
     }
 
     /// The declared byte bound, whichever shape the leaf gives it.

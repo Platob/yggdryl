@@ -1,12 +1,12 @@
 //! How long a terminal lets a connection stay quiet.
 //!
-//! Every serving command takes `--read-timeout` the same way, and as a length
-//! of time the way every timeout the core has is read: seconds, a fraction
-//! allowed, with an optional unit, so `30`, `2.5`, `1500ms` and `30s` are four
-//! spellings of lengths and nothing here picks between readings. The reader
-//! is the core's; this file adds only the bounds a server has, which the
-//! argument parser states rather than the socket, so a refusal names the
-//! flag and binds nothing.
+//! `xmla serve` reads `--read-timeout` as a length of time the way every
+//! timeout the core has is read: seconds, a fraction allowed, with an
+//! optional unit, so `30`, `2.5`, `1500ms` and `30s` are four spellings of
+//! lengths and nothing here picks between readings. The reader is the
+//! core's; this file adds only the bounds a server has, which the argument
+//! parser states rather than the socket, so a refusal names the flag and
+//! binds nothing.
 
 use std::time::Duration;
 

@@ -50,6 +50,7 @@ def quote(
         unix,
         crosscode=code,
         ticker=ticker,
+        instcode=ticker,
         side=side,
         price=D(price),
         quantity=quantity,
@@ -127,7 +128,7 @@ def full_candle() -> graph.Candle:
 def empty_candle() -> graph.Candle:
     """A candle of a book that stated nothing."""
     return graph.Candle.from_scalar(
-        {"crosscode": "3:0:XX0000000000", "start": 0, "end": MINUTE, "books": 1}
+        {"crosscode": "3:0:ACME", "start": 0, "end": MINUTE, "books": 1}
     )
 
 
@@ -243,6 +244,7 @@ class TestCandleIterator:
             90 * SECOND,
             crosscode="E-1",
             ticker="ACME",
+            instcode="ACME",
             side="BUY",
             price=D("100"),
             lastqty=4,
@@ -271,7 +273,7 @@ class TestCandleIterator:
         assert not any(book.is_complete for book in delta_books)
         whole: list[graph.BookEvent] = []
         for book in delta_books:
-            previous = whole[-1] if whole else graph.BookEvent.keyed(book.currunix, "ACME")
+            previous = whole[-1] if whole else graph.BookEvent.keyed(book.transunix, "ACME")
             rebuilt = book.with_previous(previous)
             assert rebuilt is not None
             whole.append(rebuilt)
@@ -288,6 +290,7 @@ class TestCandleIterator:
             20 * SECOND,
             crosscode="A",
             ticker="ACME",
+            instcode="ACME",
             side="SELL",
             price=D("102"),
             quantity=0,
@@ -348,10 +351,11 @@ class TestCandleIterator:
         assert found[1].ticker == "IBM"
 
     def test_a_book_stating_no_ticker_states_none_on_its_candle(self) -> None:
-        assert empty_candles([10 * SECOND], MINUTE)[0].ticker == "ACME"
-        (candle,) = list(graph.CandleIterator([graph.BookEvent(10 * SECOND, "")], MINUTE))
-        # An empty symbol keys the book by the number that states none.
-        assert candle.ticker is None and candle.crosscode == "3:0:XX0000000000"
+        # A keyed book states no ticker until an input does.
+        assert empty_candles([10 * SECOND], MINUTE)[0].ticker is None
+        (candle,) = list(graph.CandleIterator([graph.BookEvent(10 * SECOND, "US0378331005")], MINUTE))
+        # A book keyed by a code is the candle's code.
+        assert candle.ticker is None and candle.crosscode == "3:0:US0378331005"
 
     def test_market_data_holding_a_book_folds_and_anything_else_is_refused(self) -> None:
         held = [graph.MarketData(book) for book in books(ONE_MINUTE)]
@@ -379,7 +383,7 @@ class TestCandleIterator:
         )
         with pytest.raises(
             ValueError,
-            match=r"^invalid record value at \$\.book\.currunix: "
+            match=r"^invalid record value at \$\.book\.transunix: "
             r"expected an instant at or after 2000, got 1000$",
         ):
             next(walk)

@@ -1,6 +1,6 @@
 {
   "name": "yggdryl",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "description": "Native Yggdryl schemas, fields, Arrow interop, URIs, and structured codecs for Node.js",
   "license": "Apache-2.0",
   "repository": {
@@ -16,11 +16,6 @@
       "types": "./binding.d.ts",
       "require": "./binding.js",
       "default": "./binding.js"
-    },
-    "./book": {
-      "types": "./book.d.ts",
-      "require": "./book.js",
-      "default": "./book.js"
     }
   },
   "files": [
@@ -28,9 +23,6 @@
     "index.d.ts",
     "binding.js",
     "binding.d.ts",
-    "book.js",
-    "book.d.ts",
-    "book/",
     "defaults.js",
     "fields.js",
     "properties.js",
@@ -62,7 +54,7 @@
     "bench:types:defaults": "node benchmarks/types/defaults.js",
     "bench:warehouse": "node benchmarks/warehouse.js",
     "build": "napi build --platform --release && node scripts/local-binding-only.js && node scripts/hide-private-types.js",
-    "build:debug": "napi build --platform && node scripts/local-binding-only.js && node scripts/hide-private-types.js",
+    "build:debug": "napi build --platform -- --locked && node scripts/local-binding-only.js && node scripts/hide-private-types.js",
     "prepack": "npm run typecheck",
     "test": "node --test \"tests/**/*.test.js\" && tsc --noEmit",
     "test:package": "npm run build && node scripts/local-binding-only.js --check && node scripts/hide-private-types.js --check && node scripts/check-package-files.js",

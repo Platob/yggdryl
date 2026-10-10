@@ -3,7 +3,6 @@
 
 mod accounting {
     use crate::mod_::{BUCKET, file, file_with, options, payload, store};
-    use yggdryl::internals::s3_file::upload_from;
     use yggdryl::{IOBase, IOKind};
 
     /// A source that answers in pieces smaller than it is asked for, and
@@ -320,7 +319,8 @@ mod accounting {
         let mut big = file_with("lake/streamed.bin", bounded());
         let mut source = Metered::over(&bytes);
         store.clear_requests();
-        upload_from(&mut big, &mut source, bytes.len() as u64).expect("a streamed upload");
+        big.upload_from(&mut source, bytes.len() as u64)
+            .expect("a streamed upload");
         assert_eq!(
             store.request_count(),
             4,
@@ -345,7 +345,8 @@ mod accounting {
         let mut file = file_with("lake/streamed-small.bin", bounded());
         let mut source = Metered::over(&small);
         store.clear_requests();
-        upload_from(&mut file, &mut source, small.len() as u64).expect("a small streamed upload");
+        file.upload_from(&mut source, small.len() as u64)
+            .expect("a small streamed upload");
         assert_eq!(
             store.request_count(),
             1,
@@ -360,8 +361,9 @@ mod accounting {
         let mut file = file_with("lake/short.bin", bounded());
         let mut source = Metered::over(&short);
         store.clear_requests();
-        let error =
-            upload_from(&mut file, &mut source, 600 * 1024).expect_err("a short source is refused");
+        let error = file
+            .upload_from(&mut source, 600 * 1024)
+            .expect_err("a short source is refused");
         assert!(
             error.to_string().contains("expected 614400 bytes"),
             "{error}"
@@ -419,6 +421,72 @@ mod accounting {
             Some("bytes=0-15"),
             "the window asked for is the window wanted"
         );
+    }
+
+    /// A stage dropped after a failed write asks nothing and leaves nothing
+    /// to remove: an object is published whole or not at all, so the answer
+    /// says the caller sends no `DELETE` for a key that was never written,
+    /// and the handle's drop publishes nothing either.
+    #[test]
+    fn a_dropped_stage_asks_nothing_and_leaves_nothing_to_remove() {
+        let store = store();
+        let mut handle = file(&store, "lake/staged.bin");
+        handle.pwrite(0, b"AAPL").expect("a staged write");
+        store.clear_requests();
+        assert!(handle.discard().expect("the stage dropped"));
+        drop(handle);
+        assert_eq!(store.request_count(), 0, "nothing staged is published");
+        assert_eq!(store.get(BUCKET, "lake/staged.bin"), None);
+    }
+
+    /// A length a listing or a manifest stated is kept in place, so the size
+    /// asks no `HEAD`.
+    #[test]
+    fn a_stated_length_answers_the_size_without_a_request() {
+        let store = store();
+        store.put(BUCKET, "lake/part.parquet", &payload(4096));
+        let mut handle = file(&store, "lake/part.parquet");
+        store.clear_requests();
+        handle.set_known_size(4096);
+        assert_eq!(handle.size(), 4096);
+        assert_eq!(store.request_count(), 0, "the stated length answers");
+    }
+
+    /// An object is held again, and re-described as the prefix its key
+    /// spells, on the same client with no request; whether it is there is
+    /// one `HEAD`.
+    #[test]
+    fn an_object_is_held_again_and_re_described_without_a_request() {
+        use yggdryl::holder::RegisteredHandle;
+        use yggdryl::s3::{S3File, S3Folder};
+
+        let store = store();
+        store.put(BUCKET, "lake/part.parquet", b"PAR1");
+        let handle = file(&store, "lake/part.parquet");
+        store.clear_requests();
+
+        assert_eq!(handle.implementation_name(), "S3File");
+        // An object is a leaf already, with no role left to decide.
+        assert!(handle.as_leaf().expect("no request").is_none());
+        let prefix = handle.as_container().expect("no request");
+        let prefix = prefix.expect("the prefix the key spells");
+        assert_eq!(
+            prefix
+                .downcast_ref::<S3Folder>()
+                .expect("a prefix")
+                .prefix(),
+            "lake/part.parquet/"
+        );
+        let again = handle.reopen().expect("the object again");
+        assert_eq!(
+            again.downcast_ref::<S3File>().expect("an object").key(),
+            "lake/part.parquet"
+        );
+        assert_eq!(store.request_count(), 0, "none of them a request");
+
+        assert!(RegisteredHandle::exists(&handle));
+        assert_eq!(store.request_count(), 1, "one HEAD");
+        assert_eq!(again.read_all_bytes().expect("the object"), b"PAR1");
     }
 }
 

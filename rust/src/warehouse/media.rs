@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use smol_str::{SmolStr, format_smolstr};
+use smol_str::SmolStr;
 
 use super::handle::{Handle, Site};
 use super::object::path_text;
@@ -198,6 +198,11 @@ impl MediaTable {
 
     /// A completed leaf write no longer owns a read snapshot or a writer
     /// mapping. Close its located session before returning the descriptor.
+    ///
+    /// The close ends the medium's session with it, so the entry its write
+    /// refreshed is dropped too and the next read asks the store once: a
+    /// leaf a write published by rename is read afresh rather than through
+    /// a mapping of the file it replaced.
     fn finish_write<T>(&mut self, result: Result<T>) -> Result<T> {
         if result.is_ok() && self.layout == FolderLayout::Leaf {
             self.handle.release_after_write()?;
@@ -219,15 +224,10 @@ impl MediaTable {
     /// The options every record verb runs with when the caller states none:
     /// the handle's, carrying the declared field and the table's name.
     fn options(&self) -> Result<RecordOptions> {
-        if self.layout == FolderLayout::Format && !reads_table_format() {
-            return Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$.encoding"),
-                reason: format_smolstr!(
-                    "`{}` is laid out as an Iceberg table, which this build does not read; \
-                     the `iceberg` feature is not enabled",
-                    path_text(&self.path)
-                ),
-            });
+        if self.layout == FolderLayout::Format
+            && crate::media::format::format_named(super::folder::TABLE_LAYOUT_FORMAT).is_none()
+        {
+            return Err(crate::media::format::unregistered(path_text(&self.path)));
         }
         let handle = self.handle()?;
         // A leaf's encoding is what its name declares, with no question to
@@ -254,12 +254,6 @@ fn named_path(path: impl IntoObjectPath) -> Result<Vec<SmolStr>> {
         });
     }
     Ok(path)
-}
-
-/// Whether this build reads a folder laid out as a table format: the one
-/// format this crate implements is Iceberg, under its own feature.
-const fn reads_table_format() -> bool {
-    cfg!(feature = "iceberg")
 }
 
 impl ObjectValue for MediaTable {
@@ -322,6 +316,9 @@ impl fmt::Display for MediaTable {
     }
 }
 
+/// Every byte verb is the opened handle's, the upload, the discard and the
+/// stated length included; the two roles keep their defaults, since the
+/// handle they would answer drops the table's declared field and layout.
 impl IOBase for MediaTable {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.handle()?.pread(offset, buffer)
@@ -372,8 +369,20 @@ impl IOBase for MediaTable {
         self.handle_mut()?.append_bytes(bytes)
     }
 
+    fn upload_from(&mut self, source: &mut dyn std::io::Read, length: u64) -> Result<()> {
+        self.handle_mut()?.upload_from(source, length)
+    }
+
     fn size(&self) -> u64 {
         self.handle().map_or(0, IOBase::size)
+    }
+
+    /// Tell the opened handle its length. A table whose handle cannot be
+    /// opened has no length to be told, as it has no size to answer.
+    fn set_known_size(&mut self, size: u64) {
+        if let Ok(handle) = self.handle_mut() {
+            handle.set_known_size(size);
+        }
     }
 
     fn capacity(&self) -> u64 {
@@ -450,6 +459,10 @@ impl IOBase for MediaTable {
         self.handle_mut()?.remove(recursive)
     }
 
+    fn discard(&self) -> Result<bool> {
+        self.handle()?.discard()
+    }
+
     fn parent(&self) -> Option<Holder> {
         self.handle().ok()?.parent()
     }
@@ -517,24 +530,25 @@ impl IOMedia for MediaTable {
         self.options()
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        IOMedia::read_parquet_statistics(self.handle()?)
+    // A handle that cannot open holds no medium's state; the verb that
+    // reads it next reports why.
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        self.handle().ok().and_then(IOMedia::as_any)
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_geospatial_statistics(
-        &self,
-        column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
-        IOMedia::read_parquet_geospatial_statistics(self.handle()?, column)
+    // The origin is what the store states: a declared field is the table's
+    // intent, never its origin.
+    fn read_origin_field(&self) -> Result<Option<Field>> {
+        IOMedia::read_origin_field(self.handle()?)
     }
 
+    // The table's declared field is the root the options declare none over,
+    // answered under the one schema rule with no read.
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
-        if options.field().is_none()
+        if options.declared().is_none()
             && let Some(field) = &self.field
         {
-            return Ok(field.clone());
+            return crate::iomedia::field_under(options, field);
         }
         IOMedia::read_arrow_field(self.handle()?, options)
     }

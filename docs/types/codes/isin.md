@@ -195,7 +195,7 @@ The value is the canonical spelling: upper case, of the number's shape. Lower ca
 
 Two letters of prefix - the numbering agency's country, or an international prefix such as `XS` - then nine alphanumerics of national number, then the Luhn digit of the eleven before them, each letter first expanded to the two digits of its alphabet position. `closing_digit` computes it, and `prefix`, `nsin` and `check_digit` read a built value apart.
 
-Two readings say how real a number is, and its [rank](index.md#rank) counts them. `Isin::is_closed` answers whether the digit closes the number, and `is_listed_prefix` whether an agency numbers under the prefix: an ISO 3166 country `StringEnum::COUNTRIES` lists, or one of the agency prefixes `EU`, `EZ`, `XA`, `XB`, `XC`, `XD`, `XF`, `XK`, `XS` and `XT`, the prefix of a referential instrument such as a digital token; `ZZ` - ISO 6166's prefix for a derivative no agency has numbered yet - and the user-assigned `XX` are listed nowhere. `rank_of` reads the rank off the text alone: two for a real number (`MAX_RANK`), one for a typo under a listed prefix or a closing `ZZ` number, zero for a masked one and for text that is not the upper-case shape. `is_canonical` is the strict question about the spelling - upper case and the shape - and says nothing of the digit. `Isin::NONE` is `XX0000000000`, the number stated as none: `Isin::none()` builds it, `is_none()` asks, and it is the lowest rank there is, so any stated number replaces it, and the key a [book](../../graph/market.md) takes where its inputs state neither an ISIN nor a ticker. Rust only; the other bindings reach the shape through the value door above.
+Two readings say how real a number is, and its [rank](index.md#rank) counts them. `Isin::is_closed` answers whether the digit closes the number, and `is_listed_prefix` whether an agency numbers under the prefix: an ISO 3166 country `StringEnum::COUNTRIES` lists, or one of the agency prefixes `EU`, `EZ`, `XA`, `XB`, `XC`, `XD`, `XF`, `XK`, `XS` and `XT`, the prefix of a referential instrument such as a digital token; `ZZ` - ISO 6166's prefix for a derivative no agency has numbered yet - and the user-assigned `XX` are listed nowhere. `rank_of` reads the rank off the text alone: two for a real number (`MAX_RANK`), one for a typo under a listed prefix or a closing `ZZ` number, zero for a masked one and for text that is not the upper-case shape. `is_canonical` is the strict question about the spelling - upper case and the shape - and says nothing of the digit. `Isin::NONE` is `XX0000000000`, the number stated as none: `Isin::none()` builds it, `is_none()` asks, and it is the lowest rank there is, so any stated number replaces it. Rust only; the other bindings reach the shape through the value door above.
 
 ```rust
 use yggdryl::{CodeValue, Isin};
@@ -229,6 +229,23 @@ assert_eq!(Isin::none().merge_with(&typo), typo);
 // The shape is the refusal, and it says why.
 let refused = Isin::new("US037833100A").unwrap_err().to_string();
 assert!(refused.contains("expected a closing check digit"), "{refused}");
+```
+
+## A minted number
+
+An instrument no agency numbers - an FX pair, a forward, an option, a strategy - still gets an ISIN where a reader joins on `isin`: `Isin::minted(digest)` writes the prefix `QY` - a user-assigned code ISO 3166 leaves to private use, listed nowhere - then nine base-36 digits of the digest's low 46 bits and the digit that closes them, and `Isin::is_minted(text, digest)` asks whether a number is that mint of that digest, byte for byte, computing nothing; `Isin::MINTED_PREFIX` is the prefix. A minted number closes under a prefix no agency numbers under, so it ranks one - below every agency's number, which replaces it whichever leads. The [instrument](../../graph/instrument.md#the-minted-number) mints from the XXH3-128 of its cross code, so the number is a function of the code alone. Rust only; Python reaches it as `Instruments.mint(crosscode)`.
+
+```rust
+use yggdryl::{CodeValue, Isin};
+
+let digest = yggdryl::xxhash::xxh128(b"IF:EUR/USD");
+let minted = Isin::minted(digest);
+assert_eq!(minted.as_str(), "QYLTVIRYHNX5");
+assert!(minted.as_str().starts_with(Isin::MINTED_PREFIX));
+assert!(Isin::is_minted(minted.as_str(), digest));
+assert!(!Isin::is_minted("QY0000000000", digest), "another system's number of the shape");
+assert!(Isin::is_closed(minted.as_str()) && !Isin::is_listed_prefix(minted.as_str()));
+assert_eq!(minted.rank(), 1);
 ```
 
 ## A column holds the canonical spelling
@@ -288,7 +305,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 - No default value: the empty text names no security, so an empty text cell entering the column is null, as it is for a UUID ([Cast](../cast.md#empty-text)).
 - No vocabulary: `StringEnum::from_logical_name("isin")` answers an enum of no members, and no Python code class declares it.
 - A `ZZ` number - ISO 6166's placeholder for a derivative no agency has numbered yet - closes but is listed nowhere: rank one, which a real number replaces on a [`merge_with`](index.md#rank) whichever leads, as a real number replaces a typo and a typo a masked number. Two numbers of one rank are two statements, and the leading one stands.
-- A lifecycle may learn a missing matching identifier or CFI attribute only under a real ISIN (`is_real`: closing under a listed prefix) in its own [graph walk](../../graph/event.md#lifecycle-walk); that association registry is not a codec parser, a global mapper, or a replacement for a stated fact.
+- A lifecycle may learn a missing matching identifier or CFI attribute only under a real ISIN (`is_real`: closing under a listed prefix) - or, for an instrument no agency numbers, its cross code - in its own [graph walk](../../graph/event.md#lifecycle-walk), into the [instruments](../../graph/instrument.md) it fills from; that association is not a codec parser, a global mapper, or a replacement for a stated fact.
 - `SecurityIDSource(22)` and the crate tag `isincode(65022)` carry the normalized column in a [FIX capture](index.md#fix-message-definitions): a view of the message's `isin` [security identifier](../../graph/identifier.md).
 - The prefix is the numbering agency's, which includes international prefixes no [country](country.md) names, so it is read as text rather than as that code.
 

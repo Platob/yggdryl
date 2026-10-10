@@ -563,7 +563,6 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         ("side", "BUYS"),
         ("state", "NEW"),
         ("timeinforce", "GTC"),
-        ("pluginside", "SELL"),
         ("cusip", "037833100"),
         ("sedol", "B0YBKJ7"),
         ("bbg", "AAPL US Equity"),
@@ -1078,3 +1077,50 @@ def test_value_bytes_carry_any_value_and_pickle_rides_them() -> None:
         Scalar.from_value_bytes(b"\x01\x00")
     with pytest.raises(ValueError, match="bytes left"):
         Scalar.from_value_bytes(b"\x00\x00\x00")
+
+def test_the_market_kinds_wire_facts_are_pinned() -> None:
+    # Generated on `2ae975674` by the S0 scratch harness, never typed by hand:
+    # the canonical digest, what `hash` maps it to, and the value-stream bytes
+    # pickle carries, for every kind that leaves the core and for `state`.
+    facts: list[tuple[str, str, int, bytes]] = [
+        ("lei", "HWUPKR0MPOU8FGXBT394", 6198912554465764206, bytes([0, 107, 0, 20, 72, 87, 85, 80, 75, 82, 48, 77, 80, 79, 85, 56, 70, 71, 88, 66, 84, 51, 57, 52])),
+        ("bic", "DEUTDEFFXXX", 9214906311216571244, bytes([0, 108, 0, 11, 68, 69, 85, 84, 68, 69, 70, 70, 88, 88, 88])),
+        ("elf", "2HBR", 11939408946376585611, bytes([0, 109, 0, 4, 50, 72, 66, 82])),
+        ("dti", "X9J9K872S", 17644871332366537191, bytes([0, 110, 0, 9, 88, 57, 74, 57, 75, 56, 55, 50, 83])),
+        ("fisn", "ACME CORP/SH", 7554242156237849144, bytes([0, 111, 0, 12, 65, 67, 77, 69, 32, 67, 79, 82, 80, 47, 83, 72])),
+        ("country", "FR", 7299401977006624818, bytes([0, 113, 0, 2, 70, 82])),
+        ("ccy", "USD", 579522367022846554, bytes([0, 114, 0, 3, 85, 83, 68])),
+        ("mic", "XPAR", 342426546139583233, bytes([0, 115, 0, 4, 88, 80, 65, 82])),
+        ("cfi", "ESVUFR", 15220031798906910930, bytes([0, 116, 0, 6, 69, 83, 86, 85, 70, 82])),
+        ("isin", "US0378331005", 10610353165993888946, bytes([0, 120, 0, 12, 85, 83, 48, 51, 55, 56, 51, 51, 49, 48, 48, 53])),
+        ("cusip", "037833100", 10982021773620609182, bytes([0, 121, 0, 9, 48, 51, 55, 56, 51, 51, 49, 48, 48])),
+        ("sedol", "B0YBKJ7", 6105491412071589058, bytes([0, 122, 0, 7, 66, 48, 89, 66, 75, 74, 55])),
+        ("bbg", "AAPL US Equity", 3640964093791871709, bytes([0, 123, 0, 14, 65, 65, 80, 76, 32, 85, 83, 32, 69, 113, 117, 105, 116, 121])),
+        ("figi", "BBG000BLNQ16", 11238263791772724216, bytes([0, 124, 0, 12, 66, 66, 71, 48, 48, 48, 66, 76, 78, 81, 49, 54])),
+        ("unit", "MWh", 14976982327789474560, bytes([0, 125, 0, 3, 77, 87, 104])),
+        ("ric", "VOD.L", 10008536561446647023, bytes([0, 126, 0, 5, 86, 79, 68, 46, 76])),
+        ("forex", "EUR/USD", 16790735672855145637, bytes([0, 127, 0, 7, 69, 85, 82, 47, 85, 83, 68])),
+        ("state", "PENDING_NEW", 16325037442088800966, bytes([0, 193, 233, 3, 0, 0])),
+        ("marketdatakind", "ORDR", 9539999417125515392, bytes([0, 194, 10, 0, 0, 0])),
+        ("side", "BUYS", 10873967693893398222, bytes([0, 195, 1, 0, 0, 0])),
+        ("marketdatatype", "ORDLIMIT", 1473889680286530346, bytes([0, 196, 102, 0, 0, 0])),
+        ("timeinforce", "GTC", 6704438739160732642, bytes([0, 197, 2, 0, 0, 0])),
+    ]
+    assert len(facts) == 22
+    for kind, text, stable, raw in facts:
+        value = DataType(kind).scalar(text)
+        assert value.kind == kind
+        assert value.stable_hash() == stable
+        if sys.hash_info.width == 64:
+            expected = stable if stable < 2**63 else stable - 2**64
+        else:
+            folded = (stable ^ (stable >> 32)) & 0xFFFF_FFFF
+            expected = folded if folded < 2**31 else folded - 2**32
+        if expected == -1:
+            expected = -2
+        assert hash(value) == expected
+        assert value.into_value_bytes() == raw
+        assert value.__reduce__()[1] == (raw,)
+        assert Scalar._from_pickle(raw) == value
+        assert pickle.loads(pickle.dumps(value)) == value
+        assert raw in pickle.dumps(value)

@@ -8,6 +8,8 @@ license.workspace = true
 repository.workspace = true
 keywords = ["arrow", "schema", "field", "uri", "codec"]
 categories = ["data-structures", "encoding"]
+# The split crates sit inside this folder; each is its own package.
+exclude = ["/market", "/fix"]
 
 [features]
 default = []
@@ -99,10 +101,10 @@ memmap2 = "0.9"
 # projection outrun CPython's C `re` loop on the same corpus. `memchr` rides
 # in regex's own tree, so naming it for the line scan costs no extra crate.
 memchr = "2.7"
-# A streaming pull parser, because a CBlock is megabytes of XML of which
-# two of fourteen top-level children are read: skipping by depth without
-# materializing a tree is the whole requirement, and a DOM crate cannot.
-# No `encoding` feature - a CBlock is ASCII, which quick-xml reads as UTF-8.
+# A streaming pull parser: the XML codec (`xml/`) and the workbook medium
+# (`excel/`) fold its events without materializing a tree, which a DOM crate
+# cannot. No `encoding` feature - the bytes it reads are UTF-8, a declared
+# charset decoded by the crate's own `Charset` before them.
 quick-xml = { version = "=0.41.0", default-features = false }
 regex = "1.11"
 # RSASSA-PKCS1-v1_5 with SHA-256, for the JWT a Google service-account key
@@ -129,12 +131,9 @@ serde_json = { version = "1.0", features = ["raw_value", "unbounded_depth"] }
 # what the XML writer spells a float cell with, so a row costs no string.
 ryu = "1.0"
 sha2 = { version = "0.11", optional = true }
-# Inline small collections: the two or three identifiers a market names an
-# instrument by, and the handful of ids a message states, held without a heap
-# allocation until they outgrow the inline slots. `union` lays the inline
-# slots and the heap pointer over one another, which is what keeps `IdMap`
-# and `SecurityIds` at 56 bytes; it needs Rust 1.49, well under the MSRV.
-smallvec = { version = "1", features = ["union"] }
+# An inline small collection: the one row of edit distances `fisn.rs` scores
+# two short names by, held without a heap allocation.
+smallvec = "1"
 smol_str = { version = "=0.3.2", features = ["serde"] }
 # Raw snappy blocks for Avro containers; optional because the parquet crate is
 # what already pulls it, so it rides that feature rather than adding a crate.
@@ -195,8 +194,8 @@ criterion = { version = "0.7", default-features = false, features = ["cargo_benc
 # The streams `object_store` answers with are consumed through its own
 # ecosystem's combinators; nothing here reaches a public signature.
 futures = "0.3"
-# The parser warnings a best-effort CBlock read emits are only readable
-# through a logger, and the tests that pin one install their own.
+# The facade the logging tree backs: `rust/tests/logging/` sends records
+# through it and pins the loggers they reach.
 log.workspace = true
 object_store = { version = "=0.13.1", features = ["aws"] }
 # The format's own implementation of the Variant binary encoding, read and
@@ -209,31 +208,9 @@ parquet-variant = "=59.2.0"
 serde_json = "1.0"
 tokio = { version = "1", features = ["rt"] }
 
-
 [[bench]]
 name = "types"
 path = "benchmarks/types.rs"
-harness = false
-
-# The FIX registry: tiered resolution against a plain map, mutation over a
-# realistic dictionary, and shard loading against shard count. The module is
-# unconditional, so the target compiles in a default build.
-[[bench]]
-name = "fix"
-path = "benchmarks/fix.rs"
-harness = false
-
-# The market graph: a book side's limits, depth and bests, the book's
-# spread and imbalance, and one update on a deep side - the fix pipeline's
-# dense book holds one price level, so it measures none of these.
-[[bench]]
-name = "graph"
-path = "benchmarks/graph.rs"
-harness = false
-
-[[bench]]
-name = "fix_allocations"
-path = "benchmarks/fix_allocations.rs"
 harness = false
 
 [[bench]]

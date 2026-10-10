@@ -37,16 +37,16 @@ order = graph.OrderEvent(
     price=Decimal("189.50"),
     quantity=100,
     currency="USD",
-    ticker="AAPL",
+    ticker="AAPL", instcode="AAPL",
     # An identifier is a source, a type and a value, unique by `src:type`; a code is held to its type's shape.
     securityids=[Identifier("isin", "US0378331005")],
     identifiers=[Identifier("orderid", "O-1001")],
 )
 # A dated identity is a UUIDv7: its millisecond leads.
-assert order.curruuid.as_py().startswith("018bcfe5-6800-7")
+assert order.uuid.as_py().startswith("018bcfe5-6800-7")
 # A cross code is stored as `{kind}:{side}:{base}`: one chain per side.
 assert order.crosscode == "10:1:O-1001"
-assert order.crossuuid != order.curruuid, "the cross code names a chain"
+assert order.crossuuid != order.uuid, "the cross code names a chain"
 # Derived on construction: the CUSIP inside the ISIN; the ISIN itself reads as `isincode`.
 assert [str(id) for id in order.securityids] == ["cusip=037833100", "derived:cusip=037833100", "isin=US0378331005"]
 assert order.securityids.get("cusip") == "037833100"
@@ -89,7 +89,7 @@ T = 1_700_000_000_000_000_000
 order = graph.Order(crosscode="O-1001", side="BUYS", price=Decimal("189.50"))
 assert order.kind == "order" and order.marketdatakind is MarketDataKind.ORDR
 event = order.at(T)
-assert isinstance(event, graph.OrderEvent) and event.currunix == T
+assert isinstance(event, graph.OrderEvent) and event.transunix == T
 assert event.into_element() == order
 
 # A two-sided quote: its bid and ask are its two legs, and tagging neither it
@@ -97,7 +97,7 @@ assert event.into_element() == order
 quote = graph.QuoteEvent(
     T,
     crosscode="Q-7",
-    ticker="AAPL",
+    ticker="AAPL", instcode="AAPL",
     bidpx=Decimal("189.48"),
     bidqty=300,
     bidccy="USD",
@@ -110,19 +110,19 @@ assert quote.askpx is not None and quote.askpx.as_py() == Decimal("189.52")
 assert quote.marketdatakind is MarketDataKind.QUOT
 
 # An offer: tagged `SELL`, its price is its ask leg; a quote's code stays under side 0.
-offer = graph.QuoteEvent(T, crosscode="Q-8", ticker="AAPL", side="SELL", price=Decimal("189.52"), quantity=100)
+offer = graph.QuoteEvent(T, crosscode="Q-8", ticker="AAPL", instcode="AAPL", side="SELL", price=Decimal("189.52"), quantity=100)
 assert offer.crosscode == "14:0:Q-8"
 assert offer.askpx is not None and offer.askpx.as_py() == Decimal("189.52")
 # Placed in a book by its control; the scope is a fact, the rest walk-time.
 entry = offer.with_book(graph.BookRef(action="new", position=1, scope="L2"))
 assert (entry.action, entry.book.position, entry.scope) == ("0", 1, "L2")
-assert entry.curruuid != offer.curruuid, "the scope digests"
+assert entry.uuid != offer.uuid, "the scope digests"
 ```
 
 ## Chain two events and merge two statements of one
 
 `with_previous` states an event as the one after its predecessor; `merge_with`
-folds another statement of the same event (the later recording leads, sources
+folds another statement of the same event (the later `sendunix` leads, sources
 union). Both answer a new value, or `None` when nothing moved.
 
 ```python
@@ -139,7 +139,7 @@ placed = event(T, "NEW")
 filled = event(T + 1_000_000_000, "PARTIALLY_FILLED").with_previous(placed)
 assert filled is not None
 # A later instant keeps its own place: the first there.
-assert (filled.prevuuid, filled.prevunix, filled.seqnum) == (placed.curruuid, T, 0)
+assert (filled.prevuuid, filled.prevunix, filled.seqnum) == (placed.uuid, T, 0)
 assert filled.crossuuid == placed.crossuuid, "one chain"
 assert filled.prevpx is not None and filled.prevpx.as_py() == Decimal("189.50")
 # Never itself, never one that happened after it.
@@ -152,21 +152,22 @@ follower = graph.OrderEvent(T + 1_000_000_000, crosscode="O-1001", side="BUYS").
 assert follower is not None and follower.strikepx is not None
 assert follower.strikepx.as_py() == Decimal("190")
 
-# One report recorded by two hops: recording clocks and sources are not content.
+# One report sent through two hops: wire clocks and sources are not content.
 LINE_1 = "018bcfe5-6800-7000-8000-000000000001"
 LINE_2 = "018bcfe5-6800-7000-8000-000000000002"
-gateway = graph.OrderEvent(T + 1_000_000_000, crosscode="O-1001", recdunix=T + 1_002_000_000, srcuuids=[LINE_1])
-oms = graph.OrderEvent(T + 1_000_000_000, crosscode="O-1001", recdunix=T + 1_005_000_000, srcuuids=[LINE_2])
-assert gateway.curruuid == oms.curruuid
+gateway = graph.OrderEvent(T + 1_000_000_000, crosscode="O-1001", sendunix=T + 1_002_000_000, srcuuids=[LINE_1])
+oms = graph.OrderEvent(T + 1_000_000_000, crosscode="O-1001", sendunix=T + 1_005_000_000, srcuuids=[LINE_2])
+assert gateway.uuid == oms.uuid
 merged = oms.merge_with(gateway)
-assert merged is not None and merged.recdunix == T + 1_002_000_000
+assert merged is not None and merged.sendunix == T + 1_002_000_000
 assert [source.as_py() for source in merged.srcuuids] == [LINE_1, LINE_2]
 ```
 
 ## Walk a stream into chains
 
-`graph.EventIterator` chains a stream by cross identity (and by the chain identities a live
-element's `identifiers` hold, never an `execid`), re-keys each element onto its
+`graph.EventIterator` chains a stream by cross identity (and by one identifier of the same
+type and value a live element of its kind, side and instrument holds - every type of its
+`identifiers` but a shared one: `trdmatchid`, `quotereqid`, `mdreqid`, a parent slot), re-keys each element onto its
 chain's side and first cross code, yields a twin as a restatement rather than a successor,
 retires a chain at a terminal state and emits one `EXPIRED` at a deadline.
 An order's or an execution's chain is keyed by side - a quote's is one chain
@@ -198,8 +199,8 @@ chained = walk(arrived, sorted=False)
 # Each step is at an instant of its own, so each is the first there; the
 # chain is in prevuuid.
 assert [held.seqnum for held in chained] == [0, 0, 0, 0, 0]
-assert chained[3].prevuuid == chained[1].curruuid
-assert chained[1].curruuid == chained[2].curruuid, "a twin, not a successor"
+assert chained[3].prevuuid == chained[1].uuid
+assert chained[1].uuid == chained[2].uuid, "a twin, not a successor"
 assert chained[4].prevuuid is None, "the fill ended the chain"
 # A chain's creation instant is its first element's, carried along it.
 assert all(held.creaunix == T for held in chained[:4])
@@ -208,22 +209,22 @@ assert all(held.creaunix == T for held in chained[:4])
 # one side alive under its code, and a NEW over a live NEW reads UPDATED.
 walked = walk([event(0, "O-2002", "NEW", "BUYS"), event(1, "O-2002", "NEW", "SELL"), event(2, "O-2002", "NEW", "BUYS")])
 assert (walked[1].crosscode, walked[1].seqnum) == ("10:2:O-2002", 0)
-assert walked[2].prevuuid == walked[0].curruuid and walked[2].state is State.UPDATED
+assert walked[2].prevuuid == walked[0].uuid and walked[2].state is State.UPDATED
 joined = walk([event(0, "O-3003", "NEW", "BUYS"), event(1, "O-3003", "CANCELED")])
-assert joined[1].prevuuid == joined[0].curruuid
+assert joined[1].prevuuid == joined[0].uuid
 assert (joined[1].side, joined[1].crosscode) == (Side.BUYS, "10:1:O-3003")
 
 # A 10 ms grid: a view of the living order per tick, then its deadline.
 MS = 1_000_000
 expiring = graph.OrderEvent(T + 50 * MS, crosscode="O-4004", exprunix=T + 70 * MS)
 timed = [value.as_order_event() for value in graph.EventIterator([expiring], snapshot_ns=10 * MS)]
-[view] = [held for held in timed if held.snapunix is not None and held.currunix == T + 60 * MS]
+[view] = [held for held in timed if held.snapunix is not None and held.transunix == T + 60 * MS]
 # Dated at its tick: the identity is the tick's, the content the order's,
 # and its snapshot instant the one the order was stated at.
 assert view.snapunix == T + 50 * MS
-assert (view.currunix, view.seqnum) == (T + 60 * MS, 0)
-assert view.currhashcode == expiring.currhashcode
-assert (timed[-1].currunix, timed[-1].state) == (T + 70 * MS, State.EXPIRED)
+assert (view.transunix, view.seqnum) == (T + 60 * MS, 0)
+assert view.hashcode == expiring.hashcode
+assert (timed[-1].transunix, timed[-1].state) == (T + 70 * MS, State.EXPIRED)
 ```
 
 ## Build a composite trade
@@ -244,14 +245,14 @@ T = 1_700_000_000_000_000_000
 def fill(code: str, side: str, unix: int = T) -> graph.ExecutionEvent:
     return graph.ExecutionEvent(unix, crosscode=code, side=side, lastpx=Decimal("189.50"), lastqty=100)
 
-root = graph.OrderEvent(T, crosscode="T-1", ticker="AAPL")
+root = graph.OrderEvent(T, crosscode="T-1", ticker="AAPL", instcode="AAPL")
 trade = graph.TradeEvent.from_parts(root, [fill("E-SELL", "SELL"), fill("E-BUYS", "BUYS")])
 assert [execution.crosscode for execution in trade.executions] == ["8:1:E-BUYS", "8:2:E-SELL"]
 assert trade.is_execution
 again = graph.TradeEvent.from_parts(root, [fill("E-BUYS", "BUYS"), fill("E-SELL", "SELL")])
-assert again.curruuid == trade.curruuid
+assert again.uuid == trade.uuid
 # Each execution at the trade's instant; none at all is refused.
-with pytest.raises(ValueError, match=r"\$\.executions\[0\]\.currunix"):
+with pytest.raises(ValueError, match=r"\$\.executions\[0\]\.transunix"):
     graph.TradeEvent.from_parts(root, [fill("E-LATE", "BUYS", T + 1)])
 with pytest.raises(ValueError):
     graph.TradeEvent.from_parts(root, [])
@@ -282,7 +283,7 @@ assert value.into_leaf() == order
 `MarketData.arrow_reader` streams leaves into bounded `pyarrow` batches of the
 lifted row; `from_arrow_reader` reads any Arrow source back, tolerant of a
 subset of columns in any order. `marketdatakind` and, for a dated leaf,
-`currunix` are the minimum.
+`transunix` are the minimum.
 
 ```python
 import pyarrow as pa
@@ -292,31 +293,32 @@ from yggdryl import MarketDataKind, graph
 order = graph.OrderEvent(1_700_000_000_000_000_000, crosscode="O-1001")
 values = [graph.Order(), order, graph.BookEvent(1_700_000_001_000_000_000, "AAPL")]
 
-# 65 columns: 6 element, 9 event, 36 market (marketdatakind first), 5 operation,
+# 66 columns: 6 element, 9 event, 37 market (marketdatakind first, instcode after securityids), 5 operation,
 # the book controls bookscope, bookaction and bookposition, 6 nested.
 field = graph.MarketData.field()
-assert len(list(field)) == 65
+assert len(list(field)) == 66
 assert [child.name for child in field][15] == "marketdatakind"
+assert [child.name for child in field][27] == "instcode", "the instrument's cross code, after securityids"
 reader = graph.MarketData.arrow_reader(values, batch_row_size=1_000)
 assert isinstance(reader, pa.RecordBatchReader)
 table = reader.read_all()
 # The column stores each member's code.
 assert table.column("marketdatakind").to_pylist() == [int(MarketDataKind.ORDR), int(MarketDataKind.ORDR), int(MarketDataKind.BOOK)]
-assert table.schema.field("currunix").type == pa.timestamp("ns", "UTC")
+assert table.schema.field("transunix").type == pa.timestamp("ns", "UTC")
 assert list(graph.MarketData.from_arrow_reader(table)) == [graph.MarketData(value) for value in values]
 
 # A foreign table: three columns, one the row does not name.
 foreign = pa.table(
     {
         "marketdatakind": pa.array([int(MarketDataKind.ORDR)], pa.int32()),
-        "currunix": pa.array([1_700_000_000_000_000_000], pa.int64()),
+        "transunix": pa.array([1_700_000_000_000_000_000], pa.int64()),
         "crosscode": ["10:0:O-1001"],
         "msgtype": ["D"],
     }
 )
 [lifted] = graph.MarketData.from_arrow_reader(foreign)
 event = lifted.as_order_event()
-assert event is not None and (event.crosscode, event.currunix) == ("10:0:O-1001", 1_700_000_000_000_000_000)
+assert event is not None and (event.crosscode, event.transunix) == ("10:0:O-1001", 1_700_000_000_000_000_000)
 ```
 
 ## Persist a marketdata stream and read it back
@@ -347,8 +349,9 @@ with tempfile.TemporaryDirectory() as directory:
 
 `graph.BookIterator(items, snapshot_millis=0, filter=None)` folds sorted
 orders and quotes into one `BookEvent` per instant and book key that moved it -
-the instrument's ISIN, else its ticker, else `XX0000000000` - recording
-every execution among its `events` and pruning every trade. A book is
+the input's `instcode`, the instrument's cross code, alone - recording every
+execution among its `events` and pruning every trade and every input stating
+no `instcode`. A book is
 complete (`is_complete`) only at a snapshot tick; every other book is a delta
 book - its `delta` and `events` beside the top of book they settled on - and
 `with_previous` over the complete book before it rebuilds it whole. `filter` - a predicate over the `marketdata` row - narrows what folds.
@@ -362,9 +365,9 @@ T = 1_700_000_000_000_000_000
 SECOND = 1_000_000_000
 
 def bid(unix: int, code: str, price: str, quantity: int) -> graph.OrderEvent:
-    return graph.OrderEvent(unix, crosscode=code, ticker="AAPL", side="BUYS", price=Decimal(price), quantity=quantity, state="NEW")
+    return graph.OrderEvent(unix, crosscode=code, ticker="AAPL", instcode="AAPL", side="BUYS", price=Decimal(price), quantity=quantity, state="NEW")
 
-fill = graph.ExecutionEvent(T + SECOND, crosscode="E-1", ticker="AAPL", side="BUYS", lastpx=Decimal("189.52"), lastqty=100)
+fill = graph.ExecutionEvent(T + SECOND, crosscode="E-1", ticker="AAPL", instcode="AAPL", side="BUYS", lastpx=Decimal("189.52"), lastqty=100)
 stream = [bid(T, "B-1", "189.48", 300), bid(T + SECOND, "B-2", "189.49", 200), fill]
 
 books = list(graph.BookIterator(stream))
@@ -373,7 +376,7 @@ assert len(books) == 2, "one book per instant that moved it; the execution is re
 # delta, the execution in its events - and its top of book.
 last = books[1]
 assert not last.is_complete
-assert (last.currunix, len(last.delta), len(last.events), last.alive) == (T + SECOND, 1, 1, [])
+assert (last.transunix, len(last.delta), len(last.events), last.alive) == (T + SECOND, 1, 1, [])
 assert [execution.crosscode for execution in last.executions] == ["8:1:E-1"]
 best = last.best_price(Side.BUYS)
 assert best is not None and best.as_py() == Decimal("189.49")
@@ -383,19 +386,20 @@ first = books[0].with_previous(graph.BookEvent.keyed(T, "AAPL"))
 assert first is not None
 whole = last.with_previous(first)
 assert whole is not None and whole.is_complete
-assert (len(whole.alive), whole.curruuid) == (2, last.curruuid), "depth persists"
+assert (len(whole.alive), whole.uuid) == (2, last.uuid), "depth persists"
 
 # A 500 ms grid states the whole living book at each crossed tick.
 gridded = list(graph.BookIterator(stream, snapshot_millis=500))
 assert len(gridded) == 3 and all(book.is_complete for book in gridded)
 # A filter narrows what folds: one keeping the execution alone folds its book.
 assert len(list(graph.BookIterator(stream, filter="marketdatakind = 'EXEC'"))) == 1
-# The book key: the instrument's ISIN, else the ticker, else `XX0000000000`.
-[keyless] = graph.BookIterator([graph.OrderEvent(T, crosscode="L-1", side="SELL")])
-assert (keyless.crosscode, keyless.ticker) == ("3:0:XX0000000000", None)
-listed = graph.OrderEvent(T, crosscode="L-2", side="SELL", ticker="AAPL", securityids=[Identifier("isin", "US0378331005")])
+# The book key: the instrument's code alone; an input stating none is pruned.
+assert list(graph.BookIterator([graph.OrderEvent(T, crosscode="L-1", side="SELL", ticker="AAPL")])) == []
+listed = graph.OrderEvent(
+    T, crosscode="L-2", side="SELL", ticker="AAPL", instcode="US0378331005", securityids=[Identifier("isin", "US0378331005")]
+)
 [book] = graph.BookIterator([listed])
-assert (book.crosscode, book.isincode, book.ticker) == ("3:0:US0378331005", "US0378331005", "AAPL")
+assert (book.crosscode, book.instcode, book.isincode, book.ticker) == ("3:0:US0378331005", "US0378331005", "US0378331005", "AAPL")
 # Out of order is no error: the operation dated before its book is left out,
 # with a warning.
 assert len(list(graph.BookIterator(list(reversed(stream))))) == 1
@@ -423,7 +427,7 @@ def entry(code: str, side: str, price: str | None, quantity: int, tradable: bool
     return graph.OrderEvent(
         T,
         crosscode=code,
-        ticker="AAPL",
+        ticker="AAPL", instcode="AAPL",
         side=side,
         price=None if price is None else Decimal(price),
         quantity=quantity,
@@ -481,12 +485,12 @@ from yggdryl import graph
 T = 1_700_000_000_000_000_000
 
 def order(code: str, side: str, price: str) -> graph.OrderEvent:
-    return graph.OrderEvent(T, crosscode=code, ticker="AAPL", side=side, price=Decimal(price), quantity=100)
+    return graph.OrderEvent(T, crosscode=code, ticker="AAPL", instcode="AAPL", side=side, price=Decimal(price), quantity=100)
 
 book = graph.BookEvent(T, "AAPL").with_operations([order("B-1", "BUYS", "189.48"), order("A-1", "SELL", "189.52")])
 assert len(book.alive) == 2
 
-control = graph.SnapshotEvent.snapshot(graph.OrderEvent(T + 1_000_000_000, ticker="AAPL"))
+control = graph.SnapshotEvent.snapshot(graph.OrderEvent(T + 1_000_000_000, ticker="AAPL", instcode="AAPL"))
 assert control.book.action == "snapshot"
 after = book.with_operations([control])
 assert after.alive == []
@@ -556,8 +560,8 @@ from yggdryl.fix import FixCodec, FixRegistry
 # `config/fix` of a yggdryl checkout (see the yggdryl-fix skill).
 codec = FixCodec(FixRegistry.from_handle(Path("config/fix")))
 lines = [
-    b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|",
-    b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|",
+    b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|",
+    b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|",
 ]
 capture = list(codec.parse_lines(lines))
 
@@ -598,7 +602,7 @@ T = 1_700_000_000_000_000_000
 SECOND = 1_000_000_000
 
 def quote(unix: int, code: str, side: str, price: str, quantity: int) -> graph.QuoteEvent:
-    return graph.QuoteEvent(unix, crosscode=code, ticker="AAPL", side=side, price=Decimal(price), quantity=quantity, state="NEW")
+    return graph.QuoteEvent(unix, crosscode=code, ticker="AAPL", instcode="AAPL", side=side, price=Decimal(price), quantity=quantity, state="NEW")
 
 stream = [
     quote(T, "B1", "BUYS", "189.48", 300),
@@ -638,7 +642,7 @@ rows = Serie.from_scalars(field, [candle.into_scalar() for candle in (first, sec
 assert graph.Candle.from_scalar(rows.scalar(1)) == second
 assert second.as_py()["askopen"] == Decimal("189.51")
 # Books must arrive sorted; a bare quote is not a book.
-with pytest.raises(ValueError, match=r"\$\.book\.currunix"):
+with pytest.raises(ValueError, match=r"\$\.book\.transunix"):
     graph.candles(list(reversed(books)), "1m")
 with pytest.raises(TypeError, match=r"expected book_event, got quote_event"):
     graph.candles([stream[0]], "1m")

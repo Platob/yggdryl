@@ -80,9 +80,9 @@ fn corpus() -> Vec<Serie> {
         ("map<int64, utf8>", vec![r#"{"10":"x","2":"y"}"#, "null", "{}"]),
         ("sorted_map<int64, utf8>", vec![r#"{"10":"x","2":"y"}"#, "{}"]),
         (
-            "struct<d: date32, t: datetime64(ms, UTC), u: uuid, c: ccy, s: side, a: sized_ascii(4), b: binary, w: url, n: version, h: float32, e: dictionary<int32, utf8>, x: union<0: int64, 1: utf8>, p: string(windows-1252,8), q: fixed_utf8(4)>",
+            "struct<d: date32, t: datetime64(ms, UTC), u: uuid, c: ccy, s: state, a: sized_ascii(4), b: binary, w: url, n: version, h: float32, e: dictionary<int32, utf8>, x: union<0: int64, 1: utf8>, p: string(windows-1252,8), q: fixed_utf8(4)>",
             vec![
-                r#"{"d":"2024-01-02","t":"2024-01-02T03:04:05.006Z","u":"00112233-4455-6677-8899-aabbccddeeff","c":"USD","s":"BUYS","a":"ABCD","b":"AQID","w":"https://example.com/a","n":"1.2.3","h":0.1,"e":"z","x":[1,"m"],"p":"café","q":"ab"}"#,
+                r#"{"d":"2024-01-02","t":"2024-01-02T03:04:05.006Z","u":"00112233-4455-6677-8899-aabbccddeeff","c":"USD","s":"NEW","a":"ABCD","b":"AQID","w":"https://example.com/a","n":"1.2.3","h":0.1,"e":"z","x":[1,"m"],"p":"café","q":"ab"}"#,
                 r#"{"x":[0,5]}"#,
                 "null",
             ],

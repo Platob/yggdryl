@@ -447,6 +447,53 @@ mod backends {
         }
         cleanup("coding");
     }
+
+    /// The capabilities a backend specializes - the streamed upload, the
+    /// dropped stage, the two roles, the stated length - answer their
+    /// defaults on every backend that states none of its own: the upload
+    /// read whole and written as one value, nothing staged to drop, the
+    /// handle what it is, a length known for free.
+    #[test]
+    fn every_backend_answers_the_capability_defaults() {
+        for (name, mut handle) in backends("capability") {
+            handle.write_all_bytes(b"stale").expect("a writable handle");
+
+            // A source that ends before the length it promised is refused
+            // before anything is written.
+            let mut short: &[u8] = b"AAPL";
+            let refused = handle
+                .upload_from(&mut short, 11)
+                .expect_err("a short source");
+            assert!(
+                refused
+                    .to_string()
+                    .contains("expected 11 bytes to upload, got 4"),
+                "{name}: {refused}"
+            );
+            assert_eq!(handle.read_all_bytes().unwrap(), b"stale", "{name}");
+
+            // The upload replaces the value with the length it was promised,
+            // and no more of the source.
+            let mut source: &[u8] = b"AAPL,187.23";
+            handle.upload_from(&mut source, 11).expect("an upload");
+            assert_eq!(handle.read_all_bytes().unwrap(), b"AAPL,187.23", "{name}");
+            let mut longer: &[u8] = b"MSFT,411.10;GOOG";
+            handle.upload_from(&mut longer, 11).expect("an upload");
+            assert_eq!(handle.read_all_bytes().unwrap(), b"MSFT,411.10", "{name}");
+            assert_eq!(longer, b";GOOG", "{name}: the rest is left unread");
+
+            // Nothing staged of its own: what a failed write leaves is the
+            // caller's to remove.
+            assert!(!handle.discard().unwrap(), "{name}");
+            // The handle is what it is, with no role to re-describe.
+            assert!(handle.as_leaf().unwrap().is_none(), "{name}");
+            assert!(handle.as_container().unwrap().is_none(), "{name}");
+            // A handle that knows its length ignores a stated one.
+            handle.set_known_size(4096);
+            assert_eq!(handle.size(), 11, "{name}");
+        }
+        cleanup("capability");
+    }
 }
 
 mod positional {

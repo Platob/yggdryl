@@ -182,7 +182,7 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
         (DataType::Boolean, OfficialPrimitiveLiteral::Boolean(value)) => Scalar::from(*value),
         (DataType::Int32, OfficialPrimitiveLiteral::Int(value)) => Scalar::from(*value),
         (held, OfficialPrimitiveLiteral::Int(value)) if held.is_enum() => {
-            crate::enums::read_enum_code(held.id(), i64::from(*value)).ok()?
+            crate::enums::read_enum_code(held, i64::from(*value)).ok()?
         }
         (DataType::Date32, OfficialPrimitiveLiteral::Int(value)) => Scalar::date32(*value),
         (DataType::Int64, OfficialPrimitiveLiteral::Long(value)) => Scalar::from(*value),

@@ -350,11 +350,6 @@ from .timeinforce import (
     TimeInForceField as TimeInForceField,
     timeinforce as timeinforce,
 )
-from .pluginside import (
-    PluginSide as PluginSide,
-    PluginSideField as PluginSideField,
-    pluginside as pluginside,
-)
 from .side import (
     Side as Side,
     SideField as SideField,
@@ -369,8 +364,8 @@ from .identifier import (
     Identifier as Identifier,
     Identifiers as Identifiers,
 )
-from .isin_registry import (
-    IsinRegistry as IsinRegistry,
+from .instrument import (
+    Instruments as Instruments,
     Resolution as Resolution,
 )
 from .eusipa import (

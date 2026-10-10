@@ -259,7 +259,7 @@ fn a_tail_read_through_a_table_over_an_object_is_one_suffix_ranged_get() {
             .collect()
     };
     let object = s3::file_with("s3://market/lake/part.parquet", options).expect("an object");
-    let table = MediaTable::bound("lake.part", Holder::S3File(object)).expect("a table");
+    let table = MediaTable::bound("lake.part", Holder::from(object)).expect("a table");
 
     store.clear_requests();
     assert_eq!(

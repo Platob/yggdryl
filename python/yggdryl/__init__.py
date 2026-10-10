@@ -231,7 +231,6 @@ from .marketdatakind import MarketDataKind, MarketDataKindField, marketdatakind
 from .marketdatatype import MarketDataType, MarketDataTypeField, marketdatatype
 from .side import Side, SideField, side
 from .timeinforce import TimeInForce, TimeInForceField, timeinforce
-from .pluginside import PluginSide, PluginSideField, pluginside
 from .serie import (
     ChunkedSerie,
     FixedSizeSerieField,
@@ -304,7 +303,7 @@ from .urn import UrnField, urn
 from .url import UrlField, url
 from .version import Version, VersionField, version
 from .identifier import Identifier, Identifiers
-from .isin_registry import IsinRegistry, Resolution
+from .instrument import Instruments, Resolution
 from .eusipa import Eusipa
 
 __all__ = [
@@ -369,7 +368,7 @@ __all__ = [
     "IOBase",
     "Identifier",
     "Identifiers",
-    "IsinRegistry",
+    "Instruments",
     "IOCursor",
     "IOResult",
     "IPC_DICTIONARY_IDS_KEY",
@@ -404,8 +403,6 @@ __all__ = [
     "Parameters",
     "Parquet",
     "Plan",
-    "PluginSide",
-    "PluginSideField",
     "ProtocolField",
     "PythonMetadata",
     "RecordOptions",
@@ -567,7 +564,6 @@ __all__ = [
     "mimetype",
     "nested",
     "null",
-    "pluginside",
     "ric",
     "run_end_encoded",
     "scalar",

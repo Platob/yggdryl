@@ -6,13 +6,13 @@
 
 | Key | Rule |
 | --- | --- |
-| Owner | `yggdryl::IdKey` (root `idkey.rs`), `yggdryl::Identifier` and `yggdryl::Identifiers` (root `identifier.rs`), the vocabularies `yggdryl::IdType` (`idtype.rs`) and `yggdryl::IdSource` (`idsource.rs`), `yggdryl::IdWord` the folded word beside a member; the national number an ISIN embeds is `securityid::embedded`; Python `yggdryl.Identifier`, `yggdryl.Identifiers`; JavaScript `Identifier`, `Identifiers` - a binding takes a key as its text, and `IdKey` is Rust-only |
+| Owner | `yggdryl_market::IdKey` (root `idkey.rs`), `yggdryl_market::Identifier` and `yggdryl_market::Identifiers` (root `identifier.rs`), the vocabularies `yggdryl_market::IdType` (`idtype.rs`) and `yggdryl_market::IdSource` (`idsource.rs`), `yggdryl_market::IdWord` the folded word beside a member; the national number an ISIN embeds is `securityid::embedded`; Python `yggdryl.Identifier`, `yggdryl.Identifiers`; JavaScript `Identifier`, `Identifiers` - a binding takes a key as its text, and `IdKey` is Rust-only |
 | `IdKey` | a source and a type, `IdKey::new(src, kind)`; `IdKey::base(kind)` the type's base key; `src()`, `kind()`, `is_base()`, `with_kind(kind)`. It displays as `src:type`, a base key as its type alone - `isin`, `ullink:isin` - and orders by that spelling's bytes, so `cusip` < `derived:cusip` < `isin` < `oms:instrumentid` < `ullink:isin`; a key of two member words spells as a static string |
 | Reading a key | `"text".parse::<IdKey>()` reads exactly: `src:type` is that source and that type, each folded, and a bare word is that type from the base source - `ISIN`, `ISIN_Number`, `base:isin`, `BASE:ISIN` and `fix:isin` are all `isin`, `marketorderid` is the type `marketorderid`. An empty half (`fix:`, `:isin`), a second `:` and a word no fold reads are refused, `expected an identifier key src:type or type`. Nothing is inferred: an inferred reading is [`Identifier::from_key`](#reading-a-name)'s |
 | Words | a source and a type are trimmed and lower-cased, the `_`, `-`, space and `#` a spelling breaks them with dropped - `Executing Trader` and `executing_trader` are `executingtrader` - ASCII letters, digits and `.` only, at most 64 bytes (`IDENTIFIER_WORD_WIDTH`); anything else is refused. A value is never folded to lower case - an ISIN is still `US0378331005` |
 | Members | a word the crate names is a member of the enum - `IdType::Isin`, `IdType::ClOrdId`, `IdSource::Proprietary` - held statically, and every other word is `Other(IdWord)`; `"text".parse::<IdType>()` folds and reads the member a spelling or an alias names (`isinnumber` and `isincode` are `isin`), `as_str()` is the folded word, `is_known()` tells a member from an `Other`, and a word equals a `&str`: `id.kind() == "isin"` |
 | Value | trimmed text that states something, at most 64 bytes (`IDENTIFIER_VALUE_WIDTH`): empty or null-like (`null`, `none`, `n/a`) is no identifier and is refused; then [checked by its type](#per-type-value-checks) - the shape of a code, never whether its check digit closes, which is its [rank](#ranks) - and, under the `bic` and `legalentityidentifier` sources, by the code that source gives ([Under a source](#under-a-source)) |
-| Named sources | `base` (`IdSource::Base`) where nothing names the source - what a FIX field or group states, the standard being the base, so the word `fix` reads as `base` and is never written; `derived` (`IdSource::Derived`) where the crate derived the value rather than read it - the CUSIP, SEDOL, WKN or Valor an ISIN embeds, what a ticker's shape names, a currency pair detected off a symbol, a code an [`IsinRegistry`](isin-registry.md) filled; any other source is the one a message names - a bridge namespace (`oms`, `ullink`), a `PartyIDSource(447)` (`proprietary`) or an `AcctIDSource(660)` (`bic`) |
+| Named sources | `base` (`IdSource::Base`) where nothing names the source - what a FIX field or group states, the standard being the base, so the word `fix` reads as `base` and is never written; `derived` (`IdSource::Derived`) where the crate derived the value rather than read it - the CUSIP, SEDOL, WKN or Valor an ISIN embeds, what a ticker's shape names, a currency pair detected off a symbol, a code an [`Instruments`](instrument.md) filled; any other source is the one a message names - a bridge namespace (`oms`, `ullink`), a `PartyIDSource(447)` (`proprietary`) or an `AcctIDSource(660)` (`bic`) |
 | Display | `key=value` - `isin=US0378331005`, `ullink:isin=US0378331005`; a map `[a=b, ...]` in key order |
 | Order, equality | by the key as it is spelled, then by value, so `a.b:c` sorts before `a:z`, which a (source, type) pair would not; equality and hash read the key and the value |
 | `Identifier::new(key, value)` | takes an `IdKey` and checks the value's shape by its type - there is no second constructor for a security; `with_kind(kind)` is the same value under another type of the same source - a parent's own type, a type's parent |
@@ -27,7 +27,8 @@
 === "Rust"
 
     ```rust
-    use yggdryl::{IdKey, IdSource, IdType, Identifier, Identifiers};
+    use yggdryl_market::{IdKey, IdSource, IdType, Identifier, Identifiers};
+    yggdryl_market::install()?;
 
     // A key is a source and a type; the base source's is the type alone.
     let isin = Identifier::new(IdKey::base(IdType::Isin), " us0378331005 ")?;
@@ -164,7 +165,8 @@ Replacing or removing a named source of one rank leaves the base key as it was. 
 === "Rust"
 
     ```rust
-    use yggdryl::{IdKey, IdType, Identifier, Identifiers};
+    use yggdryl_market::{IdKey, IdType, Identifier, Identifiers};
+    yggdryl_market::install()?;
 
     let id = |key: &str, value: &str| Identifier::new(key.parse().expect("a key"), value);
     let mut ids = Identifiers::new();
@@ -234,17 +236,18 @@ A value's rank is how real it is as a value of its type: `IdType::rank(value)` a
 | Where | Rule |
 | --- | --- |
 | `insert` | a value lands where nothing is held under its key, or where what is held ranks below it, whatever the order the two were stated in: a real number replaces a masked one or a typo, never the other way; two values of one rank keep the first |
-| A derivation | lands only where nothing of its type is held or the base key ranks below it - a registry's real number over a masked one - and a statement takes it back only where it does not outrank the statement |
+| A derivation | lands only where nothing of its type is held or the base key ranks below it - an instrument's real number over a masked one - and a statement takes it back only where it does not outrank the statement |
 | `merge` | the higher-ranked value wins where two meet under one key; of one rank, `other`'s when `later` |
 | `carry`, a read map's close | fill only what is not held - a key the follower lacks, a type's missing base key - choosing among candidates by the same rank |
 | `set` | the explicit statement: replaces whatever rank is held |
 
-So a real value replaces a placeholder wherever the two meet - a lifecycle, a merge of two statements, a registry fill, a FIX message's fields read in order - and a later placeholder never takes it back.
+So a real value replaces a placeholder wherever the two meet - a lifecycle, a merge of two statements, an instruments fill, a FIX message's fields read in order - and a later placeholder never takes it back.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{IdKey, IdType, Identifier, Identifiers};
+    use yggdryl_market::{IdKey, IdType, Identifier, Identifiers};
+    yggdryl_market::install()?;
 
     let isin = |value: &str| Identifier::new(IdKey::base(IdType::Isin), value);
     assert_eq!((IdType::Isin.rank("US0378331005"), IdType::Isin.max_rank()), (2, 2));
@@ -307,7 +310,7 @@ So a real value replaces a placeholder wherever the two meet - a lifecycle, a me
 | A whole security name | a key a security type is spelled by - `ISINCode`, `security_cusip`, `#ISINCODE`, a leading `#` dropped ([`IdType::from_field_name`](#vocabularies)), or any spelling of a security type FIX gives no source code, `FISN`, `FinancialInstrumentShortName` and `CFI` as a bare `ISIN` is - is that type from the base source |
 | The name it ends with | the key folds - lower case, no `_`, `-`, space or `#` - and the longest identifier name it ends with is the type: a spelling the crate reads a type by, an [alias](#vocabularies) included, that ends with `id`; `account`, `isin`, `cusip`, `sedol`, `figi`; or a security type's spelling ending with `code`, `symbol`, `number` or `ticker` - `riccode`, `isincode`, `bbgsymbol`, `bloombergticker` - so a bridge's `OMS_RICCODE` names its `ric`. A bare `ric` or `cfi` ends no key - `GENERIC` names nothing - and `ticker` alone is no type's spelling. A parentage word spelled right before it - `parent`, `orig`, `origin`, `original` - stays in the type. The source is the rest of the folded key with its `.` trimmed at both ends and kept inside, the base source where nothing is left or where it folds to a source the crate reserves - `base`, `fix`, `derived` - which names no namespace: `Derived_ISIN` and `FIX.ISIN` are `isin`, so a namespace spelled before the name never files a code under `derived`, while an explicit `src:type` keeps the source it spells, `derived:isin` included; the source and the type are each a word of at most 64 bytes, never the key they spell together |
 
-A security type is refused where another instrument's word - `leg`, `underlying`, `contra`, `related`, `benchmark` - opens the key or ends what the folded key spells before the type, after any namespace, since it names that instrument's code: `UnderlyingISIN`, `OMS_UnderlyingISIN`, `FIX.LegISIN` and `firm.x.ContraCUSIP` name no security identifier. An operation identifier a leg or a counterparty states (`contraorderid`) is the element's own. A key ending with no identifier name - `transversalkey`, `ticker`, `symbol` - names none. What a derivative is written on is not lost: an [`IsinRegistry`](isin-registry.md#the-underlying) learns an underlying's ISIN as the row's `underlyingisin`. A structured product's category - `EUSIPACode`, `OMS_SSPACategory` - names no identifier either: the registry learns it as the row's [`eusipacode`](isin-registry.md#the-product-category).
+A security type is refused where another instrument's word - `leg`, `underlying`, `contra`, `related`, `benchmark` - opens the key or ends what the folded key spells before the type, after any namespace, since it names that instrument's code: `UnderlyingISIN`, `OMS_UnderlyingISIN`, `FIX.LegISIN` and `firm.x.ContraCUSIP` name no security identifier. An operation identifier a leg or a counterparty states (`contraorderid`) is the element's own. A key ending with no identifier name - `transversalkey`, `ticker`, `symbol` - names none. What a derivative is written on is not lost: the lifecycle learns the instrument an underlying's ISIN names as the [instrument's](instrument.md#the-underlying-and-the-legs) `underlying`, its cross code. A structured product's category - `EUSIPACode`, `OMS_SSPACategory` - names no identifier either: the lifecycle learns it as the instrument's [`eusipacode`](instrument.md#the-product-category).
 
 | Key | Reads as |
 | --- | --- |
@@ -327,7 +330,8 @@ A security type is refused where another instrument's word - `leg`, `underlying`
 === "Rust"
 
     ```rust
-    use yggdryl::Identifier;
+    use yggdryl_market::Identifier;
+    yggdryl_market::install()?;
 
     let read = |key: &str, value: &str| Identifier::from_key(key, value).map(|id| id.to_string());
     assert_eq!(read("firm.x.ParentOrderID", "P-1").as_deref(), Some("firm.x:parentorderid=P-1"));
@@ -451,7 +455,8 @@ Two predicates sort a type into the set it belongs to: `IdType::is_security()` i
 === "Rust"
 
     ```rust
-    use yggdryl::{IdSource, IdType};
+    use yggdryl_market::{IdSource, IdType};
+    yggdryl_market::install()?;
 
     // A spelling folds to the member it names, an alias included.
     assert_eq!("ISIN_Number".parse::<IdType>()?, IdType::Isin);
@@ -513,7 +518,7 @@ A value is held as its type stores it, and a value its type refuses is no identi
 
 `IdType::max_value_width` answers the bound of each - `fisn` 35, `elf` 4. `IdType::check_security` refuses the one word no security type is, `ticker`: the name a person knows an instrument by lives on `set_ticker`.
 
-`IdType::from_security_source` reads a `SecurityIDSource(22)` or `SecurityAltIDSource(456)` value - the FIX 4 field `IDSource(22)` included - as its one-character code, case-sensitive (`4`, `K`), or as any name the code set writes, its spacing, punctuation and parenthesized remarks passed over: `ISIN number`, `Wertpapier`, `X-SWX-VALOR`, `Clearing House / Clearing Organization`, `ISDA/FpML Product Specification (XML in EncodedSecurityDesc <351>)`, `ISDA/FpML Product URL (URL in SecurityID)` and `Letter of Credit` are `isin`, `wkn`, `valor`, `clearinghouse`, `fpmlspec`, `fpmlurl` and `loc`. A source no member names is kept as it was stated, the word it folds to: a private code `100` is the type `100`, a letter FIX gives nothing (`Z`) the type `z`, a venue's `House Key` the type `housekey`; what no word holds - `House/Key`, a byte past ASCII - is refused, never reshaped, and so is a member naming another kind of identifier - `ClOrdID`, the party role `Exchange`. The reading is the crate's own, over the code set it ships; a dictionary whose `securityidsourcecodeset` was edited does not change it. A FIX message states `SecurityID(48)` under that type's base key and each `SecAltIDGrp(454)` occurrence likewise - except a source spelled `{NAMESPACE}INSTRUMENTID`, a venue's own instrument key, which is an `instrumentid` from that namespace, read as a key's source is read: folded, the dots at its ends dropped, a word of at most 64 bytes before the `INSTRUMENTID` it is spelled with, so `ULLINKINSTRUMENTID`, `ULLINK.INSTRUMENTID` and `Ullink Instrument ID` are all `ullink:instrumentid`, and a namespace folding to a source the crate reserves - `DERIVEDINSTRUMENTID`, `Base Instrument ID`, `FIX.INSTRUMENTID` - names no venue and is read as none, the base `instrumentid`, by the rule a [name's source](#reading-a-name) is read by, so neither field states a code under `derived`; a source or a value its type refuses states nothing and is an anomaly, the fields staying on the wire as sent. An [`IsinRegistry`](isin-registry.md) learns the types the crate names; a word of a venue's own is held by the message that states it.
+`IdType::from_security_source` reads a `SecurityIDSource(22)` or `SecurityAltIDSource(456)` value - the FIX 4 field `IDSource(22)` included - as its one-character code, case-sensitive (`4`, `K`), or as any name the code set writes, its spacing, punctuation and parenthesized remarks passed over: `ISIN number`, `Wertpapier`, `X-SWX-VALOR`, `Clearing House / Clearing Organization`, `ISDA/FpML Product Specification (XML in EncodedSecurityDesc <351>)`, `ISDA/FpML Product URL (URL in SecurityID)` and `Letter of Credit` are `isin`, `wkn`, `valor`, `clearinghouse`, `fpmlspec`, `fpmlurl` and `loc`. A source no member names is kept as it was stated, the word it folds to: a private code `100` is the type `100`, a letter FIX gives nothing (`Z`) the type `z`, a venue's `House Key` the type `housekey`; what no word holds - `House/Key`, a byte past ASCII - is refused, never reshaped, and so is a member naming another kind of identifier - `ClOrdID`, the party role `Exchange`. The reading is the crate's own, over the code set it ships; a dictionary whose `securityidsourcecodeset` was edited does not change it. A FIX message states `SecurityID(48)` under that type's base key and each `SecAltIDGrp(454)` occurrence likewise - except a source spelled `{NAMESPACE}INSTRUMENTID`, a venue's own instrument key, which is an `instrumentid` from that namespace, read as a key's source is read: folded, the dots at its ends dropped, a word of at most 64 bytes before the `INSTRUMENTID` it is spelled with, so `ULLINKINSTRUMENTID`, `ULLINK.INSTRUMENTID` and `Ullink Instrument ID` are all `ullink:instrumentid`, and a namespace folding to a source the crate reserves - `DERIVEDINSTRUMENTID`, `Base Instrument ID`, `FIX.INSTRUMENTID` - names no venue and is read as none, the base `instrumentid`, by the rule a [name's source](#reading-a-name) is read by, so neither field states a code under `derived`; a source or a value its type refuses states nothing and is an anomaly, the fields staying on the wire as sent. An [`Instruments`](instrument.md) learns the types the crate names; a word of a venue's own is held by the message that states it.
 
 ### Under a source
 
@@ -524,7 +529,8 @@ The code's rank is read beside the type's, and the identifier ranks by the lower
 === "Rust"
 
     ```rust
-    use yggdryl::{IdKey, IdSource, IdType, Identifier, Identifiers};
+    use yggdryl_market::{IdKey, IdSource, IdType, Identifier, Identifiers};
+    yggdryl_market::install()?;
 
     let firm = |value: &str| Identifier::new(IdKey::new(IdSource::Bic, IdType::ExecutingFirm), value);
     // A value under `bic` is a BIC whatever its role: upper-cased, or refused on its key.
@@ -599,13 +605,14 @@ A type can have parents: the values its identifier held earlier in a chain, each
 | Key | Rule |
 | --- | --- |
 | `IdType::parents()` | the parent types of a chain identity, nearest first. `clordid`'s is `origclordid` alone - FIX's `OrigClOrdID(41)`, the previous client order identifier - and `tradereportid`'s `tradereportrefid` alone - FIX's `TradeReportRefID(572)`, the report a cancel or a replace refers to. Any other chain identity has `parent{type}` then `orig{type}`: `orderid`'s are `parentorderid`, the value it held before it last changed, and `origorderid`, the value its chain first stated. Every other type - a per-report reference such as `execid`, a security, a party, a parent type, any other word - has none, so parentage never nests |
-| `IdType::is_chain_identity()` | whether a type names one lifecycle chain - an order, a quote, a trade or a trade report - by a value the chain states as its own: `orderid`, `clordid`, `secondaryorderid`, `secondaryclordid`, `quoteid`, `secondaryquoteid`, `tradeid`, `secondarytradeid`, `secondaryfirmtradeid` and `tradereportid`, and nothing else. A reference an event states about itself or about a request many chains answer - `execid`, `trdmatchid`, `tvtic`, `quotereqid`, `mdreqid`, `mdentryid`, the regulatory trade identifiers - names no chain, and neither does a security, a party, the account, a parent type or any other word (`venueorderid`, `reforderid`). Rust-only: a binding names types as text, and reads parentage through a registry's `parents_of` |
+| `IdType::is_chain_identity()` | whether a type names one lifecycle chain - an order, a quote, a trade or a trade report - by a value the chain states as its own: `orderid`, `clordid`, `secondaryorderid`, `secondaryclordid`, `quoteid`, `secondaryquoteid`, `tradeid`, `secondarytradeid`, `secondaryfirmtradeid` and `tradereportid`, and nothing else. A reference an event states about itself or about a request many chains answer - `execid`, `trdmatchid`, `tvtic`, `quotereqid`, `mdreqid`, `mdentryid`, the regulatory trade identifiers - names no chain of its own, and neither does a security, a party, the account, a parent type or any other word (`venueorderid`, `reforderid`). Its values stay a live chain's names until the chain ends, where any other chain name (`is_chain_name`) is the live statement's alone. Rust-only: a binding names types as text, and reads parentage through a registry's `parents_of` |
+| `IdType::is_chain_name()` | whether a value of a type names the live chain that states it - what a [lifecycle walk](event.md#lifecycle-walk) matches a current element to a previous alive one of its kind, instrument and side by: every type an operation's `identifiers` hold - a chain identity, a report's own reference (`execid`, `tvtic`), `mdentryid`, a regulatory trade identifier, a lineage type (`origclordid`, `origorderid`, `tradereportrefid`), a bridge's own word - but the ones many elements share: `trdmatchid`, which both orders one match filled state, `quotereqid`, `mdreqid` and the parent-order slot `parent{chain identity}` (`parentorderid`, `parentclordid`, `parenttradeid`). A security and a party name no chain. Rust-only |
 | `IdType::parent_of()` | the type a type is a parent of - the parent's own type - and its place among that type's parents: `origclordid` is `clordid`'s first, `tradereportrefid` `tradereportid`'s, `parentorderid` is `orderid`'s first and `origorderid` its second, `origtradeid` `tradeid`'s second. Only a chain identity's parent names one: `parentexecid` and `parentisin` are words of their own, and so are `parentclordid` and `parenttradereportid`, each base's one parent being spelled as FIX names it. A word spelled `origin` or `original` is no parent: `originalorderid` is a type of its own |
 | `FIX:parents` | a dictionary states a field's own list on the field, the identifier type its `FIX:idmap` key or its name names: `ClOrdID(11)` states `["origclordid"]`; `FixRegistry::parents_of` and `parent_of` answer from the stated lists first, then from the type's ([FIX registry](../fix/registry.md#parents-of-an-identifier)). A dictionary may state a list on any field; a lifecycle reads the lists of chain identities alone |
 | Following | `Identifiers::follow_parents(previous, parents_of, parent_of)`: for each type with parents the follower states - never a parent type - under a source whose previous statement the chain knows, it fills each parent the follower does not already state. A type that kept its value keeps each parent the previous statement held. A type that changed takes the previous value as its first parent, each middle parent from the previous one a step nearer, and, as the last of two or more, the chain's first value: the previous last parent, else the farthest previous parent stated, else the previous value |
 | Filling the parent's own type | `Identifiers::fill_parents(parent_of)`: an element stating a parent but not the type it is a parent of takes that type from its nearest stated parent - `parentorderid` before `origorderid` - under the parent's source, base-source parents first |
 | Carried | `Identifiers::carry(previous, carried)`: an identifier the chain holds and the follower does not is carried as it is where `carried` admits it - every security identifier and every party identifier, and every identifier but `mdentryrefid` ([Operation](operation.md#following-and-merging)); a FIX message the types its `FIX:idmap` follows and the parents of each, so a type and its lineage travel together ([FIX registry](../fix/registry.md#a-field-names-a-message-by-its-identifiers)) |
-| The walk | a [lifecycle walk](event.md#lifecycle-walk) names a live chain by each chain identity its statements stated - the old value beside the new after a change - and by the chain's first value a parent names where it stands last among its base's parents (`origclordid`, `origorderid`, `origtradeid`, `tradereportrefid`), filed and read under that base, so a replace naming the order it replaced as its `origclordid` continues that order's chain. The previous-value slot `parentorderid` names no chain: the walk writes it from a value the chain already holds, and a bridge spells a hierarchy parent by it. A name has one live holder, the first chain of its kind and side that stated it, until that chain ends; every finalize runs `fill_parents` |
+| The walk | a [lifecycle walk](event.md#lifecycle-walk) matches a current element to a previous alive one of its kind, of its instrument where both state one and of its side whenever both state one, by one identifier of the same type and value whose type `is_chain_name`: each chain identity its statements stated - the old value beside the new after a change - the chain's first value a parent names where it stands last among its base's parents (`origclordid`, `origorderid`, `origtradeid`, `tradereportrefid`), filed and read under that base, so a replace naming the order it replaced as its `origclordid` continues that order's chain, and any other chain name its live statement holds, that value alone. The previous-value slot `parentorderid` names no chain: the walk writes it from a value the chain already holds, and a bridge spells a hierarchy parent by it. A name has one live holder, the first chain of its kind, side and instrument that stated it, until that chain ends; every finalize runs `fill_parents` |
 | Digest | a parent is an identifier like any other: its source, type and value feed the element's digest |
 
 An order identifier chain `A`, `B`, `C`, `D` ends with `parentorderid` `C` and `origorderid` `A`; a client order identifier chain `C-1` to `C-4` ends with `origclordid` `C-3`.
@@ -613,8 +620,10 @@ An order identifier chain `A`, `B`, `C`, `D` ends with `parentorderid` `C` and `
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Operation, OrderEvent};
-    use yggdryl::{IdKey, IdType, Identifier};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Operation, OrderEvent};
+    use yggdryl_market::{IdKey, IdType, Identifier};
+    yggdryl_market::install()?;
 
     const T: i64 = 1_700_000_000_000_000_000;
     let order = |unix: i64, orderid: &str, clordid: &str| -> yggdryl::Result<OrderEvent> {
@@ -723,8 +732,10 @@ An element that states where it came from but not what it is now is what it came
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Operation, OrderEvent};
-    use yggdryl::{IdType, Identifier, Identifiers};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::{Operation, OrderEvent};
+    use yggdryl_market::{IdType, Identifier, Identifiers};
+    yggdryl_market::install()?;
 
     // A replacement stating only its parents is the order of its nearest one.
     let mut order = OrderEvent::at(1_700_000_000_000_000_000);
@@ -787,7 +798,7 @@ An element that states where it came from but not what it is now is what it came
 
 | Holder | Rule |
 | --- | --- |
-| A graph leaf | what a caller states: the `insert_`/`set_`/`remove_` verbs of [`Market`](market.md#security-identifiers) (`insert_securityid`), [`Operation`](operation.md#identifiers) (`insert_identifier`) and [party ids](operation.md#party-identifiers) (`insert_partyid`), or the `securityids`, `identifiers` and `partyids` facts a binding builds a leaf from; finalizing derives the national code a stated ISIN embeds, from `derived`, and fills a type from its parents ([Parentage](#parentage)); an [`IsinRegistry`](isin-registry.md) fills what a lifecycle learned, from `derived` |
+| A graph leaf | what a caller states: the `insert_`/`set_`/`remove_` verbs of [`Market`](market.md#security-identifiers) (`insert_securityid`), [`Operation`](operation.md#identifiers) (`insert_identifier`) and [party ids](operation.md#party-identifiers) (`insert_partyid`), or the `securityids`, `identifiers` and `partyids` facts a binding builds a leaf from; finalizing derives the national code a stated ISIN embeds, from `derived`, and fills a type from its parents ([Parentage](#parentage)); an [`Instruments`](instrument.md) fills what a lifecycle learned, from `derived` |
 | A FIX message | logical facts read off its fields at every settle, the wire kept as sent and never written back ([FIX](../fix/message.md#the-identifier-maps)): an identifier its field's `FIX:idmap` entry names is the base key of its type (`clordid`, `orderid`), a regulatory trade identifier by its `RegulatoryTradeIDType(1906)` too; a security identifier is `SecurityID(48)` under its `SecurityIDSource(22)`'s type - a `{NAMESPACE}INSTRUMENTID` source an `instrumentid` from that namespace - each `SecAltIDGrp(454)` occurrence, `FinancialInstrumentShortName(2737)` under the base `fisn` key, and the codes an ISIN embeds from `derived`. The first value stated under a key fills it, in reading order - the fields, the groups, then the unmapped entries - a later value that [outranks](#ranks) it replaces it, recorded as an anomaly naming what it replaced, and a later different value of no higher rank is dropped as a `dropped_identifier` anomaly, staying on the wire; a caller's write is the message's word and moves no field |
 | A FIX entry no dictionary maps | each `metadata` key and each top-level untagged scalar of the message, and the keys its message type declares under `FIX:identifiers`, is read as [`Identifier::from_key`](#reading-a-name) reads a name: a security type is a `securityids` identifier (a value its type refuses is an anomaly), a party type a `partyids` one, any other type an `identifiers` one (a value either type refuses is no identifier and no anomaly) - `OMS_InstrumentID` is `oms:instrumentid` in `securityids`, `OMS_RICCODE` `oms:ric` and `ULLINK.ISINCODE` `ullink:isin` there too - every key whose folded name ends with a security type's spelling - `OMS_UserID` `oms:userid` in `partyids`, `firm.x.ParentOrderID` `firm.x:parentorderid` in `identifiers`, each filling its type's base key where nothing states it, and a whole security name such as `#ISINCODE` the base key itself. A captured entry leaves the fixed row's `metadata` cell and rides `fixentries` under `0:<key>`, the key as it arrived; it stays on the wire as it arrived |
 | A FIX party | each `Parties(453)` or `RootParties(1116)` occurrence: its `PartyID(448)` typed by its `PartyRole(452)` code's name folded (`ExecutingFirm` is `executingfirm`, a code the set names nothing for `partyrole{code}`, no role `party`), from its `PartyIDSource(447)` code's name folded (`D` is `proprietary`, `C` `generalidentifier`; a spelling the set resolves nothing for is its own spelling where it is a word, `MyVenue` `myvenue`, and a bare code the set names nothing for - one character, or digits - `partyidsource{code}`, `W` `partyidsourcew`; none the base source), so `proprietary:executingtrader` also fills `executingtrader`; `Account(1)` is a party typed `account` from its `AcctIDSource(660)` code's name, by the same rule (`1` is `bic`, a code the set names nothing for `acctidsource{code}`). A party under `bic` or `legalentityidentifier` is held to that code's shape ([Under a source](#under-a-source)), one of another shape an anomaly that stays on the wire. A second party of one role and source stays on the wire, no anomaly |
@@ -808,7 +819,9 @@ An element that states where it came from but not what it is now is what it came
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::{Field, IdKey, IdType, Identifier, Identifiers, Scalar, Serie};
+    use yggdryl::{Field, Scalar, Serie};
+    use yggdryl_market::{IdKey, IdType, Identifier, Identifiers};
+    yggdryl_market::install()?;
 
     let mut ids = Identifiers::new();
     assert!(ids.insert(Identifier::new(IdKey::base(IdType::Isin), "US0378331005")?));
@@ -896,7 +909,7 @@ An element that states where it came from but not what it is now is what it came
 | `marketdata/ids_read_4096` | 39.4 ms (104 K rows/s) | those batches read back into orders |
 
 ```bash
-cargo bench -p yggdryl --bench graph -- 'graph/identifier'
+cargo bench -p yggdryl-market --bench graph -- 'graph/identifier'
 ```
 
 ## Commands
@@ -904,8 +917,8 @@ cargo bench -p yggdryl --bench graph -- 'graph/identifier'
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --test root -- idkey identifier idtype idsource
-    cargo test -p yggdryl --test graph -- operation
+    cargo test -p yggdryl-market --test root -- idkey identifier idtype idsource
+    cargo test -p yggdryl-market --test graph -- operation
     ```
 
 === "Python"

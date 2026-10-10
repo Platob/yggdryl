@@ -8,8 +8,7 @@ mod xxhash {
 
         use yggdryl::xxhash::{Xxh3, xxh3};
         use yggdryl::{
-            Bytes, BytesType, Ccy, Decimal32, Decimal64, Geography, Interval, Side, Str,
-            StringType, TimeInForce,
+            Bytes, BytesType, Ccy, Decimal32, Decimal64, Geography, Interval, Str, StringType,
         };
         use yggdryl::{
             Codec, DataTypeId, DigestAlgorithm, Float16, Float32, Float64, Scalar, TimeUnit,
@@ -99,9 +98,6 @@ mod xxhash {
                 Scalar::Ccy(Ccy::new("USD").unwrap()),
                 Scalar::Forex(yggdryl::Forex::new("EUR/USD").unwrap()),
                 Scalar::State(yggdryl::State::New),
-                Scalar::Side(Side::new("BUY").unwrap()),
-                Scalar::MarketDataKind(yggdryl::MarketDataKind::Order),
-                Scalar::TimeInForce(TimeInForce::GoodTillCancel),
                 Scalar::from(Codec::Gzip),
                 Scalar::from(Codec::Zstd),
                 Scalar::from(DataTypeId::Int128),

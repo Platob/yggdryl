@@ -1,6 +1,6 @@
 # Candle
 
-A candle is one OHLC of one book over one bucket: `Candle` what the books of one cross code whose instants fell in `[start, end)` read at their best bid, their best ask, their midpoint and their spread - each an `Ohlc` of open, high, low and close - with the quantities at the touch when the bucket closed and how many books it folded; `CandleOptions` the interval and the zone whose wall clock the buckets align to; `CandleIterator` the fold of a sorted stream of [books](book.md) into candles. The [book display](serve.md) serves them over a `marketdata` table.
+A candle is one OHLC of one book over one bucket: `Candle` what the books of one cross code whose instants fell in `[start, end)` read at their best bid, their best ask, their midpoint and their spread - each an `Ohlc` of open, high, low and close - with the quantities at the touch when the bucket closed and how many books it folded; `CandleOptions` the interval and the zone whose wall clock the buckets align to; `CandleIterator` the fold of a sorted stream of [books](book.md) into candles.
 
 ## Contract
 
@@ -11,7 +11,7 @@ A candle is one OHLC of one book over one bucket: `Candle` what the books of one
 | `CandleOptions` | `new(interval)`, `from_spelling(text)`, `with_timezone(zone)`; `interval()`, `timezone()`, `spelling()` | `Clone`, `Debug`, `Eq`, `Hash`, `PartialEq` | Python `graph.CandleOptions(interval, timezone=None)`, JavaScript `new graph.CandleOptions(interval, timezone)` - a spelling, or a count of nanoseconds (`int`; `bigint` or a whole `number`) |
 | `CandleIterator<I>` | the [fold](#the-fold): `new(books, options)`, `options()` | `Iterator<Item = Result<Candle>>`, `FusedIterator` | Python `graph.CandleIterator(books, options)` and `graph.candles(books, interval, timezone=None)`; JavaScript `new graph.CandleIterator(books, options)` and `graph.candles(books, options, timezone)` |
 
-All in `graph::candle`, re-exported as `yggdryl::graph::{Candle, CandleIterator, CandleOptions, Ohlc}`. A candle is a value of its own rather than a datatype: its row is the struct [`Candle::field()`](#arrow-row) declares.
+All in `graph::candle`, re-exported as `yggdryl_market::graph::{Candle, CandleIterator, CandleOptions, Ohlc}`. A candle is a value of its own rather than a datatype: its row is the struct [`Candle::field()`](#arrow-row) declares.
 
 ## Buckets
 
@@ -25,7 +25,7 @@ A bucket is `interval` nanoseconds of the zone's wall clock, so a daily candle o
 | Edges | an edge is the earliest instant whose wall clock reads at or after the local edge, so the edges rise with the instants and a sorted stream never re-enters a bucket it left. An instant's bucket is the last whose start is at or before it, searched from the index of its own wall clock by doubling steps and then bisection, so finding it costs `O(log n)` edge solves for a gap of `n` intervals - a fall-back's repeated hour at `1ns` included |
 | Spring forward | `Europe/Zurich`, 2026-03-29, `01:00Z`: the wall clock skips `02:00`-`03:00`. Hourly candles open at the local hours `01`, `03`, `04` - the skipped hour yields no candle - and abut in UTC: `[00:00Z, 01:00Z)`, `[01:00Z, 02:00Z)`, `[02:00Z, 03:00Z)`. The daily candle is `[2026-03-28T23:00Z, 2026-03-29T22:00Z)`, twenty-three hours, both edges local midnight |
 | Fall back | `Europe/Zurich`, 2026-10-25, `01:00Z`: the wall clock reads `02:00`-`03:00` twice. The hourly bucket `02` is one two-hour bucket, `[00:00Z, 02:00Z)`; with `30m` the `02:00` bucket opens once at `00:00Z` and the `02:30` bucket holds `[00:30Z, 02:00Z)` - every instant until the wall clock first reads `03:00` - so no bucket is entered twice, where a plain conversion of each local edge would reopen `02:00` an hour later. The daily candle is twenty-five hours |
-| Range | an instant the zone cannot read, or a bucket that cannot be held in `i64` nanoseconds, is refused at `$.book.currunix` |
+| Range | an instant the zone cannot read, or a bucket that cannot be held in `i64` nanoseconds, is refused at `$.book.transunix` |
 
 ## The fold
 
@@ -33,10 +33,10 @@ A bucket is `interval` nanoseconds of the zone's wall clock, so a daily candle o
 
 | Key | Rule |
 | --- | --- |
-| Input | an `Iterator<Item = Result<BookEvent>>` - a [`BookIterator`](book.md#book-fold) is one - sorted by `get_currunix`; a regression is refused at `$.book.currunix` (`expected an instant at or after 2000, got 1000`), a `ValueError` in Python and an `Error` in JavaScript. The bindings take `BookEvent`s or `MarketData` holding one, so a table's rows fold as they arrive; another leaf is refused by the core's own narrowing, `$.kind: expected book_event, got order`, a `TypeError` in Python |
+| Input | an `Iterator<Item = Result<BookEvent>>` - a [`BookIterator`](book.md#book-fold) is one - sorted by `get_transunix`; a regression is refused at `$.book.transunix` (`expected an instant at or after 2000, got 1000`), a `ValueError` in Python and an `Error` in JavaScript. The bindings take `BookEvent`s or `MarketData` holding one, so a table's rows fold as they arrive; another leaf is refused by the core's own narrowing, `$.kind: expected book_event, got order`, a `TypeError` in Python |
 | Buckets | the candles of a bucket are emitted, in cross-code order, when the stream moves past the bucket and at the stream's end; an empty bucket yields no candle. The open bucket holds one fold per cross code until it closes |
 | Failure | a source error, a regression or a range refusal ends the walk: the candles of every bucket the stream moved past - the refused book's own step included - are emitted before it, the open bucket is dropped rather than emitted incomplete, the error is the last item, and the iterator fuses |
-| `crosscode`, `ticker` | the book's stored [`get_crosscode`](market.md#sides-and-cross-codes) - `3:0:` then its [book key](market.md#the-book-key), the ISIN, else the ticker, else `XX0000000000` (`3:0:ACME`, `3:0:CH0012214059`) - and the first book's `get_ticker`, null where it states none |
+| `crosscode`, `ticker` | the book's stored [`get_crosscode`](market.md#sides-and-cross-codes) - `3:0:` then its [book key](market.md#the-book-key), the instrument's `instcode` (`3:0:ACME`, `3:0:CH0012214059`) - and the first book's `get_ticker`, null where it states none |
 | `bid`, `ask` | over [`best_price(Side::Buy)`](book.md#limits) and `best_price(Side::Sell)` of every book that states one: the first opens the reading, each later one moves the close and the high or low; `None` where no book of the bucket stated one |
 | `mid`, `spread` | over `bbo_midpoint()` and `spread()` the same way, so a one-sided book contributes to neither, and a bucket whose ask side empties keeps the ask, mid and spread the earlier books read |
 | `bidqty`, `askqty` | the last book's `best_quantity` on each side - `None` when the last book has none, whatever an earlier one had |
@@ -71,17 +71,18 @@ Four books of one minute: one quote a side, restated at each book, and three fil
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{
-        BookIterator, CandleIterator, CandleOptions, Element, Event, ExecutionEvent, Market, MarketData, Ohlc,
-        QuoteEvent,
-    };
-    use yggdryl::{Decimal, Side, State};
+    use yggdryl_market::graph::{BookIterator, CandleIterator, CandleOptions, ExecutionEvent, Market, MarketData, Ohlc, QuoteEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl::{Decimal, State};
+    use yggdryl_market::Side;
+    yggdryl_market::install()?;
 
     const SECOND: i64 = 1_000_000_000;
     let quote = |unix: i64, code: &str, side: Side, price: &str, quantity: i64| -> yggdryl::Result<MarketData> {
         let mut quote = QuoteEvent::at(unix);
         quote.set_crosscode(code.to_owned());
         quote.set_ticker(Some("ACME".into()), true);
+        quote.set_instcode(Some("ACME".into()), true);
         quote.set_side(side, true);
         quote.set_price(Some(price.parse()?), true);
         quote.set_quantity(Some(Decimal::from_int(quantity)), true);
@@ -93,6 +94,7 @@ Four books of one minute: one quote a side, restated at each book, and three fil
         let mut fill = ExecutionEvent::at(unix);
         fill.set_crosscode(code.to_owned());
         fill.set_ticker(Some("ACME".into()), true);
+        fill.set_instcode(Some("ACME".into()), true);
         fill.set_side(side, true);
         fill.set_price(Some("100".parse()?), true);
         // What the fill traded.
@@ -145,13 +147,13 @@ Four books of one minute: one quote a side, restated at each book, and three fil
 
     def quote(unix: int, code: str, side: str, price: str, quantity: int) -> graph.QuoteEvent:
         return graph.QuoteEvent(
-            unix, crosscode=code, ticker="ACME", side=side, price=Decimal(price), quantity=quantity, state="NEW"
+            unix, crosscode=code, ticker="ACME", instcode="ACME", side=side, price=Decimal(price), quantity=quantity, state="NEW"
         )
 
     def fill(unix: int, code: str, side: str, lastqty: int | None) -> graph.ExecutionEvent:
         # What the fill traded is its last quantity.
         return graph.ExecutionEvent(
-            unix, crosscode=code, ticker="ACME", side=side, price=Decimal("100"), lastqty=lastqty, state="FILLED"
+            unix, crosscode=code, ticker="ACME", instcode="ACME", side=side, price=Decimal("100"), lastqty=lastqty, state="FILLED"
         )
 
     operations = [
@@ -194,11 +196,11 @@ Four books of one minute: one quote a side, restated at each book, and three fil
 
     const SECOND = 1_000_000_000n
     const quote = (unix, code, side, price, quantity) => new graph.QuoteEvent(unix, {
-      crosscode: code, ticker: 'ACME', side, price, quantity, state: 'NEW',
+      crosscode: code, ticker: 'ACME', instcode: 'ACME', side, price, quantity, state: 'NEW',
     })
     // What the fill traded is its last quantity.
     const fill = (unix, code, side, lastqty) => new graph.ExecutionEvent(unix, {
-      crosscode: code, ticker: 'ACME', side, price: '100', lastqty, state: 'FILLED',
+      crosscode: code, ticker: 'ACME', instcode: 'ACME', side, price: '100', lastqty, state: 'FILLED',
     })
     const operations = [
       quote(10n * SECOND, 'B', 'BUYS', '100', 5),
@@ -236,8 +238,9 @@ Empty books at `00:30Z`, `01:30Z` and `02:30Z` on 2026-03-29, the day Europe/Zur
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{BookEvent, CandleIterator, CandleOptions};
+    use yggdryl_market::graph::{BookEvent, CandleIterator, CandleOptions};
     use yggdryl::Timezone;
+    yggdryl_market::install()?;
 
     const SECOND: i64 = 1_000_000_000;
     const HOUR: i64 = 3_600 * SECOND;
@@ -248,7 +251,7 @@ Empty books at `00:30Z`, `01:30Z` and `02:30Z` on 2026-03-29, the day Europe/Zur
         Ok(zurich.into_local(unix / SECOND)?.rem_euclid(86_400) / 3_600)
     };
     let books = |instants: &[i64]| -> Vec<yggdryl::Result<BookEvent>> {
-        instants.iter().map(|unix| Ok(BookEvent::new(*unix, "ACME"))).collect()
+        instants.iter().map(|unix| Ok(BookEvent::keyed(*unix, "ACME"))).collect()
     };
     let instants = [DAY + 30 * 60 * SECOND, DAY + 90 * 60 * SECOND, DAY + 150 * 60 * SECOND];
 
@@ -346,8 +349,9 @@ A candle laid out as one row under `Candle::field()` and read back as the same v
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Candle, Ohlc};
+    use yggdryl_market::graph::{Candle, Ohlc};
     use yggdryl::{ArrowCastOptions, Decimal, Serie};
+    yggdryl_market::install()?;
 
     let field = Candle::field()?;
     assert_eq!((field.name(), field.field_len(), field.is_nullable()), ("candle", 23, false));

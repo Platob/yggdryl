@@ -1,8 +1,9 @@
 name: Release
 
-# One workflow releases all three package surfaces - the core crate to
-# crates.io, the Python wheels and sdist to PyPI, and the Node.js package
-# carrying every platform's native module to npm - and `main` drives it: a
+# One workflow releases all three package surfaces - every crate of the
+# workspace to crates.io, in the order it takes them; the Python wheels and
+# sdist to PyPI; and the Node.js package carrying every platform's native
+# module to npm - and `main` drives it: a
 # push whose version has no `v<version>` tag yet builds, publishes, and then
 # creates the tag and the GitHub release as the record that the version is
 # fully out. A push whose version is already tagged does nothing beyond the
@@ -17,6 +18,11 @@ name: Release
 # and the registries hear from this run only after every platform has built
 # and smoke-tested what it ships. A release is thirteen jobs; it was twenty
 # while each binding built its platforms in jobs of its own.
+#
+# `scripts/release_packages.py` names every package and the one version they
+# carry, so nothing here spells a crate or an order of its own: a crate that
+# joins the workspace joins the release, the dry run, the half-out refusal and
+# the report in the same change.
 #
 # Every publish is idempotent - a registry that already has the version is
 # skipped, never failed - so a run that died halfway is repaired by re-running
@@ -66,6 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.decide.outputs.version }}
+      crates: ${{ steps.decide.outputs.crates }}
       build: ${{ steps.decide.outputs.build }}
       publish: ${{ steps.decide.outputs.publish }}
     steps:
@@ -73,36 +80,20 @@ jobs:
       - name: One version, three manifests, and whether it is already out
         id: decide
         run: |
-          version=$(python3 - <<'EOF'
-          import json
-          import os
-          import sys
-          import tomllib
-
-          with open("Cargo.toml", "rb") as manifest:
-              workspace = tomllib.load(manifest)["workspace"]["package"]["version"]
-          with open("python/pyproject.toml", "rb") as manifest:
-              python_version = tomllib.load(manifest)["project"]["version"]
-          with open("node/package.json", encoding="utf-8") as manifest:
-              node_version = json.load(manifest)["version"]
-
-          versions = {
-              "Cargo.toml [workspace.package]": workspace,
-              "python/pyproject.toml [project]": python_version,
-              "node/package.json": node_version,
-          }
-          if len(set(versions.values())) != 1:
-              sys.exit(f"expected one version everywhere, got {versions}")
-
-          ref = os.environ.get("GITHUB_REF", "")
-          if ref.startswith("refs/tags/"):
-              tag = ref.removeprefix("refs/tags/")
-              if tag != f"v{workspace}":
-                  sys.exit(f"expected the tag v{workspace}, got {tag}")
-          print(workspace)
-          EOF
-          )
+          # Every manifest carries one version - the script names each that
+          # does not - and a pushed tag names that version.
+          version=$(python3 scripts/release_packages.py version)
+          ref="${GITHUB_REF:-}"
+          if [ "${ref#refs/tags/}" != "$ref" ] && [ "${ref#refs/tags/}" != "v$version" ]; then
+            echo "expected the tag v$version, got ${ref#refs/tags/}" >&2
+            exit 1
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Every published crate, in the order crates.io takes them: a crate
+          # after every workspace crate it names, a dev-dependency included.
+          crates=$(python3 scripts/release_packages.py crates)
+          echo "crates=$crates" >> "$GITHUB_OUTPUT"
+          echo "crates.io, in order: $crates"
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             # A hand-run rehearses: build and verify everything, publish
@@ -131,7 +122,8 @@ jobs:
       # cannot be rewritten, and the registries that already answered are the
       # ones that decide what the version means.
       #
-      # So: all three or none, when `main` is the ref. A version some
+      # So: every name on every registry or none, when `main` is the ref -
+      # each crate on crates.io, `yggdryl` on PyPI and on npm. A version some
       # registries already carry is finished from the commit they were built
       # at, by pushing `v<version>` there - which pins the tree the wheels are
       # built from - or it is abandoned and `main` bumps. Neither is a push to
@@ -142,31 +134,49 @@ jobs:
         if: steps.decide.outputs.build == 'true'
         env:
           VERSION: ${{ steps.decide.outputs.version }}
+          CRATES: ${{ steps.decide.outputs.crates }}
           REF_TYPE: ${{ github.ref_type }}
           EVENT: ${{ github.event_name }}
         run: |
           set -uo pipefail
-          crate=no
-          if curl -fsSL "https://index.crates.io/yg/gd/yggdryl" | grep -q "\"vers\":\"$VERSION\""; then crate=yes; fi
-          pypi=no
-          if curl -fsSL "https://pypi.org/pypi/yggdryl/$VERSION/json" >/dev/null 2>&1; then pypi=yes; fi
-          npm=no
-          if curl -fsSL "https://registry.npmjs.org/yggdryl/$VERSION" >/dev/null 2>&1; then npm=yes; fi
-          echo "crates.io=$crate pypi=$pypi npm=$npm for $VERSION"
-          held="$crate$pypi$npm"
-          if [ "$held" = "nonono" ] || [ "$held" = "yesyesyes" ]; then
-            echo "$VERSION is consistently out or consistently unreleased"
-            exit 0
-          fi
+          # Every name on every registry: a crate by the sparse index (every
+          # name here is four letters or more, so it is filed under its first
+          # two and next two), a distribution by PyPI's JSON, a package by
+          # npm's registry.
+          held=""
+          report=""
+          for crate in $CRATES; do
+            state=no
+            if curl -fsSL "https://index.crates.io/${crate:0:2}/${crate:2:2}/$crate" | grep -q "\"vers\":\"$VERSION\""; then state=yes; fi
+            held="$held $state"; report="$report crates.io:$crate=$state"
+          done
+          for name in $(python3 scripts/release_packages.py pypi); do
+            state=no
+            if curl -fsSL "https://pypi.org/pypi/$name/$VERSION/json" >/dev/null 2>&1; then state=yes; fi
+            held="$held $state"; report="$report pypi:$name=$state"
+          done
+          for name in $(python3 scripts/release_packages.py npm); do
+            state=no
+            if curl -fsSL "https://registry.npmjs.org/$name/$VERSION" >/dev/null 2>&1; then state=yes; fi
+            held="$held $state"; report="$report npm:$name=$state"
+          done
+          echo "$report for $VERSION"
+          case "$held" in
+            *yes*no* | *no*yes*) ;;
+            *)
+              echo "$VERSION is consistently out or consistently unreleased"
+              exit 0
+              ;;
+          esac
           if [ "$REF_TYPE" = "tag" ]; then
             echo "::warning title=Finishing a half-published version::$VERSION is on some registries and not others; the tag pins the tree, so this run finishes it"
             exit 0
           fi
           if [ "$EVENT" = "workflow_dispatch" ]; then
-            echo "::warning title=$VERSION is half published::crates.io=$crate pypi=$pypi npm=$npm; a rehearsal publishes nothing"
+            echo "::warning title=$VERSION is half published::$report; a rehearsal publishes nothing"
             exit 0
           fi
-          echo "::error title=$VERSION is half published::crates.io=$crate pypi=$pypi npm=$npm"
+          echo "::error title=$VERSION is half published::$report"
           cat >&2 <<EOF
           $VERSION is already on some registries and not others, and this run is a
           push to a branch, so the tree it would publish is whatever that branch
@@ -180,11 +190,11 @@ jobs:
           exit 1
 
   sources:
-    # The two source packages. The crate crates.io carries - only the core:
-    # the binding crates are `publish = false` because their artifacts are the
-    # wheel and the npm package - is packaged and built from the package alone
-    # here, and published by `release` once every platform has smoke-tested
-    # its binaries. The source distribution carries the whole workspace -
+    # The source packages. Every crate crates.io carries - the core and each
+    # crate under `rust/`; the binding crates and the command are `publish =
+    # false` because their artifacts are the wheel and the npm package - is
+    # packaged and built from its package alone here, and published by
+    # `release` once every platform has smoke-tested its binaries. The source distribution carries the whole workspace -
     # maturin includes the core as a path dependency and prunes the Node
     # member - so an architecture without a wheel can still build from source.
     name: Source packages
@@ -195,8 +205,17 @@ jobs:
       - uses: actions/checkout@v6
       - name: Install Rust
         run: rustup toolchain install stable --profile minimal
-      - name: Package and verify the crate
-        run: cargo publish --locked -p yggdryl --dry-run
+      # Every crate in one invocation: cargo packages them all, verifies each
+      # against the others as a local registry - so a crate whose sibling
+      # crates.io does not hold yet still builds from its package - and
+      # publishes nothing.
+      - name: Package and verify every crate
+        env:
+          CRATES: ${{ needs.preflight.outputs.crates }}
+        run: |
+          packages=()
+          for crate in $CRATES; do packages+=(-p "$crate"); done
+          cargo publish --locked --dry-run "${packages[@]}"
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
@@ -853,16 +872,22 @@ jobs:
       - uses: actions/checkout@v6
       - name: Install Rust
         run: rustup toolchain install stable --profile minimal
-      - name: Publish the crate
+      # One crate at a time in the order preflight read, each skipped where the
+      # sparse index already holds it: `cargo publish` returns once crates.io
+      # serves what it uploaded, so the next crate's verification finds it.
+      - name: Publish every crate
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CRATES: ${{ needs.preflight.outputs.crates }}
         run: |
           version="${{ needs.preflight.outputs.version }}"
-          if curl -fsSL "https://index.crates.io/yg/gd/yggdryl" | grep -q "\"vers\":\"$version\""; then
-            echo "crates.io already has yggdryl $version; skipping"
-          else
-            cargo publish --locked -p yggdryl
-          fi
+          for crate in $CRATES; do
+            if curl -fsSL "https://index.crates.io/${crate:0:2}/${crate:2:2}/$crate" | grep -q "\"vers\":\"$version\""; then
+              echo "crates.io already has $crate $version; skipping"
+            else
+              cargo publish --locked -p "$crate"
+            fi
+          done
       - name: Create the tag and the release once
         env:
           GH_TOKEN: ${{ github.token }}
@@ -927,22 +952,38 @@ jobs:
           held() {
             if [ "$2" = "yes" ]; then echo "- $1: has \`$VERSION\`"; else echo "- $1: does **not** have \`$VERSION\`"; fi
           }
-          crate=no
-          if curl -fsSL "https://index.crates.io/yg/gd/yggdryl" | grep -q "\"vers\":\"$VERSION\""; then crate=yes; fi
-          pypi=no
-          if curl -fsSL "https://pypi.org/pypi/yggdryl/$VERSION/json" >/dev/null 2>&1; then pypi=yes; fi
-          npm=no
-          if curl -fsSL "https://registry.npmjs.org/yggdryl/$VERSION" >/dev/null 2>&1; then npm=yes; fi
+          # Every name on every registry, the crates read from the tree - it is
+          # the tree whose release is being reported.
+          lines=""
+          states=""
+          for crate in $(python3 scripts/release_packages.py crates); do
+            state=no
+            if curl -fsSL "https://index.crates.io/${crate:0:2}/${crate:2:2}/$crate" | grep -q "\"vers\":\"$VERSION\""; then state=yes; fi
+            lines="$lines$(held "crates.io \`$crate\`" "$state")"$'\n'
+            states="$states $state"
+          done
+          for name in $(python3 scripts/release_packages.py pypi); do
+            state=no
+            if curl -fsSL "https://pypi.org/pypi/$name/$VERSION/json" >/dev/null 2>&1; then state=yes; fi
+            lines="$lines$(held "PyPI \`$name\`" "$state")"$'\n'
+            states="$states $state"
+          done
+          for name in $(python3 scripts/release_packages.py npm); do
+            state=no
+            if curl -fsSL "https://registry.npmjs.org/$name/$VERSION" >/dev/null 2>&1; then state=yes; fi
+            lines="$lines$(held "npm \`$name\`" "$state")"$'\n'
+            states="$states $state"
+          done
           {
             echo "state<<YGGEOF"
-            held "crates.io" "$crate"
-            held "PyPI" "$pypi"
-            held "npm" "$npm"
+            printf '%s' "$lines"
             echo "YGGEOF"
           } >> "$GITHUB_OUTPUT"
-          if [ "$crate$pypi$npm" != "nonono" ] && [ "$crate$pypi$npm" != "yesyesyes" ]; then
-            echo "::error title=Half published::$VERSION is on some registries and not others"
-          fi
+          case "$states" in
+            *yes*no* | *no*yes*)
+              echo "::error title=Half published::$VERSION is on some registries and not others"
+              ;;
+          esac
       - name: File the report, or add to the open one
         env:
           GH_TOKEN: ${{ github.token }}

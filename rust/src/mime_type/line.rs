@@ -61,7 +61,7 @@ enum LineSeparator {
 
 /// What one shallow scan of a line found.
 #[derive(Default)]
-pub(crate) struct LineInference<'line> {
+pub struct LineInference<'line> {
     has_tag: bool,
     has_pairs: bool,
     has_symbolic: bool,
@@ -110,7 +110,7 @@ impl<'line> LineInference<'line> {
     /// 35 and therefore wins when both are present: a bridge writes its own
     /// type in front of a frame it is relaying. A document declares none:
     /// the codec names such a row `unknown`.
-    pub(crate) fn msgtype(&self) -> Option<&'line [u8]> {
+    pub fn msgtype(&self) -> Option<&'line [u8]> {
         self.name_msgtype.or(self.tag_msgtype)
     }
 
@@ -229,7 +229,7 @@ fn frame(line: &[u8], (start, numeric): (usize, bool)) -> LineFrame {
 /// One vocabulary: the separator a frame is located with and the one a reader
 /// splits on are the same fact, so a capture that escapes its separator is
 /// recognized once rather than in each place that reads a frame.
-pub(crate) const SOH_MARKERS: [&[u8]; 4] = [b"^A", b"\\x01", b"<SOH>", b"{SOH}"];
+pub const SOH_MARKERS: [&[u8]; 4] = [b"^A", b"\\x01", b"<SOH>", b"{SOH}"];
 
 impl LineSeparator {
     /// Every separator a line can name, in the order the walk keeps them.
@@ -653,7 +653,7 @@ fn is_field_end(line: &[u8], position: usize) -> bool {
 ///
 /// The scan is shallow: it locates the frame, walks its entries to the
 /// checksum, and stops. It parses no message and allocates nothing.
-pub(crate) fn inspect(line: &[u8]) -> LineInference<'_> {
+pub fn inspect(line: &[u8]) -> LineInference<'_> {
     let raw_msgtype = find_named_value(line, b"MSGTYPE");
     // A `#`-marked key and a raw `MSGTYPE=` are each a bridge's own marker,
     // and neither needs a frame around it to say so.
@@ -744,7 +744,7 @@ pub(crate) fn classify(line: &[u8]) -> (MimeType, Option<&[u8]>) {
 /// close on the document's own last byte, so a sentence mentioning `<trade>`
 /// stays a sentence. A JSON document is located by [`json_span`] instead,
 /// and prose closing on braces is prose.
-pub(crate) fn document_behind_prefix(line: &[u8]) -> Option<(MimeType, usize)> {
+pub fn document_behind_prefix(line: &[u8]) -> Option<(MimeType, usize)> {
     let trimmed = trim_ascii(line);
     let open = memchr::memchr(b'<', trimmed)?;
     if memchr::memchr(b'=', &trimmed[..open]).is_some()
@@ -1061,7 +1061,7 @@ pub(crate) fn located_entry_spans(line: &[u8]) -> (Located, impl Iterator<Item =
 /// What one scan located: where the frame opens, and whether the line
 /// named a separator for it.
 ///
-/// The two facts one [`locate_frame`] answers, carried out of the scan
+/// The two facts the frame locator answers, carried out of the scan
 /// that computed them so a reader that bounds a message to its frame and
 /// then asks whether the run of pairs was a frame or prose asks the same
 /// walk once. A frame is a run of pairs the line named a separator for - a
@@ -1072,12 +1072,12 @@ pub(crate) fn located_entry_spans(line: &[u8]) -> (Located, impl Iterator<Item =
 /// FIX whatever separated it, so the codec asks this only of a run it did
 /// not already read as tags.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Located {
+pub struct Located {
     /// Where the message starts inside the line, when one is there.
-    pub(crate) frame_at: Option<usize>,
+    pub frame_at: Option<usize>,
     /// Whether the line named a separator for the run of pairs its payload
     /// opens with: a `SOH` raw or escaped, or a pipe, and never whitespace.
-    pub(crate) separated: bool,
+    pub separated: bool,
 }
 
 /// Whether the line holds any pair at all, marked or not.
@@ -1154,7 +1154,7 @@ pub(crate) fn document_type(line: &[u8]) -> Option<MimeType> {
 }
 
 /// Both ends trimmed of ASCII whitespace.
-pub(crate) fn trim_ascii(line: &[u8]) -> &[u8] {
+pub fn trim_ascii(line: &[u8]) -> &[u8] {
     let mut start = 0;
     let mut end = line.len();
     while start < end && line[start].is_ascii_whitespace() {
@@ -1172,7 +1172,7 @@ pub(crate) fn trim_ascii(line: &[u8]) -> &[u8] {
 /// direction is read from and what a body strips: a frame's start, else
 /// where the one document that opens a payload does. A payload states
 /// nothing about which way it moved; the prose in front of it does.
-pub(crate) fn payload_at(line: &[u8]) -> Option<usize> {
+pub fn payload_at(line: &[u8]) -> Option<usize> {
     locate_frame(line)
         .map(|frame| frame.start)
         .or_else(|| json_at(line))
@@ -1196,7 +1196,7 @@ fn json_at(line: &[u8]) -> Option<usize> {
 /// The object is found by the `{` a member opens behind, so a `[jolokia]` in
 /// the prose or a brace in a sentence opens nothing, and the bound a
 /// direction is read against is the whole prefix rather than part of it.
-pub(crate) fn json_span(line: &[u8]) -> Option<std::ops::Range<usize>> {
+pub fn json_span(line: &[u8]) -> Option<std::ops::Range<usize>> {
     let opened = memchr::memchr2_iter(b'{', b'[', line).find(|at| {
         if line[*at] == b'[' {
             opens_object(line, at + 1)

@@ -76,8 +76,8 @@ function wkbPoint(x, y) {
 // The fifteen identity and event columns every line batch opens with: the line as the
 // event it is, the same fifteen a FIX row parsed out of it opens with.
 const EVENT_COLUMNS = [
-  'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode', 'srcuuids',
-  'currunix', 'creaunix', 'recdunix',
+  'uuid', 'crossuuid', 'crosscode', 'hashcode', 'crosshashcode', 'srcuuids',
+  'transunix', 'creaunix', 'sendunix',
   'exprunix', 'prevunix', 'snapunix',
   'prevuuid', 'seqnum', 'state',
 ]
@@ -485,11 +485,11 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
   // One fact about the file, read once and repeated: every row is dated by
   // the handle's own modification time, to the nanosecond it is stored at.
   const stamped = fs.statSync(target, { bigint: true }).mtimeNs
-  assert.deepEqual([...table.getChild('currunix').toArray()], [stamped, stamped])
+  assert.deepEqual([...table.getChild('transunix').toArray()], [stamped, stamped])
   // The record path reads the same column as the batch path.
   assert.deepEqual(
-    [...handle.readRecords(options)].map((row) => row.currunix),
-    [...table.getChild('currunix')],
+    [...handle.readRecords(options)].map((row) => row.transunix),
+    [...table.getChild('transunix')],
   )
 
   // Captures trail the line's own columns, and the row number needs none of
@@ -517,10 +517,10 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
     held.schema.fields.map((field) => field.name),
     [...EVENT_COLUMNS, 'body'],
   )
-  assert.deepEqual([...held.getChild('currunix').toArray()], [0n, 0n])
+  assert.deepEqual([...held.getChild('transunix').toArray()], [0n, 0n])
 })
 
-test('a row header that dates a line fills currunix rather than adding a column', () => {
+test('a row header that dates a line fills transunix rather than adding a column', () => {
   const options = new TextOptions()
   options.rowheader = '^(?<mtime>\\S+) id=(?<id>\\d+) '
   const table = IOBase.fromBytes(
@@ -536,12 +536,12 @@ test('a row header that dates a line fills currunix rather than adding a column'
     table.schema.fields.map((field) => field.name),
     [...EVENT_COLUMNS, 'body', 'id'],
   )
-  const currunix = table.schema.fields.find((field) => field.name === 'currunix')
-  assert.ok(currunix)
-  assert.equal(currunix.type.unit, arrow.TimeUnit.NANOSECOND)
-  assert.equal(currunix.type.timezone, 'UTC')
+  const transunix = table.schema.fields.find((field) => field.name === 'transunix')
+  assert.ok(transunix)
+  assert.equal(transunix.type.unit, arrow.TimeUnit.NANOSECOND)
+  assert.equal(transunix.type.timezone, 'UTC')
   assert.deepEqual(
-    [...table.getChild('currunix').toArray()],
+    [...table.getChild('transunix').toArray()],
     [1_577_934_245_123_456_789n],
   )
 

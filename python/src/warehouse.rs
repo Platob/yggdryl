@@ -17,12 +17,13 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyString, PyTuple, PyType};
 
 use yggdryl::holder::Holder;
+use yggdryl::iceberg::{IcebergCatalog, IcebergNamespace, IcebergTable};
 use yggdryl::media::RecordOptions;
 use yggdryl::{
-    Catalog, CatalogValue, FolderCatalog, FolderLayout, FolderNamespace, IOBase as _, IOKind,
-    IOMedia as _, IOMode, IntoObjectPath, MediaTable, MemoryCatalog, MemoryNamespace, Names,
-    Namespace, NamespaceValue, Object, ObjectValue, Objects, Properties, SystemWarehouse, Table,
-    TableValue, Warehouse,
+    Catalog, CatalogValue, FolderCatalog, FolderLayout, FolderNamespace, Handle, IOBase as _,
+    IOKind, IOMedia as _, IOMode, IntoObjectPath, MediaTable, MemoryCatalog, MemoryNamespace,
+    Names, Namespace, NamespaceValue, Object, ObjectValue, Objects, Properties, SystemWarehouse,
+    Table, TableValue, Warehouse,
 };
 
 use crate::datatype::core_dtype_from_value;
@@ -59,7 +60,7 @@ impl Implementation {
         match catalog {
             Catalog::Memory(_) => Self::MemoryCatalog,
             Catalog::Folder(_) => Self::FolderCatalog,
-            Catalog::Iceberg(_) => Self::IcebergCatalog,
+            _ if catalog.downcast_ref::<IcebergCatalog>().is_some() => Self::IcebergCatalog,
             _ => Self::Catalog,
         }
     }
@@ -68,7 +69,7 @@ impl Implementation {
         match namespace {
             Namespace::Memory(_) => Self::MemoryNamespace,
             Namespace::Folder(_) => Self::FolderNamespace,
-            Namespace::Iceberg(_) => Self::IcebergNamespace,
+            _ if namespace.downcast_ref::<IcebergNamespace>().is_some() => Self::IcebergNamespace,
             _ => Self::Namespace,
         }
     }
@@ -76,7 +77,7 @@ impl Implementation {
     pub(crate) fn of_table(table: &Table) -> Self {
         match table {
             Table::Media(_) => Self::MediaTable,
-            Table::Iceberg(_) => Self::IcebergTable,
+            _ if table.downcast_ref::<IcebergTable<Handle>>().is_some() => Self::IcebergTable,
             _ => Self::Table,
         }
     }

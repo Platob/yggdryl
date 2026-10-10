@@ -1670,10 +1670,11 @@ impl JsTable {
     /// implementation is another.
     #[napi(factory)]
     pub fn from(table: &JsWarehouseTable) -> Result<Self> {
-        match &table.inner {
-            CoreWarehouseTable::Iceberg(table) => Ok(Self::from_core((**table).clone())),
-            other => Err(napi_error(format!(
-                "expected an Iceberg table, got `{other}` held by another implementation"
+        match table.inner.downcast_ref::<CoreTable<Handle>>() {
+            Some(table) => Ok(Self::from_core(table.clone())),
+            None => Err(napi_error(format!(
+                "expected an Iceberg table, got `{}` held by another implementation",
+                table.inner
             ))),
         }
     }
@@ -2705,12 +2706,13 @@ impl JsCatalog {
     /// its implementation is another.
     #[napi(factory)]
     pub fn from(catalog: &JsWarehouseCatalog) -> Result<Self> {
-        match &catalog.inner {
-            CoreWarehouseCatalog::Iceberg(catalog) => Ok(Self {
-                inner: (**catalog).clone(),
+        match catalog.inner.downcast_ref::<CoreCatalog>() {
+            Some(catalog) => Ok(Self {
+                inner: catalog.clone(),
             }),
-            other => Err(napi_error(format!(
-                "expected an Iceberg catalog, got `{other}` held by another implementation"
+            None => Err(napi_error(format!(
+                "expected an Iceberg catalog, got `{}` held by another implementation",
+                catalog.inner
             ))),
         }
     }
@@ -2914,12 +2916,13 @@ impl JsNamespace {
     /// when its implementation is another.
     #[napi(factory)]
     pub fn from(namespace: &JsWarehouseNamespace) -> Result<Self> {
-        match &namespace.inner {
-            CoreWarehouseNamespace::Iceberg(namespace) => Ok(Self {
-                inner: (**namespace).clone(),
+        match namespace.inner.downcast_ref::<CoreNamespace>() {
+            Some(namespace) => Ok(Self {
+                inner: namespace.clone(),
             }),
-            other => Err(napi_error(format!(
-                "expected an Iceberg namespace, got `{other}` held by another implementation"
+            None => Err(napi_error(format!(
+                "expected an Iceberg namespace, got `{}` held by another implementation",
+                namespace.inner
             ))),
         }
     }

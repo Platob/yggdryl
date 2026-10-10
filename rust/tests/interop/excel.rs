@@ -17,7 +17,7 @@ use arrow_array::{
     BooleanArray, Date32Array, DurationMillisecondArray, Float64Array, Int64Array, RecordBatch,
     StringArray, TimestampMillisecondArray,
 };
-use yggdryl::excel::{CellRef, DateSystem, Workbook};
+use yggdryl::excel::{CellRef, DateSystem, ExcelOptions, Workbook};
 use yggdryl::holder::Holder;
 use yggdryl::media::IORecordOptions;
 use yggdryl::{DataType, Field, IOMedia, Scalar, StructType, TimeUnit, Timezone};
@@ -218,7 +218,9 @@ fn reads_the_workbook_the_external_writer_produced() {
     let handle = Holder::file(&path).expect("a local workbook");
     let mut options = handle.record_options().expect("Excel options");
     options
-        .set_excel_sheet(Some("Trades"))
+        .require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")
+        .expect("Excel options")
+        .set_sheet(Some("Trades"))
         .expect("a sheet name");
     let inferred = handle
         .read_arrow_field(&options)

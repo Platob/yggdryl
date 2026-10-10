@@ -2,39 +2,32 @@
 
 This directory is the `yggdryl` core crate. The repository root owns the Cargo
 workspace manifest, the shared dependency pins, and the shared lints; its
-members are `rust/`, `python/`, and `node/`.
+members are `rust/`, `rust/market/` (`yggdryl-market`), `rust/fix/`
+(`yggdryl-fix`), `python/`, `node/` and `cli/`. The core's manifest excludes
+`market/` and `fix/`, each a crate of its own with its own `README.md`.
 
 ```text
-src/datatype/          Categorized datatype implementation
-src/field/             Field state, Arrow projection, casting, parsing, diffing
-src/metadata.rs        Shared immutable metadata map
-src/arrow/             Arrow scalars, arrays, batches, and IPC readers/writers
-src/io/                The IOBase storage trait, Buffer, and Coded
-src/generic/           Scalar, enums, Holder, Media, and RecordOptions
-src/local/             LocalPath, LocalFolder, and memory-mapped LocalFile
-src/s3/                S3Path, S3Folder, and S3File over the S3 dialect
-src/{gzip,zlib,zstd}/  Content codings, whole-buffer and streaming
-src/{ipc,parquet,avro}/
-                       Record encodings over any handle
-src/iceberg/           Apache Iceberg tables over one container handle
-src/uri.rs             Identifier domain
-src/text/              Structured codecs, dispatch, limits, text utilities
-src/{json,yaml,toml}/  Format-specific parsers, streams, emitters
-tests/<entry>.rs       One target per top-level source entry, declaring the
-                       mirror of each of its files; tests/root.rs declares the
-                       files the crate root holds
-tests/<entry>/         Those files: src/<entry>/<name>.rs is pinned by
-                       tests/<entry>/<name>.rs, and a folder's mod.rs by mod_.rs
-tests/support/         Fixtures several targets declare
-tests/{allocations,iobase_calls,benchmark_mode}.rs
-                       Allocation counts, IOBase call counts, benchmark smoke
-tests/docs_index.rs    The documentation index regression
-tests/interop/iceberg.rs
-                       The Iceberg exchange with PyIceberg (`iceberg` feature)
-benchmarks/{datatype,field,io,json,text,toml,yaml}/
-                       Categorized benchmarks
-benchmarks/{datatype,field,enums,uri,text,json,toml,yaml,io}.rs
-                       Criterion target wiring / baselines
+src/<name>.rs          One type, or one shared trait, enum or value, per root
+                       file: a type's datatype, field and scalar together
+                       (integer.rs, string.rs, isin.rs, state.rs), the vocabulary
+                       beside them (datatype.rs, field.rs, scalar.rs, serie.rs,
+                       cast.rs, iobase.rs, market.rs, vocabulary.rs)
+src/value/             What a datatype, a field and a value owe the root
+src/<implementation>/  One folder per implementation: storage (local, fs, zip,
+                       s3, http), media (ipc, parquet, avro, csv, excel, xmla,
+                       iceberg), codecs (json, yaml, toml, xml, text), and
+                       arrow, expression, graph, logging, warehouse, xxhash
+src/{gzip,zlib,zstd}.rs
+                       Content codings, one root file each
+tests/<entry>.rs       One target per top-level source entry; tests/root.rs
+                       declares the files the crate root holds
+tests/<entry>/         src/<entry>/<name>.rs is pinned by tests/<entry>/<name>.rs,
+                       a folder's mod.rs by mod_.rs; tests/support/ the shared
+                       fixtures
+benchmarks/            Criterion targets by theme: types, holder, media, text, ...
+market/                yggdryl-market: the market kinds, identifiers, the ISIN
+                       registry and the market-data graph
+fix/                   yggdryl-fix: the FIX dictionary, codec, messages and rows
 ```
 
 Run checks from the repository root. Root Cargo commands select only the Rust

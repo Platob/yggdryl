@@ -5,9 +5,8 @@ use std::process::ExitCode;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use yggdryl::holder::Holder;
-use yggdryl::{
-    DataType, Field, FixCategory, FixDirection, FixMerge, FixRegistry, IOKind, Result, Url,
-};
+use yggdryl::{DataType, Field, IOKind, Result, Url};
+use yggdryl_fix::{FixCategory, FixDirection, FixField, FixFieldMut, FixMerge, FixRegistry};
 
 use crate::{diff, quality, registry, schema, shell, style, warnings};
 
@@ -242,7 +241,9 @@ pub struct DefinitionArgs {
 impl DefinitionArgs {
     fn field(&self) -> Result<Field> {
         if let Some(path) = &self.input {
-            return yggdryl::from_fix_document(yggdryl::from_json_scalar(std::fs::read(path)?)?);
+            return yggdryl_fix::from_fix_document(yggdryl::from_json_scalar(std::fs::read(
+                path,
+            )?)?);
         }
         let name = self.name.as_deref().ok_or_else(|| yggdryl::Error::Absent {
             expected: "a definition name or --input",
@@ -258,18 +259,17 @@ impl DefinitionArgs {
         let mut field = DataType::from_str(dtype)?.nullable_field(name);
         field.set_nullable(!self.required && self.msgtype.is_none());
         if let Some(name) = &self.codes {
-            field.as_fix_mut().set_codeset(name)?;
+            FixFieldMut::new(&mut field).set_codeset(name)?;
         }
         if let Some(document) = &self.directions {
             field.update_metadata([("FIX:directions", document.clone())])?;
-            let rules = field
-                .as_fix()
+            let rules = FixField::new(&field)
                 .directions()
                 .map(|rule| rule.map(FixDirection::from))
                 .collect::<Result<Vec<_>>>()?;
-            field.as_fix_mut().set_directions(&rules)?;
+            FixFieldMut::new(&mut field).set_directions(&rules)?;
         }
-        let mut view = field.as_fix_mut();
+        let mut view = FixFieldMut::new(&mut field);
         view.set_sources(&self.dialect)?;
         if let Some(tag) = self.tag {
             view.set_tag(tag)?;
@@ -579,9 +579,7 @@ fn passed_over(merge: &FixMerge, annotate: bool) {
             .as_deref()
             .and_then(|source| Url::from_str(source).ok())
             .and_then(|url| url.file_name().map(str::to_owned));
-        let sources = drop
-            .incoming
-            .as_fix()
+        let sources = FixField::new(&drop.incoming)
             .sources()
             .collect::<Vec<_>>()
             .join(", ");
@@ -682,7 +680,7 @@ fn dictionary_words(registry: &FixRegistry) -> Vec<String> {
     for category in FixCategory::ALL {
         for field in registry.definitions(category) {
             words.push(field.name().to_owned());
-            if let Ok(Some(tag)) = field.as_fix().tag() {
+            if let Ok(Some(tag)) = FixField::new(field).tag() {
                 words.push(tag.to_string());
             }
         }

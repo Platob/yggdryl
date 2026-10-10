@@ -10,7 +10,7 @@ use pyo3::prelude::*;
 use pyo3::sync::MutexExt;
 use pyo3::types::{PyBool, PyDict, PyInt};
 
-use yggdryl::graph::{
+use yggdryl_market::graph::{
     BookEvent as CoreBookEvent, Candle as CoreCandle, CandleIterator as CoreCandleIterator,
     CandleOptions as CoreCandleOptions, Ohlc,
 };

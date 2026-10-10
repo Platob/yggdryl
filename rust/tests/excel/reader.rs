@@ -372,8 +372,9 @@ fn a_range_limits_the_rows_and_columns_and_its_first_row_is_the_header() {
     );
     let mut media = handle.record_options().unwrap();
     media
-        .set_excel_range(Some("B3:C".parse().unwrap()))
-        .unwrap();
+        .require_settings_mut::<ExcelOptions>("$.range", "a cell range")
+        .unwrap()
+        .set_range(Some("B3:C".parse().unwrap()));
     assert_eq!(
         records(&handle, &media),
         ["[\"AAPL\",1.5]", "[\"MSFT\",2.5]"]
@@ -455,7 +456,10 @@ fn row_size_counts_every_row_inside_the_range_less_the_header() {
     assert_eq!(handle.row_size().unwrap(), 4);
     let options = |excel: ExcelOptions| {
         let mut options = handle.record_options().unwrap();
-        options.set_excel_range(excel.range).unwrap();
+        options
+            .require_settings_mut::<ExcelOptions>("$.range", "a cell range")
+            .unwrap()
+            .set_range(excel.range);
         options.set_header(excel.header).unwrap();
         options
     };
@@ -827,7 +831,11 @@ fn a_read_addresses_the_sheet_named_compared_without_case_else_the_first() {
     );
     assert_eq!(records(&handle, &second), ["[\"two\"]"]);
     let mut media = handle.record_options().unwrap();
-    media.set_excel_sheet(Some("Second")).unwrap();
+    media
+        .require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")
+        .unwrap()
+        .set_sheet(Some("Second"))
+        .unwrap();
     assert_eq!(records(&handle, &media), ["[\"two\"]"]);
 }
 

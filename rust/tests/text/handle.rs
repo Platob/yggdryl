@@ -231,14 +231,14 @@ mod text {
         // Not the body alone: the object a line came from, the instant it is
         // dated by, and the bytes a bounded record dropped are columns the
         // clause binds against at their own datatypes. The first two are the
-        // event's own - a buffer's URL under `crosscode`, and `currunix`,
+        // event's own - a buffer's URL under `crosscode`, and `transunix`,
         // which every line answers, an undated buffer's at the epoch.
         let mut options = TextOptions::new();
         options.set_max_record_byte_size(Some(3));
         let source = named("app.log", b"alpha\nbravo\n");
 
         let clause =
-            "crosscode like 'mem://%' and cast(currunix as int64) = 0 and dropped_byte_size = 2";
+            "crosscode like 'mem://%' and cast(transunix as int64) = 0 and dropped_byte_size = 2";
         assert_eq!(
             bodies(&collect(&source, options.with_filter(clause).unwrap())),
             [b"alp".to_vec(), b"bra".to_vec()]
@@ -622,5 +622,80 @@ mod text {
             .downcast_ref::<StringArray>()
             .unwrap();
         assert!(url.value(0).starts_with("mem://"), "{}", url.value(0));
+    }
+}
+
+/// What a closed handle's line count costs under a TTL, with the clock set by
+/// hand: the count streams the whole object, so a warm ask is the one a TTL
+/// saves.
+#[cfg(feature = "internals")]
+mod ttl {
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    use yggdryl::holder::Buffer;
+    use yggdryl::holder::counted::{Calls, Counted, Group};
+    use yggdryl::internals::media_cache::with_clock;
+    use yggdryl::media::IORecordOptions as _;
+    use yggdryl::text::{Text, TextOptions};
+    use yggdryl::{IOBase as _, IOMedia as _};
+
+    /// Three lines over a counted handle, counted under a `ttl` of
+    /// milliseconds.
+    fn counted(ttl: u64) -> (Text<Counted<Buffer>>, Arc<Calls>) {
+        let bytes = Buffer::from_bytes(b"first\nsecond\nthird\n".to_vec()).with_media_type(
+            yggdryl::Url::from_str("file:///lines.txt")
+                .unwrap()
+                .media_type(),
+        );
+        let counted = Counted::new(bytes);
+        let calls = Arc::clone(counted.calls());
+        let media = Text::new(counted).with_options(TextOptions::new().with_cache_ttl(ttl));
+        (media, calls)
+    }
+
+    /// The store reads one line count costs.
+    fn reads(media: &Text<Counted<Buffer>>, calls: &Calls) -> u64 {
+        calls.reset();
+        assert_eq!(media.row_size().unwrap(), 3);
+        calls.group(Group::Read)
+    }
+
+    #[test]
+    fn a_warm_closed_line_count_under_a_ttl_reads_nothing_until_the_entry_is_as_old_as_the_ttl() {
+        let (media, calls) = counted(1_000);
+        let t0 = Instant::now();
+        let at = |milliseconds: u64| t0 + Duration::from_millis(milliseconds);
+        assert!(with_clock(t0, || reads(&media, &calls)) > 0);
+        assert_eq!(with_clock(at(999), || reads(&media, &calls)), 0);
+        assert!(
+            with_clock(at(1_000), || reads(&media, &calls)) > 0,
+            "an entry exactly as old as the TTL is read again"
+        );
+        // A line states no record shape: the origin is none, asking nothing.
+        calls.reset();
+        assert_eq!(media.read_origin_field().unwrap(), None);
+        assert_eq!(calls.group(Group::Read), 0);
+    }
+
+    #[test]
+    fn a_realtime_closed_line_count_streams_the_object_every_time() {
+        let (media, calls) = counted(0);
+        let t0 = Instant::now();
+        assert!(with_clock(t0, || reads(&media, &calls)) > 0);
+        assert!(with_clock(t0, || reads(&media, &calls)) > 0);
+    }
+
+    #[test]
+    fn an_open_handle_holds_its_line_count_until_close_and_a_byte_handle_borrowed_drops_it() {
+        let (mut media, calls) = counted(0);
+        media.open().unwrap();
+        assert!(reads(&media, &calls) > 0);
+        assert_eq!(reads(&media, &calls), 0);
+        let _ = media.handle_mut();
+        assert!(reads(&media, &calls) > 0, "the held count is dropped");
+        assert_eq!(reads(&media, &calls), 0, "and held again");
+        media.close().unwrap();
+        assert!(reads(&media, &calls) > 0);
     }
 }

@@ -1038,6 +1038,56 @@ mod lake {
 
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    #[test]
+    fn a_path_settles_the_equalities_it_proves_and_a_null_directory_proves_none() {
+        let (root, mut handle) = lake("settled-partition");
+        seed(&root, "year=2024/month=01", &prices());
+        let field = yggdryl::StructType::from_fields([
+            yggdryl::DataType::Int64.required_field("price"),
+            yggdryl::DataType::Int32.nullable_field("year"),
+            yggdryl::DataType::utf8().nullable_field("month"),
+        ])
+        .map(yggdryl::DataType::from)
+        .unwrap()
+        .required_field("row");
+        let batch = RecordBatch::try_new(
+            field.clone().into_arrow_schema().unwrap(),
+            vec![
+                std::sync::Arc::new(arrow_array::Int64Array::from(vec![99])),
+                std::sync::Arc::new(Int32Array::from(vec![None::<i32>])),
+                std::sync::Arc::new(StringArray::from(vec![None::<&str>])),
+            ],
+        )
+        .unwrap();
+        handle
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+                &options(Some(field.clone())),
+            )
+            .unwrap();
+        let rows = |filter: &str| -> usize {
+            handle
+                .read_arrow_reader(&options(Some(field.clone())).with_filter(filter).unwrap())
+                .unwrap()
+                .map(|batch| batch.unwrap().num_rows())
+                .sum()
+        };
+
+        // `year=2024` proves the equality for every row of its leaf, which
+        // keeps them all; the `year=null` leaf holds none of them.
+        assert_eq!(rows("year = 2024"), 3);
+        assert_eq!(rows("year is null"), 1);
+        // Under a nullable column that is not text, a `year=null` directory
+        // reads back as a null, and a null equals no text - not even the four
+        // letters its directory is spelled with; under a text column the
+        // directory's text is the value.
+        assert_eq!(rows("year = 'null'"), 0);
+        assert_eq!(rows("month = 'null'"), 1);
+        assert_eq!(rows("month is null"), 0);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 use std::sync::Arc;

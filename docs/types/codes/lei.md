@@ -186,7 +186,9 @@ The value is the canonical spelling: upper case, the check digits as stated. Low
 Eighteen letters or digits, then two decimal digits. The first four characters are the prefix of the Local Operating Unit that issued the code (`prefix`), and the fourteen after them are the entity's own. ISO 17442:2012 reserved the fifth and sixth characters as `00`; ISO 17442-1:2020 made them part of the entity's code, so `HWUPKR0MPOU8FGXBT394` - Apple Inc.'s LEI, `KR` in those places - is the shape, and a reader holding the 2012 rule would refuse it. The check is ISO/IEC 7064 MOD 97-10: the twenty characters read as one decimal number, a digit as itself and a letter as its two digits from `A` at ten to `Z` at thirty-five, leave a remainder of one modulo 97. `closing_digits` computes the two digits that close eighteen leading characters, `is_closed` answers whether they close an upper-case identifier - the [rank](index.md#rank) a value answers, one where they close, zero where they do not - `check_digits` reads the two as stated, and `is_canonical` whether text is the canonical spelling, upper case and the shape, whatever the digits. Rust only.
 
 ```rust
-use yggdryl::{CodeValue, IdType, Lei};
+use yggdryl::{CodeValue, Lei};
+use yggdryl_market::IdType;
+yggdryl_market::install()?;
 
 let apple = Lei::new("HWUPKR0MPOU8FGXBT394")?;
 assert_eq!(apple.prefix(), "HWUP");
@@ -224,7 +226,7 @@ for refused in ["HWUPKR0MPOU8FGXBT39", "HWUPKR0MPOU8FGX-T394", "HWUPKR0MPOU8FGXB
 - No default value: the empty text names no entity, so an empty text cell entering the column is null ([Cast](../cast.md#empty-text)).
 - No packed integer: twenty bytes are past the sixteen `ascii_packed` fills, so neither `ascii_packed` nor a `StringEnum` takes an `lei` column.
 - [`merge_with`](index.md#the-code-family-value) takes an identifier that closes over one that does not, whichever leads; two of one rank keep this one.
-- An [`IsinRegistry`](../../graph/isin-registry.md) column of type `lei` declares this datatype; a store whose column is `utf8` reads each cell through this code's rule.
+- An [`Instrument`](../../graph/instrument.md) holds an issuer's LEI among its `securityids` under `lei`, read through this code's rule, and never as a lookup key: an issuer numbers many instruments.
 
 ## Commands
 

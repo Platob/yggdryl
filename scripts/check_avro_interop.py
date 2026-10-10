@@ -95,6 +95,7 @@ def run_cargo(allow_skip: bool) -> str:
         [
             "cargo",
             "test",
+            "--locked",
             "--test",
             "interop",
             "avro::",

@@ -265,9 +265,9 @@
     body.append(grid(['Native answer', 'Value'], [
       ['MIME type', frame.mime], ['message code', frame.msgtype], ['direction', frame.direction],
       ['root', frame.root], ['content children', frame.size],
-      ['currunix', frame.event.currunix], ['identity', frame.event.curruuid],
+      ['transunix', frame.event.transunix], ['identity', frame.event.uuid],
       ['cross code', frame.event.crosscode || '(none)'], ['cross identity', frame.event.crossuuid],
-      ['content code', frame.event.currhashcode], ['wire digest', frame.digest],
+      ['content code', frame.event.hashcode], ['wire digest', frame.digest],
       ['text (58)', frame.text ?? '(none)'],
     ]))
     // The typed facts a message holds beside its content row: the event the

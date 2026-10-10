@@ -107,6 +107,15 @@ mod internal {
         fn every_named_protocol_view_spells_its_own_scheme_prefix() {
             let probes = well_known_protocol_probes();
             assert!(!probes.is_empty(), "the protocol list is empty");
+            // The list is the core's own views. The FIX view left it for
+            // `fix/field.rs`, which mints it with the exported builder under
+            // `Scheme::FIX` - `rust/fix/tests/root/field.rs` pins it the same way
+            // - so the list is 23 and none of them is FIX.
+            assert_eq!(probes.len(), 23, "the core's own protocol views");
+            assert!(
+                probes.iter().all(|probe| probe.scheme_prefix != "FIX"),
+                "the FIX view is the FIX code's"
+            );
             for probe in probes {
                 let key = format!("{}:x", probe.scheme_prefix);
 
@@ -1303,6 +1312,86 @@ mod generic {
         assert!(field.as_python().class().unwrap().is_some());
         assert!(field.as_python_mut().remove_class().is_some());
         assert!(field.as_python().is_empty());
+    }
+}
+
+mod views {
+    //! The view builder is exported, so a crate mints the views of its own
+    //! protocol with it: this integration test is such a crate, and compiling
+    //! it proves the expansion names nothing the core keeps private.
+
+    use yggdryl::{DataType, Field, Scheme};
+
+    yggdryl::protocol_field_types!(
+        pub,
+        Scheme::from_str("acme").expect("a custom scheme"),
+        AcmeField,
+        AcmeFieldMut,
+        "Acme Corporation"
+    );
+
+    #[test]
+    fn a_crate_mints_the_views_of_its_own_protocol_with_the_exported_builder() {
+        let mut field = DataType::Int64.required_field("price");
+        AcmeFieldMut::new(&mut field)
+            .insert("x", "1")
+            .expect("a property of the crate's own protocol");
+
+        assert_eq!(field.get_metadata("ACME:x"), Some("1"));
+        let view = AcmeField::new(&field);
+        assert_eq!(view.prefix(), "ACME");
+        assert_eq!(view.key("x"), "ACME:x");
+        assert_eq!(view.get("x"), Some("1"));
+        assert_eq!((&view).into_iter().collect::<Vec<_>>(), [("x", "1")]);
+
+        // The mutable twin refines its read view to the named type, lends the
+        // field it borrows, and reaches no mutator of the field itself.
+        let mut field = field.clone();
+        let mut mutable = AcmeFieldMut::new(&mut field);
+        assert_eq!(mutable.as_protocol().get("x"), Some("1"));
+        assert_eq!(mutable.as_field().name(), "price");
+        let lent: &Field = mutable.as_ref();
+        assert_eq!(lent.get_metadata("ACME:x"), Some("1"));
+        mutable.insert("y", "2").expect("a second property");
+        assert_eq!(field.get_metadata("ACME:y"), Some("2"));
+    }
+
+    /// The mutable view of any scheme lends the field it borrows - the door
+    /// the builder's expansion reads it through, public for that reason.
+    #[test]
+    fn a_mutable_view_lends_the_field_it_borrows() {
+        let mut field = DataType::Int64.required_field("price");
+        let mut view = field.protocol_mut(&Scheme::FIX);
+        view.insert("x", "1").expect("a property");
+        assert_eq!(view.as_field().name(), "price");
+        assert_eq!(view.as_field().get_metadata("FIX:x"), Some("1"));
+
+        let mut iceberg = field.as_iceberg_mut();
+        iceberg.insert("doc", "close").expect("a property");
+        assert_eq!(
+            iceberg.as_field().get_metadata("ICEBERG:doc"),
+            Some("close")
+        );
+    }
+
+    /// `Scheme::FIX` stays the core's - a known scheme's properties are read
+    /// without allocating - so the FIX keys are reachable by the scheme door
+    /// on a field and on a snapshot, whatever crate mints the named view.
+    #[test]
+    fn the_fix_scheme_is_the_cores_and_reads_without_a_named_view() {
+        let mut field = DataType::utf8().nullable_field("OrderID");
+        field
+            .protocol_mut(&Scheme::FIX)
+            .insert("x", "1")
+            .expect("a property");
+
+        assert_eq!(field.get_metadata("FIX:x"), Some("1"));
+        assert_eq!(field.protocol(&Scheme::FIX).prefix(), "FIX");
+        assert_eq!(field.protocol(&Scheme::FIX).get("x"), Some("1"));
+        let metadata = field.as_metadata();
+        assert_eq!(metadata.protocol(&Scheme::FIX).key("x"), "FIX:x");
+        assert_eq!(metadata.protocol(&Scheme::FIX).get("x"), Some("1"));
+        assert!(Scheme::FIX.is_known());
     }
 }
 

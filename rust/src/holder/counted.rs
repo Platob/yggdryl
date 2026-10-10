@@ -45,8 +45,10 @@
 //!
 //! `Counted` mirrors the surface a *backend* implements: the positional
 //! primitives, the whole and ranged reads and writes, the metadata answers,
-//! the lifecycle pair, and the three navigation methods. Every one of those is
-//! tallied and passed straight through, so the wrapper changes nothing.
+//! the lifecycle pair, the navigation methods, and the capabilities a backend
+//! specializes - the streamed upload, the dropped stage, the two roles, the
+//! stated length. Every one of those is tallied and passed straight through,
+//! so the wrapper changes nothing.
 //!
 //! It deliberately does **not** forward the derived defaults - `glob`,
 //! `partitions`, `children_where`, `copy_into`, `read_scalar`, `cursor`,
@@ -56,8 +58,9 @@
 //! that costs one call per file read the same from outside and differently
 //! here.
 //!
-//! The one edge is navigation. [`IOBase::parent`] and
-//! [`IOBase::child_by_path`] answer with a [`Holder`], which is the wrapped
+//! The one edge is navigation. [`IOBase::parent`],
+//! [`IOBase::child_by_path`], [`IOBase::as_leaf`] and
+//! [`IOBase::as_container`] answer with a [`Holder`], which is the wrapped
 //! backend's own handle rather than another `Counted`, so what a caller does
 //! *through a child* is not in this tally. The call that produced the child is.
 
@@ -95,6 +98,8 @@ pub enum Call {
     CreateBytes,
     /// [`IOBase::append_bytes`].
     AppendBytes,
+    /// [`IOBase::upload_from`].
+    UploadFrom,
     /// [`IOBase::reserve`].
     Reserve,
     /// [`IOBase::truncate`].
@@ -105,8 +110,12 @@ pub enum Call {
     Clear,
     /// [`IOBase::remove`].
     Remove,
+    /// [`IOBase::discard`].
+    Discard,
     /// [`IOBase::size`].
     Size,
+    /// [`IOBase::set_known_size`].
+    SetKnownSize,
     /// [`IOBase::capacity`].
     Capacity,
     /// [`IOBase::url`].
@@ -129,6 +138,10 @@ pub enum Call {
     Parent,
     /// [`IOBase::child_by_path`].
     ChildByPath,
+    /// [`IOBase::as_leaf`].
+    AsLeaf,
+    /// [`IOBase::as_container`].
+    AsContainer,
     /// [`IOBase::ls`].
     Ls,
     /// [`IOBase::flush`].
@@ -143,7 +156,7 @@ pub enum Call {
     Close,
 }
 
-/// What a call is for, so a tally reads as five numbers rather than thirty-four.
+/// What a call is for, so a tally reads as five numbers rather than thirty-nine.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Group {
     /// Anything that transfers bytes out of the store.
@@ -154,7 +167,8 @@ pub enum Group {
     Metadata,
     /// Navigating to a neighbour, or listing one.
     Navigation,
-    /// The open/close pair and the flush between them.
+    /// The open/close pair, the flush between them, and the discard that
+    /// drops what a flush would publish.
     Lifecycle,
 }
 
@@ -172,12 +186,15 @@ impl Call {
         Self::WriteAllBytes,
         Self::CreateBytes,
         Self::AppendBytes,
+        Self::UploadFrom,
         Self::Reserve,
         Self::Truncate,
         Self::SetMediaType,
         Self::Clear,
         Self::Remove,
+        Self::Discard,
         Self::Size,
+        Self::SetKnownSize,
         Self::Capacity,
         Self::Url,
         Self::BoundLocation,
@@ -189,6 +206,8 @@ impl Call {
         Self::IsTabular,
         Self::Parent,
         Self::ChildByPath,
+        Self::AsLeaf,
+        Self::AsContainer,
         Self::Ls,
         Self::Flush,
         Self::Open,
@@ -198,7 +217,7 @@ impl Call {
     ];
 
     /// How many distinct calls a tally holds.
-    pub const COUNT: usize = 34;
+    pub const COUNT: usize = 39;
 
     /// The method's name, spelled as the trait spells it.
     #[must_use]
@@ -215,12 +234,15 @@ impl Call {
             Self::WriteAllBytes => "write_all_bytes",
             Self::CreateBytes => "create_bytes",
             Self::AppendBytes => "append_bytes",
+            Self::UploadFrom => "upload_from",
             Self::Reserve => "reserve",
             Self::Truncate => "truncate",
             Self::SetMediaType => "set_media_type",
             Self::Clear => "clear",
             Self::Remove => "remove",
+            Self::Discard => "discard",
             Self::Size => "size",
+            Self::SetKnownSize => "set_known_size",
             Self::Capacity => "capacity",
             Self::Url => "url",
             Self::BoundLocation => "bound_location",
@@ -232,6 +254,8 @@ impl Call {
             Self::IsTabular => "is_tabular",
             Self::Parent => "parent",
             Self::ChildByPath => "child_by_path",
+            Self::AsLeaf => "as_leaf",
+            Self::AsContainer => "as_container",
             Self::Ls => "ls",
             Self::Flush => "flush",
             Self::Open => "open",
@@ -256,12 +280,14 @@ impl Call {
             | Self::WriteAllBytes
             | Self::CreateBytes
             | Self::AppendBytes
+            | Self::UploadFrom
             | Self::Reserve
             | Self::Truncate
             | Self::SetMediaType
             | Self::Clear
             | Self::Remove => Group::Write,
             Self::Size
+            | Self::SetKnownSize
             | Self::Capacity
             | Self::Url
             | Self::BoundLocation
@@ -271,10 +297,15 @@ impl Call {
             | Self::IsContainer
             | Self::IsAtomic
             | Self::IsTabular => Group::Metadata,
-            Self::Parent | Self::ChildByPath | Self::Ls => Group::Navigation,
-            Self::Flush | Self::Open | Self::Opened | Self::Closed | Self::Close => {
-                Group::Lifecycle
+            Self::Parent | Self::ChildByPath | Self::AsLeaf | Self::AsContainer | Self::Ls => {
+                Group::Navigation
             }
+            Self::Discard
+            | Self::Flush
+            | Self::Open
+            | Self::Opened
+            | Self::Closed
+            | Self::Close => Group::Lifecycle,
         }
     }
 
@@ -578,8 +609,17 @@ impl<H: IOBase> IOBase for Counted<H> {
         self.record_mut(Call::AppendBytes).append_bytes(bytes)
     }
 
+    fn upload_from(&mut self, source: &mut dyn std::io::Read, length: u64) -> Result<()> {
+        self.record_mut(Call::UploadFrom)
+            .upload_from(source, length)
+    }
+
     fn size(&self) -> u64 {
         self.record(Call::Size).size()
+    }
+
+    fn set_known_size(&mut self, size: u64) {
+        self.record_mut(Call::SetKnownSize).set_known_size(size);
     }
 
     fn mtime(&self) -> Option<i64> {
@@ -649,6 +689,14 @@ impl<H: IOBase> IOBase for Counted<H> {
         self.record(Call::ChildByPath).child_by_path(path)
     }
 
+    fn as_leaf(&self) -> Result<Option<Holder>> {
+        self.record(Call::AsLeaf).as_leaf()
+    }
+
+    fn as_container(&self) -> Result<Option<Holder>> {
+        self.record(Call::AsContainer).as_container()
+    }
+
     fn ls(&self, recursive: bool, include_private: bool) -> Listing {
         self.record(Call::Ls).ls(recursive, include_private)
     }
@@ -679,6 +727,10 @@ impl<H: IOBase> IOBase for Counted<H> {
 
     fn remove(&mut self, recursive: bool) -> Result<()> {
         self.record_mut(Call::Remove).remove(recursive)
+    }
+
+    fn discard(&self) -> Result<bool> {
+        self.record(Call::Discard).discard()
     }
 }
 

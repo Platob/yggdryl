@@ -46,11 +46,11 @@ pub(crate) fn state_from_spelling(spelling: &str) -> Option<u16> {
 /// the tag is no status or the code says nothing about one.
 #[pyfunction]
 pub(crate) fn state_from_fix_status(tag: i32, code: &str) -> Option<u16> {
-    State::from_fix_status(tag, code).map(State::code)
+    yggdryl_fix::state::from_status(tag, code).map(State::code)
 }
 
 /// The code of the state a FIX message type asks for, or `None`.
 #[pyfunction]
 pub(crate) fn state_from_fix_msgtype(msgtype: &str) -> Option<u16> {
-    State::from_fix_msgtype(msgtype).map(State::code)
+    yggdryl_fix::state::from_msgtype(msgtype).map(State::code)
 }

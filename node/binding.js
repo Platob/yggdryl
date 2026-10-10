@@ -5556,9 +5556,9 @@ for (const name of [
   delete binding[name]
 }
 
-// `yggdryl::fix` is a module in the core, so it is one here too: the
-// dictionary, the message it types and the process default are one name rather
-// than four top-level classes.
+// The yggdryl-fix crate is one module here too: the dictionary, the message it
+// types and the process default are one name rather than four top-level
+// classes.
 //
 // A message value is whatever `Scalar.from` reads, and that conversion lives
 // in this loader, so the public constructor is the one widening gate and hands
@@ -5606,39 +5606,36 @@ binding.FixCodec.prototype.writeArrowReader = function writeArrowReader(source, 
   return nativeWriteArrowReader.call(this, BatchReader.from(source), sink)
 }
 
-// The instrument registry reads a row as whatever `Scalar.from` reads and
-// answers a row as the plain object its struct `Scalar` reads as: the native
-// half takes and answers the core's values and nothing else. A stream is a
+// The instruments read a row as whatever `Scalar.from` reads and answer a
+// row as the plain object its struct `Scalar` reads as: the native half
+// takes and answers the core's values and nothing else. A stream is a
 // native `BatchReader`, as every `fromArrowReader` takes one.
 {
-  const NativeIsinRegistry = binding.IsinRegistry
-  // One row or none: `get` by ISIN, `getByTicker`, `getByCode`, `getListing`
-  // and `removeListing` by an ISIN, a ticker or a code and a market.
-  for (const name of ['get', 'getByTicker', 'getByCode', 'getListing', 'removeListing']) {
-    const native = NativeIsinRegistry.prototype[name]
-    NativeIsinRegistry.prototype[name] = {
+  const NativeInstruments = binding.Instruments
+  // One instrument or listing or none: `get` and `remove` by a key,
+  // `getByTicker` and `getByCode` by a ticker or a code, `getListing` and
+  // `removeListing` by a key and a market.
+  for (const name of ['get', 'remove', 'getByTicker', 'getByCode', 'getListing', 'removeListing']) {
+    const native = NativeInstruments.prototype[name]
+    NativeInstruments.prototype[name] = {
       [name](...args) {
         const row = Reflect.apply(native, this, args)
         return row === null ? null : row.asJs()
       },
     }[name]
   }
-  // Every listing of an ISIN, in MIC order.
-  for (const name of ['listings', 'remove']) {
-    const native = NativeIsinRegistry.prototype[name]
-    NativeIsinRegistry.prototype[name] = {
-      [name](isin) {
-        return native.call(this, isin).map((row) => row.asJs())
-      },
-    }[name]
+  // Every listing of an instrument, in MIC order.
+  const nativeListings = NativeInstruments.prototype.listings
+  NativeInstruments.prototype.listings = function listings(key) {
+    return nativeListings.call(this, key).map((row) => row.asJs())
   }
-  const nativeMerge = NativeIsinRegistry.prototype.merge
-  NativeIsinRegistry.prototype.merge = function merge(entry) {
+  const nativeMerge = NativeInstruments.prototype.merge
+  NativeInstruments.prototype.merge = function merge(entry) {
     return nativeMerge.call(this, asScalar(entry))
   }
   // A resolution names its matched row as the same plain object.
-  const nativeResolve = NativeIsinRegistry.prototype.resolve
-  NativeIsinRegistry.prototype.resolve = function resolve(element) {
+  const nativeResolve = NativeInstruments.prototype.resolve
+  NativeInstruments.prototype.resolve = function resolve(element) {
     const resolution = nativeResolve.call(this, element)
     if (resolution.entry !== null) resolution.entry = resolution.entry.asJs()
     return resolution
@@ -5813,6 +5810,7 @@ const fix = Object.freeze({
   schemaCarrying: binding.fixSchemaCarrying,
   schemaTags: binding.fixSchemaTags,
   crateFields: binding.fixCrateFields,
+  pluginSide: binding.fixPluginSide,
 })
 
 // The FIX values are reached through the namespace and nowhere else, so a
@@ -5831,6 +5829,7 @@ for (const name of [
   'JsMsgType',
   'JsFixMessages',
   'fixCrateFields',
+  'fixPluginSide',
   'fixSchema',
   'fixSchemaCarrying',
   'fixSchemaTags',
@@ -5994,9 +5993,9 @@ const Execution = publicClass(NativeExecution, 'Execution', (facts) =>
   new NativeExecution(operationFacts('Execution', facts, false)[0]),
 )
 function operationEvent(Native, name) {
-  return publicClass(Native, name, (currunix, facts) => {
+  return publicClass(Native, name, (transunix, facts) => {
     const [stated, book] = operationFacts(name, facts, true)
-    return new Native(currunix, stated, book)
+    return new Native(transunix, stated, book)
   })
 }
 const OrderEvent = operationEvent(NativeOrderEvent, 'OrderEvent')
@@ -7248,18 +7247,6 @@ binding.yaml = yaml
   const members = binding._timeInForceMembersNative()
   delete binding._timeInForceMembersNative
   binding.TimeInForce = Object.freeze(
-    Object.fromEntries(members.map(({ name, code }) => [name, code])),
-  )
-}
-
-// The role of a FIX plugin: the side of the session a dialect's plugin stands
-// on, each member's stored name under the code a `pluginside` column stores -
-// `UKNW` at zero for a plugin stating no role, then `BUYS` and `SELL`. A
-// separate enum from `Side`, though two names are spelled alike.
-{
-  const members = binding._pluginSideMembersNative()
-  delete binding._pluginSideMembersNative
-  binding.PluginSide = Object.freeze(
     Object.fromEntries(members.map(({ name, code }) => [name, code])),
   )
 }

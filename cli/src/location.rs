@@ -1,12 +1,10 @@
 //! Where a command's data lives, as a terminal spells it.
 //!
-//! Every serving command names what it serves the same way: `name=location`,
-//! or a location alone named after its last segment, the location a folder
-//! path or a URL a [`Holder`] resolves. One reading here, so `yggdryl xmla
-//! serve market=/data/market` and `yggdryl market serve books=/data/books` read
-//! their arguments by the same rule and refuse the same spellings: the one
-//! [`Url::from_location`] reads for a binding's `location`, so text carrying a
-//! scheme is a URL - `file:/data/x` as much as `file:///data/x` - and a
+//! `yggdryl xmla serve market=/data/market` names what it serves as
+//! `name=location`, or a location alone named after its last segment, the
+//! location a folder path or a URL a [`Holder`] resolves. The location is
+//! read as [`Url::from_location`] reads a binding's `location`: text carrying
+//! a scheme is a URL - `file:/data/x` as much as `file:///data/x` - and a
 //! malformed one is refused as a URL rather than read as a folder named after
 //! it, and text carrying none is a path rooted at the working directory.
 
@@ -53,16 +51,6 @@ pub fn folder(location: &str) -> Result<Holder> {
     folder_of(&Url::from_location(location)?)
 }
 
-/// A file path, or a URL a holder resolves.
-///
-/// # Errors
-///
-/// Returns text the location door refuses, or a path that cannot be spelled
-/// as a canonical `file:` URL.
-pub fn file(location: &str) -> Result<Holder> {
-    file_of(&Url::from_location(location)?)
-}
-
 /// The folder a location already read names.
 ///
 /// # Errors
@@ -71,16 +59,6 @@ pub fn file(location: &str) -> Result<Holder> {
 /// spells.
 pub fn folder_of(url: &Url) -> Result<Holder> {
     pinned(url, Holder::folder)
-}
-
-/// The file a location already read names.
-///
-/// # Errors
-///
-/// Returns what [`from_url`] refuses, or a `file:` URL no platform path
-/// spells.
-pub fn file_of(url: &Url) -> Result<Holder> {
-    pinned(url, Holder::file)
 }
 
 /// Whether `url` names a place on this machine, whose role the caller states

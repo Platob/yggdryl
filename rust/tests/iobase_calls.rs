@@ -49,179 +49,6 @@ fn costs(what: &str, calls: &Arc<Calls>, expected: &str, operation: impl FnOnce(
 }
 
 #[test]
-fn fix_catalog_storage_resolves_each_root_path_once() {
-    use yggdryl::local::LocalFolder;
-    use yggdryl::{DataType, FixRegistry};
-
-    let path = LocalFolder::temporary()
-        .unwrap()
-        .path()
-        .unwrap()
-        .join(format!("yggdryl-fix-root-calls-{}", std::process::id()));
-    let mut folder = Counted::new(LocalFolder::new(&path).unwrap());
-    let calls = Arc::clone(folder.calls());
-    let mut field = DataType::utf8().nullable_field("Symbol");
-    field.as_fix_mut().set_tag(55).unwrap();
-    let registry = FixRegistry::from_fields([field]).unwrap();
-    // Counted measures navigation at this root; child handles own the
-    // document reads and writes and are outside this tally. No manifest:
-    // a dictionary is one namespace, and what each dialect contributed
-    // travels on the field it contributed to.
-    // Eight documents and four roots: the store's own field shard, the
-    // crate's block on its own shard, its `metadata` group and its `fixmsg`
-    // component - a store states the whole row, so the crate's three
-    // documents are written beside the store's one - plus the built-in
-    // market data kind, market data type, plugin side and state vocabularies. The three category roots and `codesets/` are each reached
-    // once for pruning. Each intrinsic set adds one document lookup and no
-    // root lookup. The sources catalog, `sources.json` at the root, is
-    // one more resolution each way whatever the registry holds: a write
-    // publishes it where the registry holds an entry and otherwise reads
-    // its digest once to know whether a stale one is there to remove, and
-    // a read resolves it because an absent document is no source. So a
-    // write resolves thirteen and a read five.
-    assert_eq!(
-        registry
-            .codesets()
-            .map(|set| set.name())
-            .collect::<Vec<_>>(),
-        [
-            "marketdatakindcodeset",
-            "marketdatatypecodeset",
-            "msgpluginsidecodeset",
-            "statecodeset"
-        ],
-    );
-    costs(
-        "eight documents, four roots, the sources catalog",
-        &calls,
-        "child_by_path=13",
-        || {
-            registry.commit(&mut folder).unwrap();
-        },
-    );
-    // And five on the way back: the code sets and the sources catalog are
-    // read before the fields, because a field naming a set the dictionary
-    // does not hold is refused.
-    costs(
-        "four roots, the sources catalog",
-        &calls,
-        "child_by_path=5",
-        || {
-            assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
-        },
-    );
-    folder.remove(true).unwrap();
-}
-
-/// The bridge's own capture, the same bytes the FIX suite reads it from.
-const CAPTURE: &[u8] = include_bytes!("fix/ulbridge.log");
-
-/// Reading a capture as text and then as FIX asks storage for it once.
-///
-/// The two readers compose - the text reader frames and classifies the lines,
-/// the codec reads each framed body into a message - and the composition is
-/// where a second decode would hide, because each half is correct on its own
-/// while the pair reads the file twice. So the count is taken over both at
-/// once: one bounded stream, and the codec never reaching past it.
-#[test]
-fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
-    use yggdryl::media::RecordOptions;
-    use yggdryl::text::{TextOptions, read_text_lines};
-    use yggdryl::{FixCodec, FixRegistry, IOMedia, Timezone};
-
-    /// How many lines the capture holds, which is how many rows the text
-    /// reader answers.
-    const LINES: usize = 144;
-    /// How many FIX rows they read as: a row for every message the capture
-    /// carries that the codec reads - none for the bridge's own prose, which
-    /// carries no message at all, and none for the session traffic and the
-    /// documents `DEFAULT_REFUSED_MSGTYPES` keeps out of a live read, which
-    /// is what this codec is. What a row costs is the same either way; the
-    /// count is here so that a reader knows what was drained. It is 84 where
-    /// it was 79 since the parse splits each fill off its report (A12): five
-    /// filling reports each bring their execution with them.
-    const ROWS: usize = 84;
-    /// How many messages the lifecycle walk answers for those rows: a
-    /// message arriving under the identity the live one arrived under is the
-    /// same message logged at another hop, so it restates that one rather
-    /// than joining the chain behind it. This codec reads through a bare
-    /// registry, which types almost nothing, so most of the capture's rows
-    /// state the same little and collapse onto each other. It was 21 where
-    /// it was 16 since the parse splits each fill off its report (A12): the
-    /// five executions are each a delivery of their own, `FILLED` ending
-    /// each chain, so a later fill under one `ExecID` starts afresh. It is
-    /// 55 since the walk reads its input as already cleaned: the rows whose
-    /// type the bare registry does not define, which the walk used to
-    /// refuse on its own, are walked as the parse handed them over, and
-    /// only the rows that collapse onto a live identity fold.
-    const WALKED: usize = 55;
-    /// What one bounded stream over the capture costs, before a message is
-    /// built from any of it - through the record dispatcher and through the
-    /// text door alike: both ask the one container question, because a
-    /// folder or a glob is read leaf by leaf through either, and this capture
-    /// is one leaf.
-    const DECODE: &str =
-        "pstream_bytes=1 url=1 bound_location=3 mtime=1 media_type=1 is_container=1 parent=1";
-
-    let handle = source(CAPTURE, "file:///bridge.log");
-    let calls = Arc::clone(handle.calls());
-    let mut options = TextOptions::new()
-        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
-        .expect("the bridge's row header compiles")
-        .with_timezone(Timezone::UTC);
-    options.parse_mimetype = true;
-    let options: RecordOptions = options.into();
-    let codec = FixCodec::new(Arc::new(FixRegistry::new()));
-
-    // Explicit text options own the encoding, so the generic record read
-    // skips document inference and costs the direct FIX text intake.
-    costs("the capture read as text alone", &calls, DECODE, || {
-        let read: usize = handle
-            .read_arrow_reader(&options)
-            .expect("a text reader")
-            .map(|batch| batch.expect("a batch").num_rows())
-            .sum();
-        assert_eq!(read, LINES);
-    });
-    // The same count with the codec on top: the messages are built out of the
-    // bytes that stream already returned, so the composition costs the decode
-    // and nothing besides it.
-    costs(
-        "the capture read as text and then as FIX",
-        &calls,
-        DECODE,
-        || {
-            let text = handle.read_arrow_reader(&options).expect("a text reader");
-            let read: usize = codec
-                .parse_text_arrow_reader(text)
-                .expect("a FIX reader")
-                .map(|batch| batch.expect("a batch").num_rows())
-                .sum();
-            assert_eq!(read, ROWS);
-        },
-    );
-    costs(
-        "the decoded capture composed through the FIX lifecycle",
-        &calls,
-        DECODE,
-        || {
-            let RecordOptions::Text(options) = &options else {
-                panic!("text options")
-            };
-            let lines = read_text_lines(&handle, options).expect("a text reader");
-            let read = codec
-                .lifecycle(codec.parse_text_lines(lines))
-                .try_fold(
-                    0_usize,
-                    |read, message: yggdryl::Result<yggdryl::FixMsg>| message.map(|_| read + 1),
-                )
-                .expect("a walked message");
-            assert_eq!(read, WALKED);
-        },
-    );
-}
-
-#[test]
 fn a_byte_read_is_one_call_whichever_shape_it_takes() {
     let handle = source(&payload(4096), "file:///lake/part.bin");
     let calls = Arc::clone(handle.calls());
@@ -495,7 +322,7 @@ mod object_store {
             .with_region("us-east-1")
             .with_path_style(true)
             .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI"));
-        Holder::S3File(yggdryl::s3::file_with(&format!("s3://trades/{key}"), options).unwrap())
+        Holder::from(yggdryl::s3::file_with(&format!("s3://trades/{key}"), options).unwrap())
     }
 
     fn methods(store: &FakeS3) -> Vec<String> {
@@ -1002,6 +829,76 @@ mod records {
         });
     }
 
+    /// A media serie keeps no options of its own: it asks the medium for
+    /// them on every read and lays its own clauses over the answer. Its
+    /// construction costs one `record_options` and one `read_arrow_field`,
+    /// a re-plan one `record_options` and no byte, and a drained read
+    /// exactly what the handle's own `read_serie(None)` costs - the
+    /// medium asked once more, the rows once.
+    /// The serie keeps the root it bound - the medium's declared field, else
+    /// its origin's - so a re-plan reads nothing; every row held where it
+    /// stood when the read was composed through one composer (D34).
+    #[test]
+    fn a_media_serie_asks_its_medium_for_the_options_on_every_read() {
+        use yggdryl::media::GenericMediaSerie;
+        use yggdryl::{MediaSerieValue, SerieValue};
+
+        let handle = written("file:///lake/serie.arrow", 64);
+        let calls = Arc::clone(handle.calls());
+        let mut built = None;
+        costs(
+            "ipc: a media serie built",
+            &calls,
+            "pstream_bytes=1 media_type=2 is_container=2",
+            || {
+                built = Some(GenericMediaSerie::new(handle).expect("a media serie"));
+            },
+        );
+        let serie = built.expect("built");
+        let mut planned = None;
+        costs(
+            "ipc: a media serie re-planned",
+            &calls,
+            "media_type=1 is_container=1",
+            || {
+                planned = Some(
+                    serie
+                        .clone()
+                        .with_filter("id > 31")
+                        .expect("a filtered serie"),
+                );
+            },
+        );
+        let filtered = planned.expect("planned");
+        let read = "pstream_bytes=1 url=1 media_type=3 is_container=2 parent=1";
+        costs("ipc: a media serie drained", &calls, read, || {
+            let rows = serie
+                .clone()
+                .into_stream()
+                .expect("a stream")
+                .filter_map(Result::ok)
+                .count();
+            assert_eq!(rows, 64);
+        });
+        costs("ipc: a filtered media serie drained", &calls, read, || {
+            let rows = filtered
+                .into_stream()
+                .expect("a stream")
+                .filter_map(Result::ok)
+                .count();
+            assert_eq!(rows, 32);
+        });
+        // A cell asked of a serie that holds no rows yet is one seek: the
+        // medium asked for its options once and read once at that row.
+        costs("ipc: a media serie's cell sought", &calls, read, || {
+            let row = serie.scalar(40).expect("a row");
+            assert_eq!(
+                row.get(0).map(|cell| cell.into_owned()),
+                Some(yggdryl::Scalar::from(40_i64))
+            );
+        });
+    }
+
     /// A Parquet file past a megabyte is read footer first: one read of its
     /// end, which holds the footer, then its column chunks as one range.
     #[cfg(feature = "parquet")]
@@ -1015,7 +912,7 @@ mod records {
             .media_type();
         let mut sink = Buffer::new();
         sink.set_media_type(media_type.clone());
-        let written = RecordOptions::Parquet(
+        let written = RecordOptions::from(
             ParquetOptions::new().with_compression(parquet::basic::Compression::UNCOMPRESSED),
         );
         sink.overwrite_arrow_batch(batch(200_000), &written)
@@ -1138,6 +1035,76 @@ mod records {
             "pstream_bytes=1 size=1 url=1 media_type=2 is_container=2",
             "pstream_bytes=1 media_type=2 is_container=2",
         );
+    }
+
+    /// A wrapper under a time-to-live holds what it read of a closed handle:
+    /// the schema and both counts cost the store nothing at all - not one call
+    /// of any kind - until the entry is as old as the TTL, and a realtime
+    /// wrapper asks again every time.
+    #[cfg(feature = "internals")]
+    #[test]
+    fn a_closed_wrapper_under_a_ttl_answers_a_warm_ask_with_no_call() {
+        use std::time::{Duration, Instant};
+
+        use yggdryl::avro::{Avro, AvroOptions};
+        use yggdryl::holder::counted::Calls;
+        use yggdryl::internals::media_cache::with_clock;
+        use yggdryl::ipc::{Ipc, IpcOptions};
+        use yggdryl::media::IORecordOptions;
+
+        /// The three answers a wrapper serves from its entry.
+        fn ask(media: &dyn IOMedia) {
+            assert!(media.read_origin_field().expect("an origin").is_some());
+            assert_eq!(media.row_size().expect("rows"), 64);
+            assert_eq!(media.column_size().expect("columns"), 2);
+        }
+
+        let t0 = Instant::now();
+        let at = |milliseconds: u64| t0 + Duration::from_millis(milliseconds);
+        let check = |label: &str, calls: &Arc<Calls>, media: &dyn IOMedia| {
+            calls.reset();
+            with_clock(t0, || ask(media));
+            assert!(calls.total() > 0, "{label}: the first ask reads");
+            costs(&format!("{label}: a warm ask"), calls, "none", || {
+                with_clock(at(999), || ask(media));
+            });
+            calls.reset();
+            with_clock(at(1_000), || ask(media));
+            assert!(calls.total() > 0, "{label}: as old as the TTL, read again");
+        };
+
+        let handle = written("file:///lake/ttl.arrow", 64);
+        let calls = Arc::clone(handle.calls());
+        let media = Ipc::new(handle).with_options(IpcOptions::new().with_cache_ttl(1_000_u64));
+        check("ipc", &calls, &media);
+
+        let handle = written("file:///lake/ttl.avro", 64);
+        let calls = Arc::clone(handle.calls());
+        let media = Avro::new(handle).with_options(AvroOptions::new().with_cache_ttl(1_000_u64));
+        check("avro", &calls, &media);
+
+        #[cfg(feature = "parquet")]
+        {
+            use yggdryl::parquet::{Parquet, ParquetOptions};
+
+            let handle = written("file:///lake/ttl.parquet", 64);
+            let calls = Arc::clone(handle.calls());
+            let media =
+                Parquet::new(handle).with_options(ParquetOptions::new().with_cache_ttl(1_000_u64));
+            check("parquet", &calls, &media);
+        }
+
+        // Realtime reads on every ask, as it always did.
+        let handle = written("file:///lake/ttl.arrow", 64);
+        let calls = Arc::clone(handle.calls());
+        let media = Ipc::new(handle);
+        calls.reset();
+        ask(&media);
+        let first = calls.total();
+        calls.reset();
+        ask(&media);
+        assert_eq!(calls.total(), first, "ipc: realtime asks again");
+        assert!(first > 0);
     }
 
     #[test]
@@ -1618,57 +1585,6 @@ mod provider {
             ],
             "properties, catalogs, cubes, tables, columns"
         );
-    }
-}
-
-mod isin_registry {
-    use std::sync::Arc;
-
-    use yggdryl::holder::Buffer;
-    use yggdryl::holder::counted::Counted;
-    use yggdryl::media::IORecordOptions;
-    use yggdryl::{IOBase, IOMedia, IOMode, IdType, Isin, IsinEntry, IsinRegistry, MimeType};
-
-    use super::costs;
-
-    /// A registry is read from a holder in exactly the calls one record read
-    /// of it makes: the encoding, then the stream, and nothing of its own.
-    #[test]
-    fn an_isin_registry_reads_a_holder_in_the_calls_of_one_record_read() {
-        let mut registry = IsinRegistry::new();
-        registry
-            .merge(
-                IsinEntry::new(Isin::new("CH0012214059").unwrap())
-                    .try_with_code(IdType::Ric, "HOLN.S")
-                    .unwrap(),
-            )
-            .unwrap();
-        let mut sink = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
-        let options = sink
-            .record_options()
-            .unwrap()
-            .with_field(IsinEntry::field());
-        sink.write_arrow_reader(
-            registry.into_arrow_reader().unwrap(),
-            IOMode::Overwrite,
-            &options,
-        )
-        .unwrap();
-        let mut source = Buffer::from_bytes(sink.read_all_bytes().unwrap());
-        source.set_media_type(MimeType::ARROW_STREAM.into());
-        let handle = Counted::new(source);
-        let calls = Arc::clone(handle.calls());
-        calls.reset();
-        let options = handle.record_options().unwrap();
-        for batch in handle.read_arrow_reader(&options).unwrap() {
-            batch.unwrap();
-        }
-        let one_read = calls.snapshot().to_string();
-        costs("an isin registry read", &calls, &one_read, || {
-            let mut registry = IsinRegistry::new();
-            assert_eq!(registry.extend_from_handle(&handle).unwrap(), 1);
-            assert_eq!(registry.len(), 1);
-        });
     }
 }
 

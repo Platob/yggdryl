@@ -6,15 +6,15 @@ One abstraction for every place that answers "which tables are there, and how do
 
 | | |
 | --- | --- |
-| Owns | the four traits `ObjectValue`, `NamespaceValue`, `CatalogValue`, `TableValue` and the four enums `Object`, `Catalog`, `Namespace`, `Table`; `Properties`; `IntoObjectPath`; the lazy views `Namespaces`, `Tables`, `Names`, `Objects`; `Warehouse` and `SystemWarehouse`; the generic implementations `MemoryCatalog`, `MemoryNamespace`, `FolderCatalog`, `FolderNamespace`, `MediaTable` with `FolderLayout`; `Handle`, the handle an object opens once on first use under its effective properties and a clone rebuilds; the `Holder::Catalog`, `Holder::Namespace` and `Holder::Table` [handle variants](../holder/index.md#variants). The `iceberg` feature adds the `Iceberg` variant of each enum, [`IcebergCatalog`, `IcebergNamespace` and `IcebergTable`](../media/iceberg.md#catalog); the `s3tables` feature adds the `S3Tables` variant of `Catalog` and `Namespace`, [`S3TablesCatalog` and `S3TablesNamespace`](../media/iceberg.md#iceberg-on-amazon-s3-tables), whose tables are `Table::Iceberg` |
+| Owns | the four traits `ObjectValue`, `NamespaceValue`, `CatalogValue`, `TableValue` and the four enums `Object`, `Catalog`, `Namespace`, `Table`; `Properties`; `IntoObjectPath`; the lazy views `Namespaces`, `Tables`, `Names`, `Objects`; `Warehouse` and `SystemWarehouse`; the generic implementations `MemoryCatalog`, `MemoryNamespace`, `FolderCatalog`, `FolderNamespace`, `MediaTable` with `FolderLayout`; `Handle`, the handle an object opens once on first use under its effective properties and a clone rebuilds; the `Holder::Catalog`, `Holder::Namespace` and `Holder::Table` [handle variants](../holder/index.md#variants). Every other implementation is the `Registered` variant of its enum, through `RegisteredCatalog`, `RegisteredNamespace` and `RegisteredTable`, reached by `downcast_ref` and `downcast_mut` and built from a location by the `CatalogFactory` claimed for its `type` word or scheme ([Registering](#registering)). The `iceberg` feature claims `hadoop` on the factory register and adds [`IcebergCatalog`, `IcebergNamespace` and `IcebergTable`](../media/iceberg.md#catalog); the `s3tables` feature claims the `s3tables` scheme on the factory and the locator registers and adds [`S3TablesCatalog` and `S3TablesNamespace`](../media/iceberg.md#iceberg-on-amazon-s3-tables), whose tables are `Table::Registered` over an `IcebergTable` |
 | Rust | `yggdryl::warehouse`, every name re-exported as `yggdryl::<Name>` |
 | Python | `yggdryl.warehouse` (also `yggdryl`): `Catalog`, `Namespace`, `Table` are `IOBase` subclasses and `type(object)` is the implementation - `MemoryCatalog`, `FolderCatalog`, `MemoryNamespace`, `FolderNamespace`, `MediaTable`, and `yggdryl.iceberg`'s `IcebergCatalog`, `IcebergNamespace`, `IcebergTable`; `Namespaces` and `Tables` are mappings; `Warehouse`, `SystemWarehouse` |
 | JavaScript | the frozen `warehouse` namespace: one class per kind - `Catalog`, `Namespace`, `Table` - with a static constructor per implementation (`Catalog.memory`, `Catalog.folder`, `Catalog.fromUrl`, `Namespace.memory`, `Namespace.folder`, `Table.media`) and `implementation` naming it; `MemoryCatalog`, `FolderCatalog`, `MemoryNamespace`, `FolderNamespace`, `MediaTable` as constructors over those statics, `iceberg.IcebergCatalog`, `iceberg.IcebergNamespace` and `iceberg.IcebergTable` the Iceberg ones, each with `from(object)` and `intoCatalog`/`intoNamespace`/`intoTable` to cross; `Namespaces`, `Tables` are Map-like; `Warehouse`, `SystemWarehouse`; `IOBase.from(object)` holds an object as the handle it is |
-| Validated | a path at its intake, through the plan's [location grammar](../expression/plans.md#locations-and-targets); a namespace path of at least two parts and a table path of at least one; a registration exactly one level below its parent, under a name free at that level; a `type` property of `memory`, `folder` or, under `iceberg`, `hadoop`; under `s3tables`, an `s3tables://<bucket>` location naming a table bucket, and a `warehouse` property naming its ARN - the one the location was given as, where it was |
+| Validated | a path at its intake, through the plan's [location grammar](../expression/plans.md#locations-and-targets); a namespace path of at least two parts and a table path of at least one; a registration exactly one level below its parent, under a name free at that level; a `type` property of `memory`, `folder` or a word a factory is claimed under - `hadoop` under `iceberg`; under `s3tables`, an `s3tables://<bucket>` location naming a table bucket, and a `warehouse` property naming its ARN - the one the location was given as, where it was |
 | Lazy | construction touches nothing; an object's handle is opened on the first verb that needs it; a folder is listed when it is asked, so a table written a moment ago is found on the next ask; `children`, `Names`, `Namespaces` and `Tables` walk as they are drained |
-| Cached | only the resolved handle; a successful leaf `MediaTable` record write closes its located holder's session, releasing mappings and wrapper caches while retaining its media and backend options; a bound handle without a site is retained as the data itself; folder/format writes and direct byte operations keep their held session; a clone starts unresolved and rebuilds from its location |
+| Cached | only the resolved handle; a successful leaf `MediaTable` record write closes its located holder's session, releasing mappings and the wrapper's [metadata cache](../media/index.md#the-metadata-cache) entry - dropped with the session, so the next read asks the store once even under a `cache_ttl` - while retaining its media and backend options; a `MediaTable` answers `read_origin_field` from its handle and its declared field as the table's own root, with no read; a bound handle without a site is retained as the data itself; folder/format writes and direct byte operations keep their held session; a clone starts unresolved and rebuilds from its location |
 | Refused | a URL or a `with (...)` clause where a path is expected, at `$.path`; creating under a memory or a folder object, by implementation name - an Iceberg catalog creates; registering under an object that lists its own store; the byte verbs of a catalog or a namespace (`NotAtomic`) and its record verbs (name a table under it); a `type` this build has no catalog for |
-| Build | default; a table laid out as a table format needs `iceberg` to read its rows, and is `Table::Iceberg` there |
+| Build | default; a table laid out as a table format needs a claimed [table format](../media/iceberg.md#registering-a-table-format) to read its rows - the `iceberg` feature claims one - and is `Table::Registered` there |
 
 ## Use
 
@@ -129,9 +129,9 @@ CatalogValue:   namespace_levels                                   // + Namespac
 TableValue:     field, storage                                     // + ObjectValue + IOBase
 
 Object    { Catalog, Namespace, Table }   as_catalog, as_namespace, as_table, into_table, into_namespace, into_holder
-Catalog   { Memory, Folder, Iceberg, S3Tables }   from_url, resolve, table, namespace, namespaces(), tables()
-Namespace { Memory, Folder, Iceberg, S3Tables }   resolve, namespaces(), tables()
-Table     { Media, Iceberg }              every IOBase and IOMedia verb, delegated
+Catalog   { Memory, Folder, Registered }   from_url, resolve, table, namespace, namespaces(), tables(), downcast_ref
+Namespace { Memory, Folder, Registered }   resolve, namespaces(), tables(), downcast_ref
+Table     { Media, Registered }            every IOBase and IOMedia verb, delegated, downcast_ref
 ```
 
 | Kind | `IOKind` | Enum | Python class | JavaScript |
@@ -1052,6 +1052,75 @@ Every object is a [handle](../holder/index.md#handles): `Object::into_holder` an
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
+## Registering
+
+Rust only. An implementation outside the core joins the warehouse by claiming what builds it, once for the life of the process. A `CatalogFactory`, one `static`, builds a `Catalog` from a location and is claimed under the `type` word a `with (...)` clause states for it and under the URL scheme its locations spell, whichever it names: `claim_factory(&FACTORY, "my-crate")`. `Catalog::from_url` reads the `type` property first - `memory`, `folder` or a claimed word - then the location's scheme, then falls to `folder`; a word no claim answers is refused at `$.with.type`, listing the words the claims make. A `Locator`, one `static` claimed under its scheme with `holder::claim_locator`, answers `Holder::from_url` for what a catalog service keeps: it is asked before the identifier is lowered, since an ARN says what the location it lowers to cannot, and answers the catalog, the namespace or the table the location names as a handle that declares no media type and takes no coding. The local, ZIP, object-store and HTTP backends stay `Holder::from_url`'s own arms, and a scheme no backend holds and no locator claims is refused naming the crate to install.
+
+What a factory or a locator builds is held as the `Registered` variant of its enum. An implementation implements `RegisteredCatalog`, `RegisteredNamespace` or `RegisteredTable` - its `implementation_name`, a copy, equality, a hash and the `Any` that `downcast_ref` and `downcast_mut` read - and `From<Implementation> for Catalog` wraps it. The `iceberg` feature claims `hadoop` on the factory register (`HADOOP_FACTORY`); the `s3tables` feature claims the `s3tables` scheme on the factory (`S3TABLES_FACTORY`) and on the locator (`S3TABLES_LOCATOR`); the core claims them before either register answers anything. A second claim of a word or a scheme is refused as `Error::Conflict` naming the first claimant; a claim in the core's own name, a factory naming neither a word nor a scheme, and a word the core answers itself (`memory`, `folder`) are refused at `$.with.type`.
+
+```rust
+use smol_str::SmolStr;
+use yggdryl::holder::{claim_locator, Buffer, Holder, Locator};
+use yggdryl::{claim_factory, Arn, Catalog, CatalogFactory, IOBase, MemoryCatalog, ObjectValue, Properties, Scheme, Uri, Url};
+
+/// A catalog service whose locations spell `docscat:`.
+#[derive(Debug)]
+struct Factory;
+
+static FACTORY: Factory = Factory;
+
+impl CatalogFactory for Factory {
+    fn type_word(&self) -> Option<&'static str> {
+        None
+    }
+
+    fn scheme(&self) -> Option<Scheme> {
+        Some(Scheme::from_str("docscat").expect("a custom scheme"))
+    }
+
+    fn catalog(&self, name: SmolStr, _url: &Url, _arn: Option<&Arn>, _properties: &Properties) -> yggdryl::Result<Catalog> {
+        Ok(Catalog::from(MemoryCatalog::new(name)))
+    }
+}
+
+#[derive(Debug)]
+struct Service;
+
+static SERVICE: Service = Service;
+
+impl Locator for Service {
+    fn scheme(&self) -> Scheme {
+        Scheme::from_str("docscat").expect("a custom scheme")
+    }
+
+    fn names(&self, location: &Uri) -> bool {
+        location.scheme() == &self.scheme()
+    }
+
+    fn holder(&self, _location: &Uri, _properties: &Properties) -> yggdryl::Result<Holder> {
+        Ok(Holder::buffer(Buffer::from_bytes(b"located".to_vec())))
+    }
+}
+
+claim_factory(&FACTORY, "my-crate")?;
+claim_locator(&SERVICE, "my-crate")?;
+
+// `Catalog::from_url` reaches the factory by the location's scheme.
+let location = Url::from_str("docscat://lake/trades")?;
+let catalog = Catalog::from_url(&location, &Properties::new().with_property("name", "lake"))?;
+assert!(matches!(catalog, Catalog::Memory(_)));
+assert_eq!(catalog.name(), "lake");
+
+// `Holder::from_url` asks the locator before any byte backend.
+let held = Holder::from_url(&location, std::iter::empty::<(&str, &str)>())?;
+assert_eq!(held.read_all_bytes()?, b"located");
+
+// A second claim is refused, naming the first claimant.
+let refusal = claim_factory(&FACTORY, "another-crate").unwrap_err();
+assert!(refusal.is_conflict());
+assert!(refusal.to_string().contains("my-crate"), "{refusal}");
+```
+
 ## Edges
 
 - The empty text is the root; a path given where an object is named - a registration, a table, a namespace - must have the parts its kind needs, a namespace at least two, a table at least one, and is refused at `$.path` otherwise.
@@ -1062,9 +1131,9 @@ Every object is a [handle](../holder/index.md#handles): `Object::into_holder` an
 - Memory and folder objects create nothing - an [Iceberg catalog](../media/iceberg.md#catalog) creates namespaces and tables, through existing namespaces only: `filesystem "MemoryCatalog" does not support creating a table`; `open_or_create`, the append and overwrite helpers refuse the same way for a name nothing holds, and `open_or_create` opens an existing table as it is - `field` describes only the table the call would create.
 - `update_properties` persists only where the store keeps something; the memory, folder and media implementations keep nothing and refuse by name, an Iceberg catalog and namespace keep theirs in their own document, and an Iceberg table's ride its metadata, written through `commit_metadata_changes`. Stated properties - credentials included - are never written into a document.
 - A clone starts unresolved and rebuilds its handle from its location; a clone of an object bound to a handle with no location - an in-memory `Buffer` - refuses its next verb naming the path: ``expected a located handle to rebuild `memory.trades` from, got one with no URL``.
-- A table laid out as a table format is listed in every build and read only under `iceberg`, where a folder catalog answers it as `Table::Iceberg`; without it, its record verbs are refused at `$.encoding` naming the feature.
+- A table laid out as a table format is listed in every build and read only where a claimed format reads it - the `iceberg` feature claims one - and a folder catalog then answers it as `Table::Registered`; with none claimed, its record verbs are refused at `$.encoding` naming the crate to install.
 - A catalog's or a namespace's `clear` and `remove` are refused: an object is unregistered or its store changed, never emptied through its handle; a table's reach its storage.
-- `Catalog::from_url` refuses `rest` and `xmla` - and `hadoop` without the `iceberg` feature - as types this build has no catalog for, any other unknown type at `$.with.type`, an `s3tables://` location without the `s3tables` feature, and a URL with no segment to name the catalog by when no `name` property is stated. Under `s3tables` a table bucket's ARN, or the `s3tables://<bucket>` location it locates, is that bucket's `S3TablesCatalog`: `Catalog::from_url` takes any identifier (`impl AsRef<Uri>`) and reads an ARN once, keeping it - its region and account - as the bucket's ARN; a bare location takes its ARN from the `s3tables.warehouse` or `warehouse` property, else the `account_id` property beside the client's region, else one `ListTableBuckets` of the caller's own buckets on first use. A location naming a namespace or a table below a bucket is refused at `$.url` - `Catalog::from_url` is the bucket's door, and `Holder::from_url` and `IcebergTable::from_url` are [the ones that take such a location](../media/iceberg.md#a-table-by-its-location) - and a `warehouse` ARN naming another bucket, or another ARN than the location was given as, at `$.with.warehouse`. An S3 Tables namespace holds tables alone, so creating a namespace under one, or a table directly under the catalog, is refused by implementation name.
+- `Catalog::from_url` refuses `rest` and `xmla` - and `hadoop` where no factory claims it - as types this build has no catalog for, any other unknown type at `$.with.type`, an `s3tables://` location where no factory claims the scheme - ``filesystem "s3tables" does not support holding a location of this scheme; install the crate that claims it and call its `install()```, the sentence `Holder::from_url` refuses a scheme no backend or locator holds with - and a URL with no segment to name the catalog by when no `name` property is stated. Under `s3tables` a table bucket's ARN, or the `s3tables://<bucket>` location it locates, is that bucket's `S3TablesCatalog`: `Catalog::from_url` takes any identifier (`impl AsRef<Uri>`) and reads an ARN once, keeping it - its region and account - as the bucket's ARN; a bare location takes its ARN from the `s3tables.warehouse` or `warehouse` property, else the `account_id` property beside the client's region, else one `ListTableBuckets` of the caller's own buckets on first use. A location naming a namespace or a table below a bucket is refused at `$.url` - `Catalog::from_url` is the bucket's door, and `Holder::from_url` and `IcebergTable::from_url` are [the ones that take such a location](../media/iceberg.md#a-table-by-its-location) - and a `warehouse` ARN naming another bucket, or another ARN than the location was given as, at `$.with.warehouse`. An S3 Tables namespace holds tables alone, so creating a namespace under one, or a table directly under the catalog, is refused by implementation name.
 - `Names::len` and the views' `len` drain a listing; `is_empty` costs the listing up to the first entry of that kind.
 - A name in a view that would have to be quoted - `eu west` - is quoted in dotted text or passed as one part; JavaScript's `values()` and `entries()` open each name as one part for that reason.
 

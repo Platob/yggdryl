@@ -20,6 +20,7 @@ use pyo3::types::{
     PyWeakrefReference,
 };
 use pyo3::{IntoPyObjectExt, PyTypeInfo, intern};
+use yggdryl::State;
 use yggdryl::bytes::Bytes;
 use yggdryl::decimal::{Decimal32, Decimal64};
 use yggdryl::geospatial::{Geography, Geometry};
@@ -27,9 +28,9 @@ use yggdryl::interval::Interval;
 use yggdryl::string::{Str, StringType};
 use yggdryl::{
     DataType as CoreDataType, DataTypeId, Error as CoreError, Field as CoreField, Float16, Float32,
-    Float64, PluginSide, Ric, Scalar, Serie, TimeUnit, Timezone, Unit, Vocabulary, i256,
+    Float64, Ric, Scalar, Serie, TimeUnit, Timezone, Unit, Vocabulary, i256,
 };
-use yggdryl::{MarketDataKind, MarketDataType, Side, State, TimeInForce};
+use yggdryl_market::{MarketDataKind, MarketDataType, Side, TimeInForce};
 
 use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
 use crate::field::{PyField, core_field_from_value};
@@ -397,37 +398,19 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
                     .unbind(),
             ),
         ),
+        // A registered enum kind's member pickles under its kind's name beside
+        // its stored name.
+        Scalar::Market(held) => tagged_pickle_state(
+            py,
+            held.kind().name,
+            Some(PyString::new(py, held.as_str()).into_any().unbind()),
+        ),
         // An enum member pickles under its leaf's name and its own stored
         // name, which the reader reads back.
         Scalar::State(state) => tagged_pickle_state(
             py,
             "state",
             Some(PyString::new(py, state.as_str()).into_any().unbind()),
-        ),
-        Scalar::MarketDataKind(kind) => tagged_pickle_state(
-            py,
-            "marketdatakind",
-            Some(PyString::new(py, kind.as_str()).into_any().unbind()),
-        ),
-        Scalar::MarketDataType(member) => tagged_pickle_state(
-            py,
-            "marketdatatype",
-            Some(PyString::new(py, member.as_str()).into_any().unbind()),
-        ),
-        Scalar::Side(side) => tagged_pickle_state(
-            py,
-            "side",
-            Some(PyString::new(py, side.as_str()).into_any().unbind()),
-        ),
-        Scalar::TimeInForce(member) => tagged_pickle_state(
-            py,
-            "timeinforce",
-            Some(PyString::new(py, member.as_str()).into_any().unbind()),
-        ),
-        Scalar::PluginSide(member) => tagged_pickle_state(
-            py,
-            "pluginside",
-            Some(PyString::new(py, member.as_str()).into_any().unbind()),
         ),
         Scalar::Uuid(value) => tagged_pickle_state(
             py,
@@ -629,7 +612,7 @@ where
 fn serie_pickle_layout(tag: &str) -> Option<DataTypeId> {
     tag.parse::<DataTypeId>().ok().filter(|id| {
         matches!(
-            id,
+            *id,
             DataTypeId::Serie
                 | DataTypeId::SerieView
                 | DataTypeId::FixedSizeSerie
@@ -759,23 +742,8 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 .map_err(value_error)?;
             parameters.scalar(Str::new(text)).map_err(value_error)
         }
-        "side" => Side::read(&payload()?.extract::<String>()?)
-            .map(Scalar::Side)
-            .map_err(value_error),
         "state" => State::read(&payload()?.extract::<String>()?)
             .map(Scalar::State)
-            .map_err(value_error),
-        "marketdatakind" => MarketDataKind::read(&payload()?.extract::<String>()?)
-            .map(Scalar::MarketDataKind)
-            .map_err(value_error),
-        "marketdatatype" => MarketDataType::read(&payload()?.extract::<String>()?)
-            .map(Scalar::MarketDataType)
-            .map_err(value_error),
-        "timeinforce" => TimeInForce::read(&payload()?.extract::<String>()?)
-            .map(Scalar::TimeInForce)
-            .map_err(value_error),
-        "pluginside" => PluginSide::read(&payload()?.extract::<String>()?)
-            .map(Scalar::PluginSide)
             .map_err(value_error),
         "unit" => Unit::new(payload()?.extract::<String>()?)
             .map(Scalar::Unit)
@@ -943,13 +911,29 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 .collect::<PyResult<Vec<_>>>()?;
             Scalar::from_struct(entries).map_err(value_error)
         }
+        // A registered enum kind reads back under the name its state carries,
+        // through the register, so a kind the core or another crate claims
+        // needs no arm here; a core tag is never read as one.
         _ => match serie_pickle_layout(&tag) {
             Some(layout) => serie_from_pickle_state(layout, &payload()?, depth),
-            None => Err(PyValueError::new_err(format!(
-                "unknown Scalar pickle tag {tag:?}"
-            ))),
+            None => match yggdryl::market::kind_named(&tag) {
+                Some(kind) => market_from_pickle_state(kind, &payload()?),
+                None => Err(PyValueError::new_err(format!(
+                    "unknown Scalar pickle tag {tag:?}"
+                ))),
+            },
         },
     }
+}
+
+/// One registered enum kind's member from the text its state carries, through
+/// the kind's own reader.
+fn market_from_pickle_state(
+    kind: &'static yggdryl::MarketDescriptor,
+    payload: &Bound<'_, PyAny>,
+) -> PyResult<Scalar> {
+    kind.scalar(&payload.extract::<String>()?)
+        .map_err(value_error)
 }
 
 /// Rebuild one sequence scalar of `layout` from its tuple of item states.
@@ -1910,18 +1894,17 @@ impl RowPlan {
 }
 
 /// The member of the Python enum - `State`, `MarketDataKind`,
-/// `MarketDataType`, `Side`, `TimeInForce`, `PluginSide` - one enum value's
+/// `MarketDataType`, `Side`, `TimeInForce` - one enum value's
 /// code names.
 fn enum_member(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
-    let class = match value {
-        Scalar::State(_) => classes::state(py)?,
-        Scalar::MarketDataKind(_) => classes::marketdatakind(py)?,
-        Scalar::MarketDataType(_) => classes::marketdatatype(py)?,
-        Scalar::Side(_) => classes::side(py)?,
-        Scalar::TimeInForce(_) => classes::timeinforce(py)?,
-        Scalar::PluginSide(_) => classes::pluginside(py)?,
-        other => {
-            return Err(value_error(format!("{} is no enum member", other.kind())));
+    let class = match value.id() {
+        DataTypeId::State => classes::state(py)?,
+        MarketDataKind::ID => classes::marketdatakind(py)?,
+        MarketDataType::ID => classes::marketdatatype(py)?,
+        Side::ID => classes::side(py)?,
+        TimeInForce::ID => classes::timeinforce(py)?,
+        _ => {
+            return Err(value_error(format!("{} is no enum member", value.kind())));
         }
     };
     Ok(class.call1((value.enum_code(),))?.unbind())
@@ -3498,11 +3481,10 @@ fn classify(class: &Bound<'_, PyType>) -> PyResult<ClassKind> {
     if class.is_subclass(classes::enumeration(py)?)? {
         for (native, dtype) in [
             (classes::state(py)?, CoreDataType::State),
-            (classes::marketdatakind(py)?, CoreDataType::MarketDataKind),
-            (classes::marketdatatype(py)?, CoreDataType::MarketDataType),
-            (classes::side(py)?, CoreDataType::Side),
-            (classes::timeinforce(py)?, CoreDataType::TimeInForce),
-            (classes::pluginside(py)?, CoreDataType::PluginSide),
+            (classes::marketdatakind(py)?, MarketDataKind::dtype()),
+            (classes::marketdatatype(py)?, MarketDataType::dtype()),
+            (classes::side(py)?, Side::dtype()),
+            (classes::timeinforce(py)?, TimeInForce::dtype()),
         ] {
             if class.is(native) {
                 return Ok(ClassKind::Member(dtype));
@@ -3615,7 +3597,6 @@ mod classes {
         marketdatatype = "yggdryl.marketdatatype", "MarketDataType";
         side = "yggdryl.side", "Side";
         timeinforce = "yggdryl.timeinforce", "TimeInForce";
-        pluginside = "yggdryl.pluginside", "PluginSide";
         decimal = "decimal", "Decimal";
         datetime = "datetime", "datetime";
         date = "datetime", "date";

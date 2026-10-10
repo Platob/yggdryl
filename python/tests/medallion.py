@@ -4,7 +4,7 @@
 live, two local Iceberg warehouse folders in the suite - and
 `record_keeping` the namespace in each. One function per stage, each taking
 the :class:`Lake` the run writes through and a UTC window, half-open on
-`currunix`; every read is `read_serie` with the window pushed into it, so
+`transunix`; every read is `read_serie` with the window pushed into it, so
 the scan prunes by the quarter hour each table is partitioned by, every
 stage runs through the codec's serie doors, and the writes are of two
 kinds. The first stage - the capture's lines into
@@ -17,12 +17,18 @@ Every later stage writes with `overwrite_serie`, which replaces the
 partitions its rows fall in and no other: its rows are derived, a
 derivation can change, and running the stage again over a window rewrites
 that window.
+Every table is laid out as Apache Doris's Iceberg catalog reads one
+(`into_scheme_compat("doris")`): an instant at microseconds under its zone,
+since Doris maps no Iceberg v3 `timestamp_ns` or `timestamptz_ns`, and a
+stage reads its source back as the row the stage before writes, known
+before any table is read (`Lake.rows_of`), so a lake that wrote nothing
+yet reads a table as the one that wrote it does.
 
 ```text
 capture                              -> parse_log_messages         -> bronze.record_keeping.log_messages
 bronze.record_keeping.log_messages   -> parse_fix_messages_raw     -> bronze.record_keeping.fix_messages
 bronze.record_keeping.fix_messages   -> parse_fix_messages_refined -> silver.record_keeping.fix_messages
-the codec's registry                 -> commit_instruments         -> silver.record_keeping.instruments
+the codec's instruments              -> commit_instruments         -> silver.record_keeping.instruments
 silver.record_keeping.fix_messages   -> parse_books                -> silver.record_keeping.books
 silver.record_keeping.books          -> parse_events               -> silver.record_keeping.orders
                                                                    -> silver.record_keeping.quotes
@@ -32,13 +38,17 @@ silver.record_keeping.books          -> parse_events               -> silver.rec
 What the lifecycle learned of the instruments it met is committed right
 after the FIX-message parse, as the stage `silver.instruments` between
 `silver.fix_messages` and the books: `commit_instruments` writes the
-codec's bound registry to `silver.record_keeping.instruments` once the
+codec's bound instruments to `silver.record_keeping.instruments` once the
 refined messages are stored, so every instrument the window taught is in
-the silver catalog before anything reads the refined messages. When the
+the silver catalog before anything reads the refined messages. Every
+market table - the FIX messages, the books, the orders, the quotes, the
+executions - carries `instcode`, the cross code of the instrument a row is
+about, which joins the instruments table on `crosscode` (or on one of its
+`aliascodes`, a code it had before a re-key). When the
 parse itself learns the instruments (the instrument phase's SPEC §10a) the
 stage follows the raw parse instead.
 
-The window rule: a row is windowed by `currunix`, and a stage reads the
+The window rule: a row is windowed by `transunix`, and a stage reads the
 rows of its source inside the window alone. A walk - the lifecycle, the book
 fold - starts at the window with no state from before it: a chain that
 began earlier follows no predecessor inside the window, and a book's first
@@ -72,9 +82,9 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 import yggdryl
-from yggdryl import Catalog, ChunkedSerie, Field, IOBase, IOResult, IsinRegistry, Namespace, StreamChunkedSerie, Table, TextOptions
+from yggdryl import Catalog, ChunkedSerie, Field, IOBase, IOResult, Instruments, Namespace, StreamChunkedSerie, Table, TextOptions
 from yggdryl.http import process_stats
-from yggdryl.fix import ULBRIDGE_ROWHEADER, FixCodec, FixRegistry
+from yggdryl.fix import ULBRIDGE_ROWHEADER, FixCodec, FixRegistry, fix_schema, fix_schema_carrying
 from yggdryl.graph import MarketData
 from yggdryl.iceberg import IcebergCatalog
 
@@ -83,7 +93,7 @@ NAMESPACE = "record_keeping"
 # The primary key every table of the pipeline declares: when a row happened,
 # which object it came from, its place there and the hash of what it states -
 # the instant and the content alone repeat wherever two lines are one text.
-PRIMARY_KEY = ("currunix", "crosshashcode", "seqnum", "currhashcode")
+PRIMARY_KEY = ("transunix", "crosshashcode", "seqnum", "hashcode")
 
 # What every table of the pipeline requires of each row: its key and the code
 # of its chain.
@@ -91,9 +101,9 @@ REQUIRED = (*PRIMARY_KEY, "crosscode")
 
 # The partition every table computes for each row it is written: the quarter
 # of an hour the row's instant falls in.
-PARTUNIX = "time_bucket('15 minutes', currunix) as partunix"
+PARTUNIX = "time_bucket('15 minutes', transunix) as partunix"
 PARTUNIX_DESCRIPTION = (
-    "The quarter of an hour the row's instant falls in: currunix floored to fifteen minutes."
+    "The quarter of an hour the row's instant falls in: transunix floored to fifteen minutes."
 )
 
 # The book stage's snapshot grid: every book whole each quarter of an hour.
@@ -113,7 +123,7 @@ EVENTS: tuple[tuple[str, Callable[[Any, str | None], StreamChunkedSerie], str], 
 
 
 def window_filter(start: dt.datetime, end: dt.datetime) -> str:
-    """The `where` of one window: `currunix >= start and currunix < end`.
+    """The `where` of one window: `transunix >= start and transunix < end`.
 
     Both instants state UTC; a naive instant, or one in another zone, is
     refused by name rather than read as something it is not.
@@ -124,7 +134,7 @@ def window_filter(start: dt.datetime, end: dt.datetime) -> str:
     if end <= start:
         raise ValueError(f"expected a window with end after start, got {start!r} to {end!r}")
     text = lambda instant: instant.astimezone(dt.timezone.utc).isoformat().replace("+00:00", "Z")  # noqa: E731
-    return f"currunix >= '{text(start)}' and currunix < '{text(end)}'"
+    return f"transunix >= '{text(start)}' and transunix < '{text(end)}'"
 
 
 def unnumbered(field: Field) -> Field:
@@ -143,7 +153,10 @@ def unnumbered(field: Field) -> Field:
 
 
 def declared(row: Field, partition_by: Iterable[str] = (PARTUNIX,)) -> Field:
-    """`row` as Iceberg states it, laid out as every table of the pipeline is.
+    """`row` as Doris reads an Iceberg table, laid out as every table of the
+    pipeline is: Iceberg's layout, an instant at microseconds
+    (`into_scheme_compat("doris")`), the write truncating each nanosecond
+    value to whole microseconds.
 
     Partitioned by `partunix` - the quarter hour the table computes for every
     row written to it - and whatever else `partition_by` names, sorted by it,
@@ -152,7 +165,7 @@ def declared(row: Field, partition_by: Iterable[str] = (PARTUNIX,)) -> Field:
     required column non-null,
     numbered by this table alone.
     """
-    schema = unnumbered(row.into_scheme_compat("iceberg")).with_partition_by(list(partition_by))
+    schema = unnumbered(row.into_scheme_compat("doris")).with_partition_by(list(partition_by))
     for name in REQUIRED:
         column = schema[name]
         column.set_nullable(False)
@@ -160,7 +173,7 @@ def declared(row: Field, partition_by: Iterable[str] = (PARTUNIX,)) -> Field:
     partunix = schema["partunix"]
     partunix.set_description(PARTUNIX_DESCRIPTION)
     schema["partunix"] = partunix
-    schema.sort.by = ["partunix", "currunix", "seqnum", "currhashcode"]
+    schema.sort.by = ["partunix", "transunix", "seqnum", "hashcode"]
     schema = yggdryl.iceberg.assign_field_ids(schema)
     # Iceberg names a key by the identifiers of its columns, which exist once
     # the schema is numbered.
@@ -181,6 +194,13 @@ class Lake:
     therefore read as of the last run that touched it; a writer outside the
     pipeline is seen when a commit under the held token is refused and read
     again where the pointer moved.
+
+    A table stores its stage's row as Doris reads it - an instant at
+    microseconds - and the stage that reads the table names the row it reads
+    back: the text line's (`log_row`), the FIX row the codec parses that line
+    into (`fix_row`) or the market row (`MarketData.field()`), each known
+    from the lake's own options and none from what this lake wrote, so a
+    fresh lake reads a table as the one that wrote it does.
     """
 
     def __init__(
@@ -190,6 +210,7 @@ class Lake:
         codec: FixCodec,
         logs: IOBase | str,
         namespace: str = NAMESPACE,
+        rowheader: str = ULBRIDGE_ROWHEADER,
     ) -> None:
         self.catalogs = {"bronze": bronze, "silver": silver}
         self.codec = codec
@@ -197,6 +218,27 @@ class Lake:
         self.namespace_name = namespace
         self.namespaces: dict[str, Namespace] = {}
         self.tables: dict[tuple[str, str], Table] = {}
+        self.rowheader = rowheader
+
+    def text_options(self) -> TextOptions:
+        """What the capture is read with: the row header lifting each line's
+        captures, offset-free clocks read in UTC, rows numbered from one."""
+        options = TextOptions()
+        options.rowheader = self.rowheader
+        options.timezone = "UTC"
+        options.start_rownum = 1
+        return options
+
+    def log_row(self) -> Field:
+        """The text line's row `bronze.record_keeping.log_messages` holds:
+        the field the capture is read under (`TextOptions.source_field`)."""
+        return self.text_options().source_field()
+
+    def fix_row(self) -> Field:
+        """The FIX row both FIX tables hold: the text line's columns
+        leading, the codec's fixed FIX columns following, as
+        `FixCodec.parse_text_serie` lays a text line out."""
+        return fix_schema_carrying(self.log_row(), fix_schema(self.codec.registry))
 
     def namespace(self, catalog: str) -> Namespace:
         """The catalog's `record_keeping` namespace, opened or created once."""
@@ -230,56 +272,71 @@ class Lake:
             self.tables[catalog, name] = held
         return held
 
+    def rows_of(
+        self, catalog: str, name: str, start: dt.datetime, end: dt.datetime, row: Field
+    ) -> StreamChunkedSerie:
+        """The rows of the table `name` inside the window, read back as
+        `row`, the row its stage writes (`stored_rows`)."""
+        return stored_rows(self.source_of(catalog, name), start, end, row)
 
-def stored_rows(table: Table, start: dt.datetime, end: dt.datetime) -> StreamChunkedSerie:
+
+def stored_rows(table: Table, start: dt.datetime, end: dt.datetime, row: Field) -> StreamChunkedSerie:
     """The rows `table` holds inside the window, in the table's own order,
     as the row the stage wrote: the partition column the table computed
-    taken off, the window pushed into the read."""
-    return StreamChunkedSerie.from_serie(table.read_serie(select="* exclude (partunix)", filter=window_filter(start, end)))
+    taken off, the window pushed into the read, and each batch cast onto
+    `row` - the row before the table laid it out for Doris - so a
+    microsecond instant reads back under the row's own unit."""
+    rows = StreamChunkedSerie.from_serie(table.read_serie(select="* exclude (partunix)", filter=window_filter(start, end)))
+    return rows.cast(row)
 
 
-def instruments(silver: Catalog, namespace_name: str = NAMESPACE) -> IsinRegistry:
-    """The registry of the instruments the pipeline meets, bound to
-    `silver.record_keeping.instruments`: the table opened as it is or created
-    from the registry's own row - partitioned by the ISIN's country prefix,
-    the `truncate(isin, 2)` the row declares, which stores no column - and
-    laid over the seed (`IsinRegistry.seeded_from_url`), so the registry
+def instruments(silver: Catalog, namespace_name: str = NAMESPACE) -> tuple[Table, Instruments]:
+    """The instruments the pipeline meets, bound to
+    `silver.record_keeping.instruments`, and that table: opened as it is or
+    created from the instruments' own row - one row per instrument keyed by
+    its `crosscode`, partitioned by the code's first two characters, the
+    `truncate(crosscode, 2)` the row declares, which stores no column - and
+    laid over the seed (`Instruments.seeded_from_url`), so the collection
     holds the common instruments the crate ships beneath what an earlier run
     committed, the table's rows winning, and commits what this run's
-    lifecycle learns. The registry is clean after the load, so the seed is
-    committed on the first run, with the first instruments its lifecycle
-    learns, and is part of every snapshot after. Hand it to the codec
-    (`FixCodec(..., isin_registry=...)`): the refined parse commits it
-    (`commit_instruments`)."""
+    lifecycle learns. A table laid out before the instrument row, which
+    holds no `crosscode` and which a load refuses by name, is dropped and
+    created afresh: silver is replayed from bronze. The collection is clean
+    after the load, so the seed is committed on the first run, with the
+    first instruments its lifecycle learns, and is part of every snapshot
+    after. Hand it to the codec (`FixCodec(..., instruments=...)`) and the
+    table to the lake (`Lake.tables`), which the report reads it from: the
+    refined parse commits it (`commit_instruments`)."""
     namespace = silver.namespaces.open_or_create(namespace_name)
     row = yggdryl.iceberg.assign_field_ids(
-        unnumbered(IsinRegistry.field().into_scheme_compat("iceberg"))
+        unnumbered(Instruments.field().into_scheme_compat("doris"))
     )
     table = namespace.tables.open_or_create("instruments", row, **TABLE_PROPERTIES)
-    return IsinRegistry.seeded_from_url(table)
+    if "crosscode" not in table.field():
+        table.remove(True)
+        table = namespace.tables.open_or_create("instruments", row, **TABLE_PROPERTIES)
+    return table, Instruments.seeded_from_url(table)
 
 
-def commit_instruments(registry: IsinRegistry) -> IOResult:
+def commit_instruments(held: Instruments) -> IOResult:
     """What the lifecycle learned of the instruments it met, with the seed and
-    what earlier runs committed, to the table the registry is bound to -
+    what earlier runs committed, to the table the collection is bound to -
     `silver.record_keeping.instruments` - as one snapshot replacing every row
-    of every country partition, one row per ISIN and market, only where the
-    registry moved: a run that learned no new fact and met no instrument later
-    than its `lastunix` writes nothing."""
-    return registry.commit()
+    of every partition, one row per instrument, only where the collection
+    moved: a run that learned no new fact and met no instrument later than
+    its `lastunix` writes nothing."""
+    return held.commit()
 
 
 def parse_log_messages(
     lake: Lake,
     start: dt.datetime,
     end: dt.datetime,
-    *,
-    rowheader: str = ULBRIDGE_ROWHEADER,
 ) -> IOResult:
     """The capture - log objects under a glob, read through the native backend
     their location selects, one request per object - to
     `bronze.record_keeping.log_messages`: one stream of text rows, the row
-    header lifting each line's captures.
+    header lifting each line's captures (`Lake.text_options`).
 
     The write is the keyed append: the table states the pipeline's primary
     key as its ``identifier-field-ids``, so each quarter-hour partition takes
@@ -288,18 +345,16 @@ def parse_log_messages(
     the partition groups reading the key columns of the files the key
     bounds keep alone. Every later stage overwrites the partitions its rows
     reach instead, because its rows are derived and a derivation can change."""
-    options = TextOptions()
-    options.rowheader = rowheader
-    options.timezone = "UTC"
-    options.start_rownum = 1
-    lines = StreamChunkedSerie.from_serie(lake.logs.read_serie(options=options, filter=window_filter(start, end)))
+    lines = StreamChunkedSerie.from_serie(
+        lake.logs.read_serie(options=lake.text_options(), filter=window_filter(start, end))
+    )
     return lake.table_of("bronze", "log_messages", lines.field).append_serie(lines)
 
 
 def parse_fix_messages_raw(lake: Lake, start: dt.datetime, end: dt.datetime) -> IOResult:
     """`bronze.record_keeping.log_messages` to `bronze.record_keeping.fix_messages`
     by the parallel text-serie parse alone: no lifecycle."""
-    parsed = lake.codec.parse_text_serie(stored_rows(lake.source_of("bronze", "log_messages"), start, end))
+    parsed = lake.codec.parse_text_serie(lake.rows_of("bronze", "log_messages", start, end, lake.log_row()))
     return lake.table_of("bronze", "fix_messages", parsed.field).overwrite_serie(parsed)
 
 
@@ -307,21 +362,29 @@ def parse_fix_messages_refined(lake: Lake, start: dt.datetime, end: dt.datetime)
     """`bronze.record_keeping.fix_messages`, read in its order, walked by the
     lifecycle over sorted input, to `silver.record_keeping.fix_messages`. The
     lifecycle learns the instruments it meets into the codec's bound
-    registry as it walks; the stage after this one commits them."""
-    walked = lake.codec.lifecycle_serie(stored_rows(lake.source_of("bronze", "fix_messages"), start, end))
+    instruments as it walks, filling each row's `instcode`; the stage after
+    this one commits them."""
+    walked = lake.codec.lifecycle_serie(lake.rows_of("bronze", "fix_messages", start, end, lake.fix_row()))
     return lake.table_of("silver", "fix_messages", walked.field).overwrite_serie(walked)
 
 
 def commit_instruments_stage(lake: Lake, start: dt.datetime, end: dt.datetime) -> dict[str, IOResult]:
-    """The stage right after the FIX-message parse: the codec's bound registry
-    committed to `silver.record_keeping.instruments` (`commit_instruments`),
-    once `silver.fix_messages` has drained the walk, so it holds every
-    instrument the window taught. Answers nothing where the codec holds no
-    registry; the window is read by nothing here - a commit is whole."""
-    registry = lake.codec.isin_registry
-    if registry is None:
+    """The stage right after the FIX-message parse: the codec's bound
+    instruments committed to `silver.record_keeping.instruments`
+    (`commit_instruments`), once `silver.fix_messages` has drained the walk,
+    so it holds every instrument the window taught. Answers nothing where the
+    codec holds none; the window is read by nothing here - a commit is
+    whole. The collection commits through a handle of its own, so a commit
+    that wrote opens the table the lake keeps afresh - one read of where its
+    document is - for the report to read what was committed."""
+    held = lake.codec.instruments
+    if held is None:
         return {}
-    return {"silver.instruments": commit_instruments(registry)}
+    committed = commit_instruments(held)
+    key = ("silver", "instruments")
+    if committed.written_rows and key in lake.tables:
+        lake.tables[key] = lake.catalogs["silver"].table(f"{lake.namespace_name}.instruments")
+    return {"silver.instruments": committed}
 
 
 def parse_books(lake: Lake, start: dt.datetime, end: dt.datetime) -> IOResult:
@@ -338,7 +401,7 @@ def parse_books(lake: Lake, start: dt.datetime, end: dt.datetime) -> IOResult:
     of ticks is one file per quarter hour that holds a book - 84 for this
     capture - each a request to write and one to read, however many books a
     tick holds."""
-    messages = lake.codec.messages_serie(stored_rows(lake.source_of("silver", "fix_messages"), start, end))
+    messages = lake.codec.messages_serie(lake.rows_of("silver", "fix_messages", start, end, lake.fix_row()))
     books = lake.codec.book_serie(messages, QUARTER_MILLIS)
     return lake.table_of("silver", "books", books.field).overwrite_serie(books)
 
@@ -354,7 +417,7 @@ def parse_events(lake: Lake, start: dt.datetime, end: dt.datetime) -> dict[str, 
     rows fall in, as every stage's does; a write's `where` would instead
     name the rows the overwrite replaces across the whole table.
     """
-    books = ChunkedSerie.from_(stored_rows(lake.source_of("silver", "books"), start, end))
+    books = ChunkedSerie.from_(lake.rows_of("silver", "books", start, end, MarketData.field()))
     written: dict[str, IOResult] = {}
     for name, door, kind in EVENTS:
         rows = door(StreamChunkedSerie.from_chunked(books), kind)
@@ -380,6 +443,7 @@ TABLES = (
     "bronze.log_messages",
     "bronze.fix_messages",
     "silver.fix_messages",
+    "silver.instruments",
     "silver.books",
     "silver.orders",
     "silver.quotes",
@@ -531,14 +595,22 @@ def main(argv: list[str] | None = None) -> int:
     # every store's requests beside the stages.
     logging.basicConfig(level=os.environ.get("YGGDRYL_LOG_LEVEL", "WARNING").upper(), format="%(levelname)s %(name)s: %(message)s")
 
-    codec = FixCodec(FixRegistry.from_handle(args.dictionary), exclude_msgtypes=[], threads=args.threads)
+    # The silver catalog first: the instruments the lifecycle learns into
+    # are bound to its table, which the lake keeps for the report.
+    silver = catalog_of(args.silver, "silver")
+    table, held = instruments(silver, args.namespace)
+    codec = FixCodec(
+        FixRegistry.from_handle(args.dictionary), exclude_msgtypes=[], threads=args.threads, instruments=held
+    )
     lake = Lake(
         catalog_of(args.bronze, "bronze"),
-        catalog_of(args.silver, "silver"),
+        silver,
         codec,
         IOBase(args.logs),
         namespace=args.namespace,
+        rowheader=args.rowheader,
     )
+    lake.tables["silver", "instruments"] = table
     print(f"window {args.start.isoformat()} -> {args.end.isoformat()}  resident at start {resident_bytes() >> 20} MiB")
     for run_at in range(1, args.runs + 1):
         print(f"run {run_at}")

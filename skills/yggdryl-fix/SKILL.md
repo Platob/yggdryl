@@ -6,8 +6,9 @@ description: Decodes, encodes and streams FIX messages with yggdryl against a FI
 # yggdryl FIX
 
 A FIX field is an ordinary `Field` whose `FIX:` metadata (`FIX:tag`, `FIX:names`,
-`FIX:codeset`, ...) the `fix` protocol view reads; there is no second field
-class. `FixRegistry` is the dictionary: **one namespace** holding scalar fields,
+`FIX:codeset`, ...) the `fix` protocol view reads - in Rust `FixField::new(&field)`
+and `FixFieldMut::new(&mut field)`, the FIX crate's own view, `Field` having no
+`as_fix`; there is no second field class. `FixRegistry` is the dictionary: **one namespace** holding scalar fields,
 components (a message is a component carrying `FIX:msgtype`), groups, and the
 named code sets beside them. `FixCodec` is one dictionary plus the pins of a
 run; its `parse_*` readers turn captured bytes into `FixMsg` values - a market
@@ -22,6 +23,12 @@ order's report (`ORDR`, `QUOT` naming a `QuoteID`), a filling one adds its
 entry. A quote is one message holding both its legs. A lifecycle chains
 within one `marketdatakind`, so a fill never follows its order.
 
+In Rust FIX is the `yggdryl-fix` crate (`yggdryl_fix::FixRegistry`,
+`yggdryl_fix::FixCodec`) over `yggdryl-market`: call `yggdryl_fix::install()?`
+once - it installs the market crate first - before anything reads a FIX Latest
+datatype name (`UTCTimestamp`, `Qty`) or a market kind. Python and Node.js
+install both on import.
+
 Hold two speeds apart. **Decoding is per message**: each frame is parsed on its
 own, in parallel (`threads`), answers in input order, and never reads another
 message - it only takes the next place (`seqnum`) of its instant in stream
@@ -29,9 +36,9 @@ order, so a report and the execution split off it are places 0 and 1.
 **Lifecycle is the only cross-message stage**: `lifecycle` collects a finite
 capture, sorts it by event time, folds duplicate deliveries, places each
 message by content among the messages of its instant (a content repeated
-there keeps its place), chains it to the live one of its order within its own `marketdatakind` - by its chain identities, `orderid`, `clordid`, `quoteid`, `tradeid`, `tradereportid` and their secondary ones, never `execid`, `trdmatchid` or `quotereqid`, and by the first value a lineage field names, `OrigClOrdID(41)`, `OrigTradeID(1126)`, `TradeReportRefID(572)` - (`crossuuid`,
+there keeps its place), chains it to the live one of its order within its own `marketdatakind`, side and instrument - by one identifier of the same type and value, every type of its `identifiers` but a shared one (`trdmatchid`, `quotereqid`, `mdreqid`, a parent slot), and by the first value a lineage field names, `OrigClOrdID(41)`, `OrigTradeID(1126)`, `TradeReportRefID(572)` - (`crossuuid`,
 `prevuuid`; an order and an execution under one cross code are two chains), re-keys it onto its chain's side and first cross code, takes every bridge `metadata` key of the chain it does not state
-and the ids its dictionary follows, each with its parents, states a message citing two live chains as a conflict - a `FixAnomaly` under `crosscode`, warned once per kind - rather than picking one, and learns instrument associations.
+and the ids its dictionary follows, each with its parents, states a message citing two live chains as a conflict - a `FixAnomaly` under `crosscode`, warned once per kind - rather than picking one, counts an order's fills once each by `ExecID(17)` (or `SecondaryExecID(527)`) over the chain's first stated `CumQty(14)` - `cumqty`/`leavesqty` the count's, a repeated fill, a status reply (`150=I`, `17=0`) and a leg's report (`442=2`) counting nothing, a bust (`150=H`, `ExecRefID(19)`) taking a fill back, a correction (`150=G`) replacing it, a partial fill whose count reaches the order quantity reading `FILLED`, and an ended chain's fills remembered for the window so a late copy starts no chain - and learns instrument associations.
 Nothing chains unasked.
 
 The dictionary is data, not code: the committed FIX Latest dictionary
@@ -47,13 +54,13 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | load a stored dictionary | `FixRegistry::from_handle(&LocalFolder::new(path)?)?` | `FixRegistry.from_handle(path)` | `fix.FixRegistry.fromHandle(path)` |
 | the process default | `FixRegistry::from_env()?`, `FixRegistry::install_env(r)?` | `FixRegistry.from_env()`, `FixRegistry.install_env(r)` | `fix.FixRegistry.fromEnv()`, `fix.FixRegistry.installEnv(r)` |
 | a dictionary in memory | `FixRegistry::from_fields([..])?`, `registry.insert(field)?` | `FixRegistry.from_fields([...])`, `registry.insert(field)` | `fix.FixRegistry.fromFields([...])`, `registry.insert(field)` |
-| FIX facts on a field | `field.as_fix().tag()?`, `field.as_fix_mut().set_tag(38)?` | `field.fix.tag`, `field.fix.tag = 38` | `field.fix.tag`, `field.fix.tag = 38` |
+| FIX facts on a field | `FixField::new(&field).tag()?`, `FixFieldMut::new(&mut field).set_tag(38)?` | `field.fix.tag`, `field.fix.tag = 38` | `field.fix.tag`, `field.fix.tag = 38` |
 | look a field up | `field(55)`, `field_by_name`, `field_by_path(&FieldPath)`, `field_by_counter(453)`, `field_by_id(FixId)` | `field(55)`, `field_by_name`, `field_by_path("Parties.PartyID")`, `field_by_counter`, `field_by_id(int)` | `field(55)`, `fieldByName`, `fieldByPath`, `fieldByCounter`, `fieldById` |
 | a message definition | `registry.msgtype("D")?` | `registry.msgtype("D")` | `registry.msgtype('D')` |
 | a field's code set | `registry.codeset_of(field)`, `set_codeset(name, &[FixCode])?` | `codeset_of(field)`, `set_codeset(name, [{...}])` | `codesetOf(field)`, `setCodeset(name, [...])` |
 | persist a dictionary | `registry.commit(&mut folder)?` | `registry.commit(path)` | `registry.commit(path)` |
 | read a venue CBlock (`.cfb`) | `FixRegistry::from_cfb_file(&LocalFile::new(path)?, Some("venue"))?` | `FixRegistry.from_cfb_file(path, "venue")` | `fix.FixRegistry.fromCfbFile(path, 'venue')` |
-| the sources a dictionary was built from | `field.as_fix().sources()`, `registry.sources()`, `get_source("venue")`, `add_source(FixSource::new("venue")?)` | `field.fix.sources`, `registry.sources()`, `get_source("venue")`, `add_source("venue", file=..., pluginside=...)` | `field.fix.sources`, `registry.sources()`, `addSource('venue', { file, pluginside })` |
+| the sources a dictionary was built from | `FixField::new(&field).sources()`, `registry.sources()`, `get_source("venue")`, `add_source(FixSource::new("venue")?)` | `field.fix.sources`, `registry.sources()`, `get_source("venue")`, `add_source("venue", file=..., pluginside=...)` | `field.fix.sources`, `registry.sources()`, `addSource('venue', { file, pluginside })` |
 | fold CBlocks or another dictionary in | `registry.add_cfb_file(&file, None)?`, `registry.add_cfb_files(&[Holder::local("cblocks")?], None)?` (a file, a folder or a glob each), `merge_with(&other)?` - each answering a `FixMerge` | `registry.add_cfb_file(path)`, `add_cfb_files(folder)` or `add_cfb_files(folder / "*.cfb")` - answering a `dict` | not bound (`yggdryl fix ingest`) |
 | a codec for a run | `FixCodec::new(Arc::new(registry)).with_threads(4)` | `FixCodec(registry, threads=4)` | `new fix.FixCodec(registry, { threads: 4 })` |
 | read under one source, stamping its plugin's role | `.with_source("venue")?`, then `msg.msgpluginside()` | `FixCodec(r, source="venue")`, then `msg.msgpluginside` | `{ source: 'venue' }`, then `msg.capture().msgpluginside` |
@@ -67,8 +74,8 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | read a fact | `msg.by_tag(55)?`, `by_name`, `by_path`, `header()`, `get_side()` | `msg.by_tag(55)`, `by_path(...)`, `header()`, `msg.side` | `msg.byTag(55)`, `byPath(...)`, `header()`, `msg.side` |
 | the category, the strike | `msg.marketdatakind()`, `msg.get_strikepx()` (`Market`) | `msg.marketdatakind`, `msg.strikepx` | `msg.marketdatakind`, `msg.strikepx` |
 | the type, how long it stands | `msg.get_marketdatatype()`, `msg.get_timeinforce()` (`Operation`) | `msg.marketdatatype`, `msg.timeinforce` (the `IntEnum` members) | `msg.marketdatatype`, `msg.timeinforce` (the member names) |
-| the parents of an identifier | `registry.parents_of(&IdType::ClOrdId)`, `parent_of(&kind)`, `parent_sources()`; `field.as_fix_mut().set_parents(..)?` | `registry.parents_of("clordid")`, `parent_of("origclordid")`, `field.fix.parents` | `registry.parentsOf('clordid')`, `parentOf('origclordid')`, `field.fix.parents` |
-| a venue's own values onto members | `field.as_fix_mut().set_marketdatatypes(..)?`, `set_timeinforces(&[("D", TimeInForce::Day)])?`; `registry.marketdatatype_of(tag, wire)`, `timeinforce_of(tag, wire)` | `field.fix.marketdatatypes`, `field.fix.timeinforces = [("D", "DAY")]`; `registry.marketdatatype_of`, `timeinforce_of` | `field.fix.marketdatatypes`, `field.fix.timeinforces = [{ wire: 'D', timeinforce: 'DAY' }]`; `registry.marketdatatypeOf`, `timeinforceOf` |
+| the parents of an identifier | `registry.parents_of(&IdType::ClOrdId)`, `parent_of(&kind)`, `parent_sources()`; `FixFieldMut::new(&mut field).set_parents(..)?` | `registry.parents_of("clordid")`, `parent_of("origclordid")`, `field.fix.parents` | `registry.parentsOf('clordid')`, `parentOf('origclordid')`, `field.fix.parents` |
+| a venue's own values onto members | `FixFieldMut::new(&mut field).set_marketdatatypes(..)?`, `set_timeinforces(&[("D", TimeInForce::Day)])?`; `registry.marketdatatype_of(tag, wire)`, `timeinforce_of(tag, wire)` | `field.fix.marketdatatypes`, `field.fix.timeinforces = [("D", "DAY")]`; `registry.marketdatatype_of`, `timeinforce_of` | `field.fix.marketdatatypes`, `field.fix.timeinforces = [{ wire: 'D', timeinforce: 'DAY' }]`; `registry.marketdatatypeOf`, `timeinforceOf` |
 | a message as one market data value | `MarketData::from(msg)` (held whole, kind `fix`), `msg.into_market_leaf()?` (the one leaf it is) | `graph.MarketData(msg)` | `new graph.MarketData(msg)` |
 | compose a message | `FixMsg::with_registry(Arc, root, value)?` | `FixMsg(root, value, registry)` | `new fix.FixMsg(root, value, registry)` |
 | write or clear a fact | `msg.set(key, scalar)?`, `msg.remove(key)?` | `msg.set(key, value)`, `msg.remove(key)` | `msg.set(key, value)`, `msg.remove(key)` |
@@ -80,10 +87,12 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | batches back to the wire | `codec.write_arrow_reader(reader, &mut sink)?` | `codec.write_arrow_reader(reader, sink)` | `codec.writeArrowReader(reader, { write })` |
 | chain order lifecycles | `codec.lifecycle(messages)` | `codec.lifecycle(messages)` | `codec.lifecycle(messages)` |
 | chain rows already in Arrow | `codec.lifecycle_arrow_reader(reader)?` | `codec.lifecycle_arrow_reader(reader)` | `codec.lifecycleArrowReader(reader)` |
-| share what lifecycles learn about instruments, and what parses fill from | `codec.with_isin_registry(Arc::new(Mutex::new(IsinRegistry::from_url(&url, props)?)))`, `FixCodec::from_env()?` for the process's own, `registry.lock()?.commit()?` to write it back | `FixCodec(registry, isin_registry=IsinRegistry.from_url(path))`, `FixCodec.from_env()`, `registry.commit()` | `new fix.FixCodec(registry, { isinRegistry: IsinRegistry.fromUrl(path) })`, `fix.FixCodec.fromEnv()`, `registry.commit()` |
-| the common instruments, before any store | `IsinRegistry::seeded()` - what `from_env` lays its store over; `IsinRegistry::seeded_from_url(&url, props)?` lays a store you name over it, its rows winning | `IsinRegistry.seeded()`, `IsinRegistry.seeded_from_url(path)` | `IsinRegistry.seeded()`, `IsinRegistry.seededFromUrl(path)` |
-| what a lifecycle learned about an instrument, per market | `registry.listings(isin)` (one row per market, MIC order), `get_listing(isin, &mic)`, `entry.firstunix()` and `entry.lastunix()` - the earliest and the latest message instants stating the ISIN, moved by every learn that passes either - beside `updunix()`, the last moved fact, and `entry.origccy()`, the issue currency a message stated in crate tag `65018` | `listings(isin)`, `get_listing(isin, "XSWX")`, `row["firstunix"]`, `row["lastunix"]`, `row["origccy"]` | `listings(isin)`, `getListing(isin, 'XSWX')`, `row.firstunix`, `row.lastunix`, `row.origccy` |
-| which instrument a message means | `registry.resolve(&msg)` (ISIN, then `LOOKUP_CODES`, then ticker on its market, then - scored, a fill taking it only under `set_economic_match(true)` - its `FinancialInstrumentShortName(2737)` in its currency) | `registry.resolve(msg)` -> `Resolution` | `registry.resolve(msg)` -> a plain object |
+| share what lifecycles learn about instruments, and what parses fill from | `codec.with_instruments(Arc::new(Mutex::new(Instruments::from_url(&url, props)?)))`, `FixCodec::from_env()?` for the process's own, `instruments.lock()?.commit()?` to write it back | `FixCodec(registry, instruments=Instruments.from_url(path))`, `FixCodec.from_env()`, `instruments.commit()` | `new fix.FixCodec(registry, { instruments: Instruments.fromUrl(path) })`, `fix.FixCodec.fromEnv()`, `instruments.commit()` |
+| the common instruments, before any store | `Instruments::seeded()` - what `from_env` lays its store over; `Instruments::seeded_from_url(&url, props)?` lays a store you name over it, its rows winning | `Instruments.seeded()`, `Instruments.seeded_from_url(path)` | `Instruments.seeded()`, `Instruments.seededFromUrl(path)` |
+| what a lifecycle learned about an instrument | `instruments.get(key)` - by its cross code, an alias or an ISIN, real or minted - then `instrument.listings()` (one per market, MIC order), `listing(Some(&mic))`, `firstunix()` and `lastunix()` - the earliest and the latest message instants that met it - beside `updunix()`, the last moved fact, `origccy()`, `underlying()`, `legs()`, `characteristics()`, `metadata()` | `get(key)` a `dict`, `listings(key)`, `get_listing(key, "XSWX")`, `row["firstunix"]`, `row["metadata"]` | `get(key)` a plain object, `listings(key)`, `getListing(key, 'XSWX')`, `row.firstunix`, `row.metadata` |
+| the instrument a row is about | `msg.get_instcode()` - the instrument's cross code, crate tag `65054`, the instruments table's key: join on `instcode = crosscode`, or `instcode` among `aliascodes` for a row filled before a re-key | `msg.instcode` | `msg.instcode` |
+| the number minted for an instrument no agency numbers | `Instrument::minted_number(code)` (`QY` + nine base-36 digits + check digit; `IF:EUR/USD` is `QYLTVIRYHNX5`) | `Instruments.mint(code)` | the instrument's `isin` |
+| which instrument a message means | `instruments.resolve(&msg)` (ISIN, then the cross code its facts spell, then a minted number, then `LOOKUP_CODES`, then ticker on its market, then - scored, a fill taking it only under `set_economic_match(true)` - its `FinancialInstrumentShortName(2737)` in its currency) | `instruments.resolve(msg)` -> `Resolution` | `instruments.resolve(msg)` -> a plain object |
 | one message as graph leaves | `msg.market_data()?`, `msg.into_market_data()?` | `msg.market_data()` | `msg.marketData()` |
 | sorted market data | `codec.market_data(messages)` | `codec.market_data(messages)` | `codec.marketData(messages)` |
 | books as `marketdata` rows | `codec.book_arrow_reader(msgs, 0, None)?`, `Some(&filter)` to narrow | `codec.book_arrow_reader(msgs, snapshot_millis=0, filter=None)` | `codec.bookArrowReader(msgs, 0, filter)` |
@@ -115,14 +124,14 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    `lifecycle_arrow_reader` and `market_data` collect the whole finite
    capture (they sort by event time), so feed them one session or day, not an
    unbounded stream. A source already in instant order - a table read hour
-   partition by hour partition, sorted by `currunix` - pins
+   partition by hour partition, sorted by `transunix` - pins
    `sorted_lifecycle` (`with_sorted_lifecycle(true)`, `sortedLifecycle`):
    `lifecycle` then holds one epoch hour at a time, walking an hour once a
    message two hours past it is read, and answers the same walk. Parse and
    project in the parallel doors; chain once. The walk yields each
-   `curruuid` once within `dedup_window_ms` of event time (one minute by
+   `uuid` once within `dedup_window_ms` of event time (one minute by
    default; `None`/`null`/`0` yields every restated twin too), so a
-   consumer keyed by `curruuid` needs no dedup of its own. Join a chain on
+   consumer keyed by `uuid` needs no dedup of its own. Join a chain on
    `crossuuid`: every message of one chain carries the chain's first
    `crosscode` - a replace under a new `ClOrdID` keeps it - so never re-key by
    an identifier yourself. A message citing two live chains is joined to
@@ -138,8 +147,9 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    `ExecutionAcknowledgement` (`BN`) and a `DontKnowTrade` (`Q`) answer no
    leaf - they state no fact of the order. `book_arrow_reader` folds orders,
    quotes and `W`/`X` entries, pruning executions and trades before a book
-   sees them, one book per book key - the instrument's ISIN, else the ticker,
-   else `XX0000000000` - and its `filter` narrows what folds, never admitting
+   sees them, one book per instrument cross code (`instcode`) - a message
+   stating none, a ticker-only line no lifecycle filled, pruned before it is
+   expanded - and its `filter` narrows what folds, never admitting
    an execution back. It does not sort - an operation dated before its book is
    left out with a warning - and neither door runs the lifecycle for you. For a capture already landed as FIX rows,
    `market_data_arrow_reader` reads each row as its message (no line parsed
@@ -148,7 +158,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    carried side), so hand walked messages, not rows.
 7. Pin `default_sending_time` for reproducible reads. A frame stating no
    `SendingTime(52)` whose line carries no clock is dated by one UTC-now read,
-   and the clock feeds `curruuid`, as does a `SendingTime(52)` naming no
+   and the clock feeds `uuid`, as does a `SendingTime(52)` naming no
    instant; a pinned instant (or a row-header `mtime` capture) makes two reads
    identical.
 8. A column is found by name, never position: `schema.index_of("msgtype")`, or
@@ -158,7 +168,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 9. A capture's own columns (`url`, `rownum`, `loglevel`, a `thread` of your own...) follow the
    element, event, market and operation columns every row opens with; a column named after a FIX field fills that field where the frame
    stated none; `beginstring` and `msgdirection` columns are per-row
-   parameters. An `mtime` capture dates the line - its messages' `recdunix`
+   parameters. An `mtime` capture dates the line - its messages' `sendunix`
    and the sending clock of any stating no `SendingTime(52)` - read under the
    text options' `timezone`; a `timestamp` capture of your own dates nothing.
    `ULBRIDGE_ROWHEADER` captures `mtime`, so it dates every line it matches
@@ -174,7 +184,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     dictionary already holds, stamps each source's id in `FIX:sources` (a JSON
     array of lowercase ids) and records what is known of the source once, in
     the registry's sources catalog (`sources.json` in a store): the file and
-    the `PluginSide` its CBlock root's `type` names. A datatype a source states at another precision
+    the `Side` its CBlock root's `type` names, read by `yggdryl_fix::plugin_side`. A datatype a source states at another precision
     of the stored one - unbounded text against anything, any two numbers, an
     integer against an enum, a date against a datetime (a CBlock's `float`
     against `decimal128`, `string` against `ccy`) - folds under it and is
@@ -206,9 +216,11 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     and `is_clean()` means `dropped` and `failed` are both empty. What a
     CBlock states that the reader cannot keep is dropped, or kept another way
     (an unread type word types the tag string), with a `log` warning naming
-    the line, the column, the element and what the reader did instead; a map
-    entry whose key or value is blank, `none` or `null` states no code and is
-    skipped, named once per code set. `add_cfb_files` folds in ascending URL
+    the line, the column, the element and what the reader did instead; a
+    counter a grammar states beside the group it counts is left out
+    silently, the group's length being its count, in the file and in every
+    fold; a map entry whose key or value is blank, `none` or `null` states no
+    code and is skipped, named once per code set. `add_cfb_files` folds in ascending URL
     order, so where two files type one tag two ways the first-sorting file's
     declaration is held, and a code set only widens (the held name wins a
     shared value; a new value under a name another code claims keeps no
@@ -236,7 +248,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     group as null or as at least one occurrence, so a stated zero rides the
     residual `fixentries` record, and `[]` read back where the row held null -
     what a table such as PyIceberg does - states nothing, so a row read back
-    keeps its `currhashcode` and folds with the delivery it was. A miscount
+    keeps its `hashcode` and folds with the delivery it was. A miscount
     (`453=2`, one occurrence) is no anomaly: the group holds what arrived and
     re-emits `453=1`.
 13. The derived fills and the retired-field restatements are native code: a
@@ -257,8 +269,18 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 
 ## Pitfalls
 
+- A lifecycle message's `cumqty`, `leavesqty` and `state` are the walk's
+  count, never recomputed by hand: a stated `CumQty(14)` that disagrees with
+  the count of distinct `ExecID(17)` values is warned and adopted nowhere,
+  so a bridge's exchange-side frame stating `151=0` for a child order leaves
+  the parent `PARTIALLY_FILLED` at its count. The fixed row's `cumqty`,
+  `leavesqty` and `ordstatus` columns stay the wire's tags 14, 151 and 39; read
+  the count off the message (`msg.cumqty`, `msg.leavesqty`, `msg.state`).
+  An execution's and a trade's `quantity` is what executed, its `lastqty`;
+  an order's is what it has left.
+
 - An Iceberg table widens the two `uint64` digests to `decimal(20, 0)` unless
-  the fixed row's `currhashcode` and `crosshashcode` columns state
+  the fixed row's `hashcode` and `crosshashcode` columns state
   `FIELD:representation=bits` before `into_scheme_compat`: then each is a
   `long` holding the digest's bits, written through the value door and read
   back by `messages` as the digest. A row's `int64` digest cell is read as
@@ -317,7 +339,8 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   `by_name("parties")?.as_sequence().map(<[Scalar]>::len)`, Python
   `len(by_name("parties").as_py())`, JavaScript `byName('parties').length`.
   A message root built by hand lists no counter beside its group, and a
-  registry definition that does is refused.
+  registry definition that does is refused - by hand; a CBlock grammar or a
+  fold that does is read without the counter.
 - `into_text` output reflects what the dictionary derived (a day order's
   `59=0`), minus facts supplied at intake (an unstated `SendingTime`); it is
   canonical wire, not a byte-for-byte copy of the input.
@@ -420,45 +443,58 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   the reading (the wire's, a bridge key's) holds states nothing; any other
   replaces the type's base key, its named sources staying as evidence, and a
   view disagreeing with a held base key it may not replace is dropped with an
-  anomaly naming the view column - whether a code was derived is lost (a
-  registry- or caller-derived code reads back stated). Write `securityids` for
+  anomaly naming the view column - whether a code was derived is lost (an
+  instruments- or caller-derived code reads back stated). Write `securityids` for
   a round trip that keeps sources.
 - Instrument learning is the lifecycle's, never the parse's: each walk learns
-  every message's ISIN - the one key - CFI code, country of issue, the
-  underlying it is written on (`UnderlyingSecurityID(309)`, a bridge's
-  `UnderlyingISIN`; lifted into no `securityids`), a structured product's
-  EUSIPA category (`eusipacode`, off a bridge key whose folded name ends
-  `eusipa`, `eusipacode`, `eusipacategory`, `sspa`, `sspacode` or
-  `sspacategory` - `EUSIPACode=2300`, `OMS_SSPACategory=1260` - four digits
-  once trimmed, two different ones stating none; lifted into no map, the
-  entry kept as it came), market, ticker, currency,
-  pair and security codes into an `IsinRegistry`, a valid
-  stated value filling and replacing whatever the time, and fills what later
-  messages of that instrument leave unsaid - `derived` identifiers, the
-  ticker, the CFI code and the currency as market facts - never the wire,
-  `CFICode(461)` or the message's identity. A parse through a codec sharing a
-  registry fills derived identifiers from the table its door fixed as it
-  opened, nothing else, and learns nothing. Without `isin_registry=` each walk
-  learns into its own, starting empty, and a parse fills nothing; pass one
-  registry - bound to a store with `from_url` and written back with
-  `commit()` only where it moved, or the process's own `from_env()`, which
-  `FixCodec.from_env()` attaches - to share it across walks run one after
-  another. A code of `IsinRegistry::LOOKUP_CODES` - a CUSIP, a SEDOL, a RIC, a
-  Bloomberg symbol - leads back to its instrument like a ticker on its market,
-  one instrument per code; a parse fills from those exact keys alone, never
-  from a short name's score. A message's `origccy` (crate tag `65018`, no FIX
-  field) is learned as the instrument's issue currency and filled where a
-  later message states none; `origin_currency` reads the currency otherwise.
-  `from_env()` starts from the embedded seed of common instruments
-  (`IsinRegistry.seeded()`, the store's rows winning), and a row the
-  registry folds carries the CUSIP, SEDOL, WKN or Valor its ISIN embeds and
-  its market's country's currency where it states none - defaults a
-  statement replaces. In a medallion pipeline commit the codec's registry
-  once, as the stage right after the FIX-message parse, after the refined
-  write has drained the lifecycle: one snapshot, nothing where clean. The
-  capture's own lines are appended by key (`append_serie` on a table whose
-  `identifier-field-ids` is the row's key: a line already stored in its
-  partition is skipped, no file rewritten); every derived table is
+  every message's instrument into an `Instruments`, keyed by its cross code -
+  a security by its real ISIN alone, an FX pair, a forward, a swap, an option,
+  a future or a strategy by `class:body`, its CFI class and the
+  characteristics its message spells (`OC:US0378331005:2026-12-18:200`,
+  `FF:EU0009658145:2026-12`, `KE:<leg>+<leg>`), the underlying and the legs
+  resolved to the codes the collection keys, a derivative stating only its
+  venue's ISIN a placeholder re-keyed once its body arrives, the old code kept
+  in `aliascodes`. It learns the CFI code, country of issue, the underlying
+  (`UnderlyingSecurityID(309)`, a bridge's `UnderlyingISIN`; lifted into no
+  `securityids`), a strategy's `NoLegs(555)`, a structured product's EUSIPA
+  category (`eusipacode`, off a bridge key whose folded name ends `eusipa`,
+  `eusipacode`, `eusipacategory`, `sspa`, `sspacode` or `sspacategory` -
+  `EUSIPACode=2300`, `OMS_SSPACategory=1260` - four digits once trimmed, two
+  different ones stating none; lifted into no map, the entry kept as it came),
+  the descriptive fields (`Issuer(106)`, `SecurityDesc(107)`,
+  `SecurityType(167)` and eight more) as its `metadata`, market, ticker,
+  currency, pair and security codes - each source's under its own `src:type`
+  key - a valid stated value filling and replacing whatever the time, and
+  fills what later messages of that instrument leave unsaid - `derived`
+  identifiers, the ticker, the CFI code and the currency as market facts, the
+  instrument's cross code as `instcode` - never the wire, `CFICode(461)` or
+  the message's identity. The parse writes `instcode` only where the message
+  alone spells it - a stated real ISIN, a detected FX pair (`IF:EUR/USD`, its
+  book `3:0:IF:EUR/USD`, its minted number `QYLTVIRYHNX5` derived under
+  `derived:isin` a fact beside it) - and a parse through a codec sharing a collection fills
+  derived identifiers from the table its door fixed as it opened, nothing
+  else, and learns nothing. Without `instruments=` each walk learns into its
+  own, starting empty, and a parse fills nothing; pass one collection - bound
+  to a store with `from_url` and written back with `commit()` only where it
+  moved, or the process's own `from_env()`, which `FixCodec.from_env()`
+  attaches - to share it across walks run one after another. A code of
+  `Instruments::LOOKUP_CODES` - a CUSIP, a SEDOL, a RIC, a Bloomberg symbol -
+  leads back to its instrument like a ticker on its market, one instrument per
+  code; a parse fills from those exact keys alone, never from a short name's
+  score. A message's `origccy` (crate tag `65018`, no FIX field) is learned as
+  the instrument's issue currency and filled where a later message states
+  none; `origin_currency` reads the currency otherwise. `from_env()` starts
+  from the embedded seed of common instruments (`Instruments.seeded()`, the
+  store's rows winning), and an instrument the collection folds carries the
+  CUSIP, SEDOL, WKN or Valor its ISIN embeds and each listing its market's
+  country's currency where it states none - defaults a statement replaces. In
+  a medallion pipeline commit the codec's collection once, as the stage right
+  after the FIX-message parse, after the refined write has drained the
+  lifecycle: one snapshot of one row per instrument, nothing where clean; a
+  table laid out before the instrument row is refused by name, so drop and
+  recreate it. The capture's own lines are appended by key (`append_serie` on
+  a table whose `identifier-field-ids` is the row's key: a line already stored
+  in its partition is skipped, no file rewritten); every derived table is
   overwritten partition by partition.
 - `StrikePrice(202)` is read into the market fact `strikepx` (`Market`), the
   fixed row's `strikepx` column right after `ticker` (crate tag `65036`), so
@@ -480,7 +516,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 
 ## Language references
 
-- Rust: [references/rust.md](references/rust.md) - `yggdryl::{FixCodec, FixRegistry, FixMsg, fix_schema}`, `Arc`, iterators of `Result`.
+- Rust: [references/rust.md](references/rust.md) - `yggdryl_fix::{FixCodec, FixRegistry, FixMsg, fix_schema}`, `Arc`, iterators of `Result`.
 - Python: [references/python.md](references/python.md) - `yggdryl.fix`, pyarrow readers in and out.
 - JavaScript: [references/javascript.md](references/javascript.md) - the `fix` namespace, `Buffer` input, `BatchReader`.
 - CLI: [references/cli.md](references/cli.md) - `yggdryl fix` catalog commands.

@@ -13,7 +13,8 @@
 
 use std::collections::HashMap;
 
-use yggdryl::{Field, FixCategory, FixRegistry};
+use yggdryl::Field;
+use yggdryl_fix::{FixCategory, FixField, FixRegistry};
 
 use crate::style;
 
@@ -99,7 +100,7 @@ pub fn check(registry: &FixRegistry) -> Report {
         let mut count = 0;
         for field in registry.definitions(category) {
             count += 1;
-            let view = field.as_fix();
+            let view = FixField::new(field);
             let named = format!("{category}/{}", field.name());
 
             // A field with no tag cannot be written back into the store, so a
@@ -163,7 +164,7 @@ pub fn check(registry: &FixRegistry) -> Report {
 fn check_codesets(report: &mut Report, registry: &FixRegistry) {
     let mut read_by: HashMap<&str, usize> = HashMap::new();
     for field in registry {
-        if let Some(name) = field.as_fix().codeset() {
+        if let Some(name) = FixField::new(field).codeset() {
             *read_by.entry(name).or_default() += 1;
         }
     }
@@ -223,7 +224,7 @@ fn check_sources(report: &mut Report, registry: &FixRegistry) {
     let mut named: Vec<&str> = Vec::new();
     for category in FixCategory::ALL {
         for field in registry.definitions(category) {
-            for id in field.as_fix().sources() {
+            for id in FixField::new(field).sources() {
                 if registry.get_source(id).is_none() {
                     report.findings.push(Finding {
                         level: Level::Fail,

@@ -1,9 +1,12 @@
-//! One value naming every media implementation in the core.
+//! One value naming every media implementation a handle can be read as.
 //!
-//! [`Media`] is to a media encoding what [`Holder`] is to [`IOBase`]: a concrete
-//! enum over the implementations the core ships, so a caller can hold "some
-//! media over some handle" without a trait object and without knowing which
-//! encoding is involved until the media type says.
+//! [`Media`] is to a media encoding what [`Holder`] is to [`IOBase`]: one enum
+//! holding the core's three media - Arrow IPC, plain text and CSV - as
+//! variants of their own and every other medium a crate claims - Parquet,
+//! Avro, XML for Analysis, a workbook - as [`Media::Registered`], so a caller
+//! can hold "some media over some handle" without knowing which encoding is
+//! involved until the media type says. [`Media::open`] picks the medium the
+//! register ([`codec_for`]) claims under the handle's media type.
 //!
 //! Every variant answers the same four questions - what is the schema, what
 //! are the rows, what are the batches, and what are the bytes - so choosing an
@@ -45,6 +48,9 @@
 //! # }
 //! ```
 
+pub mod cache;
+pub mod codec;
+pub mod format;
 mod inference;
 mod magic;
 pub(crate) mod merge;
@@ -52,6 +58,9 @@ pub(crate) mod options;
 pub mod partition;
 pub(crate) mod structured;
 
+pub use cache::{CacheTtl, Entry, MediaCache};
+pub use codec::{EXTERNAL_RANK, MediaCodec, MediaWrapper, codec_for, codec_of, codecs};
+pub use format::{LocatedTable, TableFormat, format_named, formats};
 pub use magic::MAGIC_PROBE_LEN;
 /// The root Field name a record surface uses when none is declared.
 pub const DEFAULT_ROOT_NAME: &str = "row";
@@ -61,36 +70,32 @@ pub const DEFAULT_VALUE_NAME: &str = "value";
 pub const NULL_PARTITION: &str = "null";
 pub(crate) use options::{Cadence, CommitBuffer, Shaping, WriteLimitState};
 pub use options::{
-    DEFAULT_COMMIT_BYTE_SIZE, DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions,
+    DEFAULT_COMMIT_BYTE_SIZE, DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, MediumOptions,
+    MediumSettings, RecordOptions, RegisteredOptions,
 };
 
 use crate::IOBase;
-use crate::arrow::{Error, Result};
+use crate::arrow::Result;
 use crate::holder::Holder;
 use crate::ipc::Ipc;
 use crate::{Field, MimeType};
 
 /// A media implementation chosen by encoding.
 ///
-/// Construct one with [`Media::open`], which reads the handle's media type, or
-/// name a variant directly when the encoding is already known.
+/// Construct one with [`Media::open`], which reads the handle's media type
+/// through the register, or name a core variant directly when the encoding
+/// is already known.
 #[derive(Debug)]
 pub enum Media {
     /// An Arrow IPC stream.
     Ipc(Ipc<Holder>),
-    /// An Apache Parquet file.
-    #[cfg(feature = "parquet")]
-    Parquet(crate::parquet::Parquet<Holder>),
-    /// An Apache Avro object container.
-    Avro(crate::avro::Avro<Holder>),
     /// Plain-text rows under one retained flat configuration.
     Text(crate::text::Text<Holder>),
-    /// An XML for Analysis rowset document.
-    Xmla(crate::xmla::Xmla<Holder>),
     /// A CSV or TSV document.
     Csv(crate::csv::Csv<Holder>),
-    /// An Office Open XML workbook.
-    Excel(crate::excel::Excel<Holder>),
+    /// A registered medium's wrapper: Parquet, Avro, XML for Analysis, a
+    /// workbook, or any medium a crate claims.
+    Registered(Box<dyn MediaWrapper>),
 }
 
 impl Media {
@@ -109,53 +114,25 @@ impl Media {
         Self::open_as(handle, &base)
     }
 
-    /// Bind the media implementation for an explicit MIME type.
+    /// Bind the media implementation the medium claimed under `base` opens.
     ///
     /// # Errors
     ///
-    /// Returns an error when no media implementation covers `base`.
+    /// Returns an error when no medium is claimed under `base`, naming the
+    /// media this build implements and the crate to install.
     pub fn open_as(handle: Holder, base: &MimeType) -> Result<Self> {
-        if base == &MimeType::ARROW_STREAM || base == &MimeType::ARROW_FILE {
-            return Ok(Self::Ipc(Ipc::new(handle)));
-        }
-        #[cfg(feature = "parquet")]
-        if base == &MimeType::PARQUET {
-            return Ok(Self::Parquet(crate::parquet::Parquet::new(handle)));
-        }
-        if base == &MimeType::AVRO {
-            return Ok(Self::Avro(crate::avro::Avro::new(handle)));
-        }
-        if base == &MimeType::PLAIN_TEXT {
-            return Ok(Self::Text(crate::text::Text::new(handle)));
-        }
-        if base == &MimeType::XMLA {
-            return Ok(Self::Xmla(crate::xmla::Xmla::new(handle)));
-        }
+        let media = crate::media::codec_for(base)?.open(handle);
         // The type asked for names the dialect, whatever the handle's own
         // name would pick.
-        if base == &MimeType::CSV {
-            return Ok(Self::Csv(
-                crate::csv::Csv::new(handle).with_options(crate::csv::CsvOptions::new()),
-            ));
-        }
-        if base == &MimeType::TSV {
-            return Ok(Self::Csv(
-                crate::csv::Csv::new(handle).with_options(crate::csv::CsvOptions::tsv()),
-            ));
-        }
-        if base == &MimeType::XLSX {
-            return Ok(Self::Excel(crate::excel::Excel::new(handle)));
-        }
-        Err(Error::IncompatibleSchema(format!(
-            "expected a media type with an implementation in this build \
-             (application/vnd.apache.arrow.stream{}, application/avro, text/plain, \
-             application/xmla+xml, text/csv, text/tab-separated-values, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet), got {base}",
-            if cfg!(feature = "parquet") {
-                ", application/vnd.apache.parquet"
-            } else {
-                "; the `parquet` feature is not enabled"
+        Ok(match media {
+            Self::Csv(csv) if base == &MimeType::CSV => {
+                Self::Csv(csv.with_options(crate::csv::CsvOptions::new()))
             }
-        )))
+            Self::Csv(csv) if base == &MimeType::TSV => {
+                Self::Csv(csv.with_options(crate::csv::CsvOptions::tsv()))
+            }
+            media => media,
+        })
     }
 
     /// Hold an Arrow IPC stream over a handle.
@@ -163,25 +140,9 @@ impl Media {
         Self::Ipc(Ipc::new(handle))
     }
 
-    /// Hold a Parquet file over a handle.
-    #[cfg(feature = "parquet")]
-    pub fn parquet(handle: Holder) -> Self {
-        Self::Parquet(crate::parquet::Parquet::new(handle))
-    }
-
-    /// Hold an Avro object container over a handle.
-    pub fn avro(handle: Holder) -> Self {
-        Self::Avro(crate::avro::Avro::new(handle))
-    }
-
     /// Hold plain-text record media over a handle.
     pub fn text(handle: Holder) -> Self {
         Self::Text(crate::text::Text::new(handle))
-    }
-
-    /// Hold an XML for Analysis rowset document over a handle.
-    pub fn xmla(handle: Holder) -> Self {
-        Self::Xmla(crate::xmla::Xmla::new(handle))
     }
 
     /// Hold a CSV or TSV document over a handle.
@@ -189,9 +150,17 @@ impl Media {
         Self::Csv(crate::csv::Csv::new(handle))
     }
 
-    /// Hold an Office Open XML workbook over a handle.
-    pub fn excel(handle: Holder) -> Self {
-        Self::Excel(crate::excel::Excel::new(handle))
+    /// The medium this media encodes: a core variant's own codec, a
+    /// registered wrapper's the one it names. `medium`, not `codec`, because
+    /// `codec` is the content coding every [`IOBase`] answers.
+    #[must_use]
+    pub fn medium(&self) -> &'static dyn MediaCodec {
+        match self {
+            Self::Ipc(_) => &crate::ipc::IPC_CODEC,
+            Self::Text(_) => &crate::text::TEXT_CODEC,
+            Self::Csv(_) => &crate::csv::CSV_CODEC,
+            Self::Registered(wrapper) => wrapper.medium(),
+        }
     }
 
     /// Return this media with an explicit canonical schema.
@@ -199,13 +168,9 @@ impl Media {
     pub fn with_field(self, field: Field) -> Self {
         match self {
             Self::Ipc(ipc) => Self::Ipc(ipc.with_field(field)),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(parquet) => Self::Parquet(parquet.with_field(field)),
-            Self::Avro(avro) => Self::Avro(avro.with_field(field)),
             Self::Text(text) => Self::Text(text.with_field(field)),
-            Self::Xmla(xmla) => Self::Xmla(xmla.with_field(field)),
             Self::Csv(csv) => Self::Csv(csv.with_field(field)),
-            Self::Excel(excel) => Self::Excel(excel.with_field(field)),
+            Self::Registered(wrapper) => Self::Registered(wrapper.with_field(field)),
         }
     }
 
@@ -214,16 +179,12 @@ impl Media {
     /// The companion of [`crate::coding::Coded::handle`] and
     /// [`crate::text::Text::handle`]: one accessor that answers what a
     /// record encoding is layered over, whichever encoding it is.
-    pub const fn handle(&self) -> &Holder {
+    pub fn handle(&self) -> &Holder {
         match self {
             Self::Ipc(inner) => inner.handle(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(inner) => inner.handle(),
-            Self::Avro(inner) => inner.handle(),
             Self::Text(inner) => inner.handle(),
-            Self::Xmla(inner) => inner.handle(),
             Self::Csv(inner) => inner.handle(),
-            Self::Excel(inner) => inner.handle(),
+            Self::Registered(inner) => inner.handle(),
         }
     }
 
@@ -236,13 +197,9 @@ impl Media {
     pub fn into_handle(self) -> Holder {
         match self {
             Self::Ipc(inner) => inner.into_handle(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(inner) => inner.into_handle(),
-            Self::Avro(inner) => inner.into_handle(),
             Self::Text(inner) => inner.into_handle(),
-            Self::Xmla(inner) => inner.into_handle(),
             Self::Csv(inner) => inner.into_handle(),
-            Self::Excel(inner) => inner.into_handle(),
+            Self::Registered(inner) => inner.into_handle(),
         }
     }
 
@@ -250,13 +207,9 @@ impl Media {
     pub fn as_io(&self) -> &dyn IOBase {
         match self {
             Self::Ipc(ipc) => ipc,
-            #[cfg(feature = "parquet")]
-            Self::Parquet(parquet) => parquet,
-            Self::Avro(avro) => avro,
             Self::Text(text) => text,
-            Self::Xmla(xmla) => xmla,
             Self::Csv(csv) => csv,
-            Self::Excel(excel) => excel,
+            Self::Registered(wrapper) => &**wrapper,
         }
     }
 
@@ -264,13 +217,9 @@ impl Media {
     pub fn as_io_mut(&mut self) -> &mut dyn IOBase {
         match self {
             Self::Ipc(ipc) => ipc,
-            #[cfg(feature = "parquet")]
-            Self::Parquet(parquet) => parquet,
-            Self::Avro(avro) => avro,
             Self::Text(text) => text,
-            Self::Xmla(xmla) => xmla,
             Self::Csv(csv) => csv,
-            Self::Excel(excel) => excel,
+            Self::Registered(wrapper) => &mut **wrapper,
         }
     }
 
@@ -283,13 +232,9 @@ impl Media {
     fn as_media(&self) -> &dyn crate::IOMedia {
         match self {
             Self::Ipc(ipc) => ipc,
-            #[cfg(feature = "parquet")]
-            Self::Parquet(parquet) => parquet,
-            Self::Avro(avro) => avro,
             Self::Text(text) => text,
-            Self::Xmla(xmla) => xmla,
             Self::Csv(csv) => csv,
-            Self::Excel(excel) => excel,
+            Self::Registered(wrapper) => &**wrapper,
         }
     }
 
@@ -297,13 +242,9 @@ impl Media {
     fn as_media_mut(&mut self) -> &mut dyn crate::IOMedia {
         match self {
             Self::Ipc(ipc) => ipc,
-            #[cfg(feature = "parquet")]
-            Self::Parquet(parquet) => parquet,
-            Self::Avro(avro) => avro,
             Self::Text(text) => text,
-            Self::Xmla(xmla) => xmla,
             Self::Csv(csv) => csv,
-            Self::Excel(excel) => excel,
+            Self::Registered(wrapper) => &mut **wrapper,
         }
     }
 }
@@ -333,17 +274,12 @@ impl crate::IOMedia for Media {
         crate::IOMedia::merge_by(self.as_media())
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> crate::Result<crate::parquet::FileStatistics> {
-        crate::IOMedia::read_parquet_statistics(self.as_media())
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        self.as_media().as_any()
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_geospatial_statistics(
-        &self,
-        column: &str,
-    ) -> crate::Result<crate::parquet::GeospatialStatistics> {
-        crate::IOMedia::read_parquet_geospatial_statistics(self.as_media(), column)
+    fn read_origin_field(&self) -> crate::Result<Option<crate::Field>> {
+        crate::IOMedia::read_origin_field(self.as_media())
     }
 
     fn read_arrow_field(
@@ -394,7 +330,9 @@ impl crate::IOMedia for Media {
 }
 
 /// A `Media` is the bytes it encodes, so every byte operation reaches straight
-/// through to the handle underneath.
+/// through to the handle underneath - through the medium, which keeps for
+/// itself what its own state shapes: an upload through its invalidating
+/// write, a discard and the two roles as the defaults answer them.
 impl IOBase for Media {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
         self.as_io().pread(offset, buffer)
@@ -428,8 +366,16 @@ impl IOBase for Media {
         self.as_io_mut().create_bytes(bytes)
     }
 
+    fn upload_from(&mut self, source: &mut dyn std::io::Read, length: u64) -> crate::Result<()> {
+        self.as_io_mut().upload_from(source, length)
+    }
+
     fn size(&self) -> u64 {
         self.as_io().size()
+    }
+
+    fn set_known_size(&mut self, size: u64) {
+        self.as_io_mut().set_known_size(size);
     }
 
     fn capacity(&self) -> u64 {
@@ -496,12 +442,24 @@ impl IOBase for Media {
         self.as_io_mut().remove(recursive)
     }
 
+    fn discard(&self) -> crate::Result<bool> {
+        self.as_io().discard()
+    }
+
     fn parent(&self) -> Option<Holder> {
         self.as_io().parent()
     }
 
     fn child_by_path(&self, name: &str) -> crate::Result<Holder> {
         self.as_io().child_by_path(name)
+    }
+
+    fn as_leaf(&self) -> crate::Result<Option<Holder>> {
+        self.as_io().as_leaf()
+    }
+
+    fn as_container(&self) -> crate::Result<Option<Holder>> {
+        self.as_io().as_container()
     }
 
     fn ls(&self, recursive: bool, include_private: bool) -> crate::Listing {
@@ -527,28 +485,9 @@ impl From<Ipc<Holder>> for Media {
     }
 }
 
-#[cfg(feature = "parquet")]
-impl From<crate::parquet::Parquet<Holder>> for Media {
-    fn from(value: crate::parquet::Parquet<Holder>) -> Self {
-        Self::Parquet(value)
-    }
-}
-
-impl From<crate::avro::Avro<Holder>> for Media {
-    fn from(value: crate::avro::Avro<Holder>) -> Self {
-        Self::Avro(value)
-    }
-}
-
 impl From<crate::text::Text<Holder>> for Media {
     fn from(value: crate::text::Text<Holder>) -> Self {
         Self::Text(value)
-    }
-}
-
-impl From<crate::xmla::Xmla<Holder>> for Media {
-    fn from(value: crate::xmla::Xmla<Holder>) -> Self {
-        Self::Xmla(value)
     }
 }
 
@@ -558,15 +497,10 @@ impl From<crate::csv::Csv<Holder>> for Media {
     }
 }
 
-impl From<crate::excel::Excel<Holder>> for Media {
-    fn from(value: crate::excel::Excel<Holder>) -> Self {
-        Self::Excel(value)
-    }
-}
-
 crate::media_serie::media_serie!(
     GenericMediaSerie,
     GenericMedia,
     as_generic_media,
-    get_generic_media_mut
+    get_generic_media_mut,
+    accepts = None
 );

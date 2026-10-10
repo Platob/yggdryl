@@ -141,25 +141,31 @@ macro_rules! delegate_iobase {
     // leaving them out is not neutral - the trait's default answers them with
     // `size` plus positional calls, which on a decoding handle is a second
     // pass over the whole value and on a remote one hides the handle's own
-    // request plan.
+    // request plan. The capabilities a backend specializes - the streamed
+    // upload, the dropped stage, the two roles, the stated length - are in it
+    // for the same reason: a default would answer for the store beneath.
     ($handle:ident) => {
         $crate::delegate_iobase!(@methods $handle: pread, read_all_bytes, read_range_bytes,
             read_tail_bytes, read_digest, read_range_digest, write_all_bytes, create_bytes, append_bytes,
-            applied_codec, pstream_bytes, pwrite, size, capacity, reserve,
+            upload_from, applied_codec, pstream_bytes, pwrite, size, set_known_size, capacity, reserve,
             truncate, uri, url, bound_location, mtime, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
-            ls, kind, is_container, clear, remove, is_atomic, is_tabular, is_io, is_thread_bound);
+            as_leaf, as_container, ls, kind, is_container, clear, remove, discard, is_atomic, is_tabular, is_io,
+            is_thread_bound);
     };
 
     // Everything but [`IOBase::clear`] and [`IOBase::remove`], which a wrapper
     // holding a cache of its own writes itself so the cache is invalidated as
-    // part of the call rather than left to go stale, and but for the two surface
+    // part of the call rather than left to go stale - and so, for the same
+    // reason, [`IOBase::upload_from`] and [`IOBase::discard`], which replace
+    // or drop what such a cache describes - and but for the two surface
     // questions, which a record encoding answers as constants rather than
     // mirroring the bytes underneath. The same list, named once instead of at
     // five call sites.
     ($handle:ident, except_lifecycle) => {
-        $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, read_tail_bytes, pwrite, create_bytes, size, capacity, reserve,
-            truncate, uri, url, bound_location, mtime, media_type, set_media_type, applied_codec, flush, open, opened, close,
-            parent, child_by_path, ls, kind, is_container, is_thread_bound);
+        $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, read_tail_bytes, pwrite, create_bytes, size,
+            set_known_size, capacity, reserve, truncate, uri, url, bound_location, mtime, media_type, set_media_type,
+            applied_codec, flush, open, opened, close, parent, child_by_path, as_leaf, as_container, ls, kind,
+            is_container, is_thread_bound);
     };
 
     ($handle:ident: $($method:ident),+ $(,)?) => {
@@ -232,6 +238,16 @@ macro_rules! delegate_iobase {
         }
     };
 
+    (@method $handle:ident, upload_from) => {
+        fn upload_from(
+            &mut self,
+            source: &mut dyn ::std::io::Read,
+            length: u64,
+        ) -> $crate::Result<()> {
+            $crate::IOBase::upload_from(&mut self.$handle, source, length)
+        }
+    };
+
     (@method $handle:ident, applied_codec) => {
         fn applied_codec(&self) -> $crate::Codec {
             $crate::IOBase::applied_codec(&self.$handle)
@@ -257,6 +273,12 @@ macro_rules! delegate_iobase {
     (@method $handle:ident, size) => {
         fn size(&self) -> u64 {
             $crate::IOBase::size(&self.$handle)
+        }
+    };
+
+    (@method $handle:ident, set_known_size) => {
+        fn set_known_size(&mut self, size: u64) {
+            $crate::IOBase::set_known_size(&mut self.$handle, size);
         }
     };
 
@@ -350,6 +372,18 @@ macro_rules! delegate_iobase {
         }
     };
 
+    (@method $handle:ident, as_leaf) => {
+        fn as_leaf(&self) -> $crate::Result<Option<$crate::holder::Holder>> {
+            $crate::IOBase::as_leaf(&self.$handle)
+        }
+    };
+
+    (@method $handle:ident, as_container) => {
+        fn as_container(&self) -> $crate::Result<Option<$crate::holder::Holder>> {
+            $crate::IOBase::as_container(&self.$handle)
+        }
+    };
+
     (@method $handle:ident, ls) => {
         fn ls(&self, recursive: bool, include_private: bool) -> $crate::Listing {
             $crate::IOBase::ls(&self.$handle, recursive, include_private)
@@ -371,6 +405,12 @@ macro_rules! delegate_iobase {
     (@method $handle:ident, remove) => {
         fn remove(&mut self, recursive: bool) -> $crate::Result<()> {
             $crate::IOBase::remove(&mut self.$handle, recursive)
+        }
+    };
+
+    (@method $handle:ident, discard) => {
+        fn discard(&self) -> $crate::Result<bool> {
+            $crate::IOBase::discard(&self.$handle)
         }
     };
 
@@ -409,8 +449,9 @@ macro_rules! delegate_iobase {
 pub(crate) static UNRESOLVED_MEDIA_TYPE: std::sync::LazyLock<crate::MediaType> =
     std::sync::LazyLock::new(crate::MediaType::default);
 
-/// Every [`IOBase`] verb but `uri` and `url`, forwarded to a handle resolved
-/// on the first call that needs one: `$get` and `$get_mut` answer the
+/// Every [`IOBase`] verb but `uri` and `url`, the capabilities a backend
+/// specializes included, forwarded to a handle resolved on the first call
+/// that needs one: `$get` and `$get_mut` answer the
 /// resolved [`Holder`](crate::holder::Holder) as a `Result`, and `$held` is
 /// the `OnceLock` that keeps it. A verb that returns a `Result` carries the
 /// resolution's failure; an accessor that cannot answers the empty value;
@@ -476,8 +517,24 @@ macro_rules! __delegate_resolved_iobase {
             $crate::IOBase::append_bytes(self.$get_mut()?, bytes)
         }
 
+        fn upload_from(
+            &mut self,
+            source: &mut dyn ::std::io::Read,
+            length: u64,
+        ) -> $crate::Result<()> {
+            $crate::IOBase::upload_from(self.$get_mut()?, source, length)
+        }
+
         fn size(&self) -> u64 {
             self.$get().map_or(0, $crate::IOBase::size)
+        }
+
+        /// Tell the resolved handle its length. A handle that resolves to
+        /// nothing has no length to be told, as it has no media type.
+        fn set_known_size(&mut self, size: u64) {
+            if let Ok(held) = self.$get_mut() {
+                $crate::IOBase::set_known_size(held, size);
+            }
         }
 
         fn capacity(&self) -> u64 {
@@ -551,12 +608,24 @@ macro_rules! __delegate_resolved_iobase {
             $crate::IOBase::remove(self.$get_mut()?, recursive)
         }
 
+        fn discard(&self) -> $crate::Result<bool> {
+            $crate::IOBase::discard(self.$get()?)
+        }
+
         fn parent(&self) -> Option<$crate::holder::Holder> {
             $crate::IOBase::parent(self.$get().ok()?)
         }
 
         fn child_by_path(&self, path: &str) -> $crate::Result<$crate::holder::Holder> {
             $crate::IOBase::child_by_path(self.$get()?, path)
+        }
+
+        fn as_leaf(&self) -> $crate::Result<Option<$crate::holder::Holder>> {
+            $crate::IOBase::as_leaf(self.$get()?)
+        }
+
+        fn as_container(&self) -> $crate::Result<Option<$crate::holder::Holder>> {
+            $crate::IOBase::as_container(self.$get()?)
         }
 
         fn ls(&self, recursive: bool, include_private: bool) -> $crate::Listing {
@@ -696,17 +765,12 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::merge_by(self.as_ref())
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        IOMedia::read_parquet_statistics(self.as_ref())
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        IOMedia::as_any(self.as_ref())
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_geospatial_statistics(
-        &self,
-        column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
-        IOMedia::read_parquet_geospatial_statistics(self.as_ref(), column)
+    fn read_origin_field(&self) -> Result<Option<crate::Field>> {
+        IOMedia::read_origin_field(self.as_ref())
     }
 
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field> {
@@ -810,12 +874,24 @@ impl IOBase for Box<dyn IOBase> {
         self.as_mut().append_bytes(bytes)
     }
 
+    fn upload_from(&mut self, source: &mut dyn Read, length: u64) -> Result<()> {
+        self.as_mut().upload_from(source, length)
+    }
+
+    fn discard(&self) -> Result<bool> {
+        self.as_ref().discard()
+    }
+
     fn applied_codec(&self) -> crate::Codec {
         self.as_ref().applied_codec()
     }
 
     fn size(&self) -> u64 {
         self.as_ref().size()
+    }
+
+    fn set_known_size(&mut self, size: u64) {
+        self.as_mut().set_known_size(size);
     }
 
     fn capacity(&self) -> u64 {
@@ -876,6 +952,14 @@ impl IOBase for Box<dyn IOBase> {
 
     fn child_by_path(&self, path: &str) -> Result<Holder> {
         self.as_ref().child_by_path(path)
+    }
+
+    fn as_leaf(&self) -> Result<Option<Holder>> {
+        self.as_ref().as_leaf()
+    }
+
+    fn as_container(&self) -> Result<Option<Holder>> {
+        self.as_ref().as_container()
     }
 
     fn ls(&self, recursive: bool, include_private: bool) -> Listing {

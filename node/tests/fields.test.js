@@ -275,7 +275,6 @@ test('typed field factories cover every native datatype variant', () => {
     ['marketdatakind', fields.marketdatakind('value')],
     ['marketdatatype', fields.marketdatatype('value')],
     ['timeinforce', fields.timeinforce('value')],
-    ['pluginside', fields.pluginside('value')],
     ['unit', fields.unit('value')],
     ['ric', fields.ric('value')],
     ['forex', fields.forex('value')],
@@ -322,6 +321,15 @@ test('typed field factories cover every native datatype variant', () => {
     [...byId.keys()].sort(),
     binding.enums.dataTypeIds.filter((id) => !unbuildable.includes(id)).sort(),
   )
+  // The market kinds and `state`, in the order S0 pinned on `2ae975674`: the
+  // code family's seventeen in byte order after `mediatype` and before
+  // `uuid`, the enum family's five in theirs.
+  const typeIds = binding.enums.dataTypeIds
+  const lei = typeIds.indexOf('lei')
+  assert.deepEqual(typeIds.slice(lei, lei + 17), ['lei', 'bic', 'elf', 'dti', 'fisn', 'country', 'ccy', 'mic', 'cfi', 'isin', 'cusip', 'sedol', 'bbg', 'figi', 'unit', 'ric', 'forex'])
+  assert.deepEqual([typeIds[lei - 1], typeIds[lei + 17]], ['mediatype', 'uuid'])
+  const state = typeIds.indexOf('state')
+  assert.deepEqual(typeIds.slice(state, state + 5), ['state', 'marketdatakind', 'side', 'marketdatatype', 'timeinforce'])
   assert.ok([...byId.values()].every((value) => value instanceof Field))
   // Every factory above was called without a nullable option, and the Python
   // factories default the same way, so one declared schema cannot disagree

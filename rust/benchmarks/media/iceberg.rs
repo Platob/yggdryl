@@ -1863,9 +1863,6 @@ mod s3 {
 
     use std::cell::Cell;
     use std::hint::black_box;
-    use std::path::PathBuf;
-    use std::sync::Arc;
-    use yggdryl::StructType;
 
     use arrow_array::RecordBatch;
     use criterion::{BatchSize, Criterion, Throughput};
@@ -1873,14 +1870,10 @@ mod s3 {
     use yggdryl::iceberg::{
         FormatVersion, IcebergTable, PartitionSpec, Transform, assign_field_ids,
     };
-    use yggdryl::local::LocalFolder;
     use yggdryl::media::RecordOptions;
     use yggdryl::s3::{Credentials, S3File, S3Folder, S3Options, file_with, folder_with};
     use yggdryl::text::TextOptions;
-    use yggdryl::{
-        DataType, Field, FixCodec, FixRegistry, IOBase, IOMedia, Selector, Timezone, fix_schema,
-        fix_schema_carrying,
-    };
+    use yggdryl::{IOBase, IOMedia, Selector, Timezone};
 
     use super::server::FakeS3;
     use super::{partitioned_commit_batch, plan_schema, venue};
@@ -1896,10 +1889,14 @@ mod s3 {
     /// The bridge's own log, the capture every FIX suite reads.
     const LOG: &[u8] = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/fix/ulbridge.log"
+        "/tests/support/ulbridge.log"
     ));
     /// How many times the capture is repeated in the uploaded `.log` object.
     const LOG_REPEATS: usize = bench_profile::corpus(16, 1);
+    /// The row header the log's lines are read under: the clock each line
+    /// opens with, captured as `mtime`.
+    const ROWHEADER: &str =
+        r"^(?P<mtime>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:[.,]\d{3}(?:_\d{3})?)?) ";
 
     fn store() -> FakeS3 {
         let store = FakeS3::start();
@@ -1988,11 +1985,11 @@ mod s3 {
             .sum()
     }
 
-    /// The text options a bridge log is read under, as the FIX pipeline
-    /// benchmark reads it.
+    /// The text options a bridge log is read under: each line's clock off
+    /// its header, the rest its body.
     fn text() -> RecordOptions {
         let mut options = TextOptions::new()
-            .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+            .try_with_rowheader(ROWHEADER)
             .expect("the row header compiles")
             .with_timezone(Timezone::UTC);
         options.start_rownum = Some(1);
@@ -2005,14 +2002,6 @@ mod s3 {
             .expect("a reader")
             .map(|batch| batch.expect("a batch").num_rows())
             .sum()
-    }
-
-    /// The tracked seed dictionary, relative to the crate manifest.
-    fn seed_root() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("config")
-            .join("fix")
     }
 
     pub(super) fn benchmarks(criterion: &mut Criterion) {
@@ -2119,11 +2108,10 @@ mod s3 {
             bencher.iter(|| scan_rows(black_box(&scanned), black_box(&pruned)));
         });
 
-        // The bridge's log as one object: read as text records, then parsed
-        // and written back as FIX rows into a table on the store. There is no
-        // pass between the parse and the commit: a parse settles everything a
-        // message derives about itself, so the reader it answers is the one
-        // the table takes.
+        // The bridge's log as one object: read as text records, then
+        // written back as those records into a table on the store. There is
+        // no pass between the read and the commit: the reader the text
+        // medium answers is the one the table takes.
         let mut log = log_object(&store);
         let corpus = LOG.repeat(LOG_REPEATS);
         log.write_all_bytes(&corpus).expect("the log uploads");
@@ -2142,71 +2130,50 @@ mod s3 {
             bencher.iter(|| text_rows(black_box(&log)));
         });
 
-        let registry = Arc::new(
-            FixRegistry::from_handle(&LocalFolder::new(seed_root()).expect("a local path"))
-                .expect("the tracked seed loads"),
-        );
-        let codec = FixCodec::new(Arc::clone(&registry));
         let carrier = log.read_arrow_field(&text()).expect("the text field");
-        let fixed = fix_schema(&registry, "row").expect("the fixed schema");
-        let carried = fix_schema_carrying(&carrier, &fixed).expect("the carried schema");
-        // The row header's clock dates each line, so no capture stamp leads
-        // the row; the FIX clocks are nanosecond instants, which only a v3
-        // table stores.
-        let columns = carried.fields().iter().cloned();
-        // The FIX clocks and hashes are unsigned 64-bit counts, which Iceberg
-        // has no column for: the schema takes the lossless widening the
-        // compatibility walk names before the table numbers it.
-        let mut schema = Field::from_parts(
-            carried.name(),
-            DataType::from(StructType::from_fields(columns).expect("the columns are distinct")),
-            carried.is_nullable(),
-            carried.metadata_iter(),
-        )
-        .expect("the schema rebuilds")
-        .into_scheme_compat(&yggdryl::Scheme::ICEBERG)
-        .expect("the schema widens for Iceberg");
+        // The text clocks and hashes are unsigned 64-bit counts and
+        // nanosecond instants: the schema takes the lossless widening the
+        // compatibility walk names for Iceberg before the table numbers it,
+        // and only a v3 table stores a nanosecond instant.
+        let mut schema = carrier
+            .into_scheme_compat(&yggdryl::Scheme::ICEBERG)
+            .expect("the schema widens for Iceberg");
         assign_field_ids(&mut schema, 1).expect("the schema numbers");
-        // There is no `timepartition` column: how a layout is cut is the
-        // target's, so the table takes an `hour` transform over the
-        // `currunix` the row already carries rather than a materialized copy
-        // of that instant.
+        // How a layout is cut is the target's, so the table takes an `hour`
+        // transform over the `transunix` each line already carries.
         let mut spec =
-            PartitionSpec::identity(1, &schema, &["currunix"]).expect("currunix is a column");
+            PartitionSpec::identity(1, &schema, &["transunix"]).expect("transunix is a column");
         spec.fields[0].transform = Transform::Hour;
-        spec.fields[0].name = "currunix_hour".into();
-        let fix_table = |label: &str| {
+        spec.fields[0].name = "transunix_hour".into();
+        let text_table = |label: &str| {
             IcebergTable::create(
                 folder(&store, &next(label)),
                 FormatVersion::V3,
                 schema.clone(),
                 spec.clone(),
             )
-            .expect("the FIX table creates")
+            .expect("the text table creates")
         };
-        let fix_rows = |table: &mut IcebergTable<S3Folder>| {
+        let text_rows_append = |table: &mut IcebergTable<S3Folder>| {
             let read = log.read_arrow_reader(&text()).expect("a reader");
-            let parsed = codec
-                .parse_text_arrow_reader(read)
-                .expect("the lines parse");
-            table.commit_append(parsed).expect("the FIX rows commit");
+            table.commit_append(read).expect("the text rows commit");
         };
         probe(
             &store,
-            "log/fix_rows_append",
-            || fix_table("fix"),
+            "log/text_rows_append",
+            || text_table("text"),
             |mut table| {
-                fix_rows(&mut table);
+                text_rows_append(&mut table);
                 println!(
-                    "s3 log: {lines} lines read, {} FIX rows written back",
+                    "s3 log: {lines} lines read, {} text rows written back",
                     table.row_size().expect("the row count")
                 );
             },
         );
-        group.bench_function("log/fix_rows_append", |bencher| {
+        group.bench_function("log/text_rows_append", |bencher| {
             bencher.iter_batched(
-                || fix_table("fix"),
-                |mut table| fix_rows(&mut table),
+                || text_table("text"),
+                |mut table| text_rows_append(&mut table),
                 BatchSize::PerIteration,
             );
         });

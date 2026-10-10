@@ -345,40 +345,12 @@ mod columns {
                 ]),
             ),
             (
-                Field::new("side", DataType::Side, true),
-                Scalar::from_sequence([Scalar::from("BUY"), Scalar::from("SELL"), Scalar::Null]),
-            ),
-            (
                 Field::new("msgtype", DataType::utf8(), true),
                 Scalar::from_sequence([Scalar::from("D"), Scalar::from("AE"), Scalar::Null]),
             ),
             (
                 Field::new("state", DataType::State, true),
                 Scalar::from_sequence([Scalar::from("NEW"), Scalar::from("FILLED"), Scalar::Null]),
-            ),
-            (
-                Field::new("marketdatakind", DataType::MarketDataKind, true),
-                Scalar::from_sequence([Scalar::from("ORDR"), Scalar::from("TRAD"), Scalar::Null]),
-            ),
-            (
-                Field::new("marketdatatype", DataType::MarketDataType, true),
-                Scalar::from_sequence([
-                    Scalar::from("ORDLIMIT"),
-                    Scalar::from("TRDBLOCK"),
-                    Scalar::Null,
-                ]),
-            ),
-            (
-                Field::new("timeinforce", DataType::TimeInForce, true),
-                Scalar::from_sequence([Scalar::from("0"), Scalar::from("6"), Scalar::Null]),
-            ),
-            (
-                Field::new("pluginside", DataType::PluginSide, true),
-                Scalar::from_sequence([
-                    Scalar::from("BUYS"),
-                    Scalar::from("sell-side"),
-                    Scalar::Null,
-                ]),
             ),
             (
                 Field::new("unit", DataType::Unit, true),
@@ -1042,7 +1014,7 @@ mod columns {
         // a family whose buffer arm and fallback were never compared.
         let covered: std::collections::HashSet<DataTypeId> =
             columns().iter().map(|(field, _)| field.id()).collect();
-        let missing: Vec<&str> = DataTypeId::ALL
+        let missing: Vec<&str> = DataTypeId::all()
             .into_iter()
             .filter(|id| {
                 !matches!(

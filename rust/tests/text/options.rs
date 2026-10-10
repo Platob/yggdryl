@@ -26,15 +26,15 @@ mod text {
     /// out of it contains the same fifteen under the same names and
     /// datatypes.
     const EVENT_COLUMNS: [&str; 15] = [
-        "curruuid",
+        "uuid",
         "crossuuid",
         "crosscode",
-        "currhashcode",
+        "hashcode",
         "crosshashcode",
         "srcuuids",
-        "currunix",
+        "transunix",
         "creaunix",
-        "recdunix",
+        "sendunix",
         "exprunix",
         "prevunix",
         "snapunix",
@@ -492,11 +492,11 @@ mod text {
             // the reader itself answers - what the line was classified as,
             // and the line - are not.
             let required = [
-                "currunix",
-                "curruuid",
+                "transunix",
+                "uuid",
                 "crossuuid",
                 "crosscode",
-                "currhashcode",
+                "hashcode",
                 "crosshashcode",
                 "seqnum",
             ];

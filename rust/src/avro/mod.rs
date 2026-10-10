@@ -33,8 +33,10 @@ pub(crate) mod resolve;
 pub(crate) mod schema;
 mod single;
 
-pub(crate) use batch::row_size;
-pub use batch::{Avro, AvroOptions, overwrite_arrow_reader, read_batch_reader, read_field};
+pub use batch::{
+    AVRO_CODEC, Avro, AvroCodec, AvroOptions, overwrite_arrow_reader, read_batch_reader,
+    read_field, read_stream,
+};
 pub use container::{
     Block, Blocks, Container, read_blocks, read_blocks_owned, read_blocks_owned_with_limits,
     read_blocks_with_limits, read_container, read_container_resolved,
@@ -45,5 +47,3 @@ pub use schema::{MAX_SCHEMA_DEPTH, Schema};
 pub use single::{
     from_single_object_slice, from_single_object_slice_with_limits, into_single_object_vec,
 };
-
-pub use batch::{AvroSerie, read_stream};

@@ -27,11 +27,13 @@ use napi::bindgen_prelude::{
     BigInt, ClassInstance, Either, Either11, FromNapiValue, Null, Result, Unknown,
 };
 use napi_derive::napi;
-use yggdryl::graph::{
-    ElementColumn, Event, EventColumn, MarketColumn, MarketData as CoreMarketData, Operation,
-    OperationColumn, OperationEvent, OperationKind as CoreOperationKind,
+use yggdryl::graph::{ElementColumn, Event, EventColumn};
+use yggdryl::{Decimal, Scalar};
+use yggdryl_market::Identifiers;
+use yggdryl_market::graph::{
+    MarketColumn, MarketData as CoreMarketData, Operation, OperationColumn, OperationEvent,
+    OperationKind as CoreOperationKind,
 };
-use yggdryl::{Decimal, Identifiers, Scalar, graph};
 
 use crate::fix::JsFixMsg;
 use crate::text::codec::JsScalar;
@@ -44,8 +46,8 @@ macro_rules! element_getters {
         impl $class {
             /// The element's own identity, as its hyphenated text.
             #[napi(getter)]
-            pub fn curruuid(&self) -> String {
-                ::yggdryl::graph::Element::get_curruuid(&self.inner).to_string()
+            pub fn uuid(&self) -> String {
+                ::yggdryl::graph::Element::get_uuid(&self.inner).to_string()
             }
 
             /// The identity every statement of one element shares: derived
@@ -68,8 +70,8 @@ macro_rules! element_getters {
 
             /// The XXH3-64 code the element's content digests to.
             #[napi(getter)]
-            pub fn currhashcode(&self) -> ::napi::bindgen_prelude::BigInt {
-                ::napi::bindgen_prelude::BigInt::from(::yggdryl::graph::Element::get_currhashcode(
+            pub fn hashcode(&self) -> ::napi::bindgen_prelude::BigInt {
+                ::napi::bindgen_prelude::BigInt::from(::yggdryl::graph::Element::get_hashcode(
                     &self.inner,
                 ))
             }
@@ -102,10 +104,11 @@ macro_rules! event_getters {
     ($class:ident) => {
         #[napi]
         impl $class {
-            /// When this happened: nanoseconds since the Unix epoch, UTC.
+            /// When the operation happened - the transaction instant:
+            /// nanoseconds since the Unix epoch, UTC.
             #[napi(getter)]
-            pub fn currunix(&self) -> ::napi::bindgen_prelude::BigInt {
-                ::napi::bindgen_prelude::BigInt::from(::yggdryl::graph::Event::get_currunix(
+            pub fn transunix(&self) -> ::napi::bindgen_prelude::BigInt {
+                ::napi::bindgen_prelude::BigInt::from(::yggdryl::graph::Event::get_transunix(
                     &self.inner,
                 ))
             }
@@ -133,10 +136,11 @@ macro_rules! event_getters {
                     .map(::napi::bindgen_prelude::BigInt::from)
             }
 
-            /// When this was recorded, where stated.
+            /// When the message crossed the wire - the technical clock -
+            /// where stated.
             #[napi(getter)]
-            pub fn recdunix(&self) -> Option<::napi::bindgen_prelude::BigInt> {
-                ::yggdryl::graph::Event::get_recdunix(&self.inner)
+            pub fn sendunix(&self) -> Option<::napi::bindgen_prelude::BigInt> {
+                ::yggdryl::graph::Event::get_sendunix(&self.inner)
                     .map(::napi::bindgen_prelude::BigInt::from)
             }
 
@@ -178,7 +182,7 @@ macro_rules! event_getters {
     };
 }
 
-/// Getters over the thirty-six facts [`yggdryl::graph::Market`] answers.
+/// Getters over the thirty-six facts [`yggdryl_market::graph::Market`] answers.
 macro_rules! market_getters {
     ($class:ident) => {
         #[napi]
@@ -186,13 +190,13 @@ macro_rules! market_getters {
             /// The price stated, as decimal text; `null` where none.
             #[napi(getter)]
             pub fn price(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_price(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_price(&self.inner))
             }
 
             /// The currency, as the `ccy` code it is; `XXX` where none.
             #[napi(getter)]
             pub fn currency(&self) -> String {
-                ::yggdryl::graph::Market::get_currency(&self.inner)
+                ::yggdryl_market::graph::Market::get_currency(&self.inner)
                     .as_str()
                     .to_owned()
             }
@@ -204,7 +208,7 @@ macro_rules! market_getters {
             /// `null` where neither did, never defaulted.
             #[napi(getter)]
             pub fn origccy(&self) -> Option<String> {
-                let held = ::yggdryl::graph::Market::get_origccy(&self.inner);
+                let held = ::yggdryl_market::graph::Market::get_origccy(&self.inner);
                 (!held.is_none()).then(|| held.as_str().to_owned())
             }
 
@@ -212,7 +216,7 @@ macro_rules! market_getters {
             /// held, else `currency` - `XXX` only where neither is stated.
             #[napi(getter)]
             pub fn origin_currency(&self) -> String {
-                ::yggdryl::graph::Market::origin_currency(&self.inner)
+                ::yggdryl_market::graph::Market::origin_currency(&self.inner)
                     .as_str()
                     .to_owned()
             }
@@ -220,38 +224,48 @@ macro_rules! market_getters {
             /// The quantity stated, as decimal text; `null` where none.
             #[napi(getter)]
             pub fn quantity(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_quantity(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_quantity(
+                    &self.inner,
+                ))
             }
 
             /// The stop price the order triggers at, as decimal text; `null` where none.
             #[napi(getter)]
             pub fn stoppx(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_stoppx(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_stoppx(
+                    &self.inner,
+                ))
             }
 
             /// The part of the quantity shown to the market - an iceberg's peak, as decimal text; `null` where none.
             #[napi(getter)]
             pub fn displayqty(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_displayqty(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_displayqty(
+                    &self.inner,
+                ))
             }
 
             /// The part of the quantity kept from the market - an iceberg's reserve, as decimal text; `null` where none.
             #[napi(getter)]
             pub fn hiddenqty(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_hiddenqty(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_hiddenqty(
+                    &self.inner,
+                ))
             }
 
             /// How much was canceled, as decimal text; `null` where none.
             #[napi(getter)]
             pub fn cxlqty(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_cxlqty(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_cxlqty(
+                    &self.inner,
+                ))
             }
 
             /// The unit the quantity is counted in, as spelled; empty where
             /// none.
             #[napi(getter)]
             pub fn unit(&self) -> String {
-                ::yggdryl::graph::Market::get_unit(&self.inner)
+                ::yggdryl_market::graph::Market::get_unit(&self.inner)
                     .as_str()
                     .to_owned()
             }
@@ -260,7 +274,7 @@ macro_rules! market_getters {
             /// stored name; `UKNW` where none, never `null`.
             #[napi(getter)]
             pub fn marketdatatype(&self) -> String {
-                ::yggdryl::graph::Market::get_marketdatatype(&self.inner)
+                ::yggdryl_market::graph::Market::get_marketdatatype(&self.inner)
                     .as_str()
                     .to_owned()
             }
@@ -269,7 +283,7 @@ macro_rules! market_getters {
             /// none, never `null`.
             #[napi(getter)]
             pub fn side(&self) -> String {
-                ::yggdryl::graph::Market::get_side(&self.inner)
+                ::yggdryl_market::graph::Market::get_side(&self.inner)
                     .as_str()
                     .to_owned()
             }
@@ -280,28 +294,38 @@ macro_rules! market_getters {
             #[napi(getter, ts_return_type = "Identifiers")]
             pub fn securityids(&self) -> $crate::identifier::JsIdentifiers {
                 $crate::identifier::JsIdentifiers::from_core(
-                    ::yggdryl::graph::Market::get_securityids(&self.inner),
+                    ::yggdryl_market::graph::Market::get_securityids(&self.inner),
                 )
+            }
+
+            /// The cross code of the instrument this is about - a real
+            /// ISIN for a security an agency numbered, a `class:body` for an
+            /// FX pair or a derivative (`IF:EUR/USD`) - the instruments
+            /// table's own key, so a reader joins on `instcode = crosscode`;
+            /// `null` where none is known.
+            #[napi(getter)]
+            pub fn instcode(&self) -> Option<String> {
+                ::yggdryl_market::graph::Market::get_instcode(&self.inner).map(ToOwned::to_owned)
             }
 
             /// The instrument's ISIN, borrowed from `securityids`; `null`
             /// where it states none.
             #[napi(getter)]
             pub fn isincode(&self) -> Option<String> {
-                ::yggdryl::graph::Market::get_isincode(&self.inner).map(ToOwned::to_owned)
+                ::yggdryl_market::graph::Market::get_isincode(&self.inner).map(ToOwned::to_owned)
             }
 
             /// The instrument's classification; `null` where none.
             #[napi(getter)]
             pub fn cficode(&self) -> Option<String> {
-                ::yggdryl::graph::Market::get_cficode(&self.inner)
+                ::yggdryl_market::graph::Market::get_cficode(&self.inner)
                     .map(|held| held.as_str().to_owned())
             }
 
             /// The market, as an ISO 10383 MIC; `null` where none.
             #[napi(getter)]
             pub fn miccode(&self) -> Option<String> {
-                ::yggdryl::graph::Market::get_miccode(&self.inner)
+                ::yggdryl_market::graph::Market::get_miccode(&self.inner)
                     .map(|held| held.as_str().to_owned())
             }
 
@@ -310,71 +334,87 @@ macro_rules! market_getters {
             /// where known - a market fact, never an event's.
             #[napi(getter)]
             pub fn execunix(&self) -> Option<::napi::bindgen_prelude::BigInt> {
-                ::yggdryl::graph::Market::get_execunix(&self.inner)
+                ::yggdryl_market::graph::Market::get_execunix(&self.inner)
                     .map(::napi::bindgen_prelude::BigInt::from)
             }
 
             /// The price last traded at; `null` where none.
             #[napi(getter)]
             pub fn lastpx(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_lastpx(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_lastpx(
+                    &self.inner,
+                ))
             }
 
             /// The quantity last traded; `null` where none.
             #[napi(getter)]
             pub fn lastqty(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_lastqty(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_lastqty(
+                    &self.inner,
+                ))
             }
 
             /// The price averaged; `null` where none.
             #[napi(getter)]
             pub fn avgpx(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_avgpx(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_avgpx(&self.inner))
             }
 
             /// How much is done; `null` where none.
             #[napi(getter)]
             pub fn cumqty(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_cumqty(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_cumqty(
+                    &self.inner,
+                ))
             }
 
             /// How much is still open; `null` where none.
             #[napi(getter)]
             pub fn leavesqty(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_leavesqty(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_leavesqty(
+                    &self.inner,
+                ))
             }
 
             /// The price the step before this one settled on; `null` where
             /// none.
             #[napi(getter)]
             pub fn prevpx(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_prevpx(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_prevpx(
+                    &self.inner,
+                ))
             }
 
             /// The strike price of the option the element is about, as
             /// decimal text; `null` where none is stated.
             #[napi(getter)]
             pub fn strikepx(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_strikepx(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_strikepx(
+                    &self.inner,
+                ))
             }
 
             /// The quantity the step before this one settled on; `null`
             /// where none.
             #[napi(getter)]
             pub fn prevqty(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_prevqty(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_prevqty(
+                    &self.inner,
+                ))
             }
 
             /// The spot part of an FX price; `null` where none.
             #[napi(getter)]
             pub fn spotrate(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_spotrate(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_spotrate(
+                    &self.inner,
+                ))
             }
 
             /// The forward points of an FX price; `null` where none.
             #[napi(getter)]
             pub fn forwardpoints(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_forwardpoints(
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_forwardpoints(
                     &self.inner,
                 ))
             }
@@ -382,40 +422,44 @@ macro_rules! market_getters {
             /// The best bid price stated, as decimal text; `null` where none.
             #[napi(getter)]
             pub fn bidpx(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_bidpx(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_bidpx(&self.inner))
             }
 
             /// The quantity at the best bid, as decimal text; `null` where none.
             #[napi(getter)]
             pub fn bidqty(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_bidqty(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_bidqty(
+                    &self.inner,
+                ))
             }
 
             /// The currency the bid is stated in, as the `ccy` code it is; `null`
             /// where none.
             #[napi(getter)]
             pub fn bidccy(&self) -> Option<String> {
-                ::yggdryl::graph::Market::get_bidccy(&self.inner)
+                ::yggdryl_market::graph::Market::get_bidccy(&self.inner)
                     .map(|held| held.as_str().to_owned())
             }
 
             /// The best ask price stated, as decimal text; `null` where none.
             #[napi(getter)]
             pub fn askpx(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_askpx(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_askpx(&self.inner))
             }
 
             /// The quantity at the best ask, as decimal text; `null` where none.
             #[napi(getter)]
             pub fn askqty(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Market::get_askqty(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Market::get_askqty(
+                    &self.inner,
+                ))
             }
 
             /// The currency the ask is stated in, as the `ccy` code it is; `null`
             /// where none.
             #[napi(getter)]
             pub fn askccy(&self) -> Option<String> {
-                ::yggdryl::graph::Market::get_askccy(&self.inner)
+                ::yggdryl_market::graph::Market::get_askccy(&self.inner)
                     .map(|held| held.as_str().to_owned())
             }
 
@@ -424,7 +468,7 @@ macro_rules! market_getters {
             /// rate as decimal text; empty where none.
             #[napi(getter, ts_return_type = "Record<string, string>")]
             pub fn fxrates(&self) -> ::std::collections::BTreeMap<String, String> {
-                ::yggdryl::graph::Market::get_fxrates(&self.inner)
+                ::yggdryl_market::graph::Market::get_fxrates(&self.inner)
                     .iter()
                     .map(|(target, rate)| (target.as_str().to_owned(), rate.to_string()))
                     .collect()
@@ -434,14 +478,14 @@ macro_rules! market_getters {
             /// none.
             #[napi(getter)]
             pub fn ticker(&self) -> Option<String> {
-                ::yggdryl::graph::Market::get_ticker(&self.inner).map(ToOwned::to_owned)
+                ::yggdryl_market::graph::Market::get_ticker(&self.inner).map(ToOwned::to_owned)
             }
 
             /// Free-form facts beside the typed ones, in key order; empty
             /// where none.
             #[napi(getter, ts_return_type = "Record<string, string>")]
             pub fn metadata(&self) -> ::std::collections::BTreeMap<String, String> {
-                ::yggdryl::graph::Market::get_metadata(&self.inner)
+                ::yggdryl_market::graph::Market::get_metadata(&self.inner)
                     .iter()
                     .map(|(key, value)| (key.to_string(), value.to_string()))
                     .collect()
@@ -450,7 +494,7 @@ macro_rules! market_getters {
     };
 }
 
-/// The three facts [`yggdryl::graph::Operation`] adds.
+/// The three facts [`yggdryl_market::graph::Operation`] adds.
 macro_rules! operation_getters {
     ($class:ident) => {
         #[napi]
@@ -459,7 +503,7 @@ macro_rules! operation_getters {
             /// name; `null` where unstated.
             #[napi(getter)]
             pub fn timeinforce(&self) -> Option<String> {
-                ::yggdryl::graph::Operation::get_timeinforce(&self.inner)
+                ::yggdryl_market::graph::Operation::get_timeinforce(&self.inner)
                     .map(|held| held.as_str().to_owned())
             }
 
@@ -467,14 +511,16 @@ macro_rules! operation_getters {
             /// unstated.
             #[napi(getter)]
             pub fn ordqty(&self) -> Option<String> {
-                $crate::graph::decimal_text(::yggdryl::graph::Operation::get_ordqty(&self.inner))
+                $crate::graph::decimal_text(::yggdryl_market::graph::Operation::get_ordqty(
+                    &self.inner,
+                ))
             }
 
             /// Whether the instrument trades, or `null` where the market said
             /// nothing either way - which is not `false`.
             #[napi(getter)]
             pub fn tradable(&self) -> Option<bool> {
-                ::yggdryl::graph::Operation::get_tradable(&self.inner)
+                ::yggdryl_market::graph::Operation::get_tradable(&self.inner)
             }
 
             /// The names the operation goes by - `clordid`, `orderid` - with
@@ -484,7 +530,7 @@ macro_rules! operation_getters {
             #[napi(getter, ts_return_type = "Identifiers")]
             pub fn identifiers(&self) -> $crate::identifier::JsIdentifiers {
                 $crate::identifier::JsIdentifiers::from_core(
-                    ::yggdryl::graph::Operation::get_identifiers(&self.inner),
+                    ::yggdryl_market::graph::Operation::get_identifiers(&self.inner),
                 )
             }
 
@@ -494,7 +540,7 @@ macro_rules! operation_getters {
             #[napi(getter, ts_return_type = "Identifiers")]
             pub fn partyids(&self) -> $crate::identifier::JsIdentifiers {
                 $crate::identifier::JsIdentifiers::from_core(
-                    ::yggdryl::graph::Operation::get_partyids(&self.inner),
+                    ::yggdryl_market::graph::Operation::get_partyids(&self.inner),
                 )
             }
         }
@@ -512,7 +558,7 @@ macro_rules! marketdatakind_getter {
             /// `marketdatakind` member's stored name.
             #[napi(getter)]
             pub fn marketdatakind(&self) -> &'static str {
-                ::yggdryl::graph::MarketKind::$kind
+                ::yggdryl_market::graph::MarketKind::$kind
                     .marketdatakind()
                     .as_str()
             }
@@ -571,7 +617,7 @@ macro_rules! common_verbs {
             /// The code the content digests to, which equal values share.
             #[napi]
             pub fn stable_hash(&self) -> ::napi::bindgen_prelude::BigInt {
-                ::napi::bindgen_prelude::BigInt::from(::yggdryl::graph::Element::get_currhashcode(
+                ::napi::bindgen_prelude::BigInt::from(::yggdryl::graph::Element::get_hashcode(
                     &self.inner,
                 ))
             }
@@ -586,7 +632,7 @@ macro_rules! common_verbs {
             /// Arrow IPC stream, so it survives `JSON.stringify`.
             #[napi(js_name = "toJSON")]
             pub fn to_json(&self) -> ::napi::bindgen_prelude::Result<String> {
-                $crate::graph::market_data::into_json(::yggdryl::graph::MarketData::from(
+                $crate::graph::market_data::into_json(::yggdryl_market::graph::MarketData::from(
                     self.inner.clone(),
                 ))
             }
@@ -609,13 +655,13 @@ macro_rules! element_repr {
     ($class:ident, $name:literal) => {
         #[napi]
         impl $class {
-            /// `<Class>(<curruuid>, crosscode=..)`.
+            /// `<Class>(<uuid>, crosscode=..)`.
             #[napi(js_name = "toString")]
             pub fn js_string(&self) -> String {
                 format!(
                     "{}({}, crosscode={:?})",
                     $name,
-                    ::yggdryl::graph::Element::get_curruuid(&self.inner),
+                    ::yggdryl::graph::Element::get_uuid(&self.inner),
                     ::yggdryl::graph::Element::get_crosscode(&self.inner),
                 )
             }
@@ -639,14 +685,14 @@ macro_rules! event_verbs {
                 ))
             }
 
-            /// `<Class>(<curruuid>, currunix=.., crosscode=..)`.
+            /// `<Class>(<uuid>, transunix=.., crosscode=..)`.
             #[napi(js_name = "toString")]
             pub fn js_string(&self) -> String {
                 format!(
-                    "{}({}, currunix={}, crosscode={:?})",
+                    "{}({}, transunix={}, crosscode={:?})",
                     $name,
-                    ::yggdryl::graph::Element::get_curruuid(&self.inner),
-                    ::yggdryl::graph::Event::get_currunix(&self.inner),
+                    ::yggdryl::graph::Element::get_uuid(&self.inner),
+                    ::yggdryl::graph::Event::get_transunix(&self.inner),
                     ::yggdryl::graph::Element::get_crosscode(&self.inner),
                 )
             }
@@ -801,7 +847,7 @@ impl Fact {
 
     /// The refusal of a fact the leaf does not take from a caller: an
     /// identity, which `finalize` derives; the category, which the leaf is;
-    /// `currunix` on an event, stated once as the constructor's first
+    /// `transunix` on an event, stated once as the constructor's first
     /// argument; and on an undated element every event fact.
     fn refuse_unstated(
         self,
@@ -826,8 +872,8 @@ impl Fact {
             Self::Event(_) if undated => Err(format!(
                 "{owner} states no fact {name:?}: an undated element has no clock, state or chain"
             )),
-            Self::Event(EventColumn::CurrUnix) => Err(format!(
-                "{owner} states currunix once, as its first argument"
+            Self::Event(EventColumn::TransUnix) => Err(format!(
+                "{owner} states transunix once, as its first argument"
             )),
             Self::Element(_) | Self::Operation(_) | Self::Market(_) | Self::Event(_) => Ok(()),
         }
@@ -861,7 +907,7 @@ impl Fact {
     }
 }
 
-/// An operation of kind `K` at `currunix` with every named fact in `facts`
+/// An operation of kind `K` at `transunix` with every named fact in `facts`
 /// stated through its column, not yet finalized.
 ///
 /// `facts` is one record `Scalar` keyed by column name - the loader drops a
@@ -871,11 +917,11 @@ impl Fact {
 /// naming the fact.
 pub(crate) fn stated_operation<K: CoreOperationKind>(
     owner: &str,
-    currunix: i64,
+    transunix: i64,
     facts: Option<&JsScalar>,
     undated: bool,
 ) -> Result<OperationEvent<K>> {
-    let mut leaf = OperationEvent::<K>::at(currunix);
+    let mut leaf = OperationEvent::<K>::at(transunix);
     let Some(facts) = facts else {
         return Ok(leaf);
     };
@@ -901,12 +947,12 @@ pub(crate) fn stated_operation<K: CoreOperationKind>(
 /// `graph.ENTRY_ID`'s native half.
 #[napi(js_name = "_graphEntryIdNative", skip_typescript)]
 pub fn graph_entry_id_native() -> &'static str {
-    graph::book::ENTRY_ID.as_str()
+    yggdryl_market::graph::book::ENTRY_ID.as_str()
 }
 
 /// The identifier type an entry's `MDEntryRefID(280)` is held under:
 /// `graph.ENTRY_REF_ID`'s native half.
 #[napi(js_name = "_graphEntryRefIdNative", skip_typescript)]
 pub fn graph_entry_ref_id_native() -> &'static str {
-    graph::book::ENTRY_REF_ID.as_str()
+    yggdryl_market::graph::book::ENTRY_REF_ID.as_str()
 }

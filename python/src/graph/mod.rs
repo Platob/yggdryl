@@ -25,11 +25,12 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 use yggdryl::Uuid as CoreUuid;
-use yggdryl::graph::{
-    ElementColumn, Event, EventColumn, FxRates, MarketColumn, MarketKind, Operation,
-    OperationColumn, OperationEvent, OperationKind as CoreOperationKind,
-};
+use yggdryl::graph::{ElementColumn, Event, EventColumn};
 use yggdryl::{Decimal, Scalar};
+use yggdryl_market::graph::{
+    FxRates, MarketColumn, MarketKind, Operation, OperationColumn, OperationEvent,
+    OperationKind as CoreOperationKind,
+};
 
 use crate::scalar::{PyScalar, from_py};
 use crate::value_error;
@@ -56,8 +57,8 @@ macro_rules! element_getters {
         graph_methods!($class, $name; [$($rest),*]; { $($body)*
             /// The element's own identity, as the uuid `Scalar` it is.
             #[getter]
-            fn curruuid(&self) -> $crate::scalar::PyScalar {
-                $crate::graph::uuid_scalar(::yggdryl::graph::Element::get_curruuid(&self.inner))
+            fn uuid(&self) -> $crate::scalar::PyScalar {
+                $crate::graph::uuid_scalar(::yggdryl::graph::Element::get_uuid(&self.inner))
             }
 
             /// The identity every statement of one element shares: derived
@@ -81,8 +82,8 @@ macro_rules! element_getters {
 
             /// The XXH3-64 code the element's content digests to.
             #[getter]
-            fn currhashcode(&self) -> u64 {
-                ::yggdryl::graph::Element::get_currhashcode(&self.inner)
+            fn hashcode(&self) -> u64 {
+                ::yggdryl::graph::Element::get_hashcode(&self.inner)
             }
 
             /// The XXH3-64 of the cross code, zero where it names none.
@@ -111,10 +112,11 @@ macro_rules! element_getters {
 macro_rules! event_getters {
     ($class:ident, $name:literal; [$($rest:ident),*]; { $($body:tt)* }) => {
         graph_methods!($class, $name; [$($rest),*]; { $($body)*
-            /// When this happened: nanoseconds since the Unix epoch, UTC.
+            /// When the operation happened - the transaction instant:
+            /// nanoseconds since the Unix epoch, UTC.
             #[getter]
-            fn currunix(&self) -> i64 {
-                ::yggdryl::graph::Event::get_currunix(&self.inner)
+            fn transunix(&self) -> i64 {
+                ::yggdryl::graph::Event::get_transunix(&self.inner)
             }
 
             /// The lifecycle state reached, as the `State` member it is.
@@ -137,10 +139,11 @@ macro_rules! event_getters {
                 ::yggdryl::graph::Event::get_creaunix(&self.inner)
             }
 
-            /// When this was recorded, where stated.
+            /// When the message crossed the wire - the technical clock -
+            /// where stated.
             #[getter]
-            fn recdunix(&self) -> Option<i64> {
-                ::yggdryl::graph::Event::get_recdunix(&self.inner)
+            fn sendunix(&self) -> Option<i64> {
+                ::yggdryl::graph::Event::get_sendunix(&self.inner)
             }
 
             /// When this expires, where it has an expiry.
@@ -178,29 +181,29 @@ macro_rules! event_getters {
     };
 }
 
-/// The facts [`yggdryl::graph::Market`] answers.
+/// The facts [`yggdryl_market::graph::Market`] answers.
 macro_rules! market_getters {
     ($class:ident, $name:literal; [$($rest:ident),*]; { $($body:tt)* }) => {
         graph_methods!($class, $name; [$($rest),*]; { $($body)*
             /// The price stated, as a decimal; `None` where none.
             #[getter]
             fn price(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_price(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_price(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// The currency, as the `ccy` code it is; `XXX` where none.
             #[getter]
             fn currency(&self) -> $crate::scalar::PyScalar {
-                $crate::graph::code_scalar(::yggdryl::graph::Market::get_currency(&self.inner))
+                $crate::graph::code_scalar(::yggdryl_market::graph::Market::get_currency(&self.inner))
             }
 
             /// The currency the instrument originates in - the one it was
             /// issued in - as the `ccy` code it is, where the element states
-            /// it or a registry filled it; `None` where neither did, never
+            /// it or the instruments filled it; `None` where neither did, never
             /// the currency.
             #[getter]
             fn origccy(&self) -> Option<$crate::scalar::PyScalar> {
-                let held = ::yggdryl::graph::Market::get_origccy(&self.inner);
+                let held = ::yggdryl_market::graph::Market::get_origccy(&self.inner);
                 (!held.is_none()).then(|| $crate::graph::code_scalar(held))
             }
 
@@ -208,58 +211,58 @@ macro_rules! market_getters {
             /// else `currency` - never `XXX` where a currency is stated.
             #[getter]
             fn origin_currency(&self) -> $crate::scalar::PyScalar {
-                $crate::graph::code_scalar(::yggdryl::graph::Market::origin_currency(&self.inner))
+                $crate::graph::code_scalar(::yggdryl_market::graph::Market::origin_currency(&self.inner))
             }
 
             /// The quantity stated, as a decimal; `None` where none.
             #[getter]
             fn quantity(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_quantity(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_quantity(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// The stop price the order triggers at, as a decimal; `None` where none.
             #[getter]
             fn stoppx(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_stoppx(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_stoppx(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// The part of the quantity shown to the market - an iceberg's peak, as a decimal; `None` where none.
             #[getter]
             fn displayqty(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_displayqty(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_displayqty(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// The part of the quantity kept from the market - an iceberg's reserve, as a decimal; `None` where none.
             #[getter]
             fn hiddenqty(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_hiddenqty(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_hiddenqty(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// How much was canceled, as a decimal; `None` where none.
             #[getter]
             fn cxlqty(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_cxlqty(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_cxlqty(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// The unit the quantity is counted in, as spelled; empty where
             /// none.
             #[getter]
             fn unit(&self) -> &str {
-                ::yggdryl::graph::Market::get_unit(&self.inner).as_str()
+                ::yggdryl_market::graph::Market::get_unit(&self.inner).as_str()
             }
 
             /// The side, as the `Side` member it is; `Side.UKNW` where
             /// none is stated, never `None`.
             #[getter]
             fn side(&self, py: ::pyo3::Python<'_>) -> ::pyo3::PyResult<::pyo3::Py<::pyo3::PyAny>> {
-                $crate::graph::member(py, ::yggdryl::graph::Market::get_side(&self.inner))
+                $crate::graph::member(py, ::yggdryl_market::graph::Market::get_side(&self.inner))
             }
 
             /// The type of its kind this is, as the `MarketDataType` member;
             /// `MarketDataType.UKNW` where none is stated, never `None`.
             #[getter]
             fn marketdatatype(&self, py: ::pyo3::Python<'_>) -> ::pyo3::PyResult<::pyo3::Py<::pyo3::PyAny>> {
-                $crate::graph::member(py, ::yggdryl::graph::Market::get_marketdatatype(&self.inner))
+                $crate::graph::member(py, ::yggdryl_market::graph::Market::get_marketdatatype(&self.inner))
             }
 
             /// The instrument's identifiers, each a source, a type and a code
@@ -267,14 +270,23 @@ macro_rules! market_getters {
             /// order.
             #[getter]
             fn securityids(&self) -> $crate::identifier::PyIdentifiers {
-                $crate::identifier::PyIdentifiers::from_core(::yggdryl::graph::Market::get_securityids(&self.inner))
+                $crate::identifier::PyIdentifiers::from_core(::yggdryl_market::graph::Market::get_securityids(&self.inner))
             }
 
             /// The ISIN the instrument is stated under - the `isin` entry of
             /// `securityids` - as text; `None` where none.
             #[getter]
             fn isincode(&self) -> Option<&str> {
-                ::yggdryl::graph::Market::get_isincode(&self.inner)
+                ::yggdryl_market::graph::Market::get_isincode(&self.inner)
+            }
+
+            /// The cross code of the instrument this element is about - its
+            /// real ISIN, or the `class:body` an FX pair or a derivative is
+            /// keyed by (`IF:EUR/USD`) - what the instruments table's
+            /// `crosscode` joins on; `None` where nothing resolved it.
+            #[getter]
+            fn instcode(&self) -> Option<&str> {
+                ::yggdryl_market::graph::Market::get_instcode(&self.inner)
             }
 
             /// The rates an amount in `currency` is divided by to state it in
@@ -282,57 +294,57 @@ macro_rules! market_getters {
             /// code, in currency order; empty where none.
             #[getter]
             fn fxrates(&self) -> ::std::collections::BTreeMap<String, $crate::scalar::PyScalar> {
-                $crate::graph::fxrates_dict(::yggdryl::graph::Market::get_fxrates(&self.inner))
+                $crate::graph::fxrates_dict(::yggdryl_market::graph::Market::get_fxrates(&self.inner))
             }
 
             /// The best bid price stated, as a decimal; `None` where none.
             #[getter]
             fn bidpx(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_bidpx(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_bidpx(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// The quantity at the best bid, as a decimal; `None` where none.
             #[getter]
             fn bidqty(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_bidqty(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_bidqty(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// The currency of the bid, as the `ccy` code it is; `None` where
             /// none.
             #[getter]
             fn bidccy(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_bidccy(&self.inner).map($crate::graph::code_scalar)
+                ::yggdryl_market::graph::Market::get_bidccy(&self.inner).map($crate::graph::code_scalar)
             }
 
             /// The best ask price stated, as a decimal; `None` where none.
             #[getter]
             fn askpx(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_askpx(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_askpx(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// The quantity at the best ask, as a decimal; `None` where none.
             #[getter]
             fn askqty(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_askqty(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_askqty(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// The currency of the ask, as the `ccy` code it is; `None` where
             /// none.
             #[getter]
             fn askccy(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_askccy(&self.inner).map($crate::graph::code_scalar)
+                ::yggdryl_market::graph::Market::get_askccy(&self.inner).map($crate::graph::code_scalar)
             }
 
             /// The instrument's classification; `None` where none.
             #[getter]
             fn cficode(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_cficode(&self.inner).map($crate::graph::code_scalar)
+                ::yggdryl_market::graph::Market::get_cficode(&self.inner).map($crate::graph::code_scalar)
             }
 
             /// The market, as an ISO 10383 MIC; `None` where none.
             #[getter]
             fn miccode(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_miccode(&self.inner).map($crate::graph::code_scalar)
+                ::yggdryl_market::graph::Market::get_miccode(&self.inner).map($crate::graph::code_scalar)
             }
 
             /// When this last executed: the latest execution instant its
@@ -340,83 +352,83 @@ macro_rules! market_getters {
             /// where known - a market fact, never an event's.
             #[getter]
             fn execunix(&self) -> Option<i64> {
-                ::yggdryl::graph::Market::get_execunix(&self.inner)
+                ::yggdryl_market::graph::Market::get_execunix(&self.inner)
             }
 
             /// The price last traded at; `None` where none.
             #[getter]
             fn lastpx(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_lastpx(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_lastpx(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// The quantity last traded; `None` where none.
             #[getter]
             fn lastqty(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_lastqty(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_lastqty(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// The price averaged; `None` where none.
             #[getter]
             fn avgpx(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_avgpx(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_avgpx(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// How much is done; `None` where none.
             #[getter]
             fn cumqty(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_cumqty(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_cumqty(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// How much is still open; `None` where none.
             #[getter]
             fn leavesqty(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_leavesqty(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_leavesqty(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// The price the step before this one settled on; `None` where
             /// none.
             #[getter]
             fn prevpx(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_prevpx(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_prevpx(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// The quantity the step before this one settled on; `None`
             /// where none.
             #[getter]
             fn prevqty(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_prevqty(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_prevqty(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// The spot part of an FX price; `None` where none.
             #[getter]
             fn spotrate(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_spotrate(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_spotrate(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// The forward points of an FX price; `None` where none.
             #[getter]
             fn forwardpoints(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_forwardpoints(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_forwardpoints(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// The ticker a person knows the instrument by; `None` where none.
             #[getter]
             fn ticker(&self) -> Option<&str> {
-                ::yggdryl::graph::Market::get_ticker(&self.inner)
+                ::yggdryl_market::graph::Market::get_ticker(&self.inner)
             }
 
             /// The strike price of the option the element is about, as a
             /// decimal; `None` where none.
             #[getter]
             fn strikepx(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Market::get_strikepx(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Market::get_strikepx(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// Free-form facts beside the typed ones, in key order; empty
             /// where none.
             #[getter]
             fn metadata(&self) -> ::std::collections::BTreeMap<String, String> {
-                ::yggdryl::graph::Market::get_metadata(&self.inner)
+                ::yggdryl_market::graph::Market::get_metadata(&self.inner)
                     .iter()
                     .map(|(key, value)| (key.to_string(), value.to_string()))
                     .collect()
@@ -425,21 +437,21 @@ macro_rules! market_getters {
     };
 }
 
-/// The facts [`yggdryl::graph::Operation`] adds.
+/// The facts [`yggdryl_market::graph::Operation`] adds.
 macro_rules! operation_getters {
     ($class:ident, $name:literal; [$($rest:ident),*]; { $($body:tt)* }) => {
         graph_methods!($class, $name; [$($rest),*]; { $($body)*
             /// The quantity ordered, as a decimal; `None` where none.
             #[getter]
             fn ordqty(&self) -> Option<$crate::scalar::PyScalar> {
-                ::yggdryl::graph::Operation::get_ordqty(&self.inner).map($crate::graph::decimal_scalar)
+                ::yggdryl_market::graph::Operation::get_ordqty(&self.inner).map($crate::graph::decimal_scalar)
             }
 
             /// How long this stands, as the `TimeInForce` member; `None`
             /// where unstated.
             #[getter]
             fn timeinforce(&self, py: ::pyo3::Python<'_>) -> ::pyo3::PyResult<::std::option::Option<::pyo3::Py<::pyo3::PyAny>>> {
-                ::yggdryl::graph::Operation::get_timeinforce(&self.inner)
+                ::yggdryl_market::graph::Operation::get_timeinforce(&self.inner)
                     .map(|held| $crate::graph::member(py, *held))
                     .transpose()
             }
@@ -448,7 +460,7 @@ macro_rules! operation_getters {
             /// nothing either way - which is not `False`.
             #[getter]
             fn tradable(&self) -> Option<bool> {
-                ::yggdryl::graph::Operation::get_tradable(&self.inner)
+                ::yggdryl_market::graph::Operation::get_tradable(&self.inner)
             }
 
             /// The names the operation goes by - its order, client order and
@@ -456,7 +468,7 @@ macro_rules! operation_getters {
             /// `src:type`, in key order.
             #[getter]
             fn identifiers(&self) -> $crate::identifier::PyIdentifiers {
-                $crate::identifier::PyIdentifiers::from_core(::yggdryl::graph::Operation::get_identifiers(&self.inner))
+                $crate::identifier::PyIdentifiers::from_core(::yggdryl_market::graph::Operation::get_identifiers(&self.inner))
             }
 
             /// The parties the operation names, each typed by its role -
@@ -464,7 +476,7 @@ macro_rules! operation_getters {
             /// keyed `src:type`.
             #[getter]
             fn partyids(&self) -> $crate::identifier::PyIdentifiers {
-                $crate::identifier::PyIdentifiers::from_core(::yggdryl::graph::Operation::get_partyids(&self.inner))
+                $crate::identifier::PyIdentifiers::from_core(::yggdryl_market::graph::Operation::get_partyids(&self.inner))
             }
         });
     };
@@ -543,7 +555,7 @@ macro_rules! common_verbs {
             /// Hashes by the code the content digests to, which equal values
             /// share.
             fn __hash__(&self) -> isize {
-                $crate::python_hash(::yggdryl::graph::Element::get_currhashcode(&self.inner))
+                $crate::python_hash(::yggdryl::graph::Element::get_hashcode(&self.inner))
             }
 
             fn __copy__(&self) -> Self {
@@ -580,7 +592,7 @@ macro_rules! common_verbs {
                     ));
                 }
                 let stream = $crate::graph::market_data::into_ipc(
-                    ::yggdryl::graph::MarketData::from(self.inner.clone()),
+                    ::yggdryl_market::graph::MarketData::from(self.inner.clone()),
                 )?;
                 Ok((
                     py.get_type::<Self>().getattr("_from_pickle")?,
@@ -599,7 +611,7 @@ macro_rules! element_repr {
                 format!(
                     "{}({}, crosscode={:?})",
                     $name,
-                    ::yggdryl::graph::Element::get_curruuid(&self.inner),
+                    ::yggdryl::graph::Element::get_uuid(&self.inner),
                     ::yggdryl::graph::Element::get_crosscode(&self.inner),
                 )
             }
@@ -620,10 +632,10 @@ macro_rules! event_verbs {
 
             fn __repr__(&self) -> String {
                 format!(
-                    "{}({}, currunix={}, crosscode={:?})",
+                    "{}({}, transunix={}, crosscode={:?})",
                     $name,
-                    ::yggdryl::graph::Element::get_curruuid(&self.inner),
-                    ::yggdryl::graph::Event::get_currunix(&self.inner),
+                    ::yggdryl::graph::Element::get_uuid(&self.inner),
+                    ::yggdryl::graph::Event::get_transunix(&self.inner),
                     ::yggdryl::graph::Element::get_crosscode(&self.inner),
                 )
             }
@@ -660,18 +672,18 @@ pub(crate) trait LeafKind {
     fn market_kind(&self) -> MarketKind;
 
     /// The `MarketDataKind` this value is filed under.
-    fn marketdatakind(&self) -> yggdryl::MarketDataKind {
+    fn marketdatakind(&self) -> yggdryl_market::MarketDataKind {
         self.market_kind().marketdatakind()
     }
 
     /// The FIX message this value holds whole, where it is one: what its
     /// pickle carries instead of the rows the message splits into.
-    fn held_fix(&self) -> Option<&yggdryl::FixMsg> {
+    fn held_fix(&self) -> Option<&yggdryl_fix::FixMsg> {
         None
     }
 }
 
-impl<K: CoreOperationKind> LeafKind for yggdryl::graph::OperationElement<K> {
+impl<K: CoreOperationKind> LeafKind for yggdryl_market::graph::OperationElement<K> {
     fn market_kind(&self) -> MarketKind {
         self.kind()
     }
@@ -683,35 +695,35 @@ impl<K: CoreOperationKind> LeafKind for OperationEvent<K> {
     }
 }
 
-impl LeafKind for yggdryl::graph::TradeEvent {
+impl LeafKind for yggdryl_market::graph::TradeEvent {
     fn market_kind(&self) -> MarketKind {
         MarketKind::TradeEvent
     }
 }
 
-impl LeafKind for yggdryl::graph::BookEvent {
+impl LeafKind for yggdryl_market::graph::BookEvent {
     fn market_kind(&self) -> MarketKind {
         MarketKind::BookEvent
     }
 }
 
-impl LeafKind for yggdryl::graph::SnapshotEvent {
+impl LeafKind for yggdryl_market::graph::SnapshotEvent {
     fn market_kind(&self) -> MarketKind {
         MarketKind::SnapshotEvent
     }
 }
 
-impl LeafKind for yggdryl::graph::MarketData {
+impl LeafKind for yggdryl_market::graph::MarketData {
     fn market_kind(&self) -> MarketKind {
         self.kind()
     }
 
-    fn marketdatakind(&self) -> yggdryl::MarketDataKind {
-        yggdryl::graph::MarketData::marketdatakind(self)
+    fn marketdatakind(&self) -> yggdryl_market::MarketDataKind {
+        yggdryl_market::graph::MarketData::marketdatakind(self)
     }
 
-    fn held_fix(&self) -> Option<&yggdryl::FixMsg> {
-        self.as_fix()
+    fn held_fix(&self) -> Option<&yggdryl_fix::FixMsg> {
+        self.as_message::<yggdryl_fix::FixMsg>()
     }
 }
 
@@ -792,7 +804,7 @@ impl Fact {
 
     /// The refusal of a fact the leaf does not take from a caller: an
     /// identity, which `finalize` derives; the category, which the leaf is;
-    /// `currunix` on an event, stated once as the constructor's first
+    /// `transunix` on an event, stated once as the constructor's first
     /// argument; and on an undated element every event fact.
     fn refuse_unstated(
         self,
@@ -813,8 +825,8 @@ impl Fact {
             Self::Event(_) if undated => Err(format!(
                 "{owner} states no fact {name:?}: an undated element has no clock, state or chain"
             )),
-            Self::Event(EventColumn::CurrUnix) => Err(format!(
-                "{owner} states currunix once, as its first argument"
+            Self::Event(EventColumn::TransUnix) => Err(format!(
+                "{owner} states transunix once, as its first argument"
             )),
             Self::Event(_) => Ok(()),
         }
@@ -845,17 +857,17 @@ impl Fact {
     }
 }
 
-/// An operation of kind `K` at `currunix` with every named fact in `facts`
+/// An operation of kind `K` at `transunix` with every named fact in `facts`
 /// stated through its column, not yet finalized. A value given as the
 /// literal `Ellipsis` is skipped and `None` clears; `undated` refuses the
 /// event facts an undated element does not state, naming the fact.
 pub(crate) fn stated_operation<K: CoreOperationKind>(
     owner: &str,
-    currunix: i64,
+    transunix: i64,
     facts: Option<&Bound<'_, PyDict>>,
     undated: bool,
 ) -> PyResult<OperationEvent<K>> {
-    let mut leaf = OperationEvent::<K>::at(currunix);
+    let mut leaf = OperationEvent::<K>::at(transunix);
     let Some(facts) = facts else {
         return Ok(leaf);
     };
@@ -871,7 +883,7 @@ pub(crate) fn stated_operation<K: CoreOperationKind>(
         let scalar = if value.is_none() {
             Scalar::Null
         } else if fact.is_identifier_map() {
-            ::yggdryl::Identifiers::from_scalar(&from_py(&value)?)
+            ::yggdryl_market::Identifiers::from_scalar(&from_py(&value)?)
                 .map_err(value_error)?
                 .into_scalar()
         } else {
@@ -904,7 +916,10 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(candle::candles, module)?)?;
     // The identifier types a market-data entry's own identifiers are held
     // under.
-    module.add("ENTRY_ID", yggdryl::graph::book::ENTRY_ID.as_str())?;
-    module.add("ENTRY_REF_ID", yggdryl::graph::book::ENTRY_REF_ID.as_str())?;
+    module.add("ENTRY_ID", yggdryl_market::graph::book::ENTRY_ID.as_str())?;
+    module.add(
+        "ENTRY_REF_ID",
+        yggdryl_market::graph::book::ENTRY_REF_ID.as_str(),
+    )?;
     Ok(())
 }

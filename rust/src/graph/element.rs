@@ -1,11 +1,12 @@
 //! An element of a graph, and one that happened at an instant.
 //!
-//! Two traits: what an element answers about itself, what it takes, and
-//! the two readings every element has - following another, and merging with
+//! Two traits: what an element answers about itself, what it takes, and the
+//! two readings every element has - following another, and merging with
 //! another statement of itself. What an element that stands in a market
-//! answers is [`Market`](super::Market) and [`Operation`](super::Operation). The identity is the crate's own [`Uuid`], so
-//! an element is addressed the way every identified value in the crate is,
-//! and a predecessor or a cross element is named by the same
+//! answers is `yggdryl_market::graph::Market` and
+//! `yggdryl_market::graph::Operation`. The identity is the crate's own
+//! [`Uuid`], so an element is addressed the way every identified value in
+//! the crate is, and a predecessor or a cross element is named by the same
 //! identity rather than by a reference, so an element can name one it does
 //! not hold.
 
@@ -36,7 +37,7 @@ use crate::{State, Uuid};
 /// `crosscode` is the text that names it there: the identifier every
 /// incarnation of one thing shares, an order's `OrderID`, a quote's
 /// `QuoteID`, empty where the element states none. Two codes are derived:
-/// `currhashcode` is the XXH3-64 digest of the element's content, what
+/// `hashcode` is the XXH3-64 digest of the element's content, what
 /// [`Self::finalize`] recomputes, and `crosshashcode` the XXH3-64 of the
 /// cross code, zero where none is stated, what [`Self::sync_cross`] keeps in
 /// step with it. The cross element is never absent: it is the identity the
@@ -44,7 +45,7 @@ use crate::{State, Uuid};
 /// own identity where none is, [`Self::cross_uuid`], so every element stands
 /// in exactly one chain. The names an operation goes by elsewhere - an
 /// order's `ClOrdID` and `OrderID`, a trade's `ExecID` - are the
-/// operation's own facts, [`Operation::get_identifiers`](super::Operation::get_identifiers),
+/// operation's own facts, `yggdryl_market::graph::Operation::get_identifiers`,
 /// not the node's.
 /// Every fact is read and written through the trait, so a store or a walk
 /// that only knows an element as `dyn Element` can still place it; every
@@ -71,7 +72,7 @@ use crate::{State, Uuid};
 /// use yggdryl::Uuid;
 ///
 /// struct Node {
-///     curruuid: Uuid,
+///     uuid: Uuid,
 ///     crossuuid: Uuid,
 ///     crosscode: String,
 ///     hashcode: u64,
@@ -83,7 +84,7 @@ use crate::{State, Uuid};
 /// impl Node {
 ///     fn new(uuid: u128) -> Self {
 ///         Self {
-///             curruuid: Uuid::from_v8(uuid),
+///             uuid: Uuid::from_v8(uuid),
 ///             crossuuid: Uuid::from_v8(uuid),
 ///             crosscode: String::new(),
 ///             hashcode: 0,
@@ -95,11 +96,11 @@ use crate::{State, Uuid};
 /// }
 ///
 /// impl Element for Node {
-///     fn get_curruuid(&self) -> Uuid {
-///         self.curruuid
+///     fn get_uuid(&self) -> Uuid {
+///         self.uuid
 ///     }
-///     fn set_curruuid(&mut self, curruuid: Uuid) {
-///         self.curruuid = curruuid;
+///     fn set_uuid(&mut self, uuid: Uuid) {
+///         self.uuid = uuid;
 ///     }
 ///     fn get_crossuuid(&self) -> Uuid {
 ///         self.crossuuid
@@ -113,10 +114,10 @@ use crate::{State, Uuid};
 ///     fn set_crosscode(&mut self, crosscode: String) {
 ///         self.crosscode = crosscode;
 ///     }
-///     fn get_currhashcode(&self) -> u64 {
+///     fn get_hashcode(&self) -> u64 {
 ///         self.hashcode
 ///     }
-///     fn set_currhashcode(&mut self, hashcode: u64) {
+///     fn set_hashcode(&mut self, hashcode: u64) {
 ///         self.hashcode = hashcode;
 ///     }
 ///     fn get_crosshashcode(&self) -> u64 {
@@ -135,7 +136,7 @@ use crate::{State, Uuid};
 ///     }
 ///     // A node's order is its predecessor: it is after the node it follows.
 ///     fn is_after(&self, other: &Self) -> bool {
-///         self.previous == Some(other.get_curruuid())
+///         self.previous == Some(other.get_uuid())
 ///     }
 ///     // A node's identity is assigned, so finalizing keeps it and only
 ///     // recomputes the code its content digests to.
@@ -145,17 +146,17 @@ use crate::{State, Uuid};
 ///     }
 ///     // A node follows another by recording it - and never itself.
 ///     fn with_previous(mut self, previous: &Self) -> Option<Self> {
-///         if previous.get_curruuid() == self.get_curruuid() {
+///         if previous.get_uuid() == self.get_uuid() {
 ///             return None;
 ///         }
-///         self.previous = Some(previous.get_curruuid());
+///         self.previous = Some(previous.get_uuid());
 ///         self.finalize();
 ///         Some(self)
 ///     }
 /// }
 ///
 /// let root = Node::new(1);
-/// assert_eq!(root.get_crossuuid(), root.get_curruuid(), "no cross code: its own chain");
+/// assert_eq!(root.get_crossuuid(), root.get_uuid(), "no cross code: its own chain");
 /// let mut child = Node::new(2);
 /// child.set_crosscode("O-100".to_owned());
 /// assert!(!child.is_after(&root) && !child.is_before(&root), "unrelated, so neither");
@@ -164,7 +165,7 @@ use crate::{State, Uuid};
 /// // The cross code stated, its digest and the cross identity follow it.
 /// assert_ne!(child.get_crosshashcode(), 0);
 /// assert_eq!(child.get_crossuuid(), child.cross_uuid());
-/// assert_ne!(child.get_currhashcode(), 0);
+/// assert_ne!(child.get_hashcode(), 0);
 /// // The implementor's rule: a node never follows itself.
 /// assert!(Node::new(1).with_previous(&root).is_none());
 ///
@@ -179,11 +180,11 @@ use crate::{State, Uuid};
 /// assert!(merged.merge_with(&root).is_none());
 /// ```
 pub trait Element {
-    /// This element's identity.
-    fn get_curruuid(&self) -> Uuid;
+    /// This element's own UUID: its identity.
+    fn get_uuid(&self) -> Uuid;
 
-    /// Records this element's identity.
-    fn set_curruuid(&mut self, curruuid: Uuid);
+    /// Records this element's own UUID.
+    fn set_uuid(&mut self, uuid: Uuid);
 
     /// The identity this element has in another graph - the cross element
     /// it is the same thing as, elsewhere - which is its own identity where
@@ -202,11 +203,11 @@ pub trait Element {
     /// element in step with it.
     fn set_crosscode(&mut self, crosscode: String);
 
-    /// The code this element's content digests to.
-    fn get_currhashcode(&self) -> u64;
+    /// This element's hash code: the code its content digests to.
+    fn get_hashcode(&self) -> u64;
 
-    /// Records the code this element's content digests to.
-    fn set_currhashcode(&mut self, hashcode: u64);
+    /// Records this element's hash code.
+    fn set_hashcode(&mut self, hashcode: u64);
 
     /// The code the cross code digests to: what this element is in another
     /// graph, as a digest; zero where it states no cross code.
@@ -247,13 +248,13 @@ pub trait Element {
     }
 
     /// Finalizes the hashing: recomputes what this element's identity
-    /// derives from its content, and resets the current identity where it
+    /// derives from its content, and resets its own `uuid` where it
     /// derives from that.
     ///
     /// The implementor's, because only it knows its content: it brings the
     /// cross codes in step with [`Self::sync_cross`], digests what it says
     /// from [`Self::digest`] or the continuation its traits provide, and
-    /// hands the code to [`Self::set_currhashcode`] - or, for an event, to
+    /// hands the code to [`Self::set_hashcode`] - or, for an event, to
     /// [`Event::finalized`], which sets the identity the instant, sequence,
     /// cross hash and code derive; an element whose identity is assigned
     /// keeps it. Every
@@ -295,7 +296,7 @@ pub trait Element {
     /// this identity with it, whichever holds them.
     fn cross_uuid(&self) -> Uuid {
         match self.get_crosshashcode() {
-            0 => self.get_curruuid(),
+            0 => self.get_uuid(),
             crosshashcode => Uuid::from_v8(u128::from(crosshashcode)),
         }
     }
@@ -304,15 +305,15 @@ pub trait Element {
     /// already fed the facts every element states that are not derived -
     /// the cross code and the names it goes by, each under its own name -
     /// for an implementor to feed what it says and finish. What
-    /// is derived is never fed: not the current identity, not the cross hash
+    /// is derived is never fed: not its own `uuid`, not the cross hash
     /// code and not the cross element, which the code and the cross code
     /// derive; and neither are the sources, because where an element was
     /// read from is its provenance and not what it states.
     ///
     /// Provided, and what an implementor's [`Self::finalize`] starts from:
     /// an event continues with [`Event::digest_event`], a market element
-    /// with [`Market::digest_market`](super::Market::digest_market), a market
-    /// event with [`Market::digest_market_event`](super::Market::digest_market_event),
+    /// with `yggdryl_market::graph::Market::digest_market`, a market event
+    /// with `yggdryl_market::graph::Market::digest_market_event`,
     /// and each feeds its own content
     /// behind them and reads `as_u64` for the code. The facts are fed
     /// through their typed accessors, so two elements stating the same
@@ -348,7 +349,7 @@ pub trait Element {
     where
         Self: Sized,
     {
-        if other.get_curruuid() != self.get_curruuid() || !merge_element(&mut self, other) {
+        if other.get_uuid() != self.get_uuid() || !merge_element(&mut self, other) {
             return None;
         }
         self.finalize();
@@ -359,7 +360,7 @@ pub trait Element {
 /// The facts an element takes from another statement of itself: the cross
 /// code it left out and the sources it did not name; whether any of them
 /// moved.
-pub(super) fn merge_element<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
+pub(crate) fn merge_element<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
     let mut changed = false;
     if this.get_crosscode().is_empty() && !other.get_crosscode().is_empty() {
         this.set_crosscode(other.get_crosscode().to_owned());
@@ -370,10 +371,10 @@ pub(super) fn merge_element<E: Element + ?Sized>(this: &mut E, other: &E) -> boo
     changed
 }
 
-/// The element facts of two event statements, with the recording-selected
-/// reference leading conflicts and list order. An unstated fact on the
-/// reference is still filled by the other statement.
-pub(super) fn merge_event_element<E: Element + ?Sized>(
+/// The element facts of two event statements, with the reference their
+/// wire clocks select leading conflicts and list order. An unstated fact on
+/// the reference is still filled by the other statement.
+pub(crate) fn merge_event_element<E: Element + ?Sized>(
     this: &mut E,
     other: &E,
     other_is_reference: bool,
@@ -483,7 +484,7 @@ fn union_sources<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
 /// two statements are one event and the chain grows by nothing. Its sources
 /// stay its own: where a statement was read from travels along no chain,
 /// so a twin keeps the line it came from and never the live one's.
-pub(super) fn restate_event<E: Event + ?Sized>(this: &mut E, live: &E) {
+pub(crate) fn restate_event<E: Event + ?Sized>(this: &mut E, live: &E) {
     follow_element(this, live);
     this.set_prevuuid(live.get_prevuuid());
     this.set_prevunix(live.get_prevunix());
@@ -495,7 +496,7 @@ pub(super) fn restate_event<E: Event + ?Sized>(this: &mut E, live: &E) {
 /// cross code where this one's differs, forced, because two elements of one
 /// chain share it, the cross codes brought in step, and the names the
 /// predecessor went by; whether any moved.
-pub(super) fn follow_element<E: Element + ?Sized>(this: &mut E, previous: &E) -> bool {
+pub(crate) fn follow_element<E: Element + ?Sized>(this: &mut E, previous: &E) -> bool {
     let mut changed = false;
     if !previous.get_crosscode().is_empty() && this.get_crosscode() != previous.get_crosscode() {
         this.set_crosscode(previous.get_crosscode().to_owned());
@@ -528,7 +529,7 @@ fn feed(state: &mut Xxh3, name: &str, bytes: &[u8]) {
 }
 
 /// Records `next` where it differs from `current`, answering whether it did.
-pub(super) fn moved<T: PartialEq>(current: T, next: T, set: impl FnOnce(T)) -> bool {
+pub(crate) fn moved<T: PartialEq>(current: T, next: T, set: impl FnOnce(T)) -> bool {
     if current == next {
         return false;
     }
@@ -548,7 +549,7 @@ fn coupled(unix: i64, hashcode: u64) -> Result<TxHash> {
 }
 
 /// The earlier of two optional instants, or whichever is stated.
-pub(super) fn earliest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
+pub(crate) fn earliest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
     match (left, right) {
         (Some(left), Some(right)) => Some(left.min(right)),
         (left, right) => left.or(right),
@@ -556,41 +557,41 @@ pub(super) fn earliest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
 }
 
 /// Whether `right` is the reference statement of two observations, by their
-/// `recdunix`. The most recently recorded statement leads; a stated recording
-/// clock leads an unstated one, and equal or absent recording clocks fall
-/// back to the later event instant. Exact ties keep `left`.
+/// `sendunix`. The statement sent last leads; a stated wire clock leads an
+/// unstated one, and equal or absent wire clocks fall back to the later
+/// `transunix`. Exact ties keep `left`.
 ///
-/// A folded statement keeps the earliest recording its statements know, so
+/// A folded statement keeps the earliest `sendunix` its statements know, so
 /// it ranks by that clock against a third, and the reference of three
 /// statements folded pair by pair depends on the order they are folded in.
 /// A caller holding every observation at once chooses the reference over
 /// all of them first and folds the rest into it.
 pub(crate) fn right_is_reference(
-    left_recdunix: Option<i64>,
-    left_currunix: i64,
-    right_recdunix: Option<i64>,
-    right_currunix: i64,
+    left_sendunix: Option<i64>,
+    left_transunix: i64,
+    right_sendunix: Option<i64>,
+    right_transunix: i64,
 ) -> bool {
-    match (left_recdunix, right_recdunix) {
+    match (left_sendunix, right_sendunix) {
         (Some(left), Some(right)) if left != right => right > left,
         (None, Some(_)) => true,
         (Some(_), None) => false,
-        _ => right_currunix > left_currunix,
+        _ => right_transunix > left_transunix,
     }
 }
 
 /// Folds the per-event instant of two statements of the same event: the
-/// earliest recording either statement knows; whether it moved. It never
+/// earliest `sendunix` either statement knows; whether it moved. It never
 /// folds between successive events in one lifecycle.
-pub(super) fn fold_event_instants<E: Event + ?Sized>(this: &mut E, other: &E) -> bool {
-    let recdunix = earliest(this.get_recdunix(), other.get_recdunix());
-    moved(this.get_recdunix(), recdunix, |unix| {
-        this.set_recdunix(unix)
+pub(crate) fn fold_event_instants<E: Event + ?Sized>(this: &mut E, other: &E) -> bool {
+    let sendunix = earliest(this.get_sendunix(), other.get_sendunix());
+    moved(this.get_sendunix(), sendunix, |unix| {
+        this.set_sendunix(unix)
     })
 }
 
 /// The later of two optional instants, or whichever is stated.
-pub(super) fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
+pub(crate) fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
     match (left, right) {
         (Some(left), Some(right)) => Some(left.max(right)),
         (left, right) => left.or(right),
@@ -603,16 +604,18 @@ pub(super) fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
 /// later, and what any element takes from following - the cross code, the
 /// names it went by - with the lifecycle carried forward; whether any fact
 /// moved.
-pub(super) fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
-    let mut changed = moved(this.get_prevuuid(), Some(previous.get_curruuid()), |uuid| {
+pub(crate) fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
+    let mut changed = moved(this.get_prevuuid(), Some(previous.get_uuid()), |uuid| {
         this.set_prevuuid(uuid)
     });
-    changed |= moved(this.get_prevunix(), Some(previous.get_currunix()), |unix| {
-        this.set_prevunix(unix)
-    });
+    changed |= moved(
+        this.get_prevunix(),
+        Some(previous.get_transunix()),
+        |unix| this.set_prevunix(unix),
+    );
     // A step at a later instant keeps the place its own instant gave it;
     // one at its predecessor's instant, or before it, stands after it.
-    let seqnum = if previous.get_currunix() >= this.get_currunix() {
+    let seqnum = if previous.get_transunix() >= this.get_transunix() {
         this.get_seqnum()
             .max(previous.get_seqnum().saturating_add(1))
     } else {
@@ -633,21 +636,19 @@ pub(super) fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
 }
 
 /// The timed facts an event takes from another statement of itself: the
-/// earliest recording instant, the reference statement's
-/// instant and code, the higher place, the lifecycle folded,
+/// earliest `sendunix`, the reference statement's
+/// `transunix` and code, the higher place, the lifecycle folded,
 /// and the reference's predecessor and snapshot where stated, otherwise the
 /// other statement's; whether any moved.
-pub(super) fn merge_timed<E: Event>(this: &mut E, other: &E, other_is_reference: bool) -> bool {
+pub(crate) fn merge_timed<E: Event>(this: &mut E, other: &E, other_is_reference: bool) -> bool {
     let mut changed = fold_event_instants(this, other);
     if other_is_reference {
-        changed |= moved(this.get_currunix(), other.get_currunix(), |unix| {
-            this.set_currunix(unix)
+        changed |= moved(this.get_transunix(), other.get_transunix(), |unix| {
+            this.set_transunix(unix)
         });
-        changed |= moved(
-            this.get_currhashcode(),
-            other.get_currhashcode(),
-            |hashcode| this.set_currhashcode(hashcode),
-        );
+        changed |= moved(this.get_hashcode(), other.get_hashcode(), |hashcode| {
+            this.set_hashcode(hashcode)
+        });
     }
     if other.get_seqnum() > this.get_seqnum() {
         this.set_seqnum(other.get_seqnum());
@@ -677,62 +678,6 @@ pub(super) fn merge_timed<E: Event>(this: &mut E, other: &E, other_is_reference:
     changed
 }
 
-/// Facts staged on the stack and written to a digest a chunk at a time.
-///
-/// A fact is four writes, and an element states dozens - its names, its
-/// market, a side's every live entry: staged, a digest costs a write per
-/// chunk instead, and the state reads the same bytes in the same order, so
-/// the code is the one [`feed`] answers.
-/// What is still staged is written when the stage is dropped.
-pub(super) struct Staged<'state> {
-    state: &'state mut Xxh3,
-    held: [u8; 512],
-    len: usize,
-}
-
-impl<'state> Staged<'state> {
-    pub(super) fn new(state: &'state mut Xxh3) -> Self {
-        Self {
-            state,
-            held: [0; 512],
-            len: 0,
-        }
-    }
-
-    /// [`feed`], staged.
-    pub(super) fn feed(&mut self, name: &str, bytes: &[u8]) {
-        self.write(name.as_bytes());
-        self.write(&[0]);
-        self.write(bytes);
-        self.write(&[0]);
-    }
-
-    pub(super) fn write(&mut self, bytes: &[u8]) {
-        if self.len + bytes.len() > self.held.len() {
-            self.flush();
-            if bytes.len() > self.held.len() {
-                self.state.write(bytes);
-                return;
-            }
-        }
-        self.held[self.len..self.len + bytes.len()].copy_from_slice(bytes);
-        self.len += bytes.len();
-    }
-
-    fn flush(&mut self) {
-        if self.len > 0 {
-            self.state.write(&self.held[..self.len]);
-            self.len = 0;
-        }
-    }
-}
-
-impl Drop for Staged<'_> {
-    fn drop(&mut self) {
-        self.flush();
-    }
-}
-
 /// Feeds what [`Event::digest_event`] feeds, less the cross code: its state
 /// and its predecessor's identity, for a holder - a FIX message - that feeds
 /// its own content behind them without duplicating the framing this digest
@@ -758,170 +703,17 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
     }
 }
 
-/// How many distinct contents one instant places inline before a run
-/// spills its codes into a map: a message and what its parse split off.
-const INLINE_PLACES: usize = 4;
-
-/// How many contents past the inline ones a run remembers: a run is the
-/// events of one nanosecond, so only a stream stamping thousands of events
-/// with one clock - every undated message under one default sending time -
-/// reaches it, and a content past it takes the next place without being
-/// remembered, a later statement of it taking a place of its own. One
-/// megabyte of held state at most.
-const SPILLED_PLACES: usize = 1 << 16;
-
-/// The place each event of a stream takes among the events of its instant,
-/// in the order the stream hands them over: the one rule [`Event::get_seqnum`]
-/// states, held once per stream by every door that places what it yields.
-///
-/// A run is the events a stream hands over at one `currunix`, one after
-/// another, and the next instant starts a run of its own at zero. A door
-/// places either by order - every event the next place of its run, which is
-/// what a parse hands over - or by content - the first content of a run
-/// place zero, each content after it the next, and a statement of a content
-/// the run already placed that content's place, which is what a walk reads,
-/// so two statements of one event are one identity. Its state is the one
-/// run it is in: the instant, how many it placed, the codes it placed by
-/// content - inline to [`INLINE_PLACES`], so a run of a message and its
-/// splits costs no allocation, and past them to [`SPILLED_PLACES`] in a
-/// map - and the identities its last [`INLINE_PLACES`] placings moved, so a
-/// message split off one, handed over right after it, names the identity
-/// its source was placed under.
-#[derive(Debug, Default)]
-pub(crate) struct InstantSequence {
-    /// The instant the current run stands at, none before the first event.
-    unix: Option<i64>,
-    /// How many places the current run has given.
-    placed: u64,
-    /// The first contents of the run, in place order.
-    inline: [u64; INLINE_PLACES],
-    /// The run's contents past the inline ones, each to its place.
-    spilled: std::collections::HashMap<u64, u64>,
-    /// Each identity the run's last placings moved, beside the one it moved
-    /// to, oldest first: at most [`INLINE_PLACES`], because a message a
-    /// parse split off another is handed over right after it, so held
-    /// inline and never allocated.
-    moved: [(Uuid, Uuid); INLINE_PLACES],
-    /// How many of `moved`, from the first, the current run holds.
-    moves: usize,
-}
-
-impl InstantSequence {
-    /// The place an event at `unix` takes after what this stream handed
-    /// over before it, counted into the run: by content `code` where one is
-    /// given - a content the run placed takes its place again - else by
-    /// order.
-    pub(crate) fn place(&mut self, unix: i64, code: Option<u64>) -> u64 {
-        let seqnum = self.find(unix, code);
-        self.record(unix, code, seqnum);
-        seqnum
-    }
-
-    /// Places `event` by order after what this stream handed over before
-    /// it - the next place of its instant's run - first naming each source a
-    /// placing of this run moved by the identity it moved to: a message a
-    /// parse split off another follows it at its instant, and names it.
-    pub(crate) fn place_naming_sources<E: Event + ?Sized>(&mut self, event: &mut E) {
-        let unix = event.get_currunix();
-        let moved = &self.moved[..self.moves];
-        if self.unix == Some(unix) && !moved.is_empty() {
-            let named = event.get_srcuuids();
-            if named
-                .iter()
-                .any(|source| moved.iter().any(|(from, _)| from == source))
-            {
-                // The newest move from a source is the one this message
-                // names: twins at one instant share one identity before
-                // their places, and each split message follows its own.
-                let renamed = named
-                    .iter()
-                    .map(|source| {
-                        moved
-                            .iter()
-                            .rev()
-                            .find(|(from, _)| from == source)
-                            .map_or(*source, |(_, to)| *to)
-                    })
-                    .collect();
-                event.set_srcuuids(renamed);
-            }
-        }
-        let seqnum = self.find(unix, None);
-        let before = event.get_curruuid();
-        restate(event, seqnum);
-        self.record(unix, None, seqnum);
-        let after = event.get_curruuid();
-        if after != before {
-            if self.moves == INLINE_PLACES {
-                self.moved.copy_within(1.., 0);
-                self.moves -= 1;
-            }
-            self.moved[self.moves] = (before, after);
-            self.moves += 1;
-        }
-    }
-
-    /// The place an event of content `code` takes at `unix`, counting
-    /// nothing: by content, the one its content already took in the run;
-    /// else the next.
-    fn find(&self, unix: i64, code: Option<u64>) -> u64 {
-        if self.unix != Some(unix) {
-            return 0;
-        }
-        let Some(code) = code else {
-            return self.placed;
-        };
-        let inline =
-            usize::try_from(self.placed).map_or(INLINE_PLACES, |placed| placed.min(INLINE_PLACES));
-        if let Some(at) = self.inline[..inline].iter().position(|held| *held == code) {
-            return at as u64;
-        }
-        self.spilled.get(&code).copied().unwrap_or(self.placed)
-    }
-
-    /// Counts an event placed at `seqnum` at `unix` into the run - its
-    /// content `code` where it was placed by content - a new instant
-    /// starting a run of its own.
-    fn record(&mut self, unix: i64, code: Option<u64>, seqnum: u64) {
-        if self.unix != Some(unix) {
-            self.unix = Some(unix);
-            self.placed = 0;
-            self.spilled.clear();
-            self.moves = 0;
-        }
-        if seqnum != self.placed {
-            return;
-        }
-        if let Some(code) = code {
-            match usize::try_from(seqnum) {
-                Ok(index) if index < INLINE_PLACES => self.inline[index] = code,
-                _ if self.spilled.len() < SPILLED_PLACES => {
-                    self.spilled.insert(code, seqnum);
-                }
-                _ => {}
-            }
-        }
-        self.placed = seqnum.saturating_add(1);
-    }
-}
-
-/// Restates `event`'s place where it moves.
-fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
-    if event.get_seqnum() != seqnum {
-        event.set_seqnum(seqnum);
-    }
-}
-
 /// An element that happened at one instant: an event.
 ///
-/// The instant is `currunix`: a count of nanoseconds since the Unix epoch, UTC,
-/// held as an `i64`, the count every clock this crate reads states. Coupled
+/// The instant is `transunix`, the transaction instant - when the operation
+/// really happened: a count of nanoseconds since the Unix epoch, UTC, held
+/// as an `i64`, the count every clock this crate reads states. Coupled
 /// with the code the element's content digests to, its place at that instant
 /// and its cross code, it is the event's identity: [`Self::txhash`] is the crate's
-/// own [`TxHash`] of the instant and [`Element::get_currhashcode`], and
+/// own [`TxHash`] of the instant and [`Element::get_hashcode`], and
 /// [`Self::time_uuid`] is RFC 9562 UUIDv7 ordered by millisecond and sequence,
 /// with an XXH3 payload seeded by the cross hash code. That UUID is what an
-/// implementor's [`Element::get_curruuid`] answers where the event's identity
+/// implementor's [`Element::get_uuid`] answers where the event's identity
 /// is when it happened and what it says.
 ///
 /// Where the event stands is its [`State`], the crate's ranked lifecycle
@@ -944,18 +736,19 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 /// did. A place is where an event stands, never what it says: no content
 /// code feeds it.
 /// Five more instants and one more identity are optional, because an event
-/// states them only where it knows them: when it was created, when it was
-/// recorded and when it expires, each an instant in the same count; the
+/// states them only where it knows them: when it was created, when its
+/// message crossed the wire - `sendunix`, the technical clock - and when it
+/// expires, each an instant in the same count; the
 /// event it follows - `prevuuid` and `prevunix`, the predecessor's identity
 /// and instant; and `snapunix`, the grid instant this event was read as the
 /// snapshot of, where a walk over a grid took one of it.
 ///
-/// An event whose current identity is [`Self::time_uuid`] keeps that identity
+/// An event whose `uuid` is [`Self::time_uuid`] keeps that identity
 /// in step with its content, because the identity is the instant beside the
 /// code and nothing else. A cross code therefore moves the identity exactly
 /// where it moves the code - [`Element::digest`] feeds it, so an event
 /// digesting through that reading moves; one that states its own code decides
-/// for itself, as [`crate::FixMsg`] does in leaving the chain out. The crate's
+/// for itself, as a FIX message does in leaving the chain out. The crate's
 /// concrete event holders reset eagerly or invalidate their lazy UUID; an
 /// event with an assigned identity keeps the assignment.
 ///
@@ -965,20 +758,20 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 /// [`Element::merge_with`] delegates to. Both fold the lifecycle the same
 /// way: the earliest creation, the latest expiration and the furthest state.
 /// Following then keeps a newer explicit
-/// expiration, including one that shortens the lifetime. Recording belongs
-/// to one observation and never follows, while two observations of the same
-/// event keep the earliest. When a market event last executed is a market
-/// fact, [`Market::get_execunix`](super::Market::get_execunix), and its
-/// readings fold it.
-/// The order an event states through [`Element::is_after`] is its instant:
-/// later is after.
+/// expiration, including one that shortens the lifetime. The wire clock
+/// belongs to one observation and never follows, while two observations of
+/// the same event keep the earliest. When a market event last executed is a
+/// market fact, `yggdryl_market::graph::Market::get_execunix`, and
+/// its readings fold it.
+/// The order an event states through [`Element::is_after`] is its
+/// transaction instant: later is after.
 ///
 /// ```
 /// use yggdryl::graph::{Element, Event};
 /// use yggdryl::{State, Uuid};
 ///
 /// struct Report {
-///     curruuid: Uuid,
+///     uuid: Uuid,
 ///     crossuuid: Uuid,
 ///     crosscode: String,
 ///     hashcode: u64,
@@ -988,7 +781,7 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 ///     state: State,
 ///     seqnum: u64,
 ///     creaunix: Option<i64>,
-///     recdunix: Option<i64>,
+///     sendunix: Option<i64>,
 ///     exprunix: Option<i64>,
 ///     prevunix: Option<i64>,
 ///     prevuuid: Option<Uuid>,
@@ -998,7 +791,7 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 /// impl Report {
 ///     fn at(uuid: u128, unix: i64) -> Self {
 ///         Self {
-///             curruuid: Uuid::from_v8(uuid),
+///             uuid: Uuid::from_v8(uuid),
 ///             crossuuid: Uuid::from_v8(uuid),
 ///             crosscode: String::new(),
 ///             hashcode: 0,
@@ -1008,7 +801,7 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 ///             state: State::New,
 ///             seqnum: 0,
 ///             creaunix: None,
-///             recdunix: None,
+///             sendunix: None,
 ///             exprunix: None,
 ///             prevunix: None,
 ///             prevuuid: None,
@@ -1018,11 +811,11 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 /// }
 ///
 /// impl Element for Report {
-///     fn get_curruuid(&self) -> Uuid {
-///         self.curruuid
+///     fn get_uuid(&self) -> Uuid {
+///         self.uuid
 ///     }
-///     fn set_curruuid(&mut self, curruuid: Uuid) {
-///         self.curruuid = curruuid;
+///     fn set_uuid(&mut self, uuid: Uuid) {
+///         self.uuid = uuid;
 ///     }
 ///     fn get_crossuuid(&self) -> Uuid {
 ///         self.crossuuid
@@ -1036,10 +829,10 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 ///     fn set_crosscode(&mut self, crosscode: String) {
 ///         self.crosscode = crosscode;
 ///     }
-///     fn get_currhashcode(&self) -> u64 {
+///     fn get_hashcode(&self) -> u64 {
 ///         self.hashcode
 ///     }
-///     fn set_currhashcode(&mut self, hashcode: u64) {
+///     fn set_hashcode(&mut self, hashcode: u64) {
 ///         self.hashcode = hashcode;
 ///     }
 ///     fn get_crosshashcode(&self) -> u64 {
@@ -1075,10 +868,10 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 /// }
 ///
 /// impl Event for Report {
-///     fn get_currunix(&self) -> i64 {
+///     fn get_transunix(&self) -> i64 {
 ///         self.unix
 ///     }
-///     fn set_currunix(&mut self, unix: i64) {
+///     fn set_transunix(&mut self, unix: i64) {
 ///         self.unix = unix;
 ///     }
 ///     fn get_state(&self) -> &State {
@@ -1099,11 +892,11 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 ///     fn set_creaunix(&mut self, unix: Option<i64>) {
 ///         self.creaunix = unix;
 ///     }
-///     fn get_recdunix(&self) -> Option<i64> {
-///         self.recdunix
+///     fn get_sendunix(&self) -> Option<i64> {
+///         self.sendunix
 ///     }
-///     fn set_recdunix(&mut self, unix: Option<i64>) {
-///         self.recdunix = unix;
+///     fn set_sendunix(&mut self, unix: Option<i64>) {
+///         self.sendunix = unix;
 ///     }
 ///     fn get_exprunix(&self) -> Option<i64> {
 ///         self.exprunix
@@ -1137,7 +930,7 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 /// let second = Report::at(2, 20_000);
 /// assert!(second.is_after(&first) && first.is_before(&second));
 /// let second = second.with_previous(&first).expect("the later one follows");
-/// assert_eq!(second.get_prevuuid(), Some(first.get_curruuid()));
+/// assert_eq!(second.get_prevuuid(), Some(first.get_uuid()));
 /// assert_eq!(second.get_prevunix(), Some(10_000));
 /// // Following carries the lifecycle forward: the earliest creation known,
 /// // and the cross code the chain shares - its digest and the cross
@@ -1155,8 +948,8 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 /// assert!(Report::at(3, 5_000).with_previous(&second).is_none());
 /// // An event is an element: one walk reads both.
 /// let held: &dyn Event = &second;
-/// assert_eq!(held.get_curruuid(), Uuid::from_v8(2));
-/// assert_eq!(held.get_currunix(), 20_000);
+/// assert_eq!(held.get_uuid(), Uuid::from_v8(2));
+/// assert_eq!(held.get_transunix(), 20_000);
 /// assert_eq!(held.get_creaunix(), Some(5_000));
 /// assert!(held.get_state().is_live());
 /// // The identity its millisecond, place and seeded content derive: two
@@ -1167,12 +960,13 @@ fn restate<E: Event + ?Sized>(event: &mut E, seqnum: u64) {
 /// assert_eq!(first.txhash().expect("a TxHash").unix(), 10_000);
 /// ```
 pub trait Event: Element {
-    /// When this event happened: nanoseconds since the Unix epoch, UTC.
-    fn get_currunix(&self) -> i64;
+    /// When the operation this event states really happened - its
+    /// transaction instant: nanoseconds since the Unix epoch, UTC.
+    fn get_transunix(&self) -> i64;
 
-    /// Records when this event happened, as nanoseconds since the Unix
-    /// epoch, UTC.
-    fn set_currunix(&mut self, unix: i64);
+    /// Records when the operation this event states really happened, as
+    /// nanoseconds since the Unix epoch, UTC.
+    fn set_transunix(&mut self, unix: i64);
 
     /// Where this event stands in its lifecycle: the crate's ranked
     /// [`State`] code, never absent - an event that reached no state says
@@ -1200,7 +994,7 @@ pub trait Event: Element {
     /// Records where this event stands among the events of its instant.
     fn set_seqnum(&mut self, seqnum: u64);
 
-    /// When this event was created, in the same count as [`Self::get_currunix`],
+    /// When this event was created, in the same count as [`Self::get_transunix`],
     /// where it knows.
     fn get_creaunix(&self) -> Option<i64>;
 
@@ -1208,14 +1002,15 @@ pub trait Event: Element {
     /// know.
     fn set_creaunix(&mut self, unix: Option<i64>);
 
-    /// When this event was recorded, in the same count as
-    /// [`Self::get_currunix`], where it knows.
-    fn get_recdunix(&self) -> Option<i64>;
+    /// When this event's message crossed the wire - the technical clock - in
+    /// the same count as [`Self::get_transunix`], where it knows.
+    fn get_sendunix(&self) -> Option<i64>;
 
-    /// Records when this event was recorded; `None` states it does not know.
-    fn set_recdunix(&mut self, unix: Option<i64>);
+    /// Records when this event's message crossed the wire; `None` states it
+    /// does not know.
+    fn set_sendunix(&mut self, unix: Option<i64>);
 
-    /// When this event expires, in the same count as [`Self::get_currunix`], where
+    /// When this event expires, in the same count as [`Self::get_transunix`], where
     /// it has an expiry.
     fn get_exprunix(&self) -> Option<i64>;
 
@@ -1238,7 +1033,7 @@ pub trait Event: Element {
     fn set_prevuuid(&mut self, uuid: Option<Uuid>);
 
     /// The grid instant this event was read as the snapshot of, in the
-    /// same count as [`Self::get_currunix`], where a walk over a grid took one
+    /// same count as [`Self::get_transunix`], where a walk over a grid took one
     /// of it: the opening instant of the grid step its instant fell in.
     fn get_snapunix(&self) -> Option<i64>;
 
@@ -1261,7 +1056,7 @@ pub trait Event: Element {
     /// creation holds for the whole lifecycle; and the predecessor's cross
     /// code is forced onto this event where its own differs, with the cross
     /// hash code and the cross element brought in step, because two events
-    /// of one chain share it. What the event itself says - its instant, recording clock,
+    /// of one chain share it. What the event itself says - its instant, wire clock,
     /// sources and snapshot - is its own and moves nowhere. An event that
     /// moved is finalized, so it never carries the identity of what it was.
     ///
@@ -1272,8 +1067,7 @@ pub trait Event: Element {
     where
         Self: Sized,
     {
-        if previous.get_curruuid() == self.get_curruuid()
-            || previous.get_currunix() > self.get_currunix()
+        if previous.get_uuid() == self.get_uuid() || previous.get_transunix() > self.get_transunix()
         {
             return None;
         }
@@ -1290,7 +1084,7 @@ pub trait Event: Element {
     /// `live` holds in its chain - the predecessor, the position, the
     /// snapshot - the chain's cross code, the names `live` knows, and the
     /// lifecycle folded, so the two statements finalize to
-    /// one identity and the chain grows by nothing. Their recording instants
+    /// one identity and the chain grows by nothing. Their wire clocks
     /// fold to the earliest either statement knows. Its
     /// sources stay its own: provenance travels along no chain. What the
     /// event states of its own - its instant, its content - is its own.
@@ -1298,7 +1092,7 @@ pub trait Event: Element {
     /// The caller establishes that the event is `live`'s twin, by the
     /// identity `live` arrived under: once `live` has followed something
     /// its identity has moved, and the event alone cannot tell a twin from
-    /// a successor. Provided, and what [`EventIterator`](super::EventIterator)
+    /// a successor. Provided, and what `yggdryl_market::graph::EventIterator`
     /// yields for an arrival under the identity a live element arrived
     /// under.
     fn restating(mut self, live: &Self) -> Self
@@ -1319,15 +1113,16 @@ pub trait Event: Element {
     /// and list order, with the other statement filling what it leaves
     /// unstated - and then the timed facts: the instant and code are
     /// the reference's. The reference is the statement with the latest
-    /// `recdunix`; a stated clock leads an unstated one, a tie falls back
-    /// to the later event instant, and an exact tie keeps this one. The
+    /// `sendunix` - the statement sent last; a stated clock leads an unstated
+    /// one, a tie falls back to the later `transunix`, and an exact tie keeps
+    /// this one. The
     /// place is the higher of the two; the
     /// lifecycle folds as [`Self::following`] folds it - earliest creation,
-    /// latest expiration, furthest state; the recording clock is the
+    /// latest expiration, furthest state; the wire clock is the
     /// earliest either statement of this event knows; and the
     /// predecessor and snapshot instant are the reference's where it states
     /// them, else the other's. A merged statement therefore ranks by the
-    /// earliest recording it knows against a third, so which of three leads
+    /// earliest `sendunix` it knows against a third, so which of three leads
     /// depends on the order they are merged in: a caller holding every
     /// statement at once picks the reference over all of them first.
     ///
@@ -1341,14 +1136,14 @@ pub trait Event: Element {
     where
         Self: Sized,
     {
-        if other.get_curruuid() != self.get_curruuid() {
+        if other.get_uuid() != self.get_uuid() {
             return None;
         }
         let other_is_reference = right_is_reference(
-            self.get_recdunix(),
-            self.get_currunix(),
-            other.get_recdunix(),
-            other.get_currunix(),
+            self.get_sendunix(),
+            self.get_transunix(),
+            other.get_sendunix(),
+            other.get_transunix(),
         );
         let changed = merge_event_element(&mut self, other, other_is_reference);
         if !(merge_timed(&mut self, other, other_is_reference) || changed) {
@@ -1396,9 +1191,9 @@ pub trait Event: Element {
     /// overrides this method to batch the final write and projection; the
     /// provided behavior remains correct for ordinary independent setters.
     fn finalized(&mut self, hashcode: u64) {
-        self.set_currhashcode(hashcode);
+        self.set_hashcode(hashcode);
         if let Ok(uuid) = self.time_uuid() {
-            self.set_curruuid(uuid);
+            self.set_uuid(uuid);
         }
         let crossuuid = self.cross_uuid();
         self.set_crossuuid(crossuuid);
@@ -1410,17 +1205,19 @@ pub trait Event: Element {
     ///
     /// Provided, for an implementor's [`Element::finalize`] to feed its own
     /// content behind. The instants - when it happened, was created,
-    /// executed, recorded, expires, the predecessor's and the snapshot's -
-    /// are left out, so the code says what an event states and not when.
+    /// executed, crossed the wire, expires, the predecessor's and the
+    /// snapshot's - are left out, so the code says what an event states and
+    /// not when.
     fn digest_event(&self) -> Xxh3 {
         let mut state = self.digest();
         feed_timed(&mut state, self);
         state
     }
 
-    /// The instant and the code coupled: a [`TxHash`] of [`Self::get_currunix`]
-    /// at nanosecond resolution and [`Element::get_currhashcode`] as the XXH3-64
-    /// digest it is, which is the crate's own time-ordered identity.
+    /// The transaction instant and the code coupled: a [`TxHash`] of
+    /// [`Self::get_transunix`] at nanosecond resolution and
+    /// [`Element::get_hashcode`] as the XXH3-64 digest it is, which is the
+    /// crate's own time-ordered identity.
     ///
     /// Provided, so every event derives it the same way.
     ///
@@ -1429,11 +1226,11 @@ pub trait Event: Element {
     /// Returns the [`TxHash`]'s own refusal, which a nanosecond count never
     /// raises.
     fn txhash(&self) -> Result<TxHash> {
-        coupled(self.get_currunix(), self.get_currhashcode())
+        coupled(self.get_transunix(), self.get_hashcode())
     }
 
-    /// The generic event identity: RFC 9562 UUIDv7 with
-    /// [`Self::get_currunix`] floored to milliseconds in its timestamp,
+    /// The generic event identity: RFC 9562 UUIDv7 with the transaction
+    /// instant [`Self::get_transunix`] floored to milliseconds in its timestamp,
     /// [`Self::get_seqnum`] in `rand_a`, and a 62-bit XXH3 payload over the
     /// content code and the whole sequence, seeded by
     /// [`Element::get_crosshashcode`]. The explicit sequence lane saturates at
@@ -1444,7 +1241,7 @@ pub trait Event: Element {
     /// content, cross chains and sequence overflow.
     ///
     /// Provided: an implementor whose identity is when it happened and what
-    /// it says answers this from [`Element::get_curruuid`], and one whose
+    /// it says answers this from [`Element::get_uuid`], and one whose
     /// identity is assigned keeps its own.
     ///
     /// # Errors
@@ -1457,7 +1254,7 @@ pub trait Event: Element {
 }
 
 /// The fact the selected statement states, else the other's, else nothing.
-pub(super) fn stated<T>(this: Option<T>, other: Option<T>, later: bool) -> Option<T> {
+pub(crate) fn stated<T>(this: Option<T>, other: Option<T>, later: bool) -> Option<T> {
     if later {
         other.or(this)
     } else {
@@ -1475,7 +1272,7 @@ pub mod internals {
     /// content, or by order where `by_content` is false.
     #[must_use]
     pub fn instant_places(events: &[(i64, u64)], by_content: bool) -> Vec<u64> {
-        let mut sequence = super::InstantSequence::default();
+        let mut sequence = crate::implementer::InstantSequence::default();
         events
             .iter()
             .map(|&(unix, code)| sequence.place(unix, by_content.then_some(code)))

@@ -6,8 +6,8 @@ typed, dating and undating an element, a book folding a stream of operations,
 a book's limits, one side's live entries and imbalance, the lazy book and
 event walks - a book walk drained whole and under a filter - the lifted
 Arrow doors, the named views, and a FIX capture through the sorted market
-doors, the identifier maps crossing as a ``dict`` and the instrument
-registry's reads. Run after installing the release wheel with::
+doors, the identifier maps crossing as a ``dict`` and the instruments'
+reads and merge. Run after installing the release wheel with::
 
     python benchmarks/graph.py --iterations 2000
 """
@@ -22,7 +22,7 @@ import statistics
 import timeit
 from collections.abc import Callable
 
-from yggdryl import DataType, Identifier, Identifiers, IsinRegistry, Side, graph
+from yggdryl import DataType, Identifier, Identifiers, Instruments, Side, graph
 from yggdryl.fix import FixCodec, FixRegistry
 
 FOLD_OPERATION_COUNT = 512
@@ -39,6 +39,7 @@ def _order_event(clock: int = CLOCK, **facts: object) -> graph.OrderEvent:
         "currency": "USD",
         "quantity": 10,
         "securityids": [Identifier("isin", "US0378331005")],
+        "instcode": "US0378331005",
         "fxrates": {"EUR": decimal.Decimal("1.1")},
     }
     base.update(facts)
@@ -205,17 +206,13 @@ IDENTIFIERS = Identifiers.from_dict(
     {f"oms:k{index}": f"V-{index}" for index in range(8)} | {"isin": "US0378331005", "ullink:isin": "US0378331005"}
 )
 IDENTIFIERS_DICT = IDENTIFIERS.into_dict()
-REGISTRY = IsinRegistry()
-REGISTRY.merge(
-    {
-        "isin": "CH0012214059",
-        "ric": "HOLN.S",
-        "bloomberg": "HOLN SW Equity",
-        "cficode": "ESVUFR",
-        "ticker": "HOLN",
-        "miccode": "XSWX",
-    }
-)
+INSTRUMENT = {
+    "isin": "CH0012214059",
+    "cficode": "ESVUFR",
+    "listings": [{"miccode": "XSWX", "ticker": "HOLN", "codes": {"bloomberg": "HOLN SW Equity", "ric": "HOLN.S"}}],
+}
+INSTRUMENTS = Instruments()
+INSTRUMENTS.merge(INSTRUMENT)
 
 
 def _identifiers_from_dict() -> object:
@@ -226,12 +223,16 @@ def _identifiers_into_dict() -> object:
     return IDENTIFIERS.into_dict()
 
 
-def _registry_get() -> object:
-    return REGISTRY.get("CH0012214059")
+def _instruments_get() -> object:
+    return INSTRUMENTS.get("CH0012214059")
 
 
-def _registry_get_by_ticker() -> object:
-    return REGISTRY.get_by_ticker("HOLN", "XSWX")
+def _instruments_get_by_ticker() -> object:
+    return INSTRUMENTS.get_by_ticker("HOLN", "XSWX")
+
+
+def _instruments_merge() -> object:
+    return INSTRUMENTS.merge(INSTRUMENT)
 
 
 def _view_plan() -> object:
@@ -296,8 +297,9 @@ def main() -> None:
         _measure("book imbalance/10", _book_imbalance, args.iterations)
         _measure(f"identifiers from_dict/{len(IDENTIFIERS)}", _identifiers_from_dict, args.iterations)
         _measure(f"identifiers into_dict/{len(IDENTIFIERS)}", _identifiers_into_dict, args.iterations)
-        _measure("isin registry get", _registry_get, args.iterations)
-        _measure("isin registry get_by_ticker", _registry_get_by_ticker, args.iterations)
+        _measure("instruments get", _instruments_get, args.iterations)
+        _measure("instruments get_by_ticker", _instruments_get_by_ticker, args.iterations)
+        _measure("instruments merge (known)", _instruments_merge, args.iterations)
         _measure("view plan orders+lift", _view_plan, args.iterations)
         _measure(f"view apply orders/{count}", _view_apply, folds)
         _measure(f"fix market_data/{count}", _market_data, folds)

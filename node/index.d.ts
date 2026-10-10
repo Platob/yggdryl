@@ -238,19 +238,21 @@ export type JsBatchReader = BatchReader
  */
 export declare class BookEvent {
   /**
-   * An empty book of the ticker `symbol` at `currunix` nanoseconds since
-   * the epoch, keyed by that ticker; an empty `symbol` keys the book
-   * `XX0000000000`, the ISIN that states none, and states no ticker.
+   * An empty book keyed `key` at `transunix` nanoseconds since the epoch:
+   * `key` is the instrument's cross code (`instcode`) every input it
+   * takes states - a real ISIN, an FX pair's `IF:EUR/USD`, a derivative's
+   * `class:body` - which the book states as its own `instcode` and stores
+   * as its crosscode `3:0:{key}`; the book states neither a ticker nor an
+   * ISIN until its first input states each. An empty `key` keys a book by
+   * nothing, which takes nothing. The same door as `keyed`.
    */
-  constructor(currunix: bigint | number, symbol: string)
+  constructor(transunix: bigint | number, key: string)
   /**
-   * An empty book keyed `key` at `currunix` nanoseconds since the epoch:
-   * `key` is its crosscode - an instrument's ISIN, a ticker, or
-   * `XX0000000000` - and the book states neither a ticker nor an ISIN.
-   * The empty base a code's first book, a delta book, rebuilds over
-   * with `withPrevious`.
+   * An empty book keyed `key` at `transunix` nanoseconds since the epoch -
+   * `new BookEvent(transunix, key)` - the empty base a code's first book,
+   * a delta book, rebuilds over with `withPrevious`.
    */
-  static keyed(currunix: bigint | number, key: string): BookEvent
+  static keyed(transunix: bigint | number, key: string): BookEvent
   /**
    * Whether the book holds its sides - every entry alive on it - rather
    * than only its `delta` and `events`, a delta book: a book a caller
@@ -323,7 +325,7 @@ export declare class BookEvent {
   /**
    * One limit per price level of the side `side` names - read through
    * the `Side` vocabulary - best first and the one unpriced limit last,
-   * each naming its entries' `curruuid`s in position order; empty for a
+   * each naming its entries' `uuid`s in position order; empty for a
    * side that is neither a bid nor an ask, and on a delta book.
    */
   limits(side: string | number): Array<BookLimit>
@@ -383,7 +385,7 @@ export declare class BookEvent {
    */
   withOperations(operations: Array<MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent>): BookEvent
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -399,7 +401,7 @@ export declare class BookEvent {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -407,8 +409,11 @@ export declare class BookEvent {
    * provenance, never its chain. Empty for one built directly.
    */
   get srcuuids(): Array<string>
-  /** When this happened: nanoseconds since the Unix epoch, UTC. */
-  get currunix(): bigint
+  /**
+   * When the operation happened - the transaction instant:
+   * nanoseconds since the Unix epoch, UTC.
+   */
+  get transunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
   /**
@@ -419,8 +424,11 @@ export declare class BookEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /** When this was recorded, where stated. */
-  get recdunix(): bigint | null
+  /**
+   * When the message crossed the wire - the technical clock -
+   * where stated.
+   */
+  get sendunix(): bigint | null
   /** When this expires, where it has an expiry. */
   get exprunix(): bigint | null
   /**
@@ -485,6 +493,14 @@ export declare class BookEvent {
    * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
+  /**
+   * The cross code of the instrument this is about - a real
+   * ISIN for a security an agency numbered, a `class:body` for an
+   * FX pair or a derivative (`IF:EUR/USD`) - the instruments
+   * table's own key, so a reader joins on `instcode = crosscode`;
+   * `null` where none is known.
+   */
+  get instcode(): string | null
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -605,15 +621,16 @@ export declare class BookEvent {
    * live's predecessor, place and snapshot.
    */
   restating(live: BookEvent): BookEvent
-  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  /** `<Class>(<uuid>, transunix=.., crosscode=..)`. */
   toString(): string
 }
 export type JsBookEvent = BookEvent
 
 /**
- * Books from a sorted stream of operations, one per book key and effective
- * timestamp, pulling its items lazily from the caller's iterable. Yields
- * `BookEvent`.
+ * Books from a sorted stream of operations, one per instrument cross code
+ * (`instcode`) and effective timestamp, pulling its items lazily from the
+ * caller's iterable; an input stating no `instcode` is pruned before it
+ * touches a book. Yields `BookEvent`.
  */
 export declare class BookIterator {
   /**
@@ -874,7 +891,7 @@ export type JsCandle = Candle
 /**
  * Candles from a sorted stream of books, one per cross code and bucket,
  * pulling the books lazily from the caller's iterable. Yields `Candle`;
- * a regression in the books' instants is refused at `$.book.currunix` and
+ * a regression in the books' instants is refused at `$.book.transunix` and
  * ends the walk.
  */
 export declare class CandleIterator {
@@ -1753,7 +1770,7 @@ export declare class Execution {
    */
   at(unix: bigint | number): ExecutionEvent
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -1769,7 +1786,7 @@ export declare class Execution {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -1825,6 +1842,14 @@ export declare class Execution {
    * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
+  /**
+   * The cross code of the instrument this is about - a real
+   * ISIN for a security an agency numbered, a `class:body` for an
+   * FX pair or a derivative (`IF:EUR/USD`) - the instruments
+   * table's own key, so a reader joins on `instcode = crosscode`;
+   * `null` where none is known.
+   */
+  get instcode(): string | null
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -1968,7 +1993,7 @@ export declare class Execution {
   toJSON(): string
   /** Rebuild a value `toJSON` wrote. */
   static fromJSON(text: string): Execution
-  /** `<Class>(<curruuid>, crosscode=..)`. */
+  /** `<Class>(<uuid>, crosscode=..)`. */
   toString(): string
 }
 export type JsExecution = Execution
@@ -1980,14 +2005,14 @@ export type JsExecution = Execution
  */
 export declare class ExecutionEvent {
   /**
-   * Build the event at `currunix` nanoseconds since the epoch from
+   * Build the event at `transunix` nanoseconds since the epoch from
    * its named facts, one record `Scalar` keyed by column name -
    * the event, market and operation columns - each checked by its
    * column's field and stated through its column, with `book`'s
    * control facts, then finalized. A `null` fact clears; a
-   * derived identity, or `currunix` again, is refused by name.
+   * derived identity, or `transunix` again, is refused by name.
    */
-  constructor(currunix: bigint | number, facts?: JsScalar | undefined | null, book?: JsBookRef | undefined | null)
+  constructor(transunix: bigint | number, facts?: JsScalar | undefined | null, book?: JsBookRef | undefined | null)
   /**
    * Which operation this is: `"order"`, `"quote"` or
    * `"execution"`.
@@ -2009,7 +2034,7 @@ export declare class ExecutionEvent {
    */
   intoElement(): Execution
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -2025,7 +2050,7 @@ export declare class ExecutionEvent {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -2033,8 +2058,11 @@ export declare class ExecutionEvent {
    * provenance, never its chain. Empty for one built directly.
    */
   get srcuuids(): Array<string>
-  /** When this happened: nanoseconds since the Unix epoch, UTC. */
-  get currunix(): bigint
+  /**
+   * When the operation happened - the transaction instant:
+   * nanoseconds since the Unix epoch, UTC.
+   */
+  get transunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
   /**
@@ -2045,8 +2073,11 @@ export declare class ExecutionEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /** When this was recorded, where stated. */
-  get recdunix(): bigint | null
+  /**
+   * When the message crossed the wire - the technical clock -
+   * where stated.
+   */
+  get sendunix(): bigint | null
   /** When this expires, where it has an expiry. */
   get exprunix(): bigint | null
   /**
@@ -2111,6 +2142,14 @@ export declare class ExecutionEvent {
    * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
+  /**
+   * The cross code of the instrument this is about - a real
+   * ISIN for a security an agency numbered, a `class:body` for an
+   * FX pair or a derivative (`IF:EUR/USD`) - the instruments
+   * table's own key, so a reader joins on `instcode = crosscode`;
+   * `null` where none is known.
+   */
+  get instcode(): string | null
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -2259,7 +2298,7 @@ export declare class ExecutionEvent {
    * live's predecessor, place and snapshot.
    */
   restating(live: ExecutionEvent): ExecutionEvent
-  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  /** `<Class>(<uuid>, transunix=.., crosscode=..)`. */
   toString(): string
 }
 export type JsExecutionEvent = ExecutionEvent
@@ -2968,14 +3007,14 @@ export type JsFilter = Filter
  * fill, and
  * the identity is derived. `SendingTime` is the message's valid tag 52,
  * else a row cell reaching that tag, else the `mtime` of the `TextLine` it
- * was read out of - on `parseTextArrowReader`, the row's `currunix` cell -
+ * was read out of - on `parseTextArrowReader`, the row's `transunix` cell -
  * else `defaultSendingTime`, else UTC now read once for that new message,
  * and it goes back on the wire only when the message stated it: a clock
  * the parse supplied is never the message's own, so the row's `sendingtime`
  * column states none either. The raw-byte doors read no line, so parsing
  * undated bytes there without a default sending time is deliberately not
  * deterministic. A message reporting an execution that states no execution
- * clock executed at its instant: its `execunix` is its `currunix`.
+ * clock executed at its instant: its `execunix` is its `transunix`.
  */
 export declare class FixCodec {
   /**
@@ -3018,16 +3057,17 @@ export declare class FixCodec {
    * epoch hour at a time rather than collecting and sorting the whole
    * capture, off when unstated;
    * `officialTimeDelayMs` is how far from `SendingTime(52)` an official
-   * transaction clock may stand and still date the message, the core's
-   * one second when unstated; `dedupWindowMs` is how long, in
-   * milliseconds of event time, `lifecycle` remembers an identity it
-   * yielded so it yields that identity once - the core's one minute when
-   * unstated, and `null`, zero or a negative window remembering none;
+   * transaction clock may stand and still date the message, the gap less
+   * than it - the core's half second when unstated; `dedupWindowMs` is
+   * how long, in milliseconds of event time, `lifecycle` remembers an
+   * identity it yielded so it yields that identity once - the core's one
+   * minute when unstated, and `null`, zero or a negative window
+   * remembering none;
    * `marketMetadata` is whether a market operation carries its message's
    * unmapped fields - its parties, `Account(1)` and regulatory trade
    * identifiers stay its `partyids` and `identifiers` - and lifts the
    * identifiers among them into the set their type belongs to, on when
-   * unstated; `isinRegistry` is the `IsinRegistry` every `lifecycle`
+   * unstated; `instruments` is the `Instruments` every `lifecycle`
    * learns into and fills from, shared so a walk run after another starts
    * from what the first learned, each walk learning into its own when
    * unstated; `source` is the id of the dictionary's source the codec
@@ -3040,8 +3080,8 @@ export declare class FixCodec {
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /**
    * A codec over the registry the process environment names,
-   * `FixRegistry.fromEnv()`, sharing the instrument registry it names
-   * too, `IsinRegistry.fromEnv()` - unless `isinRegistry` names another
+   * `FixRegistry.fromEnv()`, sharing the instruments it names too,
+   * `Instruments.fromEnv()` - unless `instruments` names another
    * - pinned by the options the constructor takes. The one constructor
    * that attaches the process's own; `new FixCodec(...)` attaches none,
    * and a commit of what the walks learned is always the caller's.
@@ -3050,11 +3090,11 @@ export declare class FixCodec {
   /** The dictionary this codec resolves against, sharing it. */
   get registry(): FixRegistry
   /**
-   * The `IsinRegistry` every `lifecycle` this codec runs shares - the
+   * The `Instruments` every `lifecycle` this codec runs shares - the
    * same table the caller holds - or `null` where each walk learns into
    * its own.
    */
-  get isinRegistry(): JsIsinRegistry | null
+  get instruments(): JsInstruments | null
   /** The byte a numeric frame splits on, or `null` where the line decides. */
   get separator(): number | null
   /** The record column a line is read from. */
@@ -3104,7 +3144,7 @@ export declare class FixCodec {
   /**
    * This codec with its lifecycle pinned to messages arriving in instant
    * order - a table read hour partition by hour partition, sorted by
-   * `currunix` - when `sorted`: the walk then holds one epoch hour at a
+   * `transunix` - when `sorted`: the walk then holds one epoch hour at a
    * time, sorts within it exactly as a whole capture is sorted, and walks
    * an hour once a message two hours past it is read; a message dated
    * before an hour already walked is walked where it arrives. `false`
@@ -3174,12 +3214,12 @@ export declare class FixCodec {
    * the rest - the plugin that logged it, the version, and every field a
    * capture's name reaches. A `timestamp` capture is context and stamps
    * nothing; the line's own clock does. Its `mtime` - an `mtime` capture,
-   * else its handle's modification time - is the message's `recdunix`,
+   * else its handle's modification time - is the message's `sendunix`,
    * and the sending clock of a message stating none: `SendingTime` is the
    * message's own, else a capture reaching that field, else the line's
    * `mtime`, else the codec's `defaultSendingTime`, else UTC now, and the
-   * instant `currunix` is read against it - the stated one, else the
-   * official clock standing within `officialTimeDelayMs` of it, else it.
+   * instant `transunix` is read against it - the stated one, else the
+   * official clock standing less than `officialTimeDelayMs` from it, else it.
    * A clock the parse supplied is never the message's own: neither the
    * wire nor the row's `sendingtime` column states it.
    * `withCaptureNames` is what decides which capture is which, once for
@@ -3198,8 +3238,8 @@ export declare class FixCodec {
    *
    * The schema is decided before the first row: the capture's own columns
    * lead and the fixed FIX columns follow. Every row is parsed as the
-   * line door parses one - a row's `currunix` cell is its line's clock,
-   * so it is the messages' `recdunix` and the sending clock of one
+   * line door parses one - a row's `transunix` cell is its line's clock,
+   * so it is the messages' `sendunix` and the sending clock of one
    * stating none - and batches close on the bytes each row lands as
    * against `batchByteSize`. The source is consumed.
    *
@@ -3352,11 +3392,11 @@ export type JsFixMessages = FixMessages
  * Every message carries its identity settled: the cross code, the first
  * stated of tags 37, 11, 41, 117, 131 and 262 stored as
  * `{kind}:{side}:{base}`, the `crosshashcode` over that stored code, the
- * `currhashcode` over everything the message says but the
- * standard header and trailer, the `curruuid` ordered by millisecond and
+ * `hashcode` over everything the message says but the
+ * standard header and trailer, the `uuid` ordered by millisecond and
  * sequence with a content payload seeded by the cross hash, and the
  * `crossuuid` over the cross hash - or
- * the `curruuid` itself when no cross code names a chain. Every write settles
+ * the `uuid` itself when no cross code names a chain. Every write settles
  * it again.
  */
 export declare class FixMsg {
@@ -3369,8 +3409,8 @@ export declare class FixMsg {
    * tag, a crate column, one of the FIX fields a message lifts,
    * `Text(58)` - fills the holder that owns it and leaves the row. `SendingTime` reads UTC now
    * when the value states none; the event's instant is the stated one,
-   * else the official transaction clock standing within the core's default
-   * one-second delay of that sending time - a `TransactTime(60)`, else a
+   * else the official transaction clock standing less than the core's
+   * default half-second delay from that sending time - a `TransactTime(60)`, else a
    * ranked `TrdRegTimestamp(769)` - else the sending time itself, the
    * creation the stated one, else the instant, and the execution of a
    * report stating no execution clock that instant too. What
@@ -3461,10 +3501,10 @@ export declare class FixMsg {
    * sequence with a content payload seeded by its cross hash, as
    * hyphenated text.
    */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity of the chain this message belongs to, as its hyphenated
-   * text: `curruuid` when no cross code names a chain.
+   * text: `uuid` when no cross code names a chain.
    */
   get crossuuid(): string
   /**
@@ -3475,11 +3515,14 @@ export declare class FixMsg {
    */
   get crosscode(): string
   /** The XXH3-64 over everything this message says. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the stored cross code, `0n` where there is none. */
   get crosshashcode(): bigint
-  /** When the event happened, nanoseconds since the Unix epoch, UTC. */
-  get currunix(): bigint
+  /**
+   * When the operation the message states happened - its transaction
+   * instant: nanoseconds since the Unix epoch, UTC.
+   */
+  get transunix(): bigint
   /**
    * The order state the message reached, ranked: `UNKNOWN` where it
    * states none.
@@ -3498,8 +3541,11 @@ export declare class FixMsg {
   get creaunix(): bigint | null
   /** The latest execution instant the lifecycle reached, where known. */
   get execunix(): bigint | null
-  /** When the message was recorded, where stated. */
-  get recdunix(): bigint | null
+  /**
+   * When the message crossed the wire - its carrier's clock, else its
+   * stated `SendingTime` - where stated.
+   */
+  get sendunix(): bigint | null
   /** When the order expires, where it has an expiry. */
   get exprunix(): bigint | null
   /** When the message this one follows happened, where it follows one. */
@@ -3535,6 +3581,13 @@ export declare class FixMsg {
    * empty where the message states none.
    */
   get securityids(): Identifiers
+  /**
+   * The cross code of the instrument the message is about - its real
+   * ISIN, or the `class:body` an FX pair spells (`IF:EUR/USD`) - written
+   * by a parse where the message alone spells it and by a lifecycle's
+   * fill from the instrument it resolves; `null` where none is known.
+   */
+  get instcode(): string | null
   /** The instrument's ISIN, borrowed from `securityids`, or `null`. */
   get isincode(): string | null
   /**
@@ -5228,6 +5281,292 @@ export declare class Identifiers {
 }
 export type JsIdentifiers = Identifiers
 
+/**
+ * The instruments a process knows, one row each, keyed by its cross code -
+ * a security by its bare real ISIN, an FX pair, a derivative or a
+ * strategy by the code its class and body spell (`IF:EUR/USD`), a number
+ * minted for it under `yggdryl:isin` where no agency numbers it - holding
+ * the instrument facts (its `securityids`, its CFI code, its country of
+ * issue, its currency, its origin currency, the instrument it is written
+ * on, its legs, its characteristics, its product category, its short name,
+ * its metadata, `updunix`, `firstunix` and `lastunix`) and, nested, one
+ * listing per market (its ticker, its trading currency, its listing
+ * codes). A lifecycle learns into it and fills from it, and a parse fills
+ * from it. With no key, a code of `lookupCodes()` or a ticker on its
+ * market finds an instrument (`getByCode`, `getByTicker`, `resolve`).
+ * Bound to the store it was loaded from, committed back only where it
+ * moved. Mutable and shared: equal only to itself; its rows cross out as
+ * an Arrow stream.
+ */
+export declare class Instruments {
+  /**
+   * An empty collection holding at most `maxInstruments` instruments,
+   * the core's 16,384 when unstated, bound to no store; learning skips a
+   * new instrument past the bound and loading refuses it.
+   */
+  constructor(maxInstruments?: number | undefined | null)
+  /**
+   * The collection's row: the required struct `instrument` every
+   * instrument is laid out as - the six element columns (`uuid`,
+   * `crossuuid`, `crosscode`, `hashcode`, `crosshashcode`, `srcuuids`),
+   * `aliascodes`, `placeholder`, `isin`, `cficode`, `forexcode`, `fisn`,
+   * `countrycode`, `currency`, `origccy`, `securityids`, `underlying`,
+   * `legs`, `eusipacode`, `characteristics`, `listings` (one struct per
+   * market: `miccode`, `ticker`, `currency`, `codes`), `metadata`,
+   * `updunix`, `firstunix`, `lastunix`: twenty-five columns - what a
+   * table holding the instruments is created from. Its root declares
+   * `PARTITION:by` `["truncate(crosscode, 2)"]` - an Iceberg table
+   * created from it partitions by the code's first two characters,
+   * storing no column - and `SORT:by` `["crosscode"]`, the order the
+   * snapshot streams in.
+   */
+  static field(): Field
+  /**
+   * A collection holding the seed - the common instruments
+   * `config/instruments/instruments.json` states, embedded at build
+   * time: each a stock, a fund or an index by its ISIN, its listings
+   * (its ticker, its market but an index's, its trading currency), its
+   * country, its detailed CFI code and its short name - clean, bound to
+   * no store, bounded at the core's 16,384. A seed object is an ordinary
+   * statement, so the facts it implies - the national number its ISIN
+   * embeds, the currency of its market's country - are derived as for
+   * any other. `new` holds none of it.
+   */
+  static seeded(): Instruments
+  /**
+   * A collection bound to the store `location` names and loaded from
+   * it: a URL of any scheme this build holds, a path or an `IOBase` - an
+   * Arrow IPC leaf, Parquet, a folder of parts, an Iceberg table, an
+   * object store - under the `properties` a `with (...)` clause would
+   * state; a store holding nothing yet is an empty first run, laid out
+   * by the first `commit`. Clean after the load. Unseeded: the store's
+   * rows and nothing else - `seededFromUrl` lays them over the seed.
+   */
+  static fromUrl(location: LocationInput, maxInstruments?: number | undefined | null, properties?: Record<string, string> | undefined | null): Instruments
+  /**
+   * `fromUrl` laid over the seed (`seeded`): the store `location` names,
+   * read the same way, its rows folded over the seed's by the update
+   * rule - a value the store states wins, a fact only the seed states
+   * stands beside it, a seed instrument it has no row of stands - and a
+   * store holding nothing yet the seed bound to it. Clean after the
+   * load, so the first `commit` after something moved writes the seed's
+   * rows with the store's. `maxInstruments` bounds what is learned and
+   * merged after the load, as `fromArrowReader`'s does.
+   */
+  static seededFromUrl(location: LocationInput, maxInstruments?: number | undefined | null, properties?: Record<string, string> | undefined | null): Instruments
+  /**
+   * The instruments the process environment names, loaded on the first
+   * call and shared with every later one and with `FixCodec.fromEnv`:
+   * an installed collection, else the store `YGGDRYL_INSTRUMENTS_URI`
+   * names - a URL of any scheme, a path, `~` the home - else
+   * `~/.config/yggdryl/instruments/`, a folder of Arrow IPC parts the
+   * first `commit` lays out; with no home, the seed bound to nothing. A
+   * store is laid over the seed - its rows win, a seed instrument it
+   * lacks stands - and the collection is clean after the load. A failed
+   * load throws and is retried by the next call.
+   */
+  static fromEnv(): Instruments
+  /**
+   * Installs `instruments` as the collection every later `fromEnv`
+   * answers - this very table, shared - before anything resolves one;
+   * throws once the default has resolved or been installed.
+   */
+  static installEnv(instruments: Instruments): void
+  /**
+   * A collection read from a `BatchReader` - `BatchReader.from` widens
+   * an Arrow JS table, a batch or IPC bytes into one - its columns named
+   * as `fromUrl` reads them; bound to no store, and clean.
+   */
+  static fromArrowReader(reader: JsBatchReader, maxInstruments?: number | undefined | null): Instruments
+  /**
+   * Folds the rows `location` holds in, by the update rule, leaving the
+   * collection bound to the store it was; how many rows it read.
+   */
+  extendFromHandle(location: LocationInput): number
+  /**
+   * Folds an Arrow stream's rows in, by the update rule; how many rows it
+   * read.
+   */
+  extendFromArrowReader(reader: JsBatchReader): number
+  /**
+   * Every instrument as a `BatchReader` under the collection's row
+   * field, in cross code order: a snapshot taken under the lock, which a
+   * learn while it streams does not move. Write it with an `IOBase`'s
+   * `writeArrowReader` - an overwrite saves a snapshot, a merge by
+   * `crosscode` upserts - or `commit` the collection.
+   */
+  intoArrowReader(): JsBatchReader
+  /**
+   * Writes the table to the store it is bound to, only where its content
+   * differs from what the store holds (`isDirty`): one overwrite of the
+   * whole snapshot, a leaf rewritten, a folder's parts replaced by one, an
+   * Iceberg table replaced in one atomic snapshot, an emptied collection
+   * clearing the store. The `IOResult` of the write, empty for a clean
+   * collection, which touches the store with no call. Throws on a
+   * collection bound to no store.
+   */
+  commit(): JsIOResult
+  /**
+   * Whether the table's content differs from what the store holds - as
+   * it was loaded or last committed: an instrument added or removed, or
+   * one whose content code or `firstunix`/`lastunix` window moved. A
+   * fact that moved and moved back since the load is no change, so a run
+   * replayed over the same input leaves a clean collection.
+   */
+  get isDirty(): boolean
+  /**
+   * The instrument `key` names - its cross code, a code it had before a
+   * re-key, or an ISIN it holds, real or minted - as a plain object of
+   * its columns, or `null`.
+   */
+  get(key: string): Record<string, unknown> | null
+  /**
+   * The listings of the instrument `key` names in MIC order, each a
+   * plain object of its columns (`miccode`, `ticker`, `currency`,
+   * `codes`); empty where it is unknown.
+   */
+  listings(key: string): Record<string, unknown>[]
+  /**
+   * The listing of the instrument `key` names on `market` - a MIC,
+   * checked by the `mic` datatype - as a plain object of its columns, or
+   * `null`.
+   */
+  getListing(key: string, market: string): Record<string, unknown> | null
+  /**
+   * The instrument the ticker `ticker` - trimmed - names on `market`, as
+   * a plain object of its columns, or `null`: the one instrument a
+   * listing of which lists the ticker on `market` - a MIC, checked by
+   * the `mic` datatype - else, none lists it there, on no market; where
+   * `market` is unstated (`null` or `XXXX`), on any. Two instruments
+   * answering is ambiguous, and answers none.
+   */
+  getByTicker(ticker: string, market?: string | undefined | null): Record<string, unknown> | null
+  /**
+   * The instrument the code `value` of type `kind` - one of
+   * `lookupCodes()`, read as its type stores it - names, as a plain
+   * object of its columns, or `null`. Two instruments holding the code
+   * is ambiguous, and answers none, as does a type no lookup reads and a
+   * value its type refuses; `kind` is read as an identifier type's word,
+   * and a word that reads as none throws naming it.
+   */
+  getByCode(kind: string, value: string): Record<string, unknown> | null
+  /**
+   * The identifier types a lookup reads, in the order `resolve` reads
+   * them: the national numbers, the global and the vendor codes, then
+   * every other `SecurityIDSource(22)` code naming one instrument. A
+   * currency, a country, an index or an issuer code is no key.
+   */
+  static lookupCodes(): Array<string>
+  /**
+   * The instrument `element` - a `MarketData`, any market leaf or a
+   * `FixMsg` - names, and how, by the one waterfall a fill reads: a real
+   * ISIN it holds decides alone, one the collection lacks ending the
+   * cascade (`UnknownIsin`); else the cross code its own facts spell -
+   * an FX pair's from its `forex` identifier and its CFI class - one the
+   * collection lacks ending it too (`UnknownCode`); else a minted number
+   * it holds; else each code of `lookupCodes()` it holds, in that order,
+   * then its ticker on its market, the first naming one instrument
+   * matching and the first naming two ending the cascade (`Ambiguous`);
+   * and only where all of those found nothing, the economic match: the
+   * instrument listed in the element's stated currency whose short name
+   * is the most similar to the one it states, at least
+   * `economicThreshold`, an instrument of another stated origin currency
+   * or CFI category dropped (`CurrencyConflict`, `CfiConflict`). `XXX`
+   * states no currency and an unclassified `X` no category. This door
+   * always weighs the economic match; a fill takes it only where
+   * `isEconomicMatch` says so.
+   */
+  resolve(element: MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent | FixMsg): Resolution
+  /**
+   * How similar two short names must be, from above `0` to `1`, for an
+   * economic match: `0.85` unless told otherwise.
+   */
+  get economicThreshold(): number
+  /**
+   * Sets `economicThreshold`; NaN and a value outside `(0, 1]` throw,
+   * naming the value, and move nothing.
+   */
+  setEconomicThreshold(threshold: number): void
+  /**
+   * Whether a fill - `fill`, `enrich`, a lifecycle's - takes an economic
+   * match where nothing exact names the element; `false` unless told
+   * otherwise, since a derived ISIN becomes the key an element's book and
+   * chain live under. A parse never takes one.
+   */
+  get isEconomicMatch(): boolean
+  /** Sets `isEconomicMatch`. */
+  setEconomicMatch(enabled: boolean): void
+  /**
+   * Folds one instrument - an object of column names to cells, as `get`
+   * answers one, a real `isin` or a class and the characteristics its
+   * body is written from required - into the collection by the update
+   * rule: a stated valid value fills a fact the instrument lacks and
+   * replaces one it holds that differs, whatever the time, a code that
+   * is no real value of its type dropped; a compatible CFI code refines
+   * the held one and a contradicting one replaces it. Each listing it
+   * states folds into the instrument's listing of that market, created
+   * where it has none there. `updunix` moves where a fact moved,
+   * `firstunix` becomes the earlier of the two and `lastunix` the later.
+   * Whether anything moved.
+   */
+  merge(entry: Record<string, unknown>): boolean
+  /**
+   * Removes the instrument `key` names - by its cross code, an alias or
+   * an ISIN - answering it as a plain object, or `null` where it is
+   * unknown.
+   */
+  remove(key: string): Record<string, unknown> | null
+  /**
+   * Removes the listing of the instrument `key` names on `market` - a
+   * MIC, checked by the `mic` datatype - answering it as a plain object,
+   * or `null`; the instrument stays.
+   */
+  removeListing(key: string, market: string): Record<string, unknown> | null
+  /** Removes every instrument. */
+  clear(): void
+  /** How many instruments it holds. */
+  get length(): number
+  /**
+   * How many rows a commit writes and the snapshot streams: one per
+   * instrument, its listings nested.
+   */
+  get rows(): number
+  /** The most instruments it holds. */
+  get maxInstruments(): number
+  /**
+   * Learns what a message states about its instrument - keyed by the
+   * code its facts spell: a stated real ISIN keys a security, a pair
+   * beside a CFI of class `I*` an FX spot, its number minted - dated at
+   * its `transunix`: its CFI code, its ticker, its currency, the pair it
+   * states, its real equivalents and the origin currency it states, its
+   * listing facts onto the listing its market names - and moves
+   * `firstunix` to its `transunix` where that is earlier and `lastunix`
+   * where it is later, so meeting a known instrument again moves the
+   * collection too. Whether anything moved.
+   */
+  learn(message: FixMsg): boolean
+  /**
+   * Fills what a message leaves unsaid about its instrument from the
+   * instrument `resolve` names - by its ISIN, else the cross code its
+   * facts spell, else a code of `lookupCodes()`, else its ticker on its
+   * market, else, where `isEconomicMatch`, its short name - each
+   * equivalent and the pair as a `derived` identifier, the listing codes
+   * and the ticker of its own market's listing, its CFI code where the
+   * instrument's refines it, the currency on the same stated market
+   * under the listing's ticker, the origin currency where it holds none,
+   * and the instrument's cross code as its `instcode` - never its wire.
+   * Whether anything moved.
+   */
+  fill(message: FixMsg): boolean
+  /** `learn`, then `fill`. Whether anything moved in either. */
+  enrich(message: FixMsg): boolean
+  /** Whether `other` is this collection - the same shared table. */
+  equals(other: Instruments): boolean
+  /** Render `Instruments(len=…, maxInstruments=…, dirty=…)`. */
+  toString(): string
+}
+export type JsInstruments = Instruments
+
 /** A random-access resource: a local file, a directory, or a memory buffer. */
 export declare class IOBase {
   /**
@@ -5821,279 +6160,6 @@ export declare class IOResult {
 }
 export type JsIOResult = IOResult
 
-/**
- * A table of instruments keyed by ISIN, one listing row per market - the
- * instrument facts every listing of an ISIN shares (its CFI code, its
- * country of issue, its currency pair, the instrument it is written on,
- * its product category, its ISO 18774 short name, its origin currency,
- * `updunix`, `firstunix` and `lastunix`), and the listing facts of one
- * market (its ticker, its trading currency, its listing codes) beside one
- * code per `SecurityIDSource(22)` type - that a lifecycle learns into and
- * fills from, and a parse fills from. The ISIN is the key; with none, a
- * code of `lookupCodes()` or a ticker on its market finds an instrument
- * (`getByCode`, `getByTicker`, `resolve`). Bound to the store it was loaded
- * from, committed back only where it moved. Mutable and shared: equal only
- * to itself; its rows cross out as an Arrow stream.
- */
-export declare class IsinRegistry {
-  /**
-   * An empty registry holding at most `maxInstruments` instruments, the
-   * core's 16,384 when unstated, bound to no store; learning skips a new
-   * ISIN past the bound and loading refuses it.
-   */
-  constructor(maxInstruments?: number | undefined | null)
-  /**
-   * The registry's row: the required struct `isinregistry` every listing
-   * row is laid out as - `isin`, `updunix`, `firstunix`, `lastunix`,
-   * `cficode`, `countrycode`, `forexcode`, `underlyingisin`,
-   * `eusipacode`, `miccode`, `ticker`, `fisn`, `currency`, `origccy`,
-   * then one column per `SecurityIDSource(22)` type but the ISIN:
-   * forty-six columns - what a
-   * table holding the registry is created from. Its root declares
-   * `PARTITION:by` `["truncate(isin, 2)"]` - an Iceberg table created
-   * from it partitions by the ISIN's country prefix, storing no column -
-   * and `SORT:by` `["isin", "miccode"]`, the order the snapshot streams
-   * in.
-   */
-  static field(): Field
-  /**
-   * A registry holding the seed - the common instruments
-   * `config/isin/instruments.json` states, embedded at build time: each a
-   * stock, a fund or an index by its ISIN, its ticker, its market but an
-   * index's, its trading currency, its country, its detailed CFI code and
-   * its short name - clean, bound to no store, bounded at the core's
-   * 16,384. A seed row is an ordinary statement, so the facts it implies
-   * - the national number its ISIN embeds, the currency of its market's
-   * country - are derived as for any other. `new` holds none of it.
-   */
-  static seeded(): IsinRegistry
-  /**
-   * A registry bound to the store `location` names and loaded from it:
-   * a URL of any scheme this build holds, a path or an `IOBase` - an
-   * Arrow IPC leaf, Parquet, a folder of parts, an Iceberg table, an
-   * object store - under the `properties` a `with (...)` clause would
-   * state, its columns named by the registry's own names or any spelling
-   * of an identifier type; a store holding nothing yet is an empty first
-   * run, laid out by the first `commit`. Clean after the load. Unseeded:
-   * the store's rows and nothing else - `seededFromUrl` lays them over
-   * the seed.
-   */
-  static fromUrl(location: LocationInput, maxInstruments?: number | undefined | null, properties?: Record<string, string> | undefined | null): IsinRegistry
-  /**
-   * `fromUrl` laid over the seed (`seeded`): the store `location` names,
-   * read the same way, its rows folded over the seed's by the update
-   * rule - a value the store states wins, a fact only the seed states
-   * stands beside it, a seed row it has no row of stands - and a store
-   * holding nothing yet the seed bound to it. Clean after the load, so
-   * the first `commit` after something moved writes the seed's rows with
-   * the store's. `maxInstruments` bounds what is learned and merged
-   * after the load, as `fromArrowReader`'s does.
-   */
-  static seededFromUrl(location: LocationInput, maxInstruments?: number | undefined | null, properties?: Record<string, string> | undefined | null): IsinRegistry
-  /**
-   * The registry the process environment names, loaded on the first
-   * call and shared with every later one and with `FixCodec.fromEnv`:
-   * an installed registry, else the store `YGGDRYL_ISIN_REGISTRY_URI`
-   * names - a URL of any scheme, a path, `~` the home - else
-   * `~/.config/yggdryl/isin/`, a folder of Arrow IPC parts the first
-   * `commit` lays out; with no home, the seed bound to nothing. A store
-   * is laid over the seed - its rows win, a seed row it lacks stands -
-   * and the registry is clean after the load.
-   * A failed load throws and is retried by the next call.
-   */
-  static fromEnv(): IsinRegistry
-  /**
-   * Installs `registry` as the one every later `fromEnv` answers - this
-   * very table, shared - before anything resolves one; throws once the
-   * default has resolved or been installed.
-   */
-  static installEnv(registry: IsinRegistry): void
-  /**
-   * A registry read from a `BatchReader` - `BatchReader.from` widens an
-   * Arrow JS table, a batch or IPC bytes into one - its columns named as
-   * `fromUrl` reads them; bound to no store, and clean.
-   */
-  static fromArrowReader(reader: BatchReader, maxInstruments?: number | undefined | null): IsinRegistry
-  /**
-   * Folds the rows `location` holds in, by the update rule, leaving the
-   * registry bound to the store it was; how many rows it read.
-   */
-  extendFromHandle(location: LocationInput): number
-  /**
-   * Folds an Arrow stream's rows in, by the update rule; how many rows it
-   * read.
-   */
-  extendFromArrowReader(reader: BatchReader): number
-  /**
-   * Every listing row as a `BatchReader` under the registry's row field,
-   * in ISIN then MIC order: a snapshot taken under the lock, which a
-   * learn while it streams does not move. Write it with an `IOBase`'s
-   * `writeArrowReader` - an overwrite saves a snapshot, a merge by `isin`
-   * and `miccode` upserts - or `commit` the registry.
-   */
-  intoArrowReader(): BatchReader
-  /**
-   * Writes the table to the store it is bound to, only where it moved
-   * since it was loaded or last committed: one overwrite of the whole
-   * snapshot, a leaf rewritten, a folder's parts replaced by one, an
-   * Iceberg table replaced in one atomic snapshot, an emptied registry
-   * clearing the store. The `IOResult` of the write, empty for a clean
-   * registry, which touches the store with no call. Throws on a registry
-   * bound to no store.
-   */
-  commit(): IOResult
-  /** Whether the table moved since it was loaded or last committed. */
-  get isDirty(): boolean
-  /**
-   * The first listing row of `isin` in MIC order - the unlisted row
-   * where that is all it holds - as a plain object of its columns, or
-   * `null`. Its instrument facts are every listing's; `listings` answers
-   * them all.
-   */
-  get(isin: string): Record<string, unknown> | null
-  /**
-   * Every listing row of `isin` in MIC order, each a plain object of its
-   * columns; empty where the ISIN is unknown.
-   */
-  listings(isin: string): Record<string, unknown>[]
-  /**
-   * The listing row of `isin` on `market` - a MIC, checked by the `mic`
-   * datatype - as a plain object of its columns, or `null`.
-   */
-  getListing(isin: string, market: string): Record<string, unknown> | null
-  /**
-   * The listing row the ticker `ticker` names on `market`, as a plain
-   * object of its columns, or `null`: the one ISIN a row of which lists
-   * the ticker on `market` - a MIC, checked by the `mic` datatype - else
-   * on no market; where `market` is unstated (`null` or `XXXX`), on any;
-   * then that ISIN's row on `market`, else the one row listing the
-   * ticker, else its single row, else its first. Two ISINs answering is
-   * ambiguous, and answers none; two listings of one ISIN are one
-   * instrument.
-   */
-  getByTicker(ticker: string, market?: string | undefined | null): Record<string, unknown> | null
-  /**
-   * The listing row the code `value` of type `kind` - one of
-   * `lookupCodes()`, read as its type stores it - names on `market`, as a
-   * plain object of its columns, or `null`: the one ISIN a row of which
-   * holds the code, then its row on `market` - a MIC, checked by the
-   * `mic` datatype - else the one row holding the code, else its single
-   * row, else its first. Two ISINs holding the code is ambiguous, and
-   * answers none, as does a type no lookup reads and a value its type
-   * refuses; a word no identifier type spells throws.
-   */
-  getByCode(kind: string, value: string, market?: string | undefined | null): Record<string, unknown> | null
-  /**
-   * The identifier types a lookup reads, in the order `resolve` reads
-   * them: the national numbers, the global and the vendor codes, then
-   * every other `SecurityIDSource(22)` code naming one instrument. A
-   * currency, a country, an index or an issuer code is no key.
-   */
-  static lookupCodes(): Array<string>
-  /**
-   * The listing row `element` - a `MarketData`, any market leaf or a
-   * `FixMsg` - names, and how, by the one waterfall a fill reads: a real
-   * ISIN it holds decides alone, one the registry lacks ending the
-   * cascade (`UnknownIsin`); with none, each code of `lookupCodes()` it
-   * holds, in that order, then its ticker on its market, the first naming
-   * one instrument matching and the first naming two ending the cascade
-   * (`Ambiguous`); and only where all of those found nothing, the
-   * economic match: the instrument listed in the element's stated
-   * currency whose short name is the most similar to the one it states,
-   * at least `economicThreshold`, an instrument of another stated origin
-   * currency or CFI category dropped (`CurrencyConflict`,
-   * `CfiConflict`). `XXX` states no currency and an unclassified `X` no
-   * category. This door always weighs the economic match; a fill takes
-   * it only where `isEconomicMatch` says so.
-   */
-  resolve(element: MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent | FixMsg): IsinResolution
-  /**
-   * How similar two short names must be, from above `0` to `1`, for an
-   * economic match: `0.85` unless told otherwise.
-   */
-  get economicThreshold(): number
-  /**
-   * Sets `economicThreshold`; NaN and a value outside `(0, 1]` throw,
-   * naming the value, and move nothing.
-   */
-  setEconomicThreshold(threshold: number): void
-  /**
-   * Whether a fill - `fill`, `enrich`, a lifecycle's - takes an economic
-   * match where nothing exact names the element; `false` unless told
-   * otherwise, since a derived ISIN becomes the key an element's book and
-   * chain live under. A parse never takes one.
-   */
-  get isEconomicMatch(): boolean
-  /** Sets `isEconomicMatch`. */
-  setEconomicMatch(enabled: boolean): void
-  /**
-   * Folds one row - an object of column names to cells, `isin` required
-   * - into the listings of its ISIN by the update rule: a stated valid
-   * value fills a column a row lacks and replaces one it holds that
-   * differs, whatever the time, a code that is no real value of its
-   * type dropped; a compatible CFI code refines the held one and a
-   * contradicting one replaces it. The instrument facts fold into every
-   * listing of the ISIN; the listing facts - the ticker, the currency,
-   * the listing codes - into the listing of the market the row names,
-   * created where the ISIN has none there, and, where it names none,
-   * into the ISIN's single listing, or into none, with one warning per
-   * column, where it has several. `updunix` moves where a fact moved,
-   * `firstunix` becomes the earlier of the two and `lastunix` the later.
-   * Whether anything moved.
-   */
-  merge(entry: Record<string, unknown>): boolean
-  /**
-   * Removes every listing row of `isin`, answering them in MIC order as
-   * plain objects; empty where the ISIN is unknown.
-   */
-  remove(isin: string): Record<string, unknown>[]
-  /**
-   * Removes the listing row of `isin` on `market` - a MIC, checked by
-   * the `mic` datatype - answering it as a plain object, or `null`; the
-   * instrument goes with its last listing.
-   */
-  removeListing(isin: string, market: string): Record<string, unknown> | null
-  /** Removes every row. */
-  clear(): void
-  /** How many instruments it holds: its ISINs. */
-  get length(): number
-  /**
-   * How many listing rows it holds - one per ISIN and market, an
-   * unlisted row one: what the snapshot streams and a commit writes.
-   */
-  get rows(): number
-  /** The most instruments it holds. */
-  get maxInstruments(): number
-  /**
-   * Learns what a message states about its instrument - keyed by its
-   * stated real ISIN, dated at its `currunix`: its CFI code, its market,
-   * its ticker, its currency, the pair it states and its real
-   * equivalents and the origin currency it states, onto the listing its
-   * market names - and moves `firstunix` to its `currunix` where that is
-   * earlier and `lastunix` where it is later, so meeting a known
-   * instrument again moves the registry too. Whether anything moved.
-   */
-  learn(message: FixMsg): boolean
-  /**
-   * Fills what a message leaves unsaid about its instrument from the row
-   * `resolve` names - by its ISIN, else a code of `lookupCodes()`, else
-   * its ticker on its market, else, where `isEconomicMatch`, its short
-   * name - each equivalent and the pair as a `derived` identifier, the
-   * ticker on its own market, its CFI code where the row's refines it,
-   * the currency on the same stated market under the row's ticker, the
-   * origin currency where it holds none - never its wire. Whether
-   * anything moved.
-   */
-  fill(message: FixMsg): boolean
-  /** `learn`, then `fill`. Whether anything moved in either. */
-  enrich(message: FixMsg): boolean
-  /** Whether `other` is this registry - the same shared table. */
-  equals(other: IsinRegistry): boolean
-  /** Render `IsinRegistry(len=…, maxInstruments=…, dirty=…)`. */
-  toString(): string
-}
-export type JsIsinRegistry = IsinRegistry
-
 /** One immutable key context and its native payload. */
 export declare class KeySerie {
   /** The complete field: key columns followed by payload columns. */
@@ -6355,10 +6421,10 @@ export declare class MarketData {
    * same plan.
    */
   static plan(view: string, lifts?: Array<string | FieldPath> | null, crosscode?: string | null): Plan
-  /** `MarketData(<curruuid>, kind=.., crosscode=..)`. */
+  /** `MarketData(<uuid>, kind=.., crosscode=..)`. */
   toString(): string
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -6374,7 +6440,7 @@ export declare class MarketData {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -6430,6 +6496,14 @@ export declare class MarketData {
    * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
+  /**
+   * The cross code of the instrument this is about - a real
+   * ISIN for a security an agency numbered, a `class:body` for an
+   * FX pair or a derivative (`IF:EUR/USD`) - the instruments
+   * table's own key, so a reader joins on `instcode = crosscode`;
+   * `null` where none is known.
+   */
+  get instcode(): string | null
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -7010,7 +7084,7 @@ export declare class Order {
    */
   at(unix: bigint | number): OrderEvent
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -7026,7 +7100,7 @@ export declare class Order {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -7082,6 +7156,14 @@ export declare class Order {
    * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
+  /**
+   * The cross code of the instrument this is about - a real
+   * ISIN for a security an agency numbered, a `class:body` for an
+   * FX pair or a derivative (`IF:EUR/USD`) - the instruments
+   * table's own key, so a reader joins on `instcode = crosscode`;
+   * `null` where none is known.
+   */
+  get instcode(): string | null
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -7225,7 +7307,7 @@ export declare class Order {
   toJSON(): string
   /** Rebuild a value `toJSON` wrote. */
   static fromJSON(text: string): Order
-  /** `<Class>(<curruuid>, crosscode=..)`. */
+  /** `<Class>(<uuid>, crosscode=..)`. */
   toString(): string
 }
 export type JsOrder = Order
@@ -7237,14 +7319,14 @@ export type JsOrder = Order
  */
 export declare class OrderEvent {
   /**
-   * Build the event at `currunix` nanoseconds since the epoch from
+   * Build the event at `transunix` nanoseconds since the epoch from
    * its named facts, one record `Scalar` keyed by column name -
    * the event, market and operation columns - each checked by its
    * column's field and stated through its column, with `book`'s
    * control facts, then finalized. A `null` fact clears; a
-   * derived identity, or `currunix` again, is refused by name.
+   * derived identity, or `transunix` again, is refused by name.
    */
-  constructor(currunix: bigint | number, facts?: JsScalar | undefined | null, book?: JsBookRef | undefined | null)
+  constructor(transunix: bigint | number, facts?: JsScalar | undefined | null, book?: JsBookRef | undefined | null)
   /**
    * Which operation this is: `"order"`, `"quote"` or
    * `"execution"`.
@@ -7266,7 +7348,7 @@ export declare class OrderEvent {
    */
   intoElement(): Order
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -7282,7 +7364,7 @@ export declare class OrderEvent {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -7290,8 +7372,11 @@ export declare class OrderEvent {
    * provenance, never its chain. Empty for one built directly.
    */
   get srcuuids(): Array<string>
-  /** When this happened: nanoseconds since the Unix epoch, UTC. */
-  get currunix(): bigint
+  /**
+   * When the operation happened - the transaction instant:
+   * nanoseconds since the Unix epoch, UTC.
+   */
+  get transunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
   /**
@@ -7302,8 +7387,11 @@ export declare class OrderEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /** When this was recorded, where stated. */
-  get recdunix(): bigint | null
+  /**
+   * When the message crossed the wire - the technical clock -
+   * where stated.
+   */
+  get sendunix(): bigint | null
   /** When this expires, where it has an expiry. */
   get exprunix(): bigint | null
   /**
@@ -7368,6 +7456,14 @@ export declare class OrderEvent {
    * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
+  /**
+   * The cross code of the instrument this is about - a real
+   * ISIN for a security an agency numbered, a `class:body` for an
+   * FX pair or a derivative (`IF:EUR/USD`) - the instruments
+   * table's own key, so a reader joins on `instcode = crosscode`;
+   * `null` where none is known.
+   */
+  get instcode(): string | null
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -7516,7 +7612,7 @@ export declare class OrderEvent {
    * live's predecessor, place and snapshot.
    */
   restating(live: OrderEvent): OrderEvent
-  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  /** `<Class>(<uuid>, transunix=.., crosscode=..)`. */
   toString(): string
 }
 export type JsOrderEvent = OrderEvent
@@ -8081,7 +8177,7 @@ export declare class Quote {
    */
   at(unix: bigint | number): QuoteEvent
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -8097,7 +8193,7 @@ export declare class Quote {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -8153,6 +8249,14 @@ export declare class Quote {
    * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
+  /**
+   * The cross code of the instrument this is about - a real
+   * ISIN for a security an agency numbered, a `class:body` for an
+   * FX pair or a derivative (`IF:EUR/USD`) - the instruments
+   * table's own key, so a reader joins on `instcode = crosscode`;
+   * `null` where none is known.
+   */
+  get instcode(): string | null
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -8296,7 +8400,7 @@ export declare class Quote {
   toJSON(): string
   /** Rebuild a value `toJSON` wrote. */
   static fromJSON(text: string): Quote
-  /** `<Class>(<curruuid>, crosscode=..)`. */
+  /** `<Class>(<uuid>, crosscode=..)`. */
   toString(): string
 }
 export type JsQuote = Quote
@@ -8308,14 +8412,14 @@ export type JsQuote = Quote
  */
 export declare class QuoteEvent {
   /**
-   * Build the event at `currunix` nanoseconds since the epoch from
+   * Build the event at `transunix` nanoseconds since the epoch from
    * its named facts, one record `Scalar` keyed by column name -
    * the event, market and operation columns - each checked by its
    * column's field and stated through its column, with `book`'s
    * control facts, then finalized. A `null` fact clears; a
-   * derived identity, or `currunix` again, is refused by name.
+   * derived identity, or `transunix` again, is refused by name.
    */
-  constructor(currunix: bigint | number, facts?: JsScalar | undefined | null, book?: JsBookRef | undefined | null)
+  constructor(transunix: bigint | number, facts?: JsScalar | undefined | null, book?: JsBookRef | undefined | null)
   /**
    * Which operation this is: `"order"`, `"quote"` or
    * `"execution"`.
@@ -8337,7 +8441,7 @@ export declare class QuoteEvent {
    */
   intoElement(): Quote
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -8353,7 +8457,7 @@ export declare class QuoteEvent {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -8361,8 +8465,11 @@ export declare class QuoteEvent {
    * provenance, never its chain. Empty for one built directly.
    */
   get srcuuids(): Array<string>
-  /** When this happened: nanoseconds since the Unix epoch, UTC. */
-  get currunix(): bigint
+  /**
+   * When the operation happened - the transaction instant:
+   * nanoseconds since the Unix epoch, UTC.
+   */
+  get transunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
   /**
@@ -8373,8 +8480,11 @@ export declare class QuoteEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /** When this was recorded, where stated. */
-  get recdunix(): bigint | null
+  /**
+   * When the message crossed the wire - the technical clock -
+   * where stated.
+   */
+  get sendunix(): bigint | null
   /** When this expires, where it has an expiry. */
   get exprunix(): bigint | null
   /**
@@ -8439,6 +8549,14 @@ export declare class QuoteEvent {
    * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
+  /**
+   * The cross code of the instrument this is about - a real
+   * ISIN for a security an agency numbered, a `class:body` for an
+   * FX pair or a derivative (`IF:EUR/USD`) - the instruments
+   * table's own key, so a reader joins on `instcode = crosscode`;
+   * `null` where none is known.
+   */
+  get instcode(): string | null
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -8587,7 +8705,7 @@ export declare class QuoteEvent {
    * live's predecessor, place and snapshot.
    */
   restating(live: QuoteEvent): QuoteEvent
-  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  /** `<Class>(<uuid>, transunix=.., crosscode=..)`. */
   toString(): string
 }
 export type JsQuoteEvent = QuoteEvent
@@ -9813,7 +9931,7 @@ export declare class SnapshotEvent {
   /** The control's book facts: always a full snapshot, with its scope. */
   get book(): JsBookRef
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -9829,7 +9947,7 @@ export declare class SnapshotEvent {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -9837,8 +9955,11 @@ export declare class SnapshotEvent {
    * provenance, never its chain. Empty for one built directly.
    */
   get srcuuids(): Array<string>
-  /** When this happened: nanoseconds since the Unix epoch, UTC. */
-  get currunix(): bigint
+  /**
+   * When the operation happened - the transaction instant:
+   * nanoseconds since the Unix epoch, UTC.
+   */
+  get transunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
   /**
@@ -9849,8 +9970,11 @@ export declare class SnapshotEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /** When this was recorded, where stated. */
-  get recdunix(): bigint | null
+  /**
+   * When the message crossed the wire - the technical clock -
+   * where stated.
+   */
+  get sendunix(): bigint | null
   /** When this expires, where it has an expiry. */
   get exprunix(): bigint | null
   /**
@@ -9915,6 +10039,14 @@ export declare class SnapshotEvent {
    * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
+  /**
+   * The cross code of the instrument this is about - a real
+   * ISIN for a security an agency numbered, a `class:body` for an
+   * FX pair or a derivative (`IF:EUR/USD`) - the instruments
+   * table's own key, so a reader joins on `instcode = crosscode`;
+   * `null` where none is known.
+   */
+  get instcode(): string | null
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -10035,7 +10167,7 @@ export declare class SnapshotEvent {
    * live's predecessor, place and snapshot.
    */
   restating(live: SnapshotEvent): SnapshotEvent
-  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  /** `<Class>(<uuid>, transunix=.., crosscode=..)`. */
   toString(): string
 }
 export type JsSnapshotEvent = SnapshotEvent
@@ -10679,7 +10811,7 @@ export declare class TextLine {
    */
   get bodytype(): string
   /**
-   * The line past its row header: what `currhashcode` hashes.
+   * The line past its row header: what `hashcode` hashes.
    *
    * Text, always: what the constructor or the reader decoded.
    */
@@ -10699,7 +10831,7 @@ export declare class TextLine {
    * line is an event of the
    * graph, and a message parsed out of it states this among its `srcuuids`.
    */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every event of one lifecycle shares: derived from the
    * cross code, and the line's own where it names none.
@@ -10711,14 +10843,14 @@ export declare class TextLine {
    */
   get crosscode(): string
   /** The XXH3-64 of `body` and nothing else. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where there is none. */
   get crosshashcode(): bigint
   /**
    * When the line happened, nanoseconds since the Unix epoch, UTC: the
    * stated instant, else `mtime`, else `0n`.
    */
-  get currunix(): bigint
+  get transunix(): bigint
   /**
    * Where the line stands in its source: the row number under
    * `startRownum`, else its zero-based physical `index`.
@@ -11054,7 +11186,7 @@ export declare class TradeEvent {
    */
   get executions(): Array<ExecutionEvent>
   /** The element's own identity, as its hyphenated text. */
-  get curruuid(): string
+  get uuid(): string
   /**
    * The identity every statement of one element shares: derived
    * from the cross code, the element's own where it names none.
@@ -11070,7 +11202,7 @@ export declare class TradeEvent {
    */
   get crosscode(): string
   /** The XXH3-64 code the element's content digests to. */
-  get currhashcode(): bigint
+  get hashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where it names none. */
   get crosshashcode(): bigint
   /**
@@ -11078,8 +11210,11 @@ export declare class TradeEvent {
    * provenance, never its chain. Empty for one built directly.
    */
   get srcuuids(): Array<string>
-  /** When this happened: nanoseconds since the Unix epoch, UTC. */
-  get currunix(): bigint
+  /**
+   * When the operation happened - the transaction instant:
+   * nanoseconds since the Unix epoch, UTC.
+   */
+  get transunix(): bigint
   /** The lifecycle state reached, as the `state` code it is. */
   get state(): string
   /**
@@ -11090,8 +11225,11 @@ export declare class TradeEvent {
   get seqnum(): number
   /** When this was created, where known. */
   get creaunix(): bigint | null
-  /** When this was recorded, where stated. */
-  get recdunix(): bigint | null
+  /**
+   * When the message crossed the wire - the technical clock -
+   * where stated.
+   */
+  get sendunix(): bigint | null
   /** When this expires, where it has an expiry. */
   get exprunix(): bigint | null
   /**
@@ -11156,6 +11294,14 @@ export declare class TradeEvent {
    * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
+  /**
+   * The cross code of the instrument this is about - a real
+   * ISIN for a security an agency numbered, a `class:body` for an
+   * FX pair or a derivative (`IF:EUR/USD`) - the instruments
+   * table's own key, so a reader joins on `instcode = crosscode`;
+   * `null` where none is known.
+   */
+  get instcode(): string | null
   /**
    * The instrument's ISIN, borrowed from `securityids`; `null`
    * where it states none.
@@ -11304,7 +11450,7 @@ export declare class TradeEvent {
    * live's predecessor, place and snapshot.
    */
   restating(live: TradeEvent): TradeEvent
-  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  /** `<Class>(<uuid>, transunix=.., crosscode=..)`. */
   toString(): string
 }
 export type JsTradeEvent = TradeEvent
@@ -11359,7 +11505,7 @@ export declare class TxHash {
    *
    * The digest is the only content this needs, because whatever else an
    * identity rests on is already inside it: a graph event digests what it
-   * states, a text line its body, into `currhashcode` before coupling it
+   * states, a text line its body, into `hashcode` before coupling it
    * here, so rehashing
    * them into the identifier would only spend bits restating them.
    * Throws for a digest that is not 64 bits wide, or an instant outside the
@@ -12220,7 +12366,7 @@ export interface BookLimit {
    * an entry stating none adds nothing.
    */
   quantity: string
-  /** Its entries' `curruuid`s in live order: position, then arrival. */
+  /** Its entries' `uuid`s in live order: position, then arrival. */
   uuids: Array<string>
   /**
    * Whether the level can trade: any of its entries does not state
@@ -12453,7 +12599,7 @@ export interface FixCaptureView {
   msgpluginid: string | null
   /**
    * The role of the FIX plugin whose session produced the message, as
-   * the `pluginside` member's stored name: `BUYS` for a Buy-Side plugin,
+   * the `Side` member's stored name: `BUYS` for a Buy-Side plugin,
    * `SELL` for a Sell-Side one, `UKNW` where the codec read under no
    * source or one stating no role - never `null`. The codec stamps it from
    * the source it reads under (`FixCodec`'s `source`), and a row-header
@@ -12585,11 +12731,11 @@ export interface FixCodecOptions {
    */
   marketMetadata?: boolean
   /**
-   * The `IsinRegistry` every `lifecycle` learns into and fills from,
+   * The `Instruments` every `lifecycle` learns into and fills from,
    * shared so a walk run after another starts from what the first
    * learned; each walk learns into its own, starting empty, when unstated.
    */
-  isinRegistry?: IsinRegistry
+  instruments?: Instruments
   /**
    * The id of the dictionary's source this codec reads under, folded:
    * the catalog entry (`FixRegistry.sources()`) whose plugin side every
@@ -12634,9 +12780,9 @@ export interface FixCommitReport {
  * The definitions this crate owns, in tag order, above every tag FIX or a
  * venue publishes.
  *
- * The event's instant `currunix` and the chain's `creaunix`, `execunix`,
- * `recdunix`, `prevunix`, `snapunix` and `exprunix`; the identities
- * `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` and `prevuuid`;
+ * The event's instant `transunix` and the chain's `creaunix`, `execunix`,
+ * `sendunix`, `prevunix`, `snapunix` and `exprunix`; the identities
+ * `hashcode`, `crosshashcode`, `uuid`, `crossuuid` and `prevuuid`;
  * the `srcuuids` list of the lines it was read from; the `crosscode`, the
  * `seqnum` and the `state` reached; the `metadata` Map group; what a
  * bridge's capture states - `msgctxid`, `msgpluginid`,
@@ -12652,7 +12798,7 @@ export interface FixCommitReport {
  * bridge's own identifier keys are no crate field either: they arrive as
  * unmapped entries and are read for the identifier name they end with.
  *
- * `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and
+ * `transunix`, `creaunix`, `hashcode`, `crosshashcode`, `uuid` and
  * `crossuuid` are non-null; `state` is written on every row a message
  * writes and stays nullable, a state having no neutral member. Every
  * registry already holds them, so this is the listing a schema or a
@@ -12801,6 +12947,14 @@ export interface FixParentSource {
 }
 
 /**
+ * The side one plugin class names, as its stored name: a `CBlock` root's
+ * `type`, whose last `.`-separated segment, folded, holding `buyside` is
+ * `BUYS`, holding `sellside` is `SELL`, and anything else `UKNW`. Never
+ * throws.
+ */
+export declare function fixPluginSide(pluginType: string): string
+
+/**
  * The fixed root every message answers as, built from one dictionary.
  *
  * The crate's own columns lead - its clocks, then its identities, then the
@@ -12810,8 +12964,8 @@ export interface FixParentSource {
  * unresolved keys at tag 0. Columns are spelled by the dictionary's folded
  * canonical names - `msgtype`, never `35` - so a row reads the way a
  * message reads; the tag stays each column's identity, on its `FIX:tag`,
- * and is what fills it. `beginstring` and the settled identity - `currunix`,
- * `creaunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` - are
+ * and is what fills it. `beginstring` and the settled identity - `transunix`,
+ * `creaunix`, `hashcode`, `crosshashcode`, `uuid`, `crossuuid` - are
  * required; every other column is nullable, because a message that carried
  * nothing there must answer null rather than shift its neighbours.
  */
@@ -12849,9 +13003,9 @@ export interface FixSourceOptions {
   /** The file the source was read from, as it was named. */
   file?: string
   /**
-   * The role of the source's plugin: a `PluginSide` member's stored name
-   * in any case, the role's own name - `BuySide`, `sell-side` - or its
-   * code, what `PluginSide.BUYS` holds.
+   * The role of the source's plugin: a `Side` member's stored name in
+   * any case, the role's own name - `BuySide`, `sell-side` - or its
+   * code, what `Side.BUYS` holds.
    */
   pluginside?: string | number
 }
@@ -12875,7 +13029,7 @@ export interface FixSourceView {
    */
   file?: string
   /**
-   * The role of the source's plugin, as the `pluginside` member's stored
+   * The role of the source's plugin, as the `Side` member's stored
    * name: `BUYS`, `SELL`, or `UKNW` where the source states none.
    */
   pluginside: string
@@ -13228,70 +13382,6 @@ export interface IntoSerieOptions {
 }
 
 /**
- * What `IsinRegistry.resolve` answers for one element, as a plain object:
- * the listing row it names and how, or why none - each refusal's fields
- * spelled out, so a caller acts on a `CfiConflict` without reading text.
- * A field a variant does not state is `null`.
- */
-export interface IsinResolution {
-  /** Whether a row was matched. */
-  matched: boolean
-  /**
-   * The matched row as a plain object of its columns: the listing on the
-   * element's market, else the one row holding the key, else the
-   * instrument's single row, else its first.
-   */
-  entry: Record<string, unknown> | null
-  /**
-   * The tier that matched - or, for `Ambiguous`, found the two -
-   * `isin`, `code`, `symbology` or `economic`.
-   */
-  tier: 'isin' | 'code' | 'symbology' | 'economic' | null
-  /**
-   * The type of the code a `code` tier read, one of
-   * `IsinRegistry.lookupCodes()`.
-   */
-  kind: string | null
-  /**
-   * How similar the short names an `economic` tier weighed are, from the
-   * threshold to `1`.
-   */
-  similarity: number | null
-  /** Whether the ISIN was derived - the element stated none; a match only. */
-  derived: boolean | null
-  /**
-   * Whether the row's listing facts belong to the element: its market is
-   * the row's, or either is unstated; a match only.
-   */
-  listing: boolean | null
-  /**
-   * Why none matched, the refusal's name: `NoKey`, `UnknownIsin`,
-   * `NoCandidate`, `Ambiguous`, `CfiConflict`, `CurrencyConflict` or
-   * `BelowThreshold`.
-   */
-  unmatched: 'NoKey' | 'UnknownIsin' | 'NoCandidate' | 'Ambiguous' | 'CfiConflict' | 'CurrencyConflict' | 'BelowThreshold' | null
-  /** The instruments an `Ambiguous` key or score names, in ISIN order. */
-  isins: string[] | null
-  /**
-   * The element's own: the ISIN an `UnknownIsin` states, the CFI category
-   * of a `CfiConflict`, the origin currency of a `CurrencyConflict`.
-   */
-  stated: string | null
-  /**
-   * The instrument's: the CFI category of a `CfiConflict`, the origin
-   * currency of a `CurrencyConflict`.
-   */
-  held: string | null
-  /** How similar the most similar instrument of a `BelowThreshold` is. */
-  best: number | null
-  /**
-   * The instrument a `CfiConflict`, a `CurrencyConflict` or a
-   * `BelowThreshold` names.
-   */
-  isin: string | null
-}
-
-/**
  * The options of one join, each slot `undefined` or `null` where not given,
  * which is its default.
  */
@@ -13461,21 +13551,68 @@ export interface PlanOrder {
 }
 
 /**
- * The role one plugin class names, as its stored name: a `CBlock` root's
- * `type`, whose last `.`-separated segment, folded, holding `buyside` is
- * `BUYS`, holding `sellside` is `SELL`, and anything else `UKNW`. Never
- * throws.
+ * What `Instruments.resolve` answers for one element, as a plain object:
+ * the instrument it names and how, or why none - each refusal's fields
+ * spelled out, so a caller acts on a `CfiConflict` without reading text.
+ * A field a variant does not state is `null`.
  */
-export declare function pluginSideFromPluginType(pluginType: string): string
-
-/**
- * One member of the core's plugin-side enum: its stored name, the code a
- * `pluginside` column stores, and what it means.
- */
-export interface PluginSideMember {
-  name: string
-  code: number
-  description: string
+export interface Resolution {
+  /** Whether an instrument was matched. */
+  matched: boolean
+  /** The matched instrument as a plain object of its columns. */
+  entry: Record<string, unknown> | null
+  /**
+   * The tier that matched - or, for `Ambiguous`, found the two -
+   * `isin`, `crosscode`, `code`, `symbology` or `economic`.
+   */
+  tier: 'isin' | 'crosscode' | 'code' | 'symbology' | 'economic' | null
+  /**
+   * The type of the code a `code` tier read, one of
+   * `Instruments.lookupCodes()`.
+   */
+  kind: string | null
+  /**
+   * How similar the short names an `economic` tier weighed are, from the
+   * threshold to `1`.
+   */
+  similarity: number | null
+  /** Whether the ISIN was derived - the element stated none; a match only. */
+  derived: boolean | null
+  /**
+   * Whether the instrument's listing on the element's market is the
+   * element's: its market is listed, or it states none and the
+   * instrument has one listing; a match only.
+   */
+  listing: boolean | null
+  /**
+   * Why none matched, the refusal's name: `NoKey`, `UnknownIsin`,
+   * `UnknownCode`, `NoCandidate`, `Ambiguous`, `CfiConflict`,
+   * `CurrencyConflict` or `BelowThreshold`.
+   */
+  unmatched: 'NoKey' | 'UnknownIsin' | 'UnknownCode' | 'NoCandidate' | 'Ambiguous' | 'CfiConflict' | 'CurrencyConflict' | 'BelowThreshold' | null
+  /**
+   * The cross codes of the instruments an `Ambiguous` key or score
+   * names, in code order.
+   */
+  codes: string[] | null
+  /**
+   * The element's own: the ISIN an `UnknownIsin` states, the cross code
+   * an `UnknownCode`'s facts spell, the CFI category of a `CfiConflict`,
+   * the origin currency of a `CurrencyConflict`.
+   */
+  stated: string | null
+  /**
+   * The instrument's: the CFI category of a `CfiConflict`, the origin
+   * currency of a `CurrencyConflict`.
+   */
+  held: string | null
+  /** How similar the most similar instrument of a `BelowThreshold` is. */
+  best: number | null
+  /**
+   * The cross code of the instrument a `CfiConflict`, a
+   * `CurrencyConflict` or a `BelowThreshold` names.
+   */
+  code: string | null
 }
 
 /** What one predicate let a scan leave alone. */

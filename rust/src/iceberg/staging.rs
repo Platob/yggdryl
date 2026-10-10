@@ -251,80 +251,64 @@ impl Drop for Staging {
     }
 }
 
-/// Send a staged file to the table as one upload.
+/// Send a staged file of `size` bytes to the table as one upload
+/// ([`IOBase::upload_from`]).
 ///
 /// A store handle streams it up: one read below the multipart threshold,
 /// one part-sized buffer at a time above it, so an object of any length
 /// costs one part of memory. Any other target - a local or a memory-backed
 /// one, where staging is off unless asked for - takes the file whole.
-// The length is what an object store's multipart upload plans against; with
-// no S3 backend compiled in there is nothing to plan and the file is
-// read whole.
-#[cfg_attr(not(feature = "s3"), expect(unused_variables, reason = "s3-only"))]
 fn upload(target: &mut Holder, path: &Path, size: u64) -> Result<()> {
-    match target {
-        #[cfg(feature = "s3")]
-        Holder::S3File(file) => {
-            let mut source = std::fs::File::open(path)?;
-            file.upload_from(&mut source, size)
-        }
-        other => {
-            let bytes = std::fs::read(path)?;
-            other.write_all_bytes(&bytes)
-        }
-    }
+    let mut source = std::fs::File::open(path)?;
+    target.upload_from(&mut source, size)
 }
 
 /// Let go of a file the commit could not publish, and report why.
 ///
-/// A store handle whose upload was refused holds no object: a refused `PUT`
-/// stores nothing and an abandoned multipart upload is aborted, so what the
-/// handle staged is dropped and no `DELETE` goes out for a key that was
-/// never written. Any other handle may have landed part of the file, and a
-/// leaf publishes what it holds when it is dropped, so it is removed first -
-/// unless the staging `keeps` what it wrote, which leaves it as an orphan.
-fn unpublished(target: Holder, error: crate::Error, keeps: bool) -> crate::Error {
-    match target {
-        #[cfg(feature = "s3")]
-        Holder::S3File(file) => {
-            let _ = file.discard();
-        }
-        mut other if !keeps => {
-            let _ = other.remove(false);
-        }
-        _ => {}
+/// What the handle staged is dropped first ([`IOBase::discard`]). A store
+/// handle whose upload was refused holds no object - a refused `PUT` stores
+/// nothing and an abandoned multipart upload is aborted - so it answers that
+/// nothing is left, and no `DELETE` goes out for a key that was never
+/// written. Only a handle answering that part of the file may have landed is
+/// removed - a leaf publishes what it holds when it is dropped - and not
+/// even then where the staging `keeps` what it wrote, which leaves it as an
+/// orphan.
+fn unpublished(mut target: Holder, error: crate::Error, keeps: bool) -> crate::Error {
+    if matches!(target.discard(), Ok(false)) && !keeps {
+        let _ = target.remove(false);
     }
     error
 }
 
-/// Take a location the metadata names as the file it is.
+/// Take a location the metadata names as the file it is
+/// ([`IOBase::as_leaf`]).
 ///
 /// A table names files and nothing else - a metadata document, a manifest
 /// list, a manifest, a data file - so a handle whose role is undecided needs
 /// no listing to settle it: the metadata already answered the question a
 /// listing would ask. Every other handle is what it already was.
 pub(super) fn leaf(holder: Holder) -> Result<Holder> {
-    match holder {
-        #[cfg(feature = "s3")]
-        Holder::S3Path(path) => Ok(Holder::S3File(path.as_file()?)),
-        other => Ok(other),
-    }
+    Ok(match holder.as_leaf()? {
+        Some(file) => file,
+        None => holder,
+    })
 }
 
-/// Take a location the table lays out as the container it is.
+/// Take a location the table lays out as the container it is
+/// ([`IOBase::as_container`]).
 ///
 /// The metadata directory is a directory by the table's own layout, so an
 /// undecided handle is resolved to its container role without the listing
 /// that would ask the store what the layout already says.
 pub(super) fn container(holder: Holder) -> Result<Holder> {
-    match holder {
-        #[cfg(feature = "s3")]
-        Holder::S3Path(path) => Ok(Holder::S3Folder(path.as_directory()?)),
-        other => Ok(other),
-    }
+    Ok(match holder.as_container()? {
+        Some(folder) => folder,
+        None => holder,
+    })
 }
 
-/// Tell a file handle the size the manifest recorded for it.
+/// Tell a file handle the size the manifest recorded for it
+/// ([`IOBase::set_known_size`]).
 ///
 /// A manifest states every data file's length, exactly as a listing states
 /// every entry's, so a handle built from one starts out knowing it: a scan
@@ -332,15 +316,13 @@ pub(super) fn container(holder: Holder) -> Result<Holder> {
 /// answer. A recorded length of zero is not believed - a real file's reader
 /// would take it for an empty one and answer no rows without an error - so
 /// the handle is returned as it was and the file answers for its own length,
-/// which is one request more and the truth. A handle with no such memory is
-/// returned as it was.
-#[cfg_attr(not(feature = "s3"), expect(unused_variables, reason = "s3-only"))]
-pub(super) fn sized(holder: Holder, size: u64) -> Holder {
-    match holder {
-        #[cfg(feature = "s3")]
-        Holder::S3File(file) if size > 0 => Holder::S3File(file.with_known_size(size)),
-        other => other,
+/// which is one request more and the truth. A handle with no such memory
+/// ignores it.
+pub(super) fn sized(mut holder: Holder, size: u64) -> Holder {
+    if size > 0 {
+        holder.set_known_size(size);
     }
+    holder
 }
 
 /// Report a poisoned record lock without panicking a caller.

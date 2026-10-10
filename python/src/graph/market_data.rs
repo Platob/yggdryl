@@ -9,12 +9,13 @@ use pyo3::prelude::*;
 use pyo3::types::PyTuple;
 
 use yggdryl::FieldPath;
-use yggdryl::graph::{
-    Event, Market, MarketData as CoreMarketData, MarketKind, MarketView as CoreMarketView,
-    Operation,
-};
+use yggdryl::graph::Event;
 use yggdryl::holder::Buffer;
 use yggdryl::ipc::{self, IpcOptions};
+use yggdryl_fix::FixMsg;
+use yggdryl_market::graph::{
+    Market, MarketData as CoreMarketData, MarketKind, MarketView as CoreMarketView, Operation,
+};
 
 use super::book::{PyBookEvent, PySnapshotEvent};
 use super::operation::{
@@ -126,7 +127,14 @@ pub(crate) fn leaf_object(py: Python<'_>, data: CoreMarketData) -> PyResult<Py<P
         CoreMarketData::SnapshotEvent(leaf) => {
             Py::new(py, PySnapshotEvent::from_core(leaf))?.into_any()
         }
-        CoreMarketData::Fix(message) => Py::new(py, PyFixMsg::from_inner(*message))?.into_any(),
+        CoreMarketData::Fix(message) => {
+            let message = message.into_any().downcast::<FixMsg>().map_err(|_| {
+                PyTypeError::new_err(
+                    "a held message is not a FixMsg: this binding has no class for it",
+                )
+            })?;
+            Py::new(py, PyFixMsg::from_inner(*message))?.into_any()
+        }
     })
 }
 
@@ -246,7 +254,10 @@ graph_methods!(PyMarketData, "MarketData"; [
     /// The FIX message this value holds whole, where it holds one; else
     /// `None`.
     fn as_fix(&self) -> Option<PyFixMsg> {
-        self.inner.as_fix().cloned().map(PyFixMsg::from_inner)
+        self.inner
+            .as_message::<FixMsg>()
+            .cloned()
+            .map(PyFixMsg::from_inner)
     }
 
     /// The leaf this value holds, as its own class.
@@ -308,7 +319,7 @@ graph_methods!(PyMarketData, "MarketData"; [
         kind: Option<&str>,
     ) -> PyResult<PyStreamChunkedSerie> {
         let kind = kind
-            .map(yggdryl::MarketDataKind::read)
+            .map(yggdryl_market::MarketDataKind::read)
             .transpose()
             .map_err(value_error)?;
         let source = serie_source_of(source)?;
@@ -333,7 +344,7 @@ graph_methods!(PyMarketData, "MarketData"; [
         kind: Option<&str>,
     ) -> PyResult<PyStreamChunkedSerie> {
         let kind = kind
-            .map(yggdryl::MarketDataKind::read)
+            .map(yggdryl_market::MarketDataKind::read)
             .transpose()
             .map_err(value_error)?;
         let source = serie_source_of(source)?;
@@ -395,7 +406,7 @@ graph_methods!(PyMarketData, "MarketData"; [
     fn __repr__(&self) -> String {
         format!(
             "MarketData({}, kind={:?}, marketdatakind={}, crosscode={:?})",
-            yggdryl::graph::Element::get_curruuid(&self.inner),
+            yggdryl::graph::Element::get_uuid(&self.inner),
             self.inner.kind().as_str(),
             self.inner.marketdatakind(),
             yggdryl::graph::Element::get_crosscode(&self.inner),

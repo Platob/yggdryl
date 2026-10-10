@@ -1,0 +1,29 @@
+Move the XMLA medium into yggdryl-xmla
+
+XML for Analysis is the crate `yggdryl-xmla` at `rust/xmla/`: the
+`.xmla` rowset medium, the request and response vocabulary, the rowset
+document, the OLE DB type codes, the provider over a warehouse and,
+under its `http` feature, the routes `Service::route` puts on the core's
+HTTP server - with `soap`, the SOAP 1.1 envelope only this protocol
+speaks, as the crate's own module (D33). Its tests, the Excel wire
+fixtures they replay and the `xmla` bench come with it. `install()`
+claims `XMLA_CODEC` on the core's register once per process at rank 4,
+which `media::RESERVED_RANKS` keeps for it, so every options value
+hashes and orders as it did; the Python and Node.js inits and the CLI's
+`main` call it, and `yggdryl xmla serve` links the crate with `http`.
+
+The core no longer holds `xmla` or `soap`, nor the seed claim of the
+medium. `claim` admits a reserved rank under its own name alone.
+`yggdryl::implementer` gains the record doors, dimensions and schema
+answers a media wrapper redirects to, the cache clock, the XML writers
+and name rules, and the base64, timestamp, warehouse and plan helpers
+the provider reads. A rowset read lands its rows through
+`Serie::from_scalars`, so no proof crosses into the core from outside
+it. The core tests that build XMLA objects - the s2 pins, the media
+order, the `xmla` rows of `iobase_calls` and `allocations` - move
+byte-identical to the crate's tests at their mirrored paths, their
+values unmoved. The `xmla` leaf is listed in the CI table, and the
+docs, AGENTS.md and the API inventory name `yggdryl_xmla`.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Gfky7FUx35U5i4UJcrQGKp

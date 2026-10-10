@@ -1441,8 +1441,8 @@ mod time_bucket {
         }
         // The bucket keeps the spelling it was written in.
         for text in [
-            "time_bucket('15 minutes', currunix)",
-            "time_bucket('PT15M', currunix)",
+            "time_bucket('15 minutes', transunix)",
+            "time_bucket('PT15M', transunix)",
         ] {
             assert_eq!(text.parse::<Term>().unwrap().to_string(), text);
         }

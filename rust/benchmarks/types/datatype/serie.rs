@@ -370,17 +370,17 @@ fn order_ticks_column(wide: bool) -> Serie {
     Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new()).expect("a record column")
 }
 
-/// `ROWS` orders of a registered venue code, a side and a count: the venue
-/// changing every [`VENUE_RUN`] rows, the side every half run.
+/// `ROWS` orders of a registered venue code, a state and a count: the venue
+/// changing every [`VENUE_RUN`] rows, the state every half run.
 fn coded_ticks_column() -> Serie {
-    use arrow_array::UInt8Array;
+    use arrow_array::UInt16Array;
 
     let root = Field::new(
         "order",
         DataType::from(
             StructType::from_fields([
                 DataType::Mic.required_field("venue"),
-                DataType::Side.required_field("side"),
+                DataType::State.required_field("state"),
                 DataType::Int64.required_field("count"),
             ])
             .expect("three named children"),
@@ -402,9 +402,10 @@ fn coded_ticks_column() -> Serie {
             Arc::new(StringArray::from(
                 (0..ROWS).map(cycling_venue).collect::<Vec<_>>(),
             )),
-            Arc::new(UInt8Array::from(
+            // `RUNNING` and `STATUS`.
+            Arc::new(UInt16Array::from(
                 (0..ROWS)
-                    .map(|index| 1 + u8::from(index / (VENUE_RUN / 2) % 2 == 1))
+                    .map(|index| 3000 + u16::from(index / (VENUE_RUN / 2) % 2 == 1))
                     .collect::<Vec<_>>(),
             )),
             price_array(),
@@ -849,14 +850,14 @@ pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
     });
 
     // A record key with a registered code: the record rung compares each
-    // cell on its own, the code over its values built once and the side over
+    // cell on its own, the code over its values built once and the state over
     // its buffers, never a run per row.
     let coded = coded_ticks_column();
-    let venue_side: Selector = "venue, side".parse().expect("a two-cell key");
+    let venue_state: Selector = "venue, state".parse().expect("a two-cell key");
     group.bench_function("window_by/record_code_key", |bencher| {
         bencher.iter(|| {
             black_box(&coded)
-                .window_by(&venue_side, false)
+                .window_by(&venue_state, false)
                 .expect("windows")
                 .iter()
                 .map(black_box)

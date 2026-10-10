@@ -179,7 +179,7 @@ assert.equal(message.crosscode, '10:1:A1')
 // The names it goes by are identifiers: a source, a type and a value.
 assert.equal(message.identifiers.toString(), '[clordid=A1]')
 // Instants are bigint nanoseconds since the epoch, UTC.
-assert.equal(message.currunix, 1_767_348_930_000_000_000n)
+assert.equal(message.transunix, 1_767_348_930_000_000_000n)
 // The entries are the content row as a tree of { tag, name, value, entries }.
 assert.deepEqual(message.entries().map((entry) => entry.name), ['symbol', 'side', 'strikeprice', 'timeinforce'])
 ```
@@ -206,10 +206,10 @@ const message = new fix.FixMsg(root, { MsgType: 'D', ClOrdID: 'A1', Symbol: 'AAP
 assert.equal(message.header().msgtype, 'D')
 assert.equal(message.crosscode, '10:0:A1')
 
-const before = message.currhashcode
+const before = message.hashcode
 message.set('Symbol', 'MSFT')
 assert.equal(message.byTag(55).asJs(), 'MSFT')
-assert.notEqual(message.currhashcode, before, 'a write settles the identity again')
+assert.notEqual(message.hashcode, before, 'a write settles the identity again')
 assert.equal(message.remove(55).asJs(), 'MSFT')
 assert.equal(message.getByTag(55), null)
 ```
@@ -268,7 +268,7 @@ const codec = new fix.FixCodec(registry, { threads: 4, batchRowSize: 10_000 })
 const read = codec.parseTextArrowReader(BatchReader.from(capture))
 // The schema is decided before a row is read: the shared columns lead, the capture follows them, `fixentries` closes.
 const columns = Array.from({ length: read.field.fieldLen }, (_, index) => read.field.fieldAt(index).name)
-assert.equal(columns[0], 'curruuid')
+assert.equal(columns[0], 'uuid')
 const at = columns.indexOf('url')
 assert.deepEqual(columns.slice(at - 1, at + 3), ['partyids', 'url', 'rownum', 'body'])
 assert.equal(read.field.fieldAt(read.field.fieldLen - 1).name, 'fixentries')
@@ -320,7 +320,7 @@ assert.equal(lines.length, 3)
 assert.deepEqual(options.captureNames, ['mtime', 'level'])
 const codec = new fix.FixCodec(registry, { captureNames: options.captureNames })
 const messages = [...codec.parseTextLines(lines)]
-assert.deepEqual(messages.map((message) => message.recdunix), [1_767_348_930_250_000_000n, 1_767_348_930_500_000_000n])
+assert.deepEqual(messages.map((message) => message.sendunix), [1_767_348_930_250_000_000n, 1_767_348_930_500_000_000n])
 
 fs.rmSync(directory, { recursive: true, force: true })
 ```
@@ -369,7 +369,7 @@ const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
 const stored = new IOBase(path.join(directory, 'capture.parquet'))
 stored.overwriteArrowReader(codec.arrowReader(schema, parsed))
 const again = [...codec.messages(stored.readArrowReader())]
-assert.deepEqual(again.map((message) => message.currhashcode), parsed.map((message) => message.currhashcode))
+assert.deepEqual(again.map((message) => message.hashcode), parsed.map((message) => message.hashcode))
 
 // And out to the wire, one line per row.
 const chunks = []
@@ -383,9 +383,10 @@ fs.rmSync(directory, { recursive: true, force: true })
 `lifecycle` is the one cross-message stage: it collects the finite capture,
 sorts it, folds repeated deliveries and chains each message to the live one of
 its order and side under one `crossuuid`, within one market data kind (`marketdatakind`); a
-report stating no side joins the one side alive under its identifiers - its
-chain identities (`orderid`, `clordid`, `quoteid`, `tradeid`, `tradereportid`,
-never `execid`, `trdmatchid` or `quotereqid`) and the first value a lineage
+report stating no side joins the one side alive under its identifiers - a
+message joins the live one of its kind, side and instrument sharing one identifier
+of the same type and value, every type of its `identifiers` but a shared one
+(`trdmatchid`, `quotereqid`, `mdreqid`, a parent slot), and the first value a lineage
 field names - and every message of a chain carries the chain's first
 `crosscode`, a replace under a new `ClOrdID` included. A message citing two
 live chains is joined to neither: it stands under its own identity and carries
@@ -393,10 +394,10 @@ a `FixAnomaly` under `crosscode` naming both, warned once per kind. A fill's
 execution, split off at the parse, is a chain of its own and never restates,
 follows or ends its order. A codec pinned `{ sortedLifecycle: true }` reads a source already in
 instant order as it comes, one epoch hour at a time, and answers the same walk. The walk yields
-each `curruuid` once within `dedupWindowMs` of event time, one minute unless
+each `uuid` once within `dedupWindowMs` of event time, one minute unless
 the codec says otherwise; `{ dedupWindowMs: null }` yields every restated twin too.
 A snapshot grid's view is the live message as of its tick: dated at it, so its
-`curruuid` is that instant's, with the live message's content and place.
+`uuid` is that instant's, with the live message's content and place.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -422,14 +423,14 @@ const [order, ack, fill, execution] = codec.lifecycle(parsed)
 // Sorted by event time, joined by the identifiers each message went by; each
 // follows one of an earlier instant, so each keeps its own place.
 assert.deepEqual([order.seqnum, ack.seqnum, fill.seqnum], [0, 0, 0])
-assert.equal(ack.prevuuid, order.curruuid)
-assert.equal(fill.prevuuid, ack.curruuid)
+assert.equal(ack.prevuuid, order.uuid)
+assert.equal(fill.prevuuid, ack.uuid)
 assert.ok([ack, fill].every((held) => held.crossuuid === order.crossuuid))
 // The reports stated no side: they joined the buy alive under A1 and O1.
 assert.ok([ack, fill].every((held) => held.side === 'BUYS' && held.crosscode === '10:1:A1'))
 assert.deepEqual([fill.marketdatakind, fill.state], ['ORDR', 'FILLED'])
 // Every walked message states when its chain began.
-assert.ok([ack, fill].every((held) => held.creaunix === order.currunix))
+assert.ok([ack, fill].every((held) => held.creaunix === order.transunix))
 assert.deepEqual([execution.marketdatakind, execution.state], ['EXEC', 'FILLED'])
 assert.deepEqual([execution.seqnum, execution.prevuuid], [1, null])
 
@@ -443,32 +444,37 @@ assert.equal(new Set([...chained.getChild('crossuuid')].map(String)).size, 2)
 
 ## Share what lifecycles learn about instruments
 
-A lifecycle learns each message's ISIN - the one key - its CFI code, country,
-market, ticker, currency, pair and security codes into an `IsinRegistry`, and
-fills what later messages of that instrument leave unsaid, as `derived`
-identifiers and the ticker, CFI and currency facts, never the wire; a parse
-through the same codec fills derived identifiers from the table its door
-fixed. A codec without one learns into a registry of each walk's own;
-`isinRegistry` shares one across walks run one after another, bound to a
-store with `fromUrl` and written back with `commit()` only where it moved,
-and `FixCodec.fromEnv()` shares the process's own, `IsinRegistry.fromEnv()`,
-laid over the embedded common instruments `IsinRegistry.seeded()` holds. A
-row carries the national number its ISIN embeds - Holcim's Valor below -
-and its market's country's currency where it states none.
+A lifecycle learns each message's instrument into an `Instruments`, keyed by
+its cross code - a real ISIN for a security, `class:body` for an FX pair or a
+derivative, its `QY` number minted - with its CFI code, country, market,
+ticker, currency, pair and security codes, and fills what later messages of
+that instrument leave unsaid, as `derived` identifiers, the ticker, CFI and
+currency facts and the instrument's cross code as `instcode`, never the wire;
+a parse through the same codec fills derived identifiers from the table its
+door fixed. A codec without one learns into a collection of each walk's own;
+`instruments` shares one across walks run one after another, bound to a store
+with `fromUrl` and written back with `commit()` only where it moved, and
+`FixCodec.fromEnv()` shares the process's own, `Instruments.fromEnv()`, laid
+over the embedded common instruments `Instruments.seeded()` holds. An
+instrument - a plain object of its columns, its listings nested - carries the
+national number its ISIN embeds - Holcim's Valor below - and each listing its
+market's country's currency where it states none. A row's `instcode` joins
+the instruments table on `crosscode`.
 
 ```javascript
 const assert = require('node:assert/strict')
 const path = require('node:path')
-const { IsinRegistry, fix } = require('yggdryl')
+const { Instruments, fix } = require('yggdryl')
 
-const instruments = new IsinRegistry()
-const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')), { isinRegistry: instruments })
+const instruments = new Instruments()
+const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')), { instruments: instruments })
 
 // The first walk states Holcim's ISIN, RIC, CFI code, ticker and market.
 const stated = '8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|207=XSWX|10=0|'
 for (const _ of codec.lifecycle([...codec.parseLines([Buffer.from(stated)])])) void _
-assert.equal(instruments.get('CH0012214059').ric, 'HOLN.S')
-assert.equal(instruments.get('CH0012214059').valor, '1221405', 'the Valor a CH ISIN embeds')
+const holcim = instruments.get('CH0012214059')
+assert.equal(instruments.listings('CH0012214059')[0].codes.get('ric'), 'HOLN.S', "a listing code is its market's")
+assert.equal(holcim.securityids.get('valor'), '1221405', 'the Valor a CH ISIN embeds')
 
 // A later parse naming only the ticker on the market takes the ISIN from the
 // table, derived; the walk fills the CFI code as a market fact.
@@ -477,8 +483,15 @@ assert.equal(parsed.isincode, 'CH0012214059')
 assert.ok(parsed.securityids.isDerived('isin'))
 const [later] = [...codec.lifecycle([parsed])]
 assert.equal(later.cficode, 'ESVUFR')
+assert.equal(later.instcode, 'CH0012214059', "the instrument's cross code")
+
+// An FX pair no agency numbers: its code and its minted number are spelled
+// from the message alone, and the walk learns its instrument.
+const [pair] = [...codec.lifecycle([...codec.parseLines([Buffer.from('8=FIX.4.4|35=D|11=F|55=EUR/USD|54=1|38=1000000|10=0|')])])]
+assert.deepEqual([pair.instcode, pair.isincode], ['IF:EUR/USD', 'QYLTVIRYHNX5'])
+assert.equal(instruments.get('IF:EUR/USD').currency, 'USD', 'the quote leg')
 // The table is an Arrow stream: a golden file loads with `fromUrl`.
-assert.notEqual(IsinRegistry.fromArrowReader(instruments.intoArrowReader()).get('CH0012214059'), null)
+assert.notEqual(Instruments.fromArrowReader(instruments.intoArrowReader()).get('CH0012214059'), null)
 ```
 
 ## Follow a replace chain's parents
@@ -545,7 +558,7 @@ const fill = '8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=
 const [report, execution] = codec.parseLine(Buffer.from(fill))
 assert.deepEqual([report.marketdatakind, report.state], ['ORDR', 'PARTIALLY_FILLED'])
 assert.deepEqual([execution.marketdatakind, execution.state], ['EXEC', 'FILLED'])
-assert.ok(execution.srcuuids.includes(report.curruuid))
+assert.ok(execution.srcuuids.includes(report.uuid))
 // An order or an execution message stores its cross code under its side; the fill is a chain of its own.
 assert.deepEqual([report.crosscode, execution.crosscode], ['10:1:O-9', '8:1:E-1'])
 
@@ -568,7 +581,8 @@ trade as the executions its parse split off - reads each as its one graph leaf
 (a book message one per entry) and sorts them by the instant a book folds them
 at; `graph.BookIterator` then walks them, pruning the executions.
 `bookArrowReader(messages, snapshotMillis, filter)` folds the same messages
-into book rows, one book per book key. Compose `lifecycle` in front when
+into book rows, one book per instrument cross code (`instcode`; a message
+stating none is pruned). Compose `lifecycle` in front when
 predecessor state matters. `marketArrowReader` writes the sorted leaves as
 `marketdata` rows, and `marketDataArrowReader` is its twin over batches of FIX
 rows already in Arrow.
@@ -582,8 +596,8 @@ const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
 const codec = new fix.FixCodec(registry)
 // The update arrives before the snapshot it follows.
 const lines = [
-  '8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|',
-  '8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|',
+  '8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|',
+  '8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|',
 ]
 const capture = [...codec.parseLines(lines)]
 assert.ok(capture.every((message) => message.marketdatakind === 'BOOK'))

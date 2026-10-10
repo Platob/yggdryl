@@ -2088,7 +2088,6 @@ mod widths {
             ("Exchange", DataType::Mic),
             ("cfi", DataType::Cfi),
             ("CFI", DataType::Cfi),
-            ("MonthYear", DataType::fixed_ascii(8).unwrap()),
         ] {
             let parsed: DataType = spelling
                 .parse()
@@ -2670,8 +2669,8 @@ mod widths {
 }
 
 mod listings {
-    use yggdryl::DataType;
     use yggdryl::StringEnum;
+    use yggdryl::{DataType, Error};
 
     fn lists() -> [(&'static str, &'static [&'static str]); 3] {
         [
@@ -2747,7 +2746,7 @@ mod listings {
 
     #[test]
     fn a_registered_name_with_no_constant_prebuilds_no_members() {
-        for name in ["language", "monthyear", "tenor", "figi", "bbg", "ric"] {
+        for name in ["isin", "cfi", "fisn", "figi", "bbg", "ric"] {
             assert!(
                 StringEnum::from_logical_name(name).unwrap().is_empty(),
                 "{name}"
@@ -2761,6 +2760,75 @@ mod listings {
             .unwrap_err()
             .to_string();
         assert!(refused.contains("ccy"), "{refused}");
+    }
+
+    /// The core prebuilds its own listings alone: `side` and `timeinforce`
+    /// are the market crate's, read once its `install()` registers them, and
+    /// in a process that links no crate claiming them neither name resolves.
+    #[test]
+    fn a_market_listing_is_no_core_listing() {
+        let held: Vec<&str> = StringEnum::PREBUILT.iter().map(|(name, _)| *name).collect();
+        assert_eq!(held, ["ccy", "country", "mic", "exchange"]);
+        for name in ["side", "timeinforce"] {
+            assert!(StringEnum::prebuilt_values(name).is_empty(), "{name}");
+            assert!(
+                StringEnum::prebuilt()
+                    .iter()
+                    .all(|(listed, _)| *listed != name),
+                "{name}"
+            );
+            let refused = StringEnum::from_logical_name(name).unwrap_err().to_string();
+            assert!(refused.contains(&format!("{name:?}")), "{refused}");
+            // The grammar names the registration the word lacks.
+            let unknown = name.parse::<DataType>().unwrap_err().to_string();
+            assert!(unknown.contains("install"), "{unknown}");
+        }
+    }
+
+    /// A crate above the core registers a listing once, by its folded
+    /// logical name, and every door reads it after the core's own.
+    #[test]
+    fn a_crate_registers_a_listing_once_and_it_is_read_after_the_core() {
+        const BANDS: &[&str] = &["HIGH", "LOW"];
+        StringEnum::register_prebuilt("tickbands", BANDS, "venue").unwrap();
+        assert_eq!(StringEnum::prebuilt_values(" Tick_Bands "), BANDS);
+        let lists = StringEnum::prebuilt();
+        let (core, registered) = lists.split_at(StringEnum::PREBUILT.len());
+        assert_eq!(core, StringEnum::PREBUILT);
+        assert!(registered.contains(&("tickbands", BANDS)));
+
+        // Claimed once: a second claim names the first claimant and changes
+        // nothing, and a core listing is the core's.
+        let again = StringEnum::register_prebuilt("tickbands", &["MID"], "other").unwrap_err();
+        assert!(
+            matches!(
+                again,
+                Error::Conflict {
+                    actual: "venue",
+                    ..
+                }
+            ),
+            "{again}"
+        );
+        assert_eq!(StringEnum::prebuilt_values("tickbands"), BANDS);
+        let held = StringEnum::register_prebuilt("ccy", &["USD"], "venue").unwrap_err();
+        assert!(
+            matches!(
+                held,
+                Error::Conflict {
+                    actual: "yggdryl",
+                    ..
+                }
+            ),
+            "{held}"
+        );
+        // A name is stated in its folded spelling.
+        assert!(matches!(
+            StringEnum::register_prebuilt("Tick_Bands", BANDS, "venue"),
+            Err(Error::InvalidDataType { .. })
+        ));
+        // A listing registers no name: the name still has to resolve.
+        assert!(StringEnum::from_logical_name("tickbands").is_err());
     }
 }
 

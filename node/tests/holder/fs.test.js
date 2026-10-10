@@ -966,7 +966,7 @@ test('handler-backed framed text resets at every leaf', () => {
   const schemaFields = table.schema.fields
   const bodyIndex = schemaFields.findIndex((field) => field.name === 'body')
   assert.notEqual(bodyIndex, -1)
-  assert.equal(schemaFields[0].name, 'curruuid')
+  assert.equal(schemaFields[0].name, 'uuid')
   assert.equal(schemaFields[bodyIndex - 1].name, 'state')
   assert.deepEqual(
     schemaFields.slice(bodyIndex).map((field) => [field.name, field.nullable]),

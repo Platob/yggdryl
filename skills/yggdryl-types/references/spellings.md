@@ -140,7 +140,7 @@ The same number rule holds: `large_binary(16)` is refused.
 | --- | --- | --- |
 | `ccy`, `country`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `bbg`, `figi`, `ric`, `forex`, `unit`, `lei`, `bic`, `elf`, `dti`, `fisn` | FIX `Ccy`, `Country`, `Exchange` (= `mic`) | seventeen registered codes, kind `code`; widths 8, 2, 4, 6, 12, 9, 7, 32, 12, 32, 7, 32, 20, 11, 4, 9, 35 - a `ccy` is ISO 4217's three letters or a digital-asset ticker |
 | `forex` | - | the currency pair `CCY/CCY` under `yggdryl.forex`; a value reads `EURUSD`, `EUR-USD`, `EUR.USD`, `EUR_USD` in any case, never a pair of one currency, `XXX` or `XTS` |
-| `side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce`, `pluginside` | - | kind `enum`: each stored as the code of its member - `uint8` for `side`, `marketdatakind`, `timeinforce`, `pluginside`, `uint16` for `state`, `marketdatatype` - under `yggdryl.<name>`; a value reads the member's name, its integer code and the vocabulary's other spellings (`side`: FIX's wire code `1`; `marketdatakind`: the MsgCat word `order`; `pluginside`: the role's own name, `SellSide`) |
+| `side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` | - | kind `enum`: each stored as the code of its member - `uint8` for `side`, `marketdatakind`, `timeinforce`, `uint16` for `state`, `marketdatatype` - under `yggdryl.<name>`; a value reads the member's name, its integer code and the vocabulary's other spellings (`side`: FIX's wire code `1`, the specification's `SellShort`, a FIX plugin's role `SellSide`; `marketdatakind`: the MsgCat word `order`) |
 | `uuid` | - | 16 bytes under `arrow.uuid` |
 | `version` | - | a sixteen-bit `major` and `minor` then an optional text patch (`5.0SP2` is `5.0.2`, `1.0-rc1` keeps `-rc1`), naturally ordered |
 | `mimetype` | `mime` | one `type/subtype` |
@@ -189,6 +189,10 @@ serialized tag say `serie`. A serie item written without a field is named
 | `Pattern`, `MultipleCharValue`, `MultipleStringValue`, `XID`, `XIDREF` | `utf8` |
 | `data`, `XMLData` | `binary` |
 
+The code names of the first row are the core's; every other row is
+`yggdryl-fix`'s, which a Rust caller reaches after `yggdryl_fix::install()?`
+and Python and Node.js on import.
+
 `int`, `float`, `char`, `String`, `Boolean` keep their grammar meaning
 (`int32`, `float32`, `utf8`, `utf8`, `boolean`), not FIX's. Names fold like
 every keyword: `utc_date_only` is `UTCDateOnly`.
@@ -208,6 +212,7 @@ the rewritten field carries the bits; a bare datatype states nothing and widens.
 | `spark` | `uint8` -> `int16`, `uint64` -> `decimal128(20,0)`, `fixed_size_serie` -> `serie`; `datetime64(ns)` refused; a column stating `FIELD:representation=bits`: `uintN` -> `intN` |
 | `polars`, `pandas` | no map (refused naming the key/value struct); Polars keeps unsigned and `fixed_size_serie` |
 | `iceberg` | `int8`, `int16`, `uint8`, `uint16` -> `int32`; no duration or interval; a column stating `FIELD:representation=bits`: `uint32` -> `int32`, `uint64` -> `int64` |
+| `doris` | Apache Doris's Iceberg reader: Iceberg's rewrites and refusals, and every `datetime64` not at microseconds laid out at microseconds under its own zone (`timestamptz_ns` -> `timestamptz`; a write casts the values, seconds and milliseconds exactly, nanoseconds truncated); a `time32`/`time64`, `null`, `variant`, `geometry` or `geography` refused |
 
 Anything else (`duckdb`, ...) is refused, listing the accepted targets.
 A column stating `bits` keeps the declaration, so the cast onto it shares the

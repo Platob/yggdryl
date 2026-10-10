@@ -79,7 +79,7 @@ One tab per layer in the top bar; one page per family in that layer's sidebar.
 | Expression | Predicates: parse, bind, evaluate, and push down | [expression](expression/index.md) |
 | Hashing | xxHash digests over bytes, values, handles, and Arrow rows, and TxHash: an instant coupled with a digest, its sortable keys, coupled columns, and the `DIGEST:time` holder | [hashing](hashing.md) |
 | Logging | Python's `logging` owned by the core - loggers, levels, handlers and formatters behind the `log` facade, hosted by `logging` in Python and reached as `logging` in JavaScript - with log files on any storage handle | [logging](logging.md) |
-| Graph | Market elements and events, the book walk, its candles and views, and the book display `yggdryl market serve` hosts over a table | [graph](graph/index.md) |
+| Graph | Market elements and events, the book walk, its candles and views | [graph](graph/index.md) |
 | FIX | Protocol vocabulary, registries, and messages over `Field`, with a live [explorer](fix/explorer.md), [decoder](fix/decode.md) and [composer](fix/encode.md) | [fix](fix/index.md) |
 
 ## Install

@@ -55,12 +55,15 @@ use pyo3::exceptions::{PyImportError, PyStopIteration, PyTypeError, PyValueError
 use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::{
-    PyBool, PyByteArray, PyBytes, PyDict, PyList, PyMapping, PyMemoryView, PyString, PyTuple,
-    PyType,
+    PyBool, PyByteArray, PyBytes, PyDict, PyFloat, PyList, PyMapping, PyMemoryView, PyString,
+    PyTuple, PyType,
 };
 
 use yggdryl::arrow::BatchReader;
-use yggdryl::media::{IORecordOptions, RecordOptions};
+use yggdryl::avro::AvroOptions;
+use yggdryl::excel::ExcelOptions;
+use yggdryl::media::{CacheTtl, IORecordOptions, RecordOptions};
+use yggdryl::parquet::ParquetOptions;
 use yggdryl::text::{LeadingFragment, TextOptions as CoreTextOptions};
 use yggdryl::{Field as CoreField, Level, StreamChunkedSerie};
 
@@ -1351,6 +1354,40 @@ fn whole_count(value: &Bound<'_, PyAny>, name: &str) -> PyResult<usize> {
     value.extract::<usize>()
 }
 
+/// Read a `cache_ttl` value: a whole number of milliseconds, `0` realtime.
+///
+/// `None` clears the setting to its default, realtime. An integer - an
+/// `int`, or any object `__index__` reads, a `NumPy` integer among them - is
+/// taken as it is. A `str` of digits, a negative or too-wide integer and a
+/// `float` meet the core's one integer grammar as their text, so each is
+/// refused by the sentence every other door of the setting gives, naming
+/// `$.cache_ttl`, and as one exception type on every wheel; a `bool` or any
+/// other type is a `TypeError`.
+fn cache_ttl_from_value(value: &Bound<'_, PyAny>) -> PyResult<CacheTtl> {
+    if value.is_none() {
+        return Ok(CacheTtl::REALTIME);
+    }
+    if value.is_instance_of::<PyBool>() {
+        return Err(PyTypeError::new_err(
+            "cache_ttl must be an integer of milliseconds, not bool",
+        ));
+    }
+    if value.hasattr(intern!(value.py(), "__index__"))? {
+        if let Ok(millis) = value.extract::<u64>() {
+            return Ok(CacheTtl::from(millis));
+        }
+    } else if !value.is_instance_of::<PyString>() && !value.is_instance_of::<PyFloat>() {
+        return Err(PyTypeError::new_err(
+            "cache_ttl must be an integer of milliseconds",
+        ));
+    }
+    value
+        .str()?
+        .to_str()?
+        .parse::<CacheTtl>()
+        .map_err(value_error)
+}
+
 /// Set the row-per-batch bound, refusing a bound of nothing.
 ///
 /// A batch of zero rows is not a small batch: the readers chunk by this number,
@@ -1512,6 +1549,7 @@ impl PyRecordOptions {
         state.set_item("batch_row_size", self.inner.batch_row_size())?;
         state.set_item("commit_batch_num", self.inner.commit_batch_num())?;
         state.set_item("num_threads", self.inner.num_threads())?;
+        state.set_item("cache_ttl", self.inner.cache_ttl().millis())?;
         state.set_item("max_row_size", self.inner.max_row_size())?;
         state.set_item("row_offset", self.inner.row_offset())?;
         state.set_item("max_byte_size", self.inner.max_byte_size())?;
@@ -1540,30 +1578,26 @@ impl PyRecordOptions {
                 options.timezone().copied().map(PyTimezone::from_core),
             )?;
         }
-        if let RecordOptions::Excel(options) = &self.inner {
-            state.set_item("sheet", options.sheet.as_deref())?;
+        if let Some(options) = self.inner.settings::<ExcelOptions>() {
+            state.set_item("sheet", options.sheet())?;
             state.set_item(
                 "range",
-                options.range.map(crate::excel::PyCellRange::from_inner),
+                options.range().map(crate::excel::PyCellRange::from_inner),
             )?;
         }
         if let Some(header) = self.inner.header() {
             state.set_item("header", header)?;
         }
-        if let Some(block_codec) = self.inner.avro_block_codec() {
-            state.set_item("block_codec", block_codec)?;
+        if let Some(options) = self.inner.settings::<AvroOptions>() {
+            state.set_item("block_codec", options.block_codec())?;
+            if let Some(marker) = options.sync_marker() {
+                state.set_item("sync_marker", PyBytes::new(py, marker))?;
+            }
         }
-        if let Some(marker) = self.inner.avro_sync_marker() {
-            state.set_item("sync_marker", PyBytes::new(py, marker))?;
-        }
-        if let Some(compression) = self.inner.parquet_compression_name() {
-            state.set_item("compression", compression)?;
-        }
-        if let Some(rows) = self.inner.parquet_max_row_group_size() {
-            state.set_item("max_row_group_size", rows)?;
-        }
-        if let Some(metadata) = self.inner.parquet_key_value_metadata() {
-            state.set_item("key_value_metadata", metadata.to_vec())?;
+        if let Some(options) = self.inner.settings::<ParquetOptions>() {
+            state.set_item("compression", options.compression_name())?;
+            state.set_item("max_row_group_size", options.max_row_group_size)?;
+            state.set_item("key_value_metadata", options.key_value_metadata.clone())?;
         }
         if let Some(separator) = self.inner.csv_separator() {
             state.set_item("separator", csv_byte_text(Some(separator)))?;
@@ -1599,6 +1633,7 @@ impl PyRecordOptions {
             "batch_row_size" => self.set_batch_row_size(value.extract()?)?,
             "commit_batch_num" => self.set_commit_batch_num(given)?,
             "num_threads" => self.set_num_threads(given)?,
+            "cache_ttl" => self.set_cache_ttl(value)?,
             "max_row_size" => self.set_max_row_size(value.extract()?)?,
             "row_offset" => self.set_row_offset(value.extract()?)?,
             "max_byte_size" => self.set_max_byte_size(value.extract()?)?,
@@ -1842,6 +1877,7 @@ impl PyRecordOptions {
         let num_threads =
             required_record_pickle_item(state, "num_threads")?.extract::<Option<usize>>()?;
         options.inner.set_num_threads(num_threads);
+        options.set_cache_ttl(&required_record_pickle_item(state, "cache_ttl")?)?;
         options.set_max_row_size(required_record_pickle_item(state, "max_row_size")?.extract()?)?;
         options.set_row_offset(required_record_pickle_item(state, "row_offset")?.extract()?)?;
         options
@@ -2056,6 +2092,31 @@ impl PyRecordOptions {
         Ok(())
     }
 
+    /// How long a closed handle serves the metadata its medium cached, in
+    /// milliseconds: the origin's root, its row and column counts, a footer.
+    ///
+    /// `0`, the default, is realtime - a closed handle reads afresh on every
+    /// ask - and `n` serves an entry younger than `n` milliseconds, so what
+    /// another writer changes is seen once the entry is that old. An open
+    /// handle serves what it read until it closes whatever this says, and a
+    /// write through the handle refreshes or drops the entry either way.
+    /// Outside the options' identity: two options that differ only here
+    /// compare and hash as equal. Milliseconds, where `IOBase.buffered(ttl=)`
+    /// is seconds. The setter takes a whole number - anything `__index__`
+    /// reads - clears to `0` on `None`, and refuses a `bool`, a negative or
+    /// a fractional one, the last two naming `$.cache_ttl`.
+    #[getter]
+    fn cache_ttl(&self) -> u64 {
+        self.inner.cache_ttl().millis()
+    }
+
+    #[setter]
+    fn set_cache_ttl(&mut self, cache_ttl: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_cache_ttl(cache_ttl_from_value(cache_ttl)?);
+        Ok(())
+    }
+
     /// The bound on how many result rows flow in total, when one is set.
     ///
     /// A count of rows, applied last - after the declared schema, selection,
@@ -2182,7 +2243,8 @@ impl PyRecordOptions {
     /// `max_row_size`.
     ///
     /// The setter splits a `Plan`, its text, a clause, or a `Field` back into
-    /// those sections, replacing every one of them.
+    /// those sections, replacing every one of them but the declared field,
+    /// which a plan with no `create` section leaves standing.
     #[getter]
     fn plan(&self) -> PyPlan {
         PyPlan::from_core(self.inner.plan())
@@ -2220,13 +2282,16 @@ impl PyRecordOptions {
     /// first worksheet - or for another encoding.
     #[getter]
     fn sheet(&self) -> Option<&str> {
-        self.inner.excel_sheet()
+        self.inner.settings::<ExcelOptions>()?.sheet()
     }
 
     #[setter]
     fn set_sheet(&mut self, sheet: Option<&str>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_excel_sheet(sheet).map_err(value_error)
+        self.inner
+            .require_settings_mut::<ExcelOptions>("$.sheet", "a worksheet")
+            .and_then(|options| options.set_sheet(sheet))
+            .map_err(value_error)
     }
 
     /// The cells a workbook read or write addresses, `None` for the whole
@@ -2234,7 +2299,8 @@ impl PyRecordOptions {
     #[getter]
     fn range(&self) -> Option<crate::excel::PyCellRange> {
         self.inner
-            .excel_range()
+            .settings::<ExcelOptions>()?
+            .range()
             .map(crate::excel::PyCellRange::from_inner)
     }
 
@@ -2245,20 +2311,26 @@ impl PyRecordOptions {
             .filter(|value| !value.is_none())
             .map(crate::excel::cell_range_from)
             .transpose()?;
-        self.inner.set_excel_range(range).map_err(value_error)
+        self.inner
+            .require_settings_mut::<ExcelOptions>("$.range", "a cell range")
+            .map(|options| options.set_range(range))
+            .map_err(value_error)
     }
 
     /// The Avro block codec name, or `None` for another encoding.
     #[getter]
     fn block_codec(&self) -> Option<&str> {
-        self.inner.avro_block_codec()
+        self.inner
+            .settings::<AvroOptions>()
+            .map(AvroOptions::block_codec)
     }
 
     #[setter]
     fn set_block_codec(&mut self, block_codec: &str) -> PyResult<()> {
         self.require_mutable()?;
         self.inner
-            .set_avro_block_codec(block_codec)
+            .require_settings_mut::<AvroOptions>("$.block_codec", "a block codec")
+            .and_then(|options| options.set_block_codec(block_codec))
             .map_err(value_error)
     }
 
@@ -2266,7 +2338,8 @@ impl PyRecordOptions {
     #[getter]
     fn sync_marker<'py>(&self, py: Python<'py>) -> Option<Bound<'py, PyBytes>> {
         self.inner
-            .avro_sync_marker()
+            .settings::<AvroOptions>()?
+            .sync_marker()
             .map(|marker| PyBytes::new(py, marker))
     }
 
@@ -2275,7 +2348,8 @@ impl PyRecordOptions {
         self.require_mutable()?;
         let marker = marker.map(bytes_from_value).transpose()?;
         self.inner
-            .set_avro_sync_marker(marker.as_deref())
+            .require_settings_mut::<AvroOptions>("$.sync_marker", "a synchronization marker")
+            .and_then(|options| options.set_sync_marker(marker.as_deref()))
             .map_err(value_error)
     }
 
@@ -2286,28 +2360,34 @@ impl PyRecordOptions {
     /// handle instead.
     #[getter]
     fn compression(&self) -> Option<String> {
-        self.inner.parquet_compression_name()
+        self.inner
+            .settings::<ParquetOptions>()
+            .map(ParquetOptions::compression_name)
     }
 
     #[setter]
     fn set_compression(&mut self, compression: &str) -> PyResult<()> {
         self.require_mutable()?;
         self.inner
-            .set_parquet_compression_name(compression)
+            .require_settings_mut::<ParquetOptions>("$.compression", "a page compression")
+            .and_then(|options| options.set_compression_name(compression))
             .map_err(value_error)
     }
 
     /// The maximum rows per row group, for the encodings that have them.
     #[getter]
     fn max_row_group_size(&self) -> Option<usize> {
-        self.inner.parquet_max_row_group_size()
+        self.inner
+            .settings::<ParquetOptions>()
+            .map(|options| options.max_row_group_size)
     }
 
     #[setter]
     fn set_max_row_group_size(&mut self, rows: usize) -> PyResult<()> {
         self.require_mutable()?;
         self.inner
-            .set_parquet_max_row_group_size(rows)
+            .require_settings_mut::<ParquetOptions>("$.max_row_group_size", "a row-group size")
+            .map(|options| options.set_max_row_group_size(rows))
             .map_err(value_error)
     }
 
@@ -2315,11 +2395,11 @@ impl PyRecordOptions {
     /// have one.
     #[getter]
     fn key_value_metadata<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyDict>>> {
-        let Some(metadata) = self.inner.parquet_key_value_metadata() else {
+        let Some(options) = self.inner.settings::<ParquetOptions>() else {
             return Ok(None);
         };
         let pairs = PyDict::new(py);
-        for (key, value) in metadata {
+        for (key, value) in &options.key_value_metadata {
             pairs.set_item(key, value)?;
         }
         Ok(Some(pairs))
@@ -2328,8 +2408,10 @@ impl PyRecordOptions {
     #[setter]
     fn set_key_value_metadata(&mut self, metadata: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
+        let metadata = string_pairs_from_value(metadata)?;
         self.inner
-            .set_parquet_key_value_metadata(string_pairs_from_value(metadata)?)
+            .require_settings_mut::<ParquetOptions>("$.key_value_metadata", "footer metadata")
+            .map(|options| options.set_key_value_metadata(metadata))
             .map_err(value_error)
     }
 
@@ -2633,6 +2715,7 @@ impl PyTextOptions {
             "batch_row_size" => self.set_batch_row_size(value.extract()?)?,
             "commit_batch_num" => self.set_commit_batch_num(given)?,
             "num_threads" => self.set_num_threads(given)?,
+            "cache_ttl" => self.set_cache_ttl(value)?,
             "max_row_size" => self.set_max_row_size(value.extract()?)?,
             "row_offset" => self.set_row_offset(value.extract()?)?,
             "max_byte_size" => self.set_max_byte_size(value.extract()?)?,
@@ -2775,6 +2858,18 @@ impl PyTextOptions {
     }
 
     #[getter]
+    fn cache_ttl(&self) -> u64 {
+        self.inner.cache_ttl().millis()
+    }
+
+    #[setter]
+    fn set_cache_ttl(&mut self, cache_ttl: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_cache_ttl(cache_ttl_from_value(cache_ttl)?);
+        Ok(())
+    }
+
+    #[getter]
     fn max_row_size(&self) -> Option<u64> {
         self.inner.max_row_size()
     }
@@ -2890,7 +2985,8 @@ impl PyTextOptions {
     /// `max_row_size`.
     ///
     /// The setter splits a `Plan`, its text, a clause, or a `Field` back into
-    /// those sections, replacing every one of them.
+    /// those sections, replacing every one of them but the declared field,
+    /// which a plan with no `create` section leaves standing.
     #[getter]
     fn plan(&self) -> PyPlan {
         PyPlan::from_core(self.inner.plan())

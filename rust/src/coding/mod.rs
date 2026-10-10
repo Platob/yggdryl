@@ -324,20 +324,34 @@ impl<H: IOBase> crate::IOMedia for Coding<H> {
             return crate::IOMedia::read_serie(&self.handle, Some(options));
         }
         let owned = self.owned_presented_handle()?;
-        let reader = match options {
+        let composed =
+            crate::media_serie::compose(options, &crate::media_serie::Scan::default(), None, &[])?;
+        let handed = &composed.handed;
+        let reader = match handed {
             crate::media::RecordOptions::Ipc(ipc) => {
-                crate::ipc::read_owned_batch_reader(owned, options.field().as_ref(), ipc)?
+                crate::ipc::read_owned_batch_reader(owned, handed.declared(), ipc)?
             }
             _ => return crate::IOMedia::read_serie(&owned, Some(options)),
         };
-        crate::iomedia::landed_options(
-            options.limit_arrow_reader(options.apply_arrow_reader(reader, None)?)?,
-            options,
-        )
-        .map(crate::Serie::from)
+        // The declared root, narrowed to what the read decodes, is the cast
+        // alone; the residual runs once after it.
+        let reader = match handed.declared() {
+            Some(declared) => declared.apply_arrow_reader(
+                reader,
+                crate::ArrowCastOptions::new().with_safe(handed.safe()),
+            )?,
+            None => reader,
+        };
+        crate::iomedia::landed_options(composed.residual.apply_reader(reader)?, options)
+            .map(crate::Serie::from)
     }
 }
 
+// The capabilities a backend specializes keep their defaults here: an upload
+// is encoded through this handle's own whole-value write, a failed write is
+// the caller's to remove so the coding state goes with it, a role's handle
+// would drop the coding, and a stored length a listing states is not the
+// decoded length this handle answers.
 impl<H: IOBase> IOBase for Coding<H> {
     /// Read the range out of the decoded value.
     ///

@@ -18,7 +18,7 @@ export {
   Filter,
   Identifier,
   Identifiers,
-  IsinRegistry,
+  Instruments,
   IOBase,
   IOCursor,
   IOResult,
@@ -78,12 +78,12 @@ export {
   type HttpRecorded,
   type HttpServerOptions,
   type HttpStats,
-  type IsinResolution,
   type JoinOptionsInput,
   type MetadataEntry,
   type ObjectOptions,
   type PartitionEntry,
   type PartitionOptionsInput,
+  type Resolution,
   type SpillOptionsInit,
   type StringParameters,
   type StringParametersInput,
@@ -502,7 +502,6 @@ export type DataTypeId =
   | 'marketdatakind'
   | 'marketdatatype'
   | 'timeinforce'
-  | 'pluginside'
   | 'unit'
   | 'ric'
   | 'forex'
@@ -623,7 +622,6 @@ interface DataTypeKindById {
   marketdatakind: 'enum'
   marketdatatype: 'enum'
   timeinforce: 'enum'
-  pluginside: 'enum'
   unit: 'code'
   ric: 'code'
   forex: 'code'
@@ -715,7 +713,7 @@ export type BytesDataTypeId =
 
 /** Core compatibility targets supported by DataType and Field projection. */
 export type CompatibilityScheme =
-  'arrow' | 'spark' | 'polars' | 'pandas' | 'iceberg'
+  'arrow' | 'spark' | 'polars' | 'pandas' | 'iceberg' | 'doris'
 
 /** Required intent for a generic record-write entry point. */
 export type IOMode = 'overwrite' | 'append' | 'merge' | 'readonly' | 'random'
@@ -975,7 +973,7 @@ declare module './index' {
     /**
      * The sorted door: a capture collected, what `bookArrowReader` admits
      * expanded into market data, stably sorted by `snapunix`, else
-     * `currunix`. Source errors and expansion refusals come first, in
+     * `transunix`. Source errors and expansion refusals come first, in
      * source order, each thrown by its own `next`; a failure of the
      * iterable itself is thrown once, in place of the end.
      */
@@ -1754,7 +1752,6 @@ export type FisnField = FieldOf<'fisn', string>
 /** FIX TimeInForce(59), how long an order stands, an enum stored as the `uint8` code of its member and crossing as the member's name. */
 export type TimeInForceField = FieldOf<'timeinforce', TimeInForceName>
 /** The role of a FIX plugin, an enum stored as the `uint8` code of its member and crossing as the member's name. */
-export type PluginSideField = FieldOf<'pluginside', PluginSideName>
 /** The unit a quantity is counted in, FIX UnitOfMeasure(996), ASCII held to thirty-two bytes. */
 export type UnitField = FieldOf<'unit', string>
 /** A Refinitiv Identification Code - a ticker and an exchange code - printable ASCII bounded at thirty-two bytes. */
@@ -2062,7 +2059,6 @@ export interface FieldsNamespace {
   marketdatakind(name: string, options?: FieldOptions): MarketDataKindField
   marketdatatype(name: string, options?: FieldOptions): MarketDataTypeField
   timeinforce(name: string, options?: FieldOptions): TimeInForceField
-  pluginside(name: string, options?: FieldOptions): PluginSideField
   unit(name: string, options?: FieldOptions): UnitField
   ric(name: string, options?: FieldOptions): RicField
   forex(name: string, options?: FieldOptions): ForexField
@@ -2719,13 +2715,6 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'timeinforce', TimeInForceName, N, O>
-  pluginside<
-    const N extends string,
-    const O extends FieldOptionsInput = undefined,
-  >(
-    name: N,
-    options?: O,
-  ): NamedField<'pluginside', PluginSideName, N, O>
   unit<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -3786,29 +3775,6 @@ export declare function timeInForceFromFix(wire: string): TimeInForceName
  */
 export declare function timeInForceFixCode(name: TimeInForceName): string | null
 
-/**
- * The role of a FIX plugin: the side of the session a dialect's plugin
- * stands on, each member's stored name under the `uint8` code a
- * `pluginside` column stores - `UKNW` at zero for a plugin stating no role,
- * then `BUYS` and `SELL`. A session fact read off a dialect's source entry,
- * never off a FIX tag, and a separate enum from `Side` though two names are
- * spelled alike.
- */
-export declare const PluginSide: Readonly<{
-  UKNW: 0
-  BUYS: 1
-  SELL: 2
-}>
-
-/** The stored name of one plugin side. */
-export type PluginSideName = keyof typeof PluginSide
-
-/**
- * The role one plugin class names: a `CBlock` root's `type`, whose last
- * `.`-separated segment, folded, holding `buyside` is `BUYS`, holding
- * `sellside` is `SELL`, and anything else `UKNW`. Never throws.
- */
-export declare function pluginSideFromPluginType(pluginType: string): PluginSideName
 
 /**
  * FIX's `Side(54)`: which side of the market a trade took, each member's
@@ -3883,13 +3849,13 @@ export declare const enums: {
   readonly mdUpdateActions: readonly string[]
   /**
    * The six element column names every generated schema opens with, in
-   * schema order: `curruuid`, `crossuuid`, `crosscode`, `currhashcode`,
+   * schema order: `uuid`, `crossuuid`, `crosscode`, `hashcode`,
    * `crosshashcode`, `srcuuids`.
    */
   readonly elementColumns: readonly string[]
   /**
    * The nine event column names that follow them, in schema order:
-   * `currunix`, `creaunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix`,
+   * `transunix`, `creaunix`, `sendunix`, `exprunix`, `prevunix`, `snapunix`,
    * `prevuuid`, `seqnum`, `state`.
    */
   readonly eventColumns: readonly string[]
@@ -5291,13 +5257,13 @@ export interface FixMsgConstructor {
   readonly prototype: FixMsg
 }
 
-/** `yggdryl::fix`: the FIX dictionary, its message, and the process default. */
+/** The yggdryl-fix crate: the FIX dictionary, its message, and the process default. */
 export interface Fix {
   /**
    * The row header a ULBridge log writes in front of every line, as a
    * `rowheader` for a text read. Its clock is `mtime`, so the header dates
    * each line it matches: the capture is consumed into the line's
-   * `currunix` - the `recdunix` of its messages and the sending clock of one
+   * `transunix` - the `sendunix` of its messages and the sending clock of one
    * stating no `SendingTime(52)` - read at nanoseconds UTC under the text
    * options' `timezone`, never the file's modification time. Four of the
    * other six captures are named for the fields they fill - `msgsessionid`,
@@ -5403,8 +5369,8 @@ export type MarketItem =
  * The named facts an operation leaf is built from: the native record, or a
  * plain object keyed by column name - the market and operation columns and
  * `crosscode`/`srcuuids`, plus on an event every other event column but
- * `currunix` - case-folded. A derived identity (`curruuid`, `crossuuid`,
- * `currhashcode`, `crosshashcode`) is refused by name. A fact given as
+ * `transunix` - case-folded. A derived identity (`uuid`, `crossuuid`,
+ * `hashcode`, `crosshashcode`) is refused by name. A fact given as
  * `undefined` is not given; `null` clears it; `fxrates` takes a plain
  * object keyed by target currency, and any graph value is refused naming its
  * key.
@@ -5431,12 +5397,12 @@ export interface OperationElementConstructor<T> {
 
 /**
  * The public constructor of a dated operation leaf - `OrderEvent`,
- * `QuoteEvent`, `ExecutionEvent` - at `currunix` nanoseconds since the
+ * `QuoteEvent`, `ExecutionEvent` - at `transunix` nanoseconds since the
  * epoch, its named facts widened the same way and its `book` lifted out.
  */
 export interface OperationEventConstructor<T> {
-  /** Build the event at `currunix` from its named facts. */
-  new (currunix: bigint | number, facts?: OperationEventFactsInput | null): T
+  /** Build the event at `transunix` from its named facts. */
+  new (transunix: bigint | number, facts?: OperationEventFactsInput | null): T
   /** Rebuild a value `toJSON` wrote. */
   fromJSON(text: string): T
   readonly prototype: T

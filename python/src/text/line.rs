@@ -469,7 +469,7 @@ impl PyTextLine {
         crate::enums::PyMimeType::from_core(self.inner.bodytype().clone())
     }
 
-    /// The line past its row header, as text: what `currhashcode` hashes.
+    /// The line past its row header, as text: what `hashcode` hashes.
     #[getter]
     fn body(&self) -> &str {
         self.inner.body()
@@ -495,8 +495,8 @@ impl PyTextLine {
     /// A line is an event of the graph, and a message parsed out of it
     /// states this among its `srcuuids`.
     #[getter]
-    fn curruuid(&self) -> PyScalar {
-        uuid_scalar(self.inner.get_curruuid())
+    fn uuid(&self) -> PyScalar {
+        uuid_scalar(self.inner.get_uuid())
     }
 
     /// The identity every event of one lifecycle shares: derived from the
@@ -515,8 +515,8 @@ impl PyTextLine {
 
     /// The XXH3-64 of `body` and nothing else.
     #[getter]
-    fn currhashcode(&self) -> u64 {
-        self.inner.get_currhashcode()
+    fn hashcode(&self) -> u64 {
+        self.inner.get_hashcode()
     }
 
     /// The XXH3-64 of the cross code, `0` where there is none.
@@ -528,8 +528,8 @@ impl PyTextLine {
     /// When the line happened, nanoseconds since the Unix epoch, UTC: the
     /// stated instant, else `mtime`, else zero.
     #[getter]
-    fn currunix(&self) -> i64 {
-        self.inner.get_currunix()
+    fn transunix(&self) -> i64 {
+        self.inner.get_transunix()
     }
 
     /// The row number under `start_rownum`, else the physical line number.

@@ -1,0 +1,122 @@
+name: Rust lane
+description: >-
+  The run's one toolchain over a job's dependency cache, and what a core lane
+  compiled carried from the job that built it to the jobs that use it.
+
+# A core lane compiles the core once for one feature set, and every job of
+# that feature set links what it compiled instead of compiling it again.
+# rust-cache keeps dependencies only - `cache-workspace-crates` is false, so
+# what it saves never holds a workspace crate - and the workspace crates
+# travel inside the run as the `lane-<name>` artifact: everything under
+# `target/` the producer wrote after its cache was restored.
+#
+# Cargo calls a workspace unit fresh when no source it read is newer than its
+# dep-info. A checkout dates every file at the moment of the checkout, after
+# the producer compiled, so `restore` dates every tracked file at 2000-01-01
+# once the lane is unpacked. That is sound only because the producer and the
+# consumer are jobs of one run on one commit, and the consumer restores the
+# producer's cache key: never restore a lane from another run, never date a
+# checkout without a lane. Should a unit still read stale - a cache saved
+# between the two jobs with newer dependencies - cargo compiles it again,
+# which costs the minutes and never the proof.
+
+inputs:
+  mode:
+    description: >-
+      `setup` installs the toolchain and restores the cache; `pack` uploads
+      what this job compiled since its `setup` as `lane-<lane>`; `restore` is
+      `setup` plus that lane, the checkout dated before it.
+    required: true
+  toolchain:
+    description: The exact Rust version the `changes` job resolved for the run.
+    required: false
+    default: ""
+  cache:
+    description: The rust-cache shared key; empty restores none.
+    required: false
+    default: ""
+  save:
+    description: "'true' in the one job that owns the key; it saves on `main` alone."
+    required: false
+    default: "false"
+  lane:
+    description: The lane's name, for `pack` and `restore`.
+    required: false
+    default: ""
+  components:
+    description: Extra rustup components, space separated.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # `stable` is updated as every job always did and used while it is the
+    # run's version: rust-cache hashes every installed toolchain into its
+    # key, so a second copy of the same release beside it would cost no key,
+    # but a stale image's `stable` beside an exact install would cost them
+    # all. A release landing mid-run installs the run's version beside it,
+    # so a lane and its consumers never compile with two compilers.
+    - name: Install the run's toolchain
+      if: inputs.mode != 'pack'
+      shell: bash
+      env:
+        TOOLCHAIN: ${{ inputs.toolchain }}
+        COMPONENTS: ${{ inputs.components }}
+      run: |
+        set -euo pipefail
+        [ -n "$TOOLCHAIN" ] || { echo "::error::no toolchain was resolved for this run"; exit 1; }
+        rustup toolchain install stable --profile minimal
+        if [ "$(rustc +stable --version | cut -d' ' -f2)" = "$TOOLCHAIN" ]; then
+          name=stable
+        else
+          rustup toolchain install "$TOOLCHAIN" --profile minimal
+          name=$TOOLCHAIN
+        fi
+        rustup default "$name"
+        if [ -n "$COMPONENTS" ]; then
+          # shellcheck disable=SC2086 # one word per component
+          rustup component add --toolchain "$name" $COMPONENTS
+        fi
+        rustc --version
+    - if: inputs.mode != 'pack' && inputs.cache != ''
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        shared-key: ${{ inputs.cache }}
+        save-if: ${{ inputs.save == 'true' && github.ref == 'refs/heads/main' }}
+        cache-workspace-crates: false
+    - name: Mark what the cache restored
+      if: inputs.mode == 'setup'
+      shell: bash
+      run: touch "$RUNNER_TEMP/lane-mark" && sleep 1
+    - name: Pack what this job compiled
+      if: inputs.mode == 'pack'
+      shell: bash
+      run: |
+        set -euo pipefail
+        find target -newer "$RUNNER_TEMP/lane-mark" \( -type f -o -type l \) -print0 > "$RUNNER_TEMP/lane.list"
+        [ -s "$RUNNER_TEMP/lane.list" ] || { echo "::error::the lane compiled nothing under target/"; exit 1; }
+        tar --null -T "$RUNNER_TEMP/lane.list" -I 'zstd -T0 -3' -cf "$RUNNER_TEMP/lane.tar.zst"
+        echo "$(tr -cd '\0' < "$RUNNER_TEMP/lane.list" | wc -c) files, $(du -h "$RUNNER_TEMP/lane.tar.zst" | cut -f1) compressed"
+    - if: inputs.mode == 'pack'
+      uses: actions/upload-artifact@v4
+      with:
+        name: lane-${{ inputs.lane }}
+        path: ${{ runner.temp }}/lane.tar.zst
+        if-no-files-found: error
+        compression-level: 0
+        retention-days: 3
+        overwrite: true
+    - if: inputs.mode == 'restore'
+      uses: actions/download-artifact@v4
+      with:
+        name: lane-${{ inputs.lane }}
+        path: ${{ runner.temp }}/lane
+    - name: Unpack the lane and date the checkout before it
+      if: inputs.mode == 'restore'
+      shell: bash
+      run: |
+        set -euo pipefail
+        tar -I zstd -xf "$RUNNER_TEMP/lane/lane.tar.zst"
+        rm -rf "$RUNNER_TEMP/lane"
+        git ls-files -z | xargs -0 touch -h -d @946684800 --

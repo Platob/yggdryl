@@ -7,18 +7,18 @@
 | Key | Rule |
 | --- | --- |
 | Owner | trait `yggdryl::graph::Element` (`graph::element`); Rust-only - [leaves](index.md#leaves) answer it in Python/JavaScript |
-| `curruuid` | `get_curruuid`/`set_curruuid`: [`Uuid`](../types/uuid.md) - UUIDv8 over the content code (undated) or [event identity](event.md#identity) (dated) |
+| `uuid` | `get_uuid`/`set_uuid`: [`Uuid`](../types/uuid.md) - UUIDv8 over the content code (undated) or [event identity](event.md#identity) (dated) |
 | `crosscode` | `get_crosscode`/`set_crosscode`: name in another graph, shared by every incarnation; empty if unstated; a market element stores it as `{kind}:{side}:{base}` - `10:1:O-1001` an order to buy, `14:0:Q-1` a quote, `21:0:T-1` a trade - through [`Market::stored_crosscode`](market.md#sides-and-cross-codes) |
 | `crosshashcode`, `crossuuid` | `get_crosshashcode`/`set_crosshashcode`: XXH3-64 of the cross code as stored, zero if none; `get_crossuuid`/`set_crossuuid`: the cross element, never absent - UUIDv8 over the cross hash, else the element's own identity, so every element stands in one chain |
-| `currhashcode` | `get_currhashcode`/`set_currhashcode`: XXH3-64 digest of content |
+| `hashcode` | `get_hashcode`/`set_hashcode`: XXH3-64 digest of content |
 | `srcuuids` | `get_srcuuids`/`set_srcuuids`: sorted unique identities this one was read from; provenance, never chain, never digested |
 | Order | `is_after()`/`is_before()` (its mirror): one strict weak order |
 | `finalize` | implementor's: sync cross codes, digest content, record it, reset identity if content-derived |
 | `sync_cross`, `cross_uuid` | provided: cross hash = digest of the cross code, cross element = `cross_uuid()`; call when copying a cross code; `finalize` calls it first |
 | `digest` | provided, `-> Xxh3`: only the cross code (no identity, instant, source); [`Event`](event.md#identity), [`Market`](market.md#contract), [`Operation`](operation.md#contract) continue it; `finalize` appends content, then `as_u64` |
-| Composite | feeds only nested `curruuid` bytes per occurrence, never `currhashcode`/content, framed by the layout's kind/count |
+| Composite | feeds only nested `uuid` bytes per occurrence, never `hashcode`/content, framed by the layout's kind/count |
 | `with_previous` | implementor's: this element after another; events delegate to [`Event::following`](event.md#following) |
-| `merge_with` | provided: folds another same-`curruuid` statement (missing cross code, unioned sources), else no-op; events use [`Event::merging`](event.md#merging) |
+| `merge_with` | provided: folds another same-`uuid` statement (missing cross code, unioned sources), else no-op; events use [`Event::merging`](event.md#merging) |
 | Not here | operation names: [`Operation::get_identifiers`](operation.md#identifiers); book placement: [book control](order.md#book-control) |
 
 ## Example
@@ -28,8 +28,10 @@ An undated order read from two lines: one element, two sources.
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Order};
+    use yggdryl::graph::Element;
+    use yggdryl_market::graph::Order;
     use yggdryl::Uuid;
+    yggdryl_market::install()?;
 
     let mut order = Order::new();
     order.set_crosscode("O-1001".to_owned());
@@ -37,7 +39,7 @@ An undated order read from two lines: one element, two sources.
     order.finalize();
 
     // An undated identity is its content: UUIDv8 over its code.
-    assert_eq!(order.get_curruuid(), Uuid::from_v8(u128::from(order.get_currhashcode())));
+    assert_eq!(order.get_uuid(), Uuid::from_v8(u128::from(order.get_hashcode())));
     // The sources are sorted and unique at the setter.
     assert_eq!(order.get_srcuuids(), [Uuid::from_v8(1), Uuid::from_v8(2)]);
     // The cross code names the chain: its digest and the cross element follow it.
@@ -49,7 +51,7 @@ An undated order read from two lines: one element, two sources.
     let mut again = order.clone();
     again.set_srcuuids(vec![Uuid::from_v8(3)]);
     again.finalize();
-    assert_eq!(again.get_curruuid(), order.get_curruuid());
+    assert_eq!(again.get_uuid(), order.get_uuid());
     let merged = order.clone().merge_with(&again).expect("the same order");
     assert_eq!(merged.get_srcuuids(), [Uuid::from_v8(1), Uuid::from_v8(2), Uuid::from_v8(3)]);
     assert!(merged.clone().merge_with(&merged).is_none(), "nothing moved");
@@ -58,7 +60,7 @@ An undated order read from two lines: one element, two sources.
     let mut alone = order;
     alone.set_crosscode(String::new());
     alone.finalize();
-    assert_eq!((alone.get_crosshashcode(), alone.get_crossuuid()), (0, alone.get_curruuid()));
+    assert_eq!((alone.get_crosshashcode(), alone.get_crossuuid()), (0, alone.get_uuid()));
     // An undated element states no order.
     assert!(!alone.is_after(&merged) && !merged.is_after(&alone));
     ```
@@ -74,8 +76,8 @@ An undated order read from two lines: one element, two sources.
     again = graph.Order(crosscode="O-1001", srcuuids=[line_1])
 
     # Sources are provenance, not content: the same element.
-    assert again.curruuid == order.curruuid
-    assert order.crossuuid != order.curruuid, "a cross code names a chain of its own"
+    assert again.uuid == order.uuid
+    assert order.crossuuid != order.uuid, "a cross code names a chain of its own"
     assert order.crosshashcode != 0
 
     merged = order.merge_with(again)
@@ -85,7 +87,7 @@ An undated order read from two lines: one element, two sources.
 
     # With no cross code, the cross element is the element itself.
     alone = graph.Order()
-    assert (alone.crosshashcode, alone.crossuuid) == (0, alone.curruuid)
+    assert (alone.crosshashcode, alone.crossuuid) == (0, alone.uuid)
     # An undated element states no order.
     assert not alone.is_after(order) and not order.is_after(alone)
     ```
@@ -102,8 +104,8 @@ An undated order read from two lines: one element, two sources.
     const again = new graph.Order({ crosscode: 'O-1001', srcuuids: [line1] })
 
     // Sources are provenance, not content: the same element.
-    assert.equal(again.curruuid, order.curruuid)
-    assert.notEqual(order.crossuuid, order.curruuid, 'a cross code names a chain of its own')
+    assert.equal(again.uuid, order.uuid)
+    assert.notEqual(order.crossuuid, order.uuid, 'a cross code names a chain of its own')
     assert.notEqual(order.crosshashcode, 0n)
 
     const merged = order.mergeWith(again)
@@ -113,7 +115,7 @@ An undated order read from two lines: one element, two sources.
     // With no cross code, the cross element is the element itself.
     const alone = new graph.Order()
     assert.equal(alone.crosshashcode, 0n)
-    assert.equal(alone.crossuuid, alone.curruuid)
+    assert.equal(alone.crossuuid, alone.uuid)
     // An undated element states no order.
     assert.ok(!alone.isAfter(order) && !order.isAfter(alone))
     ```

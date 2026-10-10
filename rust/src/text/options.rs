@@ -19,24 +19,25 @@ pub(crate) const BASE_COLUMNS: [&str; 2] = ["body", "dropped_byte_size"];
 /// column that states the fact is the event's rather than a capture column
 /// beside it. `mtime` feeds the instant the same way, under its own rule.
 pub(crate) const EVENT_CAPTURES: [&str; 7] = [
-    "state", "creaunix", "recdunix", "exprunix", "prevunix", "snapunix", "prevuuid",
+    "state", "creaunix", "sendunix", "exprunix", "prevunix", "snapunix", "prevuuid",
 ];
 
 /// The event columns no capture can feed, because the line derives them -
 /// its identity, the chain's, the codes, the names it goes by - or a walk
 /// states them: a capture spelled as one is refused.
 pub(crate) const DERIVED_EVENT_COLUMNS: [&str; 8] = [
-    "currunix",
-    "curruuid",
+    "transunix",
+    "uuid",
     "crosscode",
     "crossuuid",
-    "currhashcode",
+    "hashcode",
     "crosshashcode",
     "srcuuids",
     "seqnum",
 ];
 
-/// The row-header capture that dates a line, feeding `currunix`.
+/// The row-header capture that dates a line, feeding its transaction
+/// instant, `transunix`.
 ///
 /// Not a reserved name: with `parse_mtime` off the capture is an ordinary
 /// one with a column of its own, so the flag alone decides whether the name
@@ -163,6 +164,12 @@ pub struct TextOptions {
     /// The threads a write of several parts runs on at once; `None` is the
     /// destination's own answer.
     pub num_threads: Option<usize>,
+    /// How long a closed handle serves the metadata it read - the origin's
+    /// field, its counts - in milliseconds; `0`, the default, reads afresh on
+    /// every ask, and an open handle serves what it holds until it closes.
+    /// Outside the options' identity: it changes when a change is seen,
+    /// never what is.
+    pub cache_ttl: crate::media::CacheTtl,
     /// Compression level applied when the handle declares a coding.
     pub level: Level,
     /// First emitted row number, which `seqnum` counts from; `None` counts
@@ -171,16 +178,16 @@ pub struct TextOptions {
     ///
     /// There is no column of its own: the row number is the line's place,
     /// and `seqnum` is where an event states its place - so it reaches the
-    /// line's `curruuid`, ordering the lines of one millisecond by row.
+    /// line's `uuid`, ordering the lines of one millisecond by row.
     pub start_rownum: Option<i64>,
     /// Whether the row header's `mtime` capture dates the line.
     ///
     /// On by default, because a captured line's own timestamp is the fact a
     /// reader of a capture reaches for first. With it on the capture feeds
-    /// `currunix` and has no column beside it, and the handle's own
+    /// `transunix` and has no column beside it, and the handle's own
     /// modification time answers for a line the header did not date; with it
     /// off the capture is an ordinary one, read at its own syntax into its
-    /// own column, and the handle's time answers `currunix` alone.
+    /// own column, and the handle's time answers `transunix` alone.
     pub parse_mtime: bool,
     /// Whether to classify each line and emit a `mimetype` column.
     pub parse_mimetype: bool,
@@ -236,6 +243,7 @@ impl TextOptions {
             max_byte_size: None,
             commit_batch_num: None,
             num_threads: None,
+            cache_ttl: crate::media::CacheTtl::REALTIME,
             level: Level::DEFAULT,
             start_rownum: None,
             parse_mtime: true,
@@ -357,7 +365,7 @@ impl TextOptions {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$.rowheader"),
                     reason: format_smolstr!(
-                        "expected named captures distinct from body, dropped_byte_size and the event columns the line derives - currunix, curruuid, crosscode, crossuuid, currhashcode, crosshashcode, srcuuids, identifiers, seqnum - got {:?}",
+                        "expected named captures distinct from body, dropped_byte_size and the event columns the line derives - transunix, uuid, crosscode, crossuuid, hashcode, crosshashcode, srcuuids, identifiers, seqnum - got {:?}",
                         capture.name()
                     ),
                 });
@@ -603,9 +611,8 @@ impl TextOptions {
     /// column per named capture, in the order the row header declares them and
     /// typed by what its syntax can match. Public because a caller composing a
     /// text read with something that reads its payload needs the columns
-    /// before there is a resource to read, exactly as
-    /// [`fix_schema`](crate::fix_schema) answers the codec's before a byte is
-    /// read.
+    /// before there is a resource to read, exactly as a codec's fixed schema
+    /// answers before a byte is read.
     ///
     /// # Errors
     ///
@@ -673,6 +680,12 @@ impl Default for TextOptions {
 
 impl IORecordOptions for TextOptions {
     crate::record_options_fields!();
+}
+
+impl crate::media::MediumSettings for TextOptions {
+    fn medium() -> &'static dyn crate::media::MediaCodec {
+        &super::TEXT_CODEC
+    }
 }
 
 /// Compile a strip sequence whole, so one bad pattern installs none of it.

@@ -375,7 +375,7 @@ assert DataType("binary(2)").scalar(b"\x01\x02").as_py() == b"\x01\x02"
 `Eusipa` is a value, not a datatype: EUSIPA's four-digit product category,
 which the SSPA's Swiss map numbers the same way, held by its shape alone -
 `1` an investment product, `2` a leverage product - and named by each map
-where it lists the code. An `IsinRegistry` row holds one as its
+where it lists the code. An instrument row of `Instruments` holds one as its
 `eusipacode`, an `int`.
 
 ```python
@@ -383,7 +383,7 @@ import pickle
 
 import pytest
 
-from yggdryl import Eusipa, IsinRegistry
+from yggdryl import Eusipa, Instruments
 
 constant = Eusipa("2300")
 assert (constant.code, constant.group, constant.level) == (2300, 23, 2)
@@ -403,28 +403,28 @@ with pytest.raises(ValueError, match="expected a four-digit EUSIPA product categ
 with pytest.raises(TypeError):
     Eusipa(True)  # type: ignore[arg-type]
 
-registry = IsinRegistry()
-assert registry.merge({"isin": "CH0123456789", "eusipacode": 2300})
-assert Eusipa(registry.get("CH0123456789")["eusipacode"]) == constant
+held = Instruments()
+assert held.merge({"isin": "CH0012214059", "eusipacode": 2300})
+assert Eusipa(held.get("CH0012214059")["eusipacode"]) == constant
 ```
 
 ## Enums: side, marketdatakind, state, timeinforce
 
-`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` and
-`pluginside` are the `enum` family: each member is a code in a column - `uint8`
-for `side`, `marketdatakind`, `timeinforce` and `pluginside`, `uint16` for
+`side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are the
+`enum` family: each member is a code in a column - `uint8` for `side`,
+`marketdatakind` and `timeinforce`, `uint16` for
 `state` and `marketdatatype` - and its stored name in text. Python reads them as
 the `enum.IntEnum`s `yggdryl.Side`, `yggdryl.MarketDataKind`,
-`yggdryl.MarketDataType`, `yggdryl.State`, `yggdryl.TimeInForce` and
-`yggdryl.PluginSide`,
-and a value of the column answers the member. A side is never absent -
+`yggdryl.MarketDataType`, `yggdryl.State` and `yggdryl.TimeInForce`, and a
+value of the column answers the member. A side is never absent -
 `Side.UKNW` (code 0) is unstated. A side's name is a four-letter code (`BUYS`,
 `SELL`, `SSHT`); the stored names before the codes (`BUY`, `SSHORT`, ...) are
 still read and never written.
 
 ```python
 import yggdryl
-from yggdryl import DataType, MarketDataKind, PluginSide, Side, State, TimeInForce
+from yggdryl import DataType, MarketDataKind, Side, State, TimeInForce
+from yggdryl.fix import plugin_side
 
 # A side reads its stored name, FIX's wire code, the specification's name or its code.
 side = yggdryl.side("side", nullable=False)
@@ -451,10 +451,10 @@ assert DataType("timeinforce").scalar("0").as_py() is TimeInForce.DAY
 assert TimeInForce.from_fix("Z") is TimeInForce.OTHER   # a venue's own value
 assert (int(TimeInForce.GTC), TimeInForce.GTC.fix_code) == (2, "1")
 
-# A FIX plugin's role, read off a CBlock's plugin class; no `Side`, though
-# `BUYS` and `SELL` are spelled alike.
-assert PluginSide.from_plugin_type("x.SellSideFIXCPluginCBlock") is PluginSide.SELL
-assert DataType("pluginside").scalar("buy-side").as_py() is PluginSide.BUYS
+# A FIX plugin's role is a side, read off a CBlock's plugin class; the
+# role's own name is one of the side's spellings.
+assert plugin_side("x.SellSideFIXCPluginCBlock") is Side.SELL
+assert DataType("side").scalar("buy-side").as_py() is Side.BUYS
 ```
 
 ## Nested values: serie, map, union, dictionary

@@ -13,7 +13,7 @@
 | `finalize` | digests the leaf's `marketdatakind` code, so one entry as an order and as a quote are two operations; an element takes UUIDv8 over its code, an event also digests its [book scope](#book-control) and takes its [event identity](event.md#identity) |
 | From FIX | one message is one leaf: an order message is an `OrderEvent`; an execution report of no fill - a new, a cancel, a reject, an expiry - is its order's report - `ORDR`, its own state - and one that reports a fill is split at the parse into that report and the [execution](execution.md#contract) it reports; an order batch - a list, a mass order, a cross, a mass cancel report (`ORDB`) - is split at the parse into one order message per entry ([FIX](../fix/message.md#a-parse-splits-what-a-message-reports)) |
 | Following and merging | as [`Operation`](operation.md#following-and-merging) states; an element's `with_previous` takes the predecessor's cross code, market and operation facts with no timed link |
-| Bindings | Python `graph.Order(**facts)`, `graph.OrderEvent(currunix, book=..., **facts)`; JavaScript `new graph.Order(facts)`, `new graph.OrderEvent(currunix, facts)` with `book` among the facts; `kind` the `MarketKind` spelling, `marketdatakind` the member (Python) or its name (JavaScript) |
+| Bindings | Python `graph.Order(**facts)`, `graph.OrderEvent(transunix, book=..., **facts)`; JavaScript `new graph.Order(facts)`, `new graph.OrderEvent(transunix, facts)` with `book` among the facts; `kind` the `MarketKind` spelling, `marketdatakind` the member (Python) or its name (JavaScript) |
 
 ## Book control
 
@@ -35,10 +35,11 @@ How a book applies each action is the [book's](book.md#entries).
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{
-        BookRef, Element, Event, Market, MarketKind, MdUpdateAction, Order, OrderEvent, QuoteEvent,
-    };
-    use yggdryl::{MarketDataKind, Side, Uuid};
+    use yggdryl_market::graph::{BookRef, Market, MarketKind, MdUpdateAction, Order, OrderEvent, QuoteEvent};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl_market::{MarketDataKind, Side};
+    use yggdryl::Uuid;
+    yggdryl_market::install()?;
 
     // An undated order: its identity is its content, UUIDv8 over its code.
     let mut order = Order::new();
@@ -48,17 +49,17 @@ How a book applies each action is the [book's](book.md#entries).
     order.finalize();
     assert_eq!(order.kind(), MarketKind::Order);
     assert_eq!(order.kind().marketdatakind(), MarketDataKind::Order);
-    assert_eq!(order.get_curruuid(), Uuid::from_v8(u128::from(order.get_currhashcode())));
+    assert_eq!(order.get_uuid(), Uuid::from_v8(u128::from(order.get_hashcode())));
 
     // Dated, it is an order event, finalized: UUIDv7.
     let event: OrderEvent = order.clone().at(1_700_000_000_000_000_000);
-    assert_eq!(event.get_curruuid(), event.time_uuid()?);
+    assert_eq!(event.get_uuid(), event.time_uuid()?);
     assert!(!event.is_execution(), "the kind decides, whatever the state");
 
     // The same facts as a quote are another operation.
     let mut quote = QuoteEvent::from(&event);
     quote.finalize();
-    assert_ne!(quote.get_curruuid(), event.get_curruuid());
+    assert_ne!(quote.get_uuid(), event.get_uuid());
 
     // A market-data entry carries its book control; its scope digests into it.
     let mut entry = quote.clone().with_book(BookRef {
@@ -69,11 +70,11 @@ How a book applies each action is the [book's](book.md#entries).
     });
     entry.finalize();
     assert_eq!((entry.action().map(MdUpdateAction::as_str), entry.scope()), (Some("0"), "AAPL.XNAS"));
-    assert_ne!(entry.get_curruuid(), quote.get_curruuid());
+    assert_ne!(entry.get_uuid(), quote.get_uuid());
     // The action and the position steer the book: they move no identity.
     let mut placed = quote.clone().with_book(BookRef { action: Some(MdUpdateAction::New), position: Some(1), ..BookRef::default() });
     placed.finalize();
-    assert_eq!(placed.get_curruuid(), quote.get_curruuid());
+    assert_eq!(placed.get_uuid(), quote.get_uuid());
 
     // Undated again, the clocks and the control stay behind.
     let mut element = entry.into_element();
@@ -98,19 +99,19 @@ How a book applies each action is the [book's](book.md#entries).
     # Dated, it is an order event.
     event = order.at(1_700_000_000_000_000_000)
     assert isinstance(event, graph.OrderEvent)
-    assert event.currunix == 1_700_000_000_000_000_000
+    assert event.transunix == 1_700_000_000_000_000_000
     assert not event.is_execution, "the kind decides, whatever the state"
 
     # The same facts as a quote are another operation.
-    quote = graph.QuoteEvent(event.currunix, crosscode="O-1001", side="BUYS", price=Decimal("189.50"))
-    assert quote.curruuid != event.curruuid
+    quote = graph.QuoteEvent(event.transunix, crosscode="O-1001", side="BUYS", price=Decimal("189.50"))
+    assert quote.uuid != event.uuid
 
     # A market-data entry carries its book control; its scope digests into it.
     entry = quote.with_book(graph.BookRef(action="new", scope="AAPL.XNAS", position=1))
     assert (entry.action, entry.scope, entry.book.position) == ("0", "AAPL.XNAS", 1)
-    assert entry.curruuid != quote.curruuid
+    assert entry.uuid != quote.uuid
     # The action and the position steer the book: they move no identity.
-    assert quote.with_book(graph.BookRef(action="new", position=1)).curruuid == quote.curruuid
+    assert quote.with_book(graph.BookRef(action="new", position=1)).uuid == quote.uuid
 
     # Undated again, the clocks and the control stay behind.
     assert entry.into_element() == quote.into_element()
@@ -130,21 +131,21 @@ How a book applies each action is the [book's](book.md#entries).
     // Dated, it is an order event.
     const event = order.at(1_700_000_000_000_000_000n)
     assert.ok(event instanceof graph.OrderEvent)
-    assert.equal(event.currunix, 1_700_000_000_000_000_000n)
+    assert.equal(event.transunix, 1_700_000_000_000_000_000n)
     assert.equal(event.isExecution, false, 'the kind decides, whatever the state')
 
     // The same facts as a quote are another operation.
-    const quote = new graph.QuoteEvent(event.currunix, { crosscode: 'O-1001', side: 'BUYS', price: '189.50' })
-    assert.notEqual(quote.curruuid, event.curruuid)
+    const quote = new graph.QuoteEvent(event.transunix, { crosscode: 'O-1001', side: 'BUYS', price: '189.50' })
+    assert.notEqual(quote.uuid, event.uuid)
 
     // A market-data entry carries its book control; its scope digests into it.
     const entry = quote.withBook(new graph.BookRef({ action: 'new', scope: 'AAPL.XNAS', position: 1 }))
     assert.equal(entry.action, '0')
     assert.equal(entry.scope, 'AAPL.XNAS')
     assert.equal(entry.book.position, 1)
-    assert.notEqual(entry.curruuid, quote.curruuid)
+    assert.notEqual(entry.uuid, quote.uuid)
     // The action and the position steer the book: they move no identity.
-    assert.equal(quote.withBook(new graph.BookRef({ action: 'new', position: 1 })).curruuid, quote.curruuid)
+    assert.equal(quote.withBook(new graph.BookRef({ action: 'new', position: 1 })).uuid, quote.uuid)
 
     // Undated again, the clocks and the control stay behind.
     assert.ok(entry.intoElement().equals(quote.intoElement()))

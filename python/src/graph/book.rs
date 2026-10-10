@@ -6,11 +6,12 @@ use std::sync::{Mutex, PoisonError};
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 
-use yggdryl::graph::{
+use yggdryl::MarketValue;
+use yggdryl_market::Side as CoreSide;
+use yggdryl_market::graph::{
     BookEvent as CoreBookEvent, BookIterator as CoreBookIterator, MarketData as CoreMarketData,
     SnapshotEvent as CoreSnapshotEvent,
 };
-use yggdryl::{DataType, Scalar, Side as CoreSide};
 
 use super::decimal_scalar;
 use super::market_data::{PyMarketData, event_market_of, market_data_of};
@@ -22,16 +23,11 @@ use crate::{Failed, Pulled, python_failure, value_error};
 /// The side one argument names - a `Side` member, its code or any spelling
 /// the core reads - checked through the `side` datatype's own value contract.
 fn side_of(value: &Bound<'_, PyAny>) -> PyResult<CoreSide> {
-    match DataType::Side
+    let value = CoreSide::dtype()
         .scalar(from_py(value)?)
-        .map_err(value_error)?
-    {
-        Scalar::Side(side) => Ok(side),
-        other => Err(PyTypeError::new_err(format!(
-            "expected a side, got {}",
-            other.kind()
-        ))),
-    }
+        .map_err(value_error)?;
+    <CoreSide as MarketValue>::from_scalar(&value)
+        .ok_or_else(|| PyTypeError::new_err(format!("expected a side, got {}", value.kind())))
 }
 
 /// One coherent view of a market at one exact nanosecond instant: the live
@@ -61,22 +57,24 @@ impl PyBookEvent {
 graph_methods!(PyBookEvent, "BookEvent"; [
     element_getters, event_getters, market_getters, kind_getters, common_verbs, event_verbs
 ]; {
-    /// An empty book of the ticker `symbol` at `currunix` nanoseconds since
-    /// the epoch, keyed by that ticker; an empty `symbol` keys the book
-    /// `XX0000000000`, the ISIN that states none, and states no ticker.
+    /// An empty book keyed `key` at `transunix` nanoseconds since the epoch:
+    /// `key` is the instrument's cross code (`instcode`) every input it
+    /// takes states - a real ISIN, an FX pair's `IF:EUR/USD`, a derivative's
+    /// `class:body` - which the book states as its own `instcode` and stores
+    /// as its crosscode `3:0:{key}`; the book states neither a ticker nor an
+    /// ISIN until its first input states each. An empty `key` keys a book by
+    /// nothing, which takes nothing. The same door as `keyed`.
     #[new]
-    fn new(currunix: i64, symbol: &str) -> Self {
-        Self::from_core(CoreBookEvent::new(currunix, symbol))
+    fn new(transunix: i64, key: &str) -> Self {
+        Self::from_core(CoreBookEvent::keyed(transunix, key))
     }
 
-    /// An empty book keyed `key` at `currunix` nanoseconds since the epoch:
-    /// `key` is its crosscode - an instrument's ISIN, a ticker, or
-    /// `XX0000000000` - and the book states neither a ticker nor an ISIN.
-    /// The empty base a code's first book, a delta book, rebuilds over with
-    /// `with_previous`.
+    /// An empty book keyed `key` at `transunix` nanoseconds since the epoch -
+    /// `BookEvent(transunix, key)` - the empty base a code's first book, a
+    /// delta book, rebuilds over with `with_previous`.
     #[staticmethod]
-    fn keyed(currunix: i64, key: &str) -> Self {
-        Self::from_core(CoreBookEvent::keyed(currunix, key))
+    fn keyed(transunix: i64, key: &str) -> Self {
+        Self::from_core(CoreBookEvent::keyed(transunix, key))
     }
 
     /// Whether the book is a complete book, holding its sides - every entry
@@ -348,9 +346,10 @@ graph_methods!(PySnapshotEvent, "SnapshotEvent"; [
 /// failure crossing as one typed sentinel.
 type BookSource = Box<dyn Iterator<Item = yggdryl::Result<CoreMarketData>> + Send>;
 
-/// Books from a sorted stream of operations, one per book key and effective
-/// timestamp, pulling its items lazily from the caller's iterable. Yields
-/// `BookEvent`.
+/// Books from a sorted stream of operations, one per instrument cross code
+/// (`instcode`) and effective timestamp, pulling its items lazily from the
+/// caller's iterable; an input stating no `instcode` is pruned before it
+/// touches a book. Yields `BookEvent`.
 #[pyclass(name = "BookIterator", module = "yggdryl._native", frozen)]
 pub(crate) struct PyBookIterator {
     inner: Mutex<CoreBookIterator<BookSource>>,

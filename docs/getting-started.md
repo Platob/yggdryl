@@ -135,8 +135,10 @@ Metadata belongs to the field and behaves like each language's mapping type; a n
 | Predicates and pushdown | [Expression](expression/index.md) |
 | Digests and time-keyed digests | [Hashing](hashing.md) |
 | Loggers, levels, handlers, and log files on any storage | [Logging](logging.md) |
-| Orders, quotes, executions, books, candles, and the book display | [Graph](graph/index.md) |
+| Orders, quotes, executions, books, and candles | [Graph](graph/index.md) |
 | FIX messages, registries, and captures | [FIX](fix/index.md) |
+
+In Rust, market data and FIX are the `yggdryl-market` and `yggdryl-fix` crates over the core: a caller depends on the one it uses and runs its `install()` once before anything reads a market kind or a FIX name ([Crates](architecture.md#crates)); Python and JavaScript carry both and install them on import.
 
 ## Agent skills
 

@@ -112,7 +112,7 @@ MSGCAT_BY_TYPE = {
 }
 
 # The category set itself - every name, its code and its description - is
-# `MarketDataKind`'s in `rust/src/marketdatakind.rs`, which renders the
+# `MarketDataKind`'s in `rust/market/src/marketdatakind.rs`, which renders the
 # `marketdatakindcodeset` document: this table only files each type under a name,
 # and a name that enum does not know refuses when the dictionary loads.
 
@@ -1464,7 +1464,7 @@ def version_key(version: str) -> tuple[int, int, int]:
 
 # The block a named definition's derived tag is taken from, and the XXH32 the
 # core derives it with. Kept in step with `FixId::DEFINITION_TAG_MIN` and
-# `FixId::DEFINITION_TAG_MAX` in rust/src/fix/mod.rs: a document this writes is
+# `FixId::DEFINITION_TAG_MAX` in rust/fix/src/lib.rs: a document this writes is
 # loaded by that core, and a tag outside the block is refused.
 DEFINITION_TAG_MIN = 100_000
 DEFINITION_TAG_MAX = 1_100_000
@@ -1622,7 +1622,7 @@ CRATE_TAG_MIN = 65_000
 # The named documents the crate defines and a store dump writes: the fixed
 # row, its message-category and plugin-side vocabularies, and the one Map
 # group whose keys are the crate's own vocabulary - the list
-# `CRATE_DOCUMENTS` in `rust/tests/fix/store.rs` names, beside the field
+# `CRATE_DOCUMENTS` in `rust/fix/tests/root/store.rs` names, beside the field
 # shard `crate_owned` reads by its tag range.
 CRATE_DOCUMENTS = frozenset(
     {
@@ -1831,7 +1831,7 @@ def write_constants(
     catalog: dict[str, list[dict[str, Any]]],
 ) -> None:
     """Write the generated Rust constants after every dictionary write."""
-    (ROOT / "rust" / "src" / "fix" / "constants.rs").write_text(
+    (ROOT / "rust" / "fix" / "src" / "constants.rs").write_text(
         render_constants(latest, parsed, catalog), encoding="utf-8", newline="\n"
     )
 
@@ -1913,13 +1913,13 @@ def main() -> int:
             actual_manifest = None
         if actual_manifest != manifest:
             failures.append("changed provenance.json")
-        constants = ROOT / "rust" / "src" / "fix" / "constants.rs"
+        constants = ROOT / "rust" / "fix" / "src" / "constants.rs"
         try:
             actual_constants = constants.read_text(encoding="utf-8")
         except FileNotFoundError:
             actual_constants = None
         if actual_constants != render_constants(latest, parsed, catalog):
-            failures.append("changed rust/src/fix/constants.rs")
+            failures.append("changed rust/fix/src/constants.rs")
         if failures:
             print("\n".join(failures), file=sys.stderr)
             return 1

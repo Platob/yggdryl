@@ -96,7 +96,7 @@ impl DateType {
     /// The canonical name of this leaf.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        self.id().as_str()
+        self.id().core_str()
     }
 
     /// The unit the width counts in: a day, or the milliseconds of one.

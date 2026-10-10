@@ -26,7 +26,9 @@ One frame, read against the dictionary. A line can carry more than one, and
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry, FieldPath};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    use yggdryl::FieldPath;
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -112,7 +114,8 @@ a settled identity.
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{DEFAULT_REFUSED_MSGTYPES, FixCodec, FixRegistry};
+    use yggdryl_fix::{DEFAULT_REFUSED_MSGTYPES, FixCodec, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -170,7 +173,8 @@ a line that stated no frame.
     ```rust
     use std::sync::Arc;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixRegistry};
+    use yggdryl_fix::{FixCodec, FixRegistry};
+    yggdryl_fix::install()?;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -318,7 +322,7 @@ This section renders `assets/fix.json` and needs JavaScript.
 ## Commands
 
 ```bash
-cargo test -p yggdryl --test fix
+cargo test -p yggdryl-fix --test root
 node --test node/tests/fix.test.js node/tests/fix/catalog.test.js
 node scripts/build_docs_fix.js --check
 ```

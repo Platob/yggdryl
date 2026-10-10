@@ -13,7 +13,8 @@ use crate::{Error, Result};
 /// Whether the tree is the facade's backend.
 static INSTALLED: AtomicBool = AtomicBool::new(false);
 
-/// The lowest level a record from outside this crate is admitted at.
+/// The lowest level a record from outside the workspace's crates is admitted
+/// at.
 static FOREIGN: AtomicU8 = AtomicU8::new(0);
 
 /// The most distinct targets the facade makes a logger for and remembers.
@@ -26,6 +27,10 @@ const TARGETS: usize = 4096;
 /// Makes the tree the backend of the [`log`] facade: every `log::info!`,
 /// the crate's own included, reaches the logger named after its target,
 /// `::` spelled `.` - `yggdryl::iceberg::table` is `yggdryl.iceberg.table`.
+/// A module of one of the workspace's crates is named by its module path
+/// under `yggdryl` whatever crate holds it - `yggdryl_fix::build` is
+/// `yggdryl.fix.build` - because the logger names are the names a Python
+/// logger is configured by: one tree, whatever crate a module lives in.
 /// The facade's ceiling then follows the tree, so a record no logger
 /// handles is refused by the facade before its message is built. Installing
 /// twice is one installation.
@@ -54,25 +59,83 @@ pub fn is_installed() -> bool {
     INSTALLED.load(Ordering::Acquire)
 }
 
-/// Admits a facade record whose target is outside this crate - a dependency
-/// of the build, or the application's own crates - only at `level` and
-/// above, whatever its logger's level; `NOTSET`, the default, admits what
-/// the tree enables. The bindings state `WARNING`, so the crates the build
-/// depends on say what went wrong and never what they did.
+/// Admits a facade record whose target is outside the workspace's crates -
+/// a dependency of the build, or the application's own crates - only at
+/// `level` and above, whatever its logger's level; `NOTSET`, the default,
+/// admits what the tree enables. The bindings state `WARNING`, so the
+/// crates the build depends on say what went wrong and never what they did.
 pub fn set_foreign_level(level: Level) {
     FOREIGN.store(level.get(), Ordering::Relaxed);
 }
 
-/// The level a facade record from outside this crate is admitted from.
+/// The level a facade record from outside the workspace's crates is
+/// admitted from.
 pub fn foreign_level() -> Level {
     Level::new(FOREIGN.load(Ordering::Relaxed))
 }
 
-/// Whether `target` lies outside this crate.
+/// The workspace's crates whose records the tree names as its own, each
+/// with the logger its crate root is named: a logger is named by its module
+/// path under `yggdryl`, whatever crate holds the module: the market
+/// crate's modules log under `yggdryl` itself, so `yggdryl_market::graph`
+/// is `yggdryl.graph`, and every other crate under its own name, so
+/// `yggdryl_fix::build` is `yggdryl.fix.build`. The logger names are the
+/// names a Python logger is configured by, one tree whatever crate a module
+/// lives in. A crate this table does not name - `yggdryl_cli`, a binding, a
+/// dependency - is foreign, its target's `::` spelled `.`.
+const CRATES: [(&str, &str); 8] = [
+    ("yggdryl", "yggdryl"),
+    ("yggdryl_avro", "yggdryl.avro"),
+    ("yggdryl_excel", "yggdryl.excel"),
+    ("yggdryl_fix", "yggdryl.fix"),
+    ("yggdryl_iceberg", "yggdryl.iceberg"),
+    ("yggdryl_market", "yggdryl"),
+    ("yggdryl_parquet", "yggdryl.parquet"),
+    ("yggdryl_xmla", "yggdryl.xmla"),
+];
+
+/// The logger `target`'s crate root is named and the module path below it,
+/// `::` first - empty for the crate root itself - or `None` where the
+/// target's crate is none of [`CRATES`].
+fn own_crate(target: &str) -> Option<(&'static str, &str)> {
+    let (name, path) = target.split_at(target.find("::").unwrap_or(target.len()));
+    CRATES
+        .iter()
+        .find(|(held, _)| *held == name)
+        .map(|(_, root)| (*root, path))
+}
+
+/// Whether `target` lies outside the workspace's crates.
 fn is_foreign(target: &str) -> bool {
-    target
-        .strip_prefix("yggdryl")
-        .is_none_or(|rest| !(rest.is_empty() || rest.starts_with("::")))
+    own_crate(target).is_none()
+}
+
+/// Hands `piece` the logger name `target`'s records carry, in order and
+/// building no text: its crate's logger then its module path, every `::`
+/// spelled `.`.
+fn name_pieces(target: &str, mut piece: impl FnMut(&str)) {
+    let (root, path) = own_crate(target).unwrap_or(("", target));
+    piece(root);
+    for (index, step) in path.split("::").enumerate() {
+        if index > 0 {
+            piece(".");
+        }
+        piece(step);
+    }
+}
+
+/// The logger name `target`'s records carry.
+fn logger_name(target: &str) -> String {
+    let mut name = String::with_capacity(target.len());
+    name_pieces(target, |piece| name.push_str(piece));
+    name
+}
+
+/// Feeds `state` the logger name `target`'s records carry, building no
+/// text: what a warning raised at `target` is deduplicated under, so a
+/// module keeps its key whatever crate holds it.
+pub(super) fn write_logger_name(target: &str, state: &mut impl std::hash::Hasher) {
+    name_pieces(target, |piece| state.write(piece.as_bytes()));
 }
 
 /// Whether the foreign floor admits a record at `level` from `target`.
@@ -88,7 +151,7 @@ fn logger_for(target: &str) -> (Logger, Option<String>) {
     if let Some(logger) = read(&LOGGERS).get(target) {
         return (logger.clone(), None);
     }
-    let name = target.replace("::", ".");
+    let name = logger_name(target);
     if !FULL.load(Ordering::Relaxed) {
         let mut loggers = LOGGERS.write().unwrap_or_else(PoisonError::into_inner);
         if let Some(logger) = loggers.get(target) {

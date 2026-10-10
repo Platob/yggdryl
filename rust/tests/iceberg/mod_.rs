@@ -1698,7 +1698,7 @@ mod types {
     #[test]
     fn an_enum_bound_is_the_int_its_column_stores() {
         use yggdryl::internals::iceberg_value::{is_portable, single_to_value, single_value};
-        use yggdryl::{MarketDataKind, Scalar, Side, State, TimeInForce};
+        use yggdryl::{Scalar, State};
 
         // An enum column stores its member's code, so its bounds are Iceberg
         // ints a planner compares in code order - a state's in lifecycle
@@ -1724,23 +1724,6 @@ mod types {
                 Scalar::State(State::Expired),
                 State::Expired.code(),
             ),
-            (
-                DataType::MarketDataKind,
-                Scalar::MarketDataKind(MarketDataKind::Order),
-                10,
-            ),
-            (
-                DataType::MarketDataKind,
-                Scalar::MarketDataKind(MarketDataKind::Unknown),
-                0,
-            ),
-            (DataType::Side, Scalar::Side(Side::Buy), 1),
-            (DataType::Side, Scalar::Side(Side::SellUnd), 17),
-            (
-                DataType::TimeInForce,
-                Scalar::TimeInForce(TimeInForce::GoodTillCancel),
-                2,
-            ),
         ];
         for (dtype, exact, code) in members {
             assert!(is_portable(&dtype), "{dtype}");
@@ -1756,14 +1739,6 @@ mod types {
         // The code of no member reads as no bound rather than as a member.
         assert_eq!(
             single_to_value(&7_i32.to_le_bytes(), &DataType::State),
-            None
-        );
-        assert_eq!(
-            single_to_value(&26_i32.to_le_bytes(), &DataType::MarketDataKind),
-            None
-        );
-        assert_eq!(
-            single_to_value(&18_i32.to_le_bytes(), &DataType::Side),
             None
         );
     }
@@ -3897,7 +3872,14 @@ mod tables {
             .expect_err("v3 keyed merge must preserve existing row IDs");
         assert_eq!(pulls.load(std::sync::atomic::Ordering::SeqCst), 0);
         assert!(
-            matches!(&merge_error, yggdryl::Error::Iceberg { source: None, .. }),
+            matches!(
+                &merge_error,
+                yggdryl::Error::External {
+                    origin: "Iceberg",
+                    source: None,
+                    ..
+                }
+            ),
             "{merge_error:?}"
         );
         assert!(merge_error.to_string().contains("merge"), "{merge_error}");
@@ -3907,7 +3889,14 @@ mod tables {
             .compact()
             .expect_err("v3 compaction must preserve existing row IDs");
         assert!(
-            matches!(&compact_error, yggdryl::Error::Iceberg { source: None, .. }),
+            matches!(
+                &compact_error,
+                yggdryl::Error::External {
+                    origin: "Iceberg",
+                    source: None,
+                    ..
+                }
+            ),
             "{compact_error:?}"
         );
         assert!(
@@ -9150,7 +9139,7 @@ mod line_projection {
             &yggdryl::DataType::Int64
         );
         assert_eq!(
-            schema.get_field_by_path("currhashcode").unwrap().dtype(),
+            schema.get_field_by_path("hashcode").unwrap().dtype(),
             &yggdryl::DataType::decimal128(20, 0).unwrap()
         );
         schema.assign_parquet_field_ids(1).unwrap();
@@ -9211,7 +9200,8 @@ mod line_projection {
             bodies.iter().collect::<Vec<_>>(),
             [Some("first"), Some("second")]
         );
-        let yggdryl::Table::Iceberg(table) = table else {
+        let Some(table) = table.downcast_ref::<yggdryl::iceberg::IcebergTable<yggdryl::Handle>>()
+        else {
             panic!("expected an Iceberg table, got {table:?}");
         };
         assert_eq!(

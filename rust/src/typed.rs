@@ -319,25 +319,24 @@ mod shared {
     /// leaking one per datatype a fixed cost rather than a leak.
     const INTERN_LIMIT: usize = 1 << 12;
 
-    /// One slot per discriminant byte an identifier can carry: the highest one
-    /// stated, plus one. A retired number (58, once `msgdirection`) is an empty slot,
-    /// because a discriminant is a wire contract and never moves to close a gap.
-    ///
-    /// Read off the last identifier declared rather than named here, because a
-    /// name here is a second place to remember: ids are appended, so naming one
-    /// leaves the table a discriminant short the moment another lands after it,
-    /// and the build below indexes by `as_u8` with no bound to catch it.
-    const PREBUILT_SLOTS: usize = DataTypeId::ALL[DataTypeId::ALL.len() - 1].as_u8() as usize + 1;
+    /// One slot per byte an identifier can carry, so the table indexes by
+    /// `as_u8` with no bound to check: a core identifier's byte and a
+    /// registered kind's alike. A retired number is an empty slot, because a
+    /// discriminant is a wire contract and never moves to close a gap.
+    const PREBUILT_SLOTS: usize = 1 << u8::BITS;
 
-    /// One nullable field per parameter-free leaf datatype, by [`DataTypeId::as_u8`].
+    /// One nullable field per parameter-free leaf datatype, by [`DataTypeId::as_u8`]:
+    /// every core one, and every kind the register held when the table was built.
     ///
     /// The parser owns which name spells which datatype, so each slot parses the
     /// identifier's canonical name rather than restating that table here; a slot
     /// whose name parses to another identifier - the 128-bit integer widths,
-    /// which no datatype answers - stays empty, as does a retired number's.
+    /// which no datatype answers - stays empty, as does a retired number's. A
+    /// kind claimed after the table was built is interned on its first ask
+    /// instead.
     static PREBUILT: LazyLock<[Option<Field>; PREBUILT_SLOTS]> = LazyLock::new(|| {
         let mut table: [Option<Field>; PREBUILT_SLOTS] = std::array::from_fn(|_| None);
-        for id in DataTypeId::ALL {
+        for id in DataTypeId::all() {
             if id.is_parameterized() {
                 continue;
             }
@@ -350,11 +349,13 @@ mod shared {
     });
 
     /// The parameter-free datatype one identifier names, held once for the
-    /// process; `None` for an identifier naming none.
+    /// process; `None` for an identifier naming none. An identifier is intake,
+    /// so a byte the table has no slot for is asked of the register: a kind
+    /// claimed after the table was built answers its interned field's.
     pub(crate) fn prebuilt_dtype(id: DataTypeId) -> Option<&'static DataType> {
-        PREBUILT
-            .get(usize::from(id.as_u8()))?
+        PREBUILT[usize::from(id.as_u8())]
             .as_ref()
+            .or_else(|| crate::market::kind_of(id).and_then(|kind| interned(&kind.dtype())))
             .map(Field::dtype)
     }
 
@@ -400,7 +401,14 @@ mod shared {
         pub fn shared_field(&self) -> Option<&'static Field> {
             let id = self.id();
             if !id.is_parameterized() {
-                return PREBUILT[usize::from(id.as_u8())].as_ref();
+                return PREBUILT[usize::from(id.as_u8())]
+                    .as_ref()
+                    .or_else(|| match self {
+                        // A kind claimed after the table was built holds no
+                        // slot, and is interned like a parameterized leaf.
+                        Self::Market(_) => interned(self),
+                        _ => None,
+                    });
             }
             match self {
                 Self::FixedUtf8String(_)
@@ -988,7 +996,66 @@ impl fmt::Debug for UncheckedFieldScalar<'_> {
     }
 }
 
+/// Declares one datatype's zero-sized marker - a parameter-free core leaf,
+/// or a registered kind under the one `Market` variant - with its
+/// `DataTypeValue` contract and, for a kind, its field alias.
+///
+/// Exported for the crates this core is split into, which declare their
+/// kinds' markers with it: every path it expands to is public, and the docs
+/// it writes for a kind link only the kind itself, since a link to a core
+/// item would resolve in the crate that invokes it.
+#[macro_export]
+#[doc(hidden)]
 macro_rules! define_field_types {
+    // A registered kind's marker: the zero-sized value that stands for the
+    // kind under the one `Market` variant, answering the kind's own
+    // identifier and datatype, and narrowing a `DataType::Market` of that
+    // kind alone.
+    ($(#[$meta:meta])* $marker:ident, $alias:ident, market = $kind_static:ident, $leaf:ident $(,)?) => {
+        $(#[$meta])*
+        #[doc = concat!(
+            "The datatype of a [`",
+            stringify!($leaf),
+            "`] field: the registered kind under `DataType::Market`."
+        )]
+        #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        pub struct $marker;
+
+        #[doc = concat!(
+            "A field of [`",
+            stringify!($leaf),
+            "`] values: `FieldOf` over its marker, widened to the root as `Field::Market`."
+        )]
+        pub type $alias = $crate::FieldOf<$marker>;
+
+        impl ::std::fmt::Display for $marker {
+            fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                formatter.write_str(<$leaf>::NAME)
+            }
+        }
+
+        impl $crate::DataTypeValue for $marker {
+            const FAMILY: &'static str = <$leaf>::NAME;
+
+            type Sidecar = ();
+
+            fn id(&self) -> $crate::DataTypeId {
+                <$leaf>::ID
+            }
+
+            fn validate(&self) -> $crate::Result<()> {
+                Ok(())
+            }
+
+            fn into_dtype(self) -> $crate::DataType {
+                $kind_static.dtype()
+            }
+
+            fn from_dtype(dtype: &$crate::DataType) -> Option<Self> {
+                matches!(dtype, $crate::DataType::Market(kind) if kind.id() == <$leaf>::ID).then_some(Self)
+            }
+        }
+    };
     // A datatype that carries no parameters is its own payload: one zero-sized
     // value that stands for the variant. It is what a field of that datatype
     // holds, so it implements the datatype contract rather than a marker trait.
@@ -1004,12 +1071,12 @@ macro_rules! define_field_types {
 
         impl ::std::fmt::Display for $marker {
             fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                formatter.write_str($crate::DataTypeId::$variant.as_str())
+                formatter.write_str($crate::DataTypeId::$variant.core_str())
             }
         }
 
         impl $crate::DataTypeValue for $marker {
-            const FAMILY: &'static str = $crate::DataTypeId::$variant.as_str();
+            const FAMILY: &'static str = $crate::DataTypeId::$variant.core_str();
 
             type Sidecar = ();
 

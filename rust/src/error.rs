@@ -158,13 +158,17 @@ pub enum Error {
     Io(std::io::Error),
     /// An Arrow schema value could not be converted.
     Arrow(arrow_schema::ArrowError),
-    /// Apache Iceberg metadata rejected an update or document.
+    /// A failure an implementation outside the core's own vocabulary
+    /// reported - a table format's official parser, a leaving medium's crate -
+    /// its dependency erased behind `origin` and `reason`, the original kept
+    /// as the source.
     ///
     /// The dependency error is erased so its version never becomes part of
     /// Yggdryl's public API. [`std::error::Error::source`] retains it when the
-    /// failure originated in the official implementation.
-    #[cfg(feature = "iceberg")]
-    Iceberg {
+    /// failure originated in that implementation.
+    External {
+        /// Who reported the failure, as a refusal names it: `Iceberg`.
+        origin: &'static str,
         /// Stable, dependency-independent failure text.
         reason: SmolStr,
         /// The original dependency failure, when there is one.
@@ -182,7 +186,16 @@ impl fmt::Display for Error {
             Self::InvalidMetadataValue { key, reason } => {
                 write!(formatter, "invalid metadata value for {key:?}: {reason}")
             }
-            Self::UnknownDataType(name) => write!(formatter, "unknown datatype {name:?}"),
+            Self::UnknownDataType(name) => {
+                write!(
+                    formatter,
+                    "unknown datatype {name:?}: no registered datatype answers it"
+                )?;
+                match crate::market::uninstalled(name) {
+                    Some(install) => write!(formatter, "; {install}"),
+                    None => Ok(()),
+                }
+            }
             Self::InvalidDataType { kind, reason } => {
                 write!(formatter, "invalid {kind} datatype: {reason}")
             }
@@ -274,8 +287,7 @@ impl fmt::Display for Error {
             ),
             Self::Io(error) => write!(formatter, "codec I/O error: {error}"),
             Self::Arrow(error) => write!(formatter, "Arrow schema error: {error}"),
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg { reason, .. } => write!(formatter, "Iceberg error: {reason}"),
+            Self::External { origin, reason, .. } => write!(formatter, "{origin} error: {reason}"),
         }
     }
 }
@@ -286,8 +298,7 @@ impl std::error::Error for Error {
             Self::Arrow(error) => Some(error),
             Self::Json(error) => Some(error),
             Self::Io(error) => Some(error),
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg { source, .. } => source
+            Self::External { source, .. } => source
                 .as_ref()
                 .map(|error| error.as_ref() as &(dyn std::error::Error + 'static)),
             _ => None,
@@ -320,20 +331,61 @@ impl From<std::convert::Infallible> for Error {
 }
 
 impl Error {
-    #[cfg(feature = "iceberg")]
-    pub(crate) fn iceberg(reason: impl Into<SmolStr>) -> Self {
-        Self::Iceberg {
+    /// Report a failure `origin` - an implementation outside the core's own
+    /// vocabulary - stated as `reason`, with no source behind it.
+    ///
+    /// ```
+    /// use yggdryl::Error;
+    ///
+    /// let error = Error::external("Iceberg", "concurrent Iceberg metadata commit");
+    /// assert_eq!(error.to_string(), "Iceberg error: concurrent Iceberg metadata commit");
+    /// assert!(error.is_source_failure());
+    /// ```
+    pub fn external(origin: &'static str, reason: impl Into<SmolStr>) -> Self {
+        Self::External {
+            origin,
             reason: reason.into(),
             source: None,
         }
     }
 
+    /// Report a failure `origin` stated as `reason`, keeping the dependency's
+    /// own error as the [`std::error::Error::source`].
+    ///
+    /// ```
+    /// use std::error::Error as _;
+    ///
+    /// use yggdryl::Error;
+    ///
+    /// let error = Error::external_with_source(
+    ///     "Iceberg",
+    ///     "cut manifest",
+    ///     std::io::Error::other("cut"),
+    /// );
+    /// assert_eq!(error.to_string(), "Iceberg error: cut manifest");
+    /// assert_eq!(error.source().map(ToString::to_string).as_deref(), Some("cut"));
+    /// ```
+    pub fn external_with_source(
+        origin: &'static str,
+        reason: impl Into<SmolStr>,
+        source: impl std::error::Error + Send + Sync + 'static,
+    ) -> Self {
+        Self::External {
+            origin,
+            reason: reason.into(),
+            source: Some(Box::new(source)),
+        }
+    }
+
+    #[cfg(feature = "iceberg")]
+    pub(crate) fn iceberg(reason: impl Into<SmolStr>) -> Self {
+        Self::external("Iceberg", reason)
+    }
+
     #[cfg(feature = "iceberg")]
     pub(crate) fn from_iceberg(value: iceberg_official::Error) -> Self {
-        Self::Iceberg {
-            reason: SmolStr::new(value.to_string()),
-            source: Some(Box::new(value)),
-        }
+        let reason = SmolStr::new(value.to_string());
+        Self::external_with_source("Iceberg", reason, value)
     }
 
     /// Report that nothing is at `path` where a `expected` was addressed.
@@ -426,7 +478,8 @@ impl Error {
 
     /// Return whether this failure is the source's rather than the data's:
     /// a reader, a store or a runtime that could not answer - [`Self::Io`],
-    /// [`Self::Remote`], [`Self::Arrow`] and an Iceberg dependency's failure.
+    /// [`Self::Remote`], [`Self::Arrow`] and [`Self::External`], a dependency's
+    /// failure.
     /// It ends the stream it happens on; every other failure describes one
     /// value, row or message, which a FIX parse, a market data read and a
     /// lifecycle walk pass over with a warning and go on.
@@ -439,12 +492,10 @@ impl Error {
     /// ```
     #[must_use]
     pub fn is_source_failure(&self) -> bool {
-        match self {
-            Self::Io(_) | Self::Remote { .. } | Self::Arrow(_) => true,
-            #[cfg(feature = "iceberg")]
-            Self::Iceberg { .. } => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Self::Io(_) | Self::Remote { .. } | Self::Arrow(_) | Self::External { .. }
+        )
     }
 
     /// Return whether this failure says the addressed resource is already there.
@@ -482,9 +533,10 @@ pub mod internals {
     //! What `rust/tests/root/error.rs` pins and a caller cannot reach.
     //!
     //! `Error::from_iceberg` is crate-private, and the official failure it
-    //! wraps is a type no caller of this crate can name, so the pin asks for
-    //! one by its message. The forwarder changes no visibility: everything
-    //! else the file pins is reached through `yggdryl::` like any other test.
+    //! wraps as an `Error::External` is a type no caller of this crate can
+    //! name, so the pin asks for one by its message. The forwarder changes no
+    //! visibility: everything else the file pins is reached through
+    //! `yggdryl::` like any other test.
 
     #[cfg(feature = "iceberg")]
     use super::Error;

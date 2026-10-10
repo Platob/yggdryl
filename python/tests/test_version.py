@@ -311,7 +311,7 @@ def test_the_datatype_identifiers_are_laid_out_by_family():
     # `fixed_utf8`, and the geospatial pair closes the list. An identifier is
     # a wire contract laid out by family, so a leaf added later lands beside
     # its family and nothing ever moves.
-    assert len(enums.DATA_TYPE_IDS) == 97
+    assert len(enums.DATA_TYPE_IDS) == 96
     assert "figi" in enums.DATA_TYPE_IDS
     ids = list(enums.DATA_TYPE_IDS)
     # The code family's newest identifiers follow the last one before them.
@@ -328,12 +328,21 @@ def test_the_datatype_identifiers_are_laid_out_by_family():
         "fisn",
     ]
     assert ids.index("url") == ids.index("version") + 1
+    # The market kinds and `state`, in the order S0 pinned on `2ae975674`: the
+    # code family's seventeen in byte order after `mediatype` and before
+    # `uuid`, the enum family's five in theirs.
+    codes = ["lei", "bic", "elf", "dti", "fisn", "country", "ccy", "mic", "cfi", "isin", "cusip", "sedol", "bbg", "figi", "unit", "ric", "forex"]
+    start = ids.index("lei")
+    assert ids[start : start + 17] == codes
+    assert ids[start - 1] == "mediatype" and ids[start + 17] == "uuid"
+    start = ids.index("state")
+    assert ids[start : start + 5] == ["state", "marketdatakind", "side", "marketdatatype", "timeinforce"]
     assert ids.index("urn") == ids.index("url") + 1
     assert ids.index("sized_utf8") == ids.index("fixed_utf8") + 1
     # The enum family closes the list after the geospatial pair: `timeinforce`,
-    # an enum since it left the code family, and `pluginside`, the newest
-    # member, land last in it.
-    assert ids[-8:] == [
+    # an enum since it left the code family, lands last in it; `pluginside`
+    # followed it until the plugin's role became a side.
+    assert ids[-7:] == [
         "geometry",
         "geography",
         "state",
@@ -341,7 +350,6 @@ def test_the_datatype_identifiers_are_laid_out_by_family():
         "side",
         "marketdatatype",
         "timeinforce",
-        "pluginside",
     ]
     assert ids[:2] == ["null", "boolean"]
 

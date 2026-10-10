@@ -184,7 +184,7 @@ assert message.crosscode == "10:1:A1"
 # The names it goes by are identifiers: a source, a type and a value.
 assert str(message.identifiers) == "[clordid=A1]"
 # Instants are int nanoseconds since the epoch, UTC.
-assert message.currunix == 1_767_348_930_000_000_000
+assert message.transunix == 1_767_348_930_000_000_000
 # The entries are the content row as (tag, name, value, children) tuples.
 assert [name for _, name, _, _ in message.entries()] == ["symbol", "side", "strikeprice", "timeinforce"]
 ```
@@ -213,10 +213,10 @@ message = FixMsg(root, {"MsgType": "D", "ClOrdID": "A1", "Symbol": "AAPL"}, regi
 assert message.header().msgtype == "D"
 assert message.crosscode == "10:0:A1"
 
-before = message.currhashcode
+before = message.hashcode
 message.set("Symbol", "MSFT")
 assert message.by_tag(55).as_py() == "MSFT"
-assert message.currhashcode != before, "a write settles the identity again"
+assert message.hashcode != before, "a write settles the identity again"
 assert message.remove(55).as_py() == "MSFT"
 assert message.get_by_tag(55) is None
 with pytest.raises(KeyError):
@@ -280,7 +280,7 @@ capture = pa.table(
 codec = FixCodec(registry, threads=4, batch_row_size=10_000)
 read = codec.parse_text_arrow_reader(capture)
 # The schema is decided before a row is read: the shared columns lead, the capture follows them, `fixentries` closes.
-assert read.schema.names[0] == "curruuid"
+assert read.schema.names[0] == "uuid"
 at = read.schema.names.index("url")
 assert read.schema.names[at - 1 : at + 3] == ["partyids", "url", "rownum", "body"]
 assert read.schema.names[-1] == "fixentries"
@@ -330,7 +330,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert len(lines) == 3
     codec = FixCodec(registry, capture_names=list(options.capture_names))
     messages = list(codec.parse_text_lines(lines))
-    assert [message.recdunix for message in messages] == [1_767_348_930_250_000_000, 1_767_348_930_500_000_000]
+    assert [message.sendunix for message in messages] == [1_767_348_930_250_000_000, 1_767_348_930_500_000_000]
 ```
 
 ## Land messages in the fixed row and back
@@ -377,7 +377,7 @@ with tempfile.TemporaryDirectory() as directory:
     stored = IOBase(pathlib.Path(directory) / "capture.parquet")
     stored.overwrite_arrow_reader(codec.arrow_reader(schema, parsed))
     again = list(codec.messages(stored.read_arrow_reader()))
-    assert [message.currhashcode for message in again] == [message.currhashcode for message in parsed]
+    assert [message.hashcode for message in again] == [message.hashcode for message in parsed]
 
     # And out to the wire, one line per row.
     sink = io.BytesIO()
@@ -390,9 +390,10 @@ with tempfile.TemporaryDirectory() as directory:
 `lifecycle` is the one cross-message stage: it collects the finite capture,
 sorts it, folds repeated deliveries and chains each message to the live one of
 its order and side under one `crossuuid`, within one market data kind (`marketdatakind`); a
-report stating no side joins the one side alive under its identifiers - its
-chain identities (`orderid`, `clordid`, `quoteid`, `tradeid`, `tradereportid`,
-never `execid`, `trdmatchid` or `quotereqid`) and the first value a lineage
+report stating no side joins the one side alive under its identifiers - a
+message joins the live one of its kind, side and instrument sharing one identifier
+of the same type and value, every type of its `identifiers` but a shared one
+(`trdmatchid`, `quotereqid`, `mdreqid`, a parent slot), and the first value a lineage
 field names - and every message of a chain carries the chain's first
 `crosscode`, a replace under a new `ClOrdID` included. A message citing two
 live chains is joined to neither: it stands under its own identity and carries
@@ -400,10 +401,19 @@ a `FixAnomaly` under `crosscode` naming both, warned once per kind. A fill's
 execution, split off at the parse, is a chain of its own and never restates,
 follows or ends its order. A codec pinned `sorted_lifecycle=True` reads a source already in
 instant order as it comes, one epoch hour at a time, and answers the same walk. The walk yields
-each `curruuid` once within `dedup_window_ms` of event time, one minute unless
+each `uuid` once within `dedup_window_ms` of event time, one minute unless
 the codec says otherwise; `dedup_window_ms=None` yields every restated twin too.
 A snapshot grid's view is the live message as of its tick: dated at it, so its
-`curruuid` is that instant's, with the live message's content and place.
+`uuid` is that instant's, with the live message's content and place.
+An order's chain counts its fills once each by `ExecID(17)` - or
+`SecondaryExecID(527)` - over its first stated `CumQty(14)`: `cumqty` and
+`leavesqty` are the count's, a fill delivered again, a status reply (`150=I`,
+`17=0`) and a leg's report (`442=2`) count nothing, a bust (`150=H` with
+`ExecRefID(19)`) takes the fill it names back, a correction (`150=G`)
+replaces it, and a partial fill whose count reaches the order quantity reads
+`FILLED`; a stated total that disagrees is warned, never adopted, and an ended
+chain's fills are remembered for the window, so a late copy starts no chain
+([lifecycle](https://platob.github.io/yggdryl/fix/lifecycle/#an-orders-fills-are-counted-once)).
 
 ```python
 from pathlib import Path
@@ -430,13 +440,13 @@ order, ack, fill, execution = codec.lifecycle(parsed)
 # Sorted by event time, joined by the identifiers each message went by; each
 # follows one of an earlier instant, so each keeps its own place.
 assert (order.seqnum, ack.seqnum, fill.seqnum) == (0, 0, 0)
-assert ack.prevuuid == order.curruuid and fill.prevuuid == ack.curruuid
+assert ack.prevuuid == order.uuid and fill.prevuuid == ack.uuid
 assert ack.crossuuid == fill.crossuuid == order.crossuuid
 # The reports stated no side: they joined the buy alive under A1 and O1.
 assert all(held.side is Side.BUYS and held.crosscode == "10:1:A1" for held in (ack, fill))
 assert (fill.marketdatakind, fill.state) == (MarketDataKind.ORDR, State.FILLED)
 # Every walked message states when its chain began.
-assert ack.creaunix == fill.creaunix == order.currunix
+assert ack.creaunix == fill.creaunix == order.transunix
 assert (execution.marketdatakind, execution.state) == (MarketDataKind.EXEC, State.FILLED)
 assert (execution.seqnum, execution.prevuuid) == (1, None)
 
@@ -449,36 +459,41 @@ assert chained.num_rows == 4 and len(set(chained.column("crossuuid").to_pylist()
 
 ## Share what lifecycles learn about instruments
 
-A lifecycle learns each message's ISIN - the one key - its CFI code, country,
-market, ticker, currency, pair and security codes into an `IsinRegistry`, and
-fills what later messages of that instrument leave unsaid, as `derived`
-identifiers and the ticker, CFI and currency facts, never the wire; a parse
-through the same codec fills derived identifiers from the table its door
-fixed. A codec without one learns into a registry of each walk's own;
-`isin_registry=` shares one across walks run one after another, bound to a
+A lifecycle learns each message's instrument into an `Instruments`, keyed by
+its cross code - a real ISIN for a security, `class:body` for an FX pair or a
+derivative, its `QY` number minted - with its CFI code, country, market,
+ticker, currency, pair and security codes, and fills what later messages of
+that instrument leave unsaid, as `derived` identifiers, the ticker, CFI and
+currency facts and the instrument's cross code as `instcode`, never the wire;
+a parse through the same codec fills derived identifiers from the table its
+door fixed. A codec without one learns into a collection of each walk's own;
+`instruments=` shares one across walks run one after another, bound to a
 store with `from_url` and written back with `commit()` only where it moved,
-and `FixCodec.from_env()` shares the process's own, `IsinRegistry.from_env()`,
-laid over the embedded common instruments `IsinRegistry.seeded()` holds. A
-row carries the national number its ISIN embeds - Holcim's Valor below -
-and its market's country's currency where it states none.
-A structured product's EUSIPA category is learned off a bridge's own key
-(`EUSIPACode`, `OMS_SSPACategory`, ...) as the row's `eusipacode`, an `int`
-that `yggdryl.Eusipa` names; the key is lifted into no identifier map.
+and `FixCodec.from_env()` shares the process's own, `Instruments.from_env()`,
+laid over the embedded common instruments `Instruments.seeded()` holds. An
+instrument - a `dict` of its columns, its listings nested - carries the
+national number its ISIN embeds - Holcim's Valor below - and each listing its
+market's country's currency where it states none. A structured product's
+EUSIPA category is learned off a bridge's own key (`EUSIPACode`,
+`OMS_SSPACategory`, ...) as the instrument's `eusipacode`, an `int` that
+`yggdryl.Eusipa` names; the key is lifted into no identifier map. A row's
+`instcode` joins the instruments table on `crosscode`.
 
 ```python
 from pathlib import Path
 
-from yggdryl import Eusipa, IsinRegistry
+from yggdryl import Eusipa, Instruments
 from yggdryl.fix import FixCodec, FixRegistry
 
-instruments = IsinRegistry()
-codec = FixCodec(FixRegistry.from_handle(Path("config/fix")), isin_registry=instruments)
+instruments = Instruments()
+codec = FixCodec(FixRegistry.from_handle(Path("config/fix")), instruments=instruments)
 
 # The first walk states Holcim's ISIN, RIC, CFI code, ticker and market.
 stated = [b"8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|207=XSWX|10=0|"]
 list(codec.lifecycle(codec.parse_lines(stated)))
-assert instruments.get("CH0012214059")["ric"] == "HOLN.S"
-assert instruments.get("CH0012214059")["valor"] == "1221405", "the Valor a CH ISIN embeds"
+holcim = instruments.get("CH0012214059")
+assert holcim["listings"][0]["codes"] == {"ric": "HOLN.S"}, "a listing code is its market's"
+assert holcim["securityids"]["valor"] == "1221405", "the Valor a CH ISIN embeds"
 
 # A bridge key states a structured product's category beside its ISIN.
 product = [b"8=FIX.4.4|35=D|11=C|22=4|48=CH0123456789|55=ACMEL|207=XSWX|OMS_SSPACategory=2300|10=0|"]
@@ -492,8 +507,15 @@ assert (category.code, category.name) == (2300, "Constant Leverage Certificate")
 assert parsed.isincode == "CH0012214059" and parsed.securityids.is_derived("isin")
 [later] = codec.lifecycle([parsed])
 assert later.cficode is not None and later.cficode.as_py() == "ESVUFR"
+assert later.instcode == "CH0012214059", "the instrument's cross code"
+
+# An FX pair no agency numbers: its code and its minted number are spelled
+# from the message alone, and the walk learns its instrument.
+[pair] = codec.lifecycle(codec.parse_lines([b"8=FIX.4.4|35=D|11=F|55=EUR/USD|54=1|38=1000000|10=0|"]))
+assert (pair.instcode, pair.isincode) == ("IF:EUR/USD", "QYLTVIRYHNX5") == ("IF:EUR/USD", Instruments.mint("IF:EUR/USD"))
+assert instruments.get(pair.instcode)["currency"] == "USD", "the quote leg"
 # The table is an Arrow stream: a golden file loads with `from_url`.
-assert IsinRegistry.from_arrow_reader(instruments.into_arrow_reader()).get("CH0012214059") is not None
+assert Instruments.from_arrow_reader(instruments.into_arrow_reader()).get("CH0012214059") is not None
 ```
 
 ## Follow a replace chain's parents
@@ -566,7 +588,7 @@ fill = b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=F|55=
 report, execution = codec.parse_line(fill)
 assert (report.marketdatakind, report.state) == (MarketDataKind.ORDR, State.PARTIALLY_FILLED)
 assert (execution.marketdatakind, execution.state) == (MarketDataKind.EXEC, State.FILLED)
-assert report.curruuid in execution.srcuuids
+assert report.uuid in execution.srcuuids
 # An order or an execution message stores its cross code under its side; the fill is a chain of its own.
 assert (report.crosscode, execution.crosscode) == ("10:1:O-9", "8:1:E-1")
 
@@ -591,7 +613,8 @@ leaf (a book message one per entry) and sorts them by the instant a book folds
 them at; `graph.BookIterator` then walks them, recording each execution among
 its book's `events`.
 `book_arrow_reader(messages, snapshot_millis=0, filter=None)` folds the same
-messages into book rows, one book per book key. Compose `lifecycle` in front when
+messages into book rows, one book per instrument cross code (`instcode`; a
+message stating none is pruned). Compose `lifecycle` in front when
 predecessor state matters. `market_arrow_reader` writes the sorted leaves as
 `marketdata` rows, and `market_data_arrow_reader` is its twin over batches of
 FIX rows already in Arrow.
@@ -607,8 +630,8 @@ registry = FixRegistry.from_handle(Path("config/fix"))
 codec = FixCodec(registry)
 # The update arrives before the snapshot it follows.
 lines = [
-    b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|",
-    b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|",
+    b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|",
+    b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|",
 ]
 capture = list(codec.parse_lines(lines))
 assert all(message.marketdatakind is MarketDataKind.BOOK for message in capture)
@@ -705,7 +728,7 @@ reader did instead.
 import pathlib
 import tempfile
 
-from yggdryl import PluginSide
+from yggdryl import Side
 from yggdryl.fix import FixRegistry
 
 cblock = """<?xml version="1.0" encoding="US-ASCII"?>
@@ -723,7 +746,7 @@ with tempfile.TemporaryDirectory() as directory:
     venue, roots = FixRegistry.from_cfb_file(folder / "alpha.cfb", "venue")
     assert venue.field(4).fix.sources == ["venue"] and roots == []
     # The catalog records the source once: its file and its plugin's role.
-    assert venue.sources() == [{"id": "venue", "file": "alpha.cfb", "pluginside": PluginSide.SELL}]
+    assert venue.sources() == [{"id": "venue", "file": "alpha.cfb", "pluginside": Side.SELL}]
 
     # A folder holds the .cfb files directly inside it, a glob what it matches.
     registry = FixRegistry()
@@ -771,7 +794,10 @@ with tempfile.TemporaryDirectory() as directory:
 - `book_arrow_reader(messages, snapshot_millis=0, filter=None)` takes no mode
   beyond the grid and the filter (a `Filter`, a `Term`, an `Expression` or a
   predicate's text over the `marketdata` row): books are keyed by the
-  instrument's ISIN, else the ticker, else `XX0000000000`, and a book is
-  complete only at a grid tick or a `W` full refresh - every other row is a
+  instrument's cross code (`instcode`) alone - a message stating none, a
+  ticker-only line no lifecycle filled, is pruned before it is expanded, and a
+  `W`/`X` entry stating its own `SecurityID(48)` is booked by the code it
+  spells - and
+  a book is complete only at a grid tick or a `W` full refresh - every other row is a
   delta book, its `delta` and `events`, which `book.with_previous(previous)`
   rebuilds.

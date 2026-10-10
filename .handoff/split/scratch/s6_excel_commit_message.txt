@@ -1,0 +1,34 @@
+Move the Excel medium into yggdryl-excel
+
+The Office Open XML workbook medium leaves the core for its own crate,
+`yggdryl-excel` at `rust/excel/`, the first medium to go and its own
+commit right after the market and FIX crates. The tree is:
+
+- `rust/excel/src/`: the former `rust/src/excel/`, `mod.rs` the crate
+  root, every core path re-spelled `yggdryl::` or, for what the core
+  keeps crate-private, `yggdryl::implementer::`. The cell model,
+  `DateSystem`, the `.xlsx.gz` refusal and the medium move whole; the
+  package still rides the core's `zip/` and XML writer, and the `xlsx`
+  MIME and media types stay core routing vocabulary.
+- `install()` claims `EXCEL_CODEC` once at rank 6. The core's seed no
+  longer claims Excel; `media::codec::RESERVED_RANKS` keeps the ranks
+  of the media leaving the core (parquet 1, avro 2, xmla 4, excel 6)
+  and `claim` admits each under its own name alone, so every options
+  hash and order pin is unchanged. The Python and Node.js modules and
+  the `yggdryl` command call `install()` at load.
+- `yggdryl::implementer` gains its media section: the record doors a
+  wrapper redirects to, the dimension and schema helpers, the temporal
+  family tag, the XML text writers, the cache clock and the ZIP member
+  reader, each by a raise inside an unpublished module or a forwarder.
+- Tests: the Excel harness and its exchange move under
+  `rust/excel/tests/`; the core tests that read a workbook - the record
+  options pins, the media register's listing, the wrapper and holder
+  composition, the call and allocation rows - move there unchanged,
+  and the shared package fixture stays in `rust/tests/support/`. The
+  bench is the crate's `excel` target.
+- CI lists the `excel` leaf with its openpyxl exchange, whose driver
+  runs `-p yggdryl-excel`; the docs, the skills, the inventory and
+  AGENTS.md name the crate.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Gfky7FUx35U5i4UJcrQGKp

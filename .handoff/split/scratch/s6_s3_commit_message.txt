@@ -1,0 +1,29 @@
+Move the object-store backend into yggdryl-s3
+
+The object stores are the crate `yggdryl-s3` at `rust/s3/`: Amazon S3,
+Google Cloud Storage and Azure Blob Storage as `S3Path`, `S3Folder` and
+`S3File`, each store's REST API spoken directly over the core's HTTP
+client and Signature Version 4, with its options, encryption and request
+statistics, its tests and request-count pins, the benchmarks against
+`object_store`, and the S3, Azure and Google exchanges as its CI leaf.
+`install()` claims `S3_BACKEND` under the ten object-store schemes on the
+core's register of storage backends, once per process; a second claim of
+any of them is refused naming `yggdryl-s3`. The bindings' init calls it,
+and so does the CLI's `main` under its `s3` feature, which `s3tables`
+implies. A handle built through the crate's own doors needs no claim.
+
+The core no longer holds `s3`, its `s3` feature or the register's seed:
+no storage backend is the core's own. Who a request signs as stays the
+core's `aws` and `auth` modules, their 23 `s3` gates re-keyed to the
+feature of the module holding them. `yggdryl::implementer` gains an
+object-store section with the retry rules, the signer, the property
+reader, the bearer lease, the XML scanner and the session's doors the
+crate reaches. The tests that build an object store's handle move to the
+crate at their mirrored paths, every count unchanged; the five that cost
+an Iceberg table over the store stay in the core under `s3tables` for
+the Iceberg move, which the core's `s3tables` waits on too. The logging
+facade names `yggdryl_s3` under `yggdryl.s3`. The docs, skills,
+AGENTS.md and the API inventory name `yggdryl_s3`.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Gfky7FUx35U5i4UJcrQGKp

@@ -454,10 +454,7 @@ mod arrow {
             DataType::Isin,
             DataType::Cusip,
             DataType::Sedol,
-            DataType::Side,
             DataType::State,
-            DataType::TimeInForce,
-            DataType::PluginSide,
             DataType::Uuid,
             DataType::Version,
             DataType::url(),
@@ -756,7 +753,7 @@ mod structural_hash {
     use yggdryl::internals::hashing_stable::stable_hash_of;
     use yggdryl::{DataType, Scalar};
 
-    const PINNED: [(&str, u64); 101] = [
+    const PINNED: [(&str, u64); 99] = [
         ("utf8", 0x5ab6cab83f73e718),
         ("large_utf8", 0xc049e53a48cbfe3b),
         ("utf8_view", 0xf4813115041b88d1),
@@ -819,9 +816,7 @@ mod structural_hash {
         ("mic", 0xd7ead9fce536323e),
         ("cfi", 0xd97e41930d68e393),
         ("isin", 0x0f222354ded30363),
-        ("side", 0x52a98a94618c687b),
         ("state", 0x384fa1ab24cdaafb),
-        ("timeinforce", 0x5e9bed84925ef4fe),
         ("uuid", 0x126c911693422108),
         ("version", 0xe2fca2fc6cd1c60d),
         ("url", 0x7e1ee45fc1090ac6),

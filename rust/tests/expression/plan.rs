@@ -1574,6 +1574,33 @@ mod streams {
     }
 
     #[test]
+    fn a_target_reads_its_cache_ttl_as_whole_milliseconds() {
+        let scratch = Scratch::new("cache-ttl");
+        let plain = scratch.url("trades.arrows");
+        let holder = Target::parse(&format!("'{plain}'"))
+            .unwrap()
+            .holder(&Warehouse::new(), None)
+            .unwrap();
+        // Unstated, a closed handle reads its metadata afresh on every ask.
+        let options = Target::parse(&format!("'{plain}'"))
+            .unwrap()
+            .record_options(&holder)
+            .unwrap();
+        assert!(options.cache_ttl().is_realtime());
+        let target = Target::parse(&format!("'{plain}' with (cache_ttl = '1000')")).unwrap();
+        let options = target.record_options(&holder).unwrap();
+        assert_eq!(options.cache_ttl().millis(), 1000);
+        // Milliseconds through the one integer grammar: no unit, no fraction,
+        // no sign below zero.
+        for text in ["1s", "1.5", "-1", "soon"] {
+            let broken = Target::parse(&format!("'{plain}' with (cache_ttl = '{text}')")).unwrap();
+            let error = broken.record_options(&holder).unwrap_err().to_string();
+            assert!(error.contains("$.with.cache_ttl"), "{text}: {error}");
+            assert!(error.contains(text), "{text}: {error}");
+        }
+    }
+
+    #[test]
     fn a_holder_is_built_from_a_url_and_properties() {
         let scratch = Scratch::new("url");
         std::fs::write(scratch.0.join("t.csv"), b"id\n1\n").unwrap();

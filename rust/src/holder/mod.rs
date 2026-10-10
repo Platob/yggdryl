@@ -3,14 +3,25 @@
 //! [`Buffer`] owns in-memory bytes, [`crate::local`], [`crate::fs`], and [`crate::zip`] supply the
 //! location/container/leaf backend roles - a local tree, a foreign filesystem,
 //! and the members one archive holds inside a single file - and [`buffered`]
-//! adds a page cache over any [`IOBase`] implementation.
+//! adds a page cache over any [`IOBase`] implementation. A [`StorageBackend`]
+//! is what a crate claims a byte backend's schemes with, its handles held as
+//! [`Holder::Registered`]; a [`Locator`] is what a crate claims a catalog
+//! service's scheme with, which [`Holder::from_url`] asks before any byte
+//! backend.
 
+mod backend;
 mod buffer;
 pub mod buffered;
 pub mod counted;
+mod locator;
 
+pub(crate) use backend::unregistered;
+pub use backend::{
+    RegisteredHandle, StorageBackend, backend_for, backends, claim as claim_backend,
+};
 pub use buffer::Buffer;
 pub(crate) use buffer::memory_identity;
+pub use locator::{Locator, claim as claim_locator, locators};
 
 use crate::coding::Coded;
 use crate::holder::buffered::{Buffered, BufferedOptions};
@@ -35,31 +46,34 @@ pub(crate) fn system_time_ns(value: std::time::SystemTime) -> Option<i64> {
     }
 }
 
-/// The handle at `holder`'s own location, built as the child its file name
+/// The handle at `handle`'s own location, built as the child its file name
 /// names under its parent - its prefix on the same client, its directory in
 /// the same archive - which is how a second store role on one client is
-/// built. `None` where it has no parent or no file name: a bucket's root, a
-/// location spelled with a trailing slash, an archive's root.
-fn sibling(holder: &Holder) -> Result<Option<Holder>> {
-    if holder.url().is_some_and(Url::has_trailing_slash) {
+/// built, a registered handle's [`RegisteredHandle::reopen`] included. `None`
+/// where it has no parent or no file name: a bucket's root, a location
+/// spelled with a trailing slash, an archive's root.
+pub(crate) fn sibling<H: IOBase + ?Sized>(handle: &H) -> Result<Option<Holder>> {
+    if handle.url().is_some_and(Url::has_trailing_slash) {
         return Ok(None);
     }
-    let Some(name) = holder.uri().and_then(Uri::file_name) else {
+    let Some(name) = handle.uri().and_then(Uri::file_name) else {
         return Ok(None);
     };
-    match holder.parent() {
+    match handle.parent() {
         Some(parent) => parent.child_by_path(name).map(Some),
         None => Ok(None),
     }
 }
 
-/// A concrete, sized value holding any core [`IOBase`] implementation.
+/// A concrete, sized value holding any [`IOBase`] implementation.
 ///
 /// Hierarchy accessors such as [`IOBase::parent`], [`IOBase::child_by_path`], and
 /// [`IOBase::ls`] have to return *some* handle without knowing which kind it
-/// will be, and `Box<dyn IOBase>` would erase the concrete type a caller needs
-/// to match on. `Holder` is that return type: an enum over the implementations
-/// the core ships, which itself implements [`IOBase`] by delegation.
+/// will be. `Holder` is that return type: an enum over the implementations
+/// the core ships, which a caller matches on, and [`Holder::Registered`] for
+/// the handles of a backend a crate claims ([`claim_backend`]) - a boxed
+/// [`RegisteredHandle`], which [`Holder::downcast_ref`] answers as the type
+/// it is. It itself implements [`IOBase`] by delegation.
 ///
 /// A local directory therefore yields [`Holder::LocalFolder`] for its
 /// subdirectories and [`Holder::LocalFile`] for its files, and a caller can walk the
@@ -99,15 +113,13 @@ pub enum Holder {
     FsPath(crate::fs::FsPath),
     /// A stream-backed file on an Arrow-compatible filesystem.
     FsFile(crate::fs::FsFile),
-    /// A key prefix, or a whole container, on an object store.
-    #[cfg(feature = "s3")]
-    S3Folder(crate::s3::S3Folder),
-    /// An object-store location that resolves to whatever it turns out to be.
-    #[cfg(feature = "s3")]
-    S3Path(crate::s3::S3Path),
-    /// One object on an object store.
-    #[cfg(feature = "s3")]
-    S3File(crate::s3::S3File),
+    /// A handle of a backend a crate claims ([`claim_backend`]) - an object
+    /// on an object store, a prefix of one, a location that resolves to
+    /// either - every verb its own.
+    ///
+    /// Boxed: the core names no backend's type. [`Self::downcast_ref`]
+    /// answers it as the type it is.
+    Registered(Box<dyn RegisteredHandle>),
     /// An HTTP session: a container over its base URL, listing nothing.
     #[cfg(feature = "http")]
     HttpSession(crate::http::Session),
@@ -194,12 +206,7 @@ impl Holder {
             Self::FsFolder(inner) => inner.folder_exists(),
             Self::FsPath(inner) => inner.path_exists(),
             Self::FsFile(inner) => inner.file_exists(),
-            #[cfg(feature = "s3")]
-            Self::S3Folder(inner) => inner.folder_exists(),
-            #[cfg(feature = "s3")]
-            Self::S3Path(inner) => inner.path_exists(),
-            #[cfg(feature = "s3")]
-            Self::S3File(inner) => inner.file_exists(),
+            Self::Registered(inner) => RegisteredHandle::exists(&**inner),
             #[cfg(feature = "http")]
             Self::HttpSession(_) | Self::HttpResponse(_) | Self::HttpStream(_) => true,
             #[cfg(feature = "http")]
@@ -223,9 +230,10 @@ impl Holder {
     /// The owned form of [`IOBase::pstream_bytes`], for a reader that holds
     /// many handles in turn - the leaves of a container - and cannot borrow
     /// each from a place that outlives it. A leaf with a sequential read of
-    /// its own keeps it: a filesystem file one open, an object one `GET`, an
-    /// archive member one reader through the archive. Anything else is read
-    /// positionally, one [`IOBase::pread`] per batch.
+    /// its own keeps it: a filesystem file one open, a registered handle the
+    /// stream it owns ([`IOBase::owned_stream_bytes`]) - an object's one
+    /// resuming `GET` - an archive member one reader through the archive.
+    /// Anything else is read positionally, one [`IOBase::pread`] per batch.
     pub(crate) fn into_byte_stream(
         self,
         position: u64,
@@ -233,8 +241,16 @@ impl Holder {
     ) -> Result<crate::ByteStream<'static>> {
         match self {
             Self::FsFile(file) => file.byte_stream(position, batch_size),
-            #[cfg(feature = "s3")]
-            Self::S3File(file) => file.byte_stream(position, batch_size),
+            Self::Registered(handle) => {
+                let owned = handle.owned_stream_bytes(position)?;
+                match owned {
+                    Some(reader) => crate::ByteStream::from_reader(reader, batch_size),
+                    None => crate::ByteStream::from_reader(
+                        crate::Cursor::at(Self::Registered(handle), position),
+                        batch_size,
+                    ),
+                }
+            }
             Self::ZipLeaf(leaf) => leaf.byte_stream(position, batch_size),
             // The handle it names keeps its own sequential read.
             Self::Uri(uri) => uri.into_held()?.into_byte_stream(position, batch_size),
@@ -286,31 +302,36 @@ impl Holder {
     /// `location` is a [`Url`], or any identifier that locates one
     /// ([`Uri::locator`]): a relative path, a URN, an ARN.
     ///
-    /// This is the one door every backend is behind, and what a plan's
-    /// target opens: a `file:` URL is a local path, resolved to a folder or a
-    /// file when an operation needs to know; a `file:` URL with a fragment is
-    /// a member of a ZIP archive; an object-store URL - `s3:`, `gs:`, `az:`
-    /// and their aliases - is held through the `s3` feature, configured
-    /// by the properties the store's own tooling names, read the way the
-    /// object store options read them; an `http:` or `https:` URL is held
+    /// This is the one door every backend is behind, and what a plan's target
+    /// opens: a `file:` URL is a local path, resolved to a folder or a file
+    /// when an operation needs to know; a `file:` URL with a fragment is a
+    /// member of a ZIP archive; a location whose scheme a claimed
+    /// [`StorageBackend`] names is held as the handle that backend answers
+    /// ([`Self::Registered`]), asked after the identifier is lowered and
+    /// after the local and ZIP arms - the object stores' ten schemes, `s3:`,
+    /// `gs:`, `az:` and their aliases, by the backend the core claims under
+    /// the `s3` feature until `yggdryl-s3` does, configured by the properties
+    /// the store's own tooling names; an `http:` or `https:` URL is held
     /// through the `http` feature as the request that reads and writes the
-    /// resource, configured by the `HttpOptions` properties; an `s3tables:`
-    /// URL is held through the `s3tables` feature as what it names in an
-    /// Amazon S3 Tables table bucket - `s3tables://<bucket>` the bucket's
-    /// catalog, `s3tables://<bucket>/<namespace>` a namespace, each a
-    /// description costing no request, and
-    /// `s3tables://<bucket>/<namespace>/<table>` the Iceberg table, one
-    /// `GetTableMetadataLocation` after the one `ListTableBuckets` per page
-    /// that finds the bucket where neither a `warehouse` property nor
-    /// `account_id` states its ARN - under the properties the bucket's
-    /// catalog reads ([`Catalog::from_url`](crate::Catalog::from_url)); a
-    /// trailing slash names nothing, and more than a namespace and a table
-    /// below the bucket is refused at `$.url`. An ARN of that service is
-    /// read as the ARN rather than as the location it locates: a table
-    /// bucket's is the catalog, its region and account kept, and a table's -
+    /// resource, configured by the `HttpOptions` properties. A location a
+    /// claimed [`Locator`] names is held as what it answers, asked before the
+    /// identifier is lowered: an `s3tables:` URL, under the `s3tables`
+    /// feature, as what it names in an Amazon S3 Tables table bucket -
+    /// `s3tables://<bucket>` the bucket's catalog,
+    /// `s3tables://<bucket>/<namespace>` a namespace, each a description
+    /// costing no request, and `s3tables://<bucket>/<namespace>/<table>` the
+    /// Iceberg table, one `GetTableMetadataLocation` after the one
+    /// `ListTableBuckets` per page that finds the bucket where neither a
+    /// `warehouse` property nor `account_id` states its ARN - under the
+    /// properties the bucket's catalog reads
+    /// ([`Catalog::from_url`](crate::Catalog::from_url)); a trailing slash
+    /// names nothing, and more than a namespace and a table below the bucket
+    /// is refused at `$.url`. An ARN of that service is read as the ARN
+    /// rather than as the location it locates: a table bucket's is the
+    /// catalog, its region and account kept, and a table's -
     /// `arn:<partition>:s3tables:<region>:<account>:bucket/<name>/table/<id>` -
-    /// is the table that identifier is, at one `GetTable`, since the
-    /// location it lowers to spells the identifier where a namespace goes.
+    /// is the table that identifier is, at one `GetTable`, since the location
+    /// it lowers to spells the identifier where a namespace goes.
     ///
     /// Two properties are read here whatever the byte backend: `media_type`
     /// (or `mime_type`, `content_type`) declares what the bytes are, and
@@ -318,14 +339,15 @@ impl Holder {
     /// since a location spelling a container (a glob, a trailing `/`)
     /// streams leaves that each take off the coding their own name declares,
     /// and takes none. Every other property is left to the backend, which
-    /// ignores what it does not know. An object-store location's query
-    /// states the store's properties too, in the names its reader takes
+    /// ignores what it does not know. A backend's location's query states
+    /// the backend's properties too, in the names its reader takes
     /// (`s3://bucket/key?endpoint_override=minio%3A9000&scheme=http&region=eu-west-1`),
     /// beneath `properties`, so a property stated twice is the caller's, and
     /// is taken off the location the handle reports, which names the
     /// resource and not how it is reached; a parameter naming no property
-    /// the store reads is refused by name, since an object takes no query.
-    /// A `file:` or an `http:` URL's query is the resource's own and stays.
+    /// the backend reads ([`StorageBackend::is_property`]) is refused by
+    /// name, since an object takes no query. A `file:` or an `http:` URL's
+    /// query is the resource's own and stays.
     ///
     /// ```
     /// use yggdryl::holder::Holder;
@@ -342,9 +364,10 @@ impl Holder {
     /// # Errors
     ///
     /// Returns the identifier's own refusal when it names no location, an
-    /// error when the scheme is one no backend of this build holds, a
-    /// property this method reads does not parse, or an object-store
-    /// location's query names a parameter no store reads.
+    /// error naming the crate to install when the scheme is one no core arm
+    /// and no claimed backend holds and no locator claims, a property this
+    /// method reads does not parse, a backend's own refusal, or a backend's
+    /// location's query names a parameter the backend does not read.
     pub fn from_url<K, V>(
         location: impl AsRef<Uri>,
         properties: impl IntoIterator<Item = (K, V)>,
@@ -358,25 +381,13 @@ impl Holder {
             .into_iter()
             .map(|(name, value)| (name.as_ref().to_owned(), value.as_ref().to_owned()))
             .collect();
-        // An object of a catalog service, not bytes: it declares no media
-        // type and takes no coding - and it is read before the identifier is
-        // lowered, because a table's ARN says what its location cannot.
-        #[cfg(feature = "s3tables")]
-        if location.names_s3_tables() {
-            let properties: crate::Properties = properties
-                .iter()
-                .map(|(name, value)| (name.as_str(), value.as_str()))
-                .collect();
-            return Ok(crate::s3tables::locate(location, &properties)?.into_holder());
+        // An object a locator names - a catalog service's, not bytes - declares
+        // no media type and takes no coding, and it is asked before the
+        // identifier is lowered, because an ARN says what its location cannot.
+        if let Some(holder) = locator::locate(location, &properties)? {
+            return Ok(holder);
         }
         let url = &location.locator()?;
-        #[cfg(not(feature = "s3tables"))]
-        if url.scheme().is_s3_tables() {
-            return Err(crate::Error::unsupported(
-                "holding an S3 Tables location without the s3tables feature",
-                url.scheme().as_str(),
-            ));
-        }
         let held = if url.is_local() {
             if url
                 .fragment(false)?
@@ -386,45 +397,31 @@ impl Holder {
             } else {
                 Self::LocalPath(crate::local::LocalPath::from_url(url.clone())?)
             }
-        } else if url.scheme().is_object_store() {
-            #[cfg(feature = "s3")]
-            {
-                // The query first, so a property the caller states too is
-                // the caller's; a name the store's reader has no door for is
-                // refused, because an object takes no query of its own.
-                let mut stated = Vec::new();
-                for (name, value) in &url.parameters(true)? {
-                    if !crate::s3::S3Options::is_property(name) {
-                        return Err(crate::Error::Parse {
-                            target: "object store location",
-                            position: 0,
-                            reason: smol_str::format_smolstr!(
-                                "the query parameter {name:?} names no property an object \
-                                 store reads"
-                            ),
-                        });
-                    }
-                    stated.push((name.to_owned(), value.to_owned()));
+        } else if let Some(backend) = backend_for(url.scheme()) {
+            // The query first, so a property the caller states too is the
+            // caller's; a name the backend's reader has no door for is
+            // refused, because an object takes no query of its own.
+            let mut stated = Vec::new();
+            for (name, value) in &url.parameters(true)? {
+                if !backend.is_property(name) {
+                    return Err(crate::Error::Parse {
+                        target: "storage location",
+                        position: 0,
+                        reason: smol_str::format_smolstr!(
+                            "the query parameter {name:?} names no property the `{}` backend \
+                             reads",
+                            url.scheme()
+                        ),
+                    });
                 }
-                let options = crate::s3::S3Options::from_properties(
-                    stated
-                        .iter()
-                        .chain(properties.iter())
-                        .map(|(name, value)| (name, value)),
-                )?;
-                // Taken off the location: it names the resource, not how it
-                // is reached.
-                let mut location = url.clone();
-                location.set_query(None)?;
-                crate::s3::located_with(&location.to_string(), options)?
+                stated.push((name.to_owned(), value.to_owned()));
             }
-            #[cfg(not(feature = "s3"))]
-            {
-                return Err(crate::Error::unsupported(
-                    "holding an object store location without the s3 feature",
-                    url.scheme().as_str(),
-                ));
-            }
+            stated.extend(properties.iter().cloned());
+            // Taken off the location: it names the resource, not how it is
+            // reached.
+            let mut location = url.clone();
+            location.set_query(None)?;
+            backend.holder(&location, &stated)?
         } else if url.scheme().is_http() {
             #[cfg(feature = "http")]
             {
@@ -441,10 +438,7 @@ impl Holder {
                 ));
             }
         } else {
-            return Err(crate::Error::unsupported(
-                "holding a location of this scheme",
-                url.scheme().as_str(),
-            ));
+            return Err(unregistered(url.scheme()));
         };
         held.described(url, &properties)
     }
@@ -478,19 +472,18 @@ impl Holder {
     /// caller's handle reaches the bytes that handle was built over.
     ///
     /// The plain handle beneath every wrapper - a page cache, a coding, a
-    /// record medium - is what is held again, and composing a wrapper over
-    /// it is the caller's: a local role over its path; an object-store role
-    /// on its own client - an `S3Folder` cloned, an
-    /// `S3Path` or an `S3File` built as the child of its parent folder, its
-    /// role kept - so the endpoint, the credentials, the session and every
-    /// other option it was built with travel with it; an HTTP session or
-    /// request cloned, its defaults, authorization, cookie jar and pool with
-    /// it; a location bound to a caller's filesystem rebuilt on that
-    /// filesystem; an archive member as the child of its parent in the one
-    /// archive both read; an identifier and a warehouse object cloned.
-    /// Nothing is rebuilt from its URL alone, since a URL says where a
-    /// resource is and not how it is reached. The media type the plain
-    /// handle declares is carried across.
+    /// record medium - is what is held again, and composing a wrapper over it
+    /// is the caller's: a local role over its path; a registered handle as
+    /// its own [`RegisteredHandle::reopen`] answers - an object-store role on
+    /// its own client, its role kept, so the endpoint, the credentials, the
+    /// session and every other option it was built with travel with it; an
+    /// HTTP session or request cloned, its defaults, authorization, cookie
+    /// jar and pool with it; a location bound to a caller's filesystem
+    /// rebuilt on that filesystem; an archive member as the child of its
+    /// parent in the one archive both read; an identifier and a warehouse
+    /// object cloned. Nothing is rebuilt from its URL alone, since a URL says
+    /// where a resource is and not how it is reached. The media type the
+    /// plain handle declares is carried across.
     ///
     /// # Errors
     ///
@@ -498,7 +491,7 @@ impl Holder {
     /// to address again - an in-memory buffer, one HTTP answer, a body on
     /// the wire - and for a member at an archive's root, which has no
     /// parent to hold it under; the backend's own refusal to build the
-    /// child otherwise.
+    /// child or to reopen its handle otherwise.
     pub fn from_handle(holder: &Self) -> Result<Self> {
         let plain = holder.plain();
         let unsupported = |what: &'static str| {
@@ -519,21 +512,7 @@ impl Holder {
                 Some(bound) => crate::fs::located(bound.clone()),
                 None => return Err(unsupported("holding again a handle bound to no location")),
             },
-            #[cfg(feature = "s3")]
-            Self::S3Folder(folder) => Self::S3Folder(folder.clone()),
-            #[cfg(feature = "s3")]
-            Self::S3Path(path) => match sibling(plain)? {
-                Some(sibling) => sibling,
-                // The bucket itself, or a location spelled with a trailing
-                // slash: a container by its spelling, on the same client.
-                None => Self::S3Folder(path.as_directory()?),
-            },
-            #[cfg(feature = "s3")]
-            Self::S3File(_) => match sibling(plain)? {
-                Some(Self::S3Path(path)) => Self::S3File(path.as_file()?),
-                Some(held) => held,
-                None => return Err(unsupported("holding again an object with no container")),
-            },
+            Self::Registered(handle) => handle.reopen()?,
             #[cfg(feature = "http")]
             Self::HttpSession(session) => Self::HttpSession(session.clone()),
             #[cfg(feature = "http")]
@@ -587,24 +566,20 @@ impl Holder {
 
     /// Whether `name` is a property the backend `url` selects reads for
     /// itself - who signs, where the store is, how it is addressed - rather
-    /// than one it leaves to the object it holds: the object store options'
-    /// under `s3`, the HTTP options' under `http`, and none for a local
-    /// path, which opens under nothing. The two names [`Self::from_url`]
-    /// reads whatever the backend, `media_type` and `codec`, describe the
-    /// bytes and are not the backend's own. An Iceberg table opened by its
-    /// location states its properties less these.
+    /// than one it leaves to the object it holds: the claimed backend's
+    /// ([`StorageBackend::is_property`]), the HTTP options' under `http`,
+    /// and none for a local path, which opens under nothing. The two names
+    /// [`Self::from_url`] reads whatever the backend, `media_type` and
+    /// `codec`, describe the bytes and are not the backend's own. An Iceberg
+    /// table opened by its location states its properties less these.
     #[cfg(feature = "iceberg")]
-    #[cfg_attr(not(any(feature = "s3", feature = "http")), allow(unused_variables))]
     pub(crate) fn is_backend_property(url: &Url, name: &str) -> bool {
-        if url.scheme().is_object_store() {
-            #[cfg(feature = "s3")]
-            return crate::s3::S3Options::is_property(name);
-        }
-        if url.scheme().is_http() {
+        match backend_for(url.scheme()) {
+            Some(backend) => backend.is_property(name),
             #[cfg(feature = "http")]
-            return crate::http::HttpOptions::is_property(name);
+            None if url.scheme().is_http() => crate::http::HttpOptions::is_property(name),
+            None => false,
         }
-        false
     }
 
     /// Hold the members of the archive `handle` addresses.
@@ -649,8 +624,9 @@ impl Holder {
     /// Retain the record implementation inferred from this handle's media type.
     ///
     /// The conversion is lazy: it only adds the stateful wrapper and reads no
-    /// bytes. IPC, Parquet (when enabled), and Avro are held through
-    /// [`Self::Media`]; plain text is retained through [`Self::Text`].
+    /// bytes. Every medium the register claims is held through
+    /// [`Self::Media`] but plain text, which is retained through
+    /// [`Self::Text`].
     /// A page cache remains the outermost wrapper, so promotion followed by
     /// repeated buffering cannot stack caches.
     ///
@@ -744,16 +720,16 @@ impl Holder {
 
         let codec = crate::Codec::from_media_type(media_type);
 
-        // Parquet compresses internally, so `trades.parquet.gz` names a file no
-        // other Parquet reader can open. Composing it would hide that behind a
-        // decoded view; leaving the name alone keeps the writer's refusal,
-        // which is the answer a caller needs before the file exists.
-        #[cfg(feature = "parquet")]
-        if !codec.is_identity() && *media_type.base() == crate::MimeType::PARQUET {
-            return self;
-        }
-        // A workbook is a ZIP package, deflated inside: the same rule.
-        if !codec.is_identity() && *media_type.base() == crate::MimeType::XLSX {
+        // A medium that compresses inside its own container - Parquet, a
+        // workbook's deflated ZIP package - names under an outer coding a file
+        // no reader of it opens: `trades.parquet.gz`. Composing it would hide
+        // that behind a decoded view; leaving the name alone keeps the
+        // writer's refusal, which is the answer a caller needs before the
+        // file exists.
+        if !codec.is_identity()
+            && crate::media::codec_of(media_type.base())
+                .is_some_and(|medium| medium.compresses_internally())
+        {
             return self;
         }
 
@@ -773,18 +749,10 @@ impl Holder {
             return self;
         }
 
-        let supported = *base == crate::MimeType::ARROW_STREAM
-            || *base == crate::MimeType::ARROW_FILE
-            || *base == crate::MimeType::AVRO
-            || *base == crate::MimeType::PLAIN_TEXT
-            || *base == crate::MimeType::XMLA
-            || *base == crate::MimeType::CSV
-            || *base == crate::MimeType::TSV
-            || *base == crate::MimeType::XLSX
-            || cfg!(feature = "parquet") && *base == crate::MimeType::PARQUET;
-        if !supported {
+        // A type no medium claims composes nothing.
+        let Some(codec) = crate::media::codec_of(base) else {
             return self;
-        }
+        };
 
         // Keep an existing page cache outside the media wrapper. Besides
         // preserving the cache's one-layer invariant, this lets its
@@ -795,27 +763,11 @@ impl Holder {
             return Self::Buffered(Box::new(Buffered::new(held, options)));
         }
 
-        if *base == crate::MimeType::ARROW_STREAM || *base == crate::MimeType::ARROW_FILE {
-            return Self::Media(Box::new(crate::media::Media::ipc(self)));
-        }
-        #[cfg(feature = "parquet")]
-        if *base == crate::MimeType::PARQUET {
-            return Self::Media(Box::new(crate::media::Media::parquet(self)));
-        }
+        // Plain text is retained as the text handle itself, never a media.
         if *base == crate::MimeType::PLAIN_TEXT {
             return self.into_text();
         }
-        if *base == crate::MimeType::XMLA {
-            return Self::Media(Box::new(crate::media::Media::xmla(self)));
-        }
-        if *base == crate::MimeType::CSV || *base == crate::MimeType::TSV {
-            return Self::Media(Box::new(crate::media::Media::csv(self)));
-        }
-        if *base == crate::MimeType::XLSX {
-            return Self::Media(Box::new(crate::media::Media::excel(self)));
-        }
-        debug_assert_eq!(*base, crate::MimeType::AVRO);
-        Self::Media(Box::new(crate::media::Media::avro(self)))
+        Self::Media(Box::new(codec.open(self)))
     }
 
     /// Materialize this holder and retain any record metadata the inferred
@@ -938,12 +890,7 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3Folder(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3Path(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3File(inner) => inner,
+            Self::Registered(inner) => &**inner,
             #[cfg(feature = "http")]
             Self::HttpSession(inner) => inner,
             #[cfg(feature = "http")]
@@ -976,12 +923,7 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3Folder(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3Path(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3File(inner) => inner,
+            Self::Registered(inner) => &mut **inner,
             #[cfg(feature = "http")]
             Self::HttpSession(inner) => inner,
             #[cfg(feature = "http")]
@@ -1004,6 +946,26 @@ impl Holder {
         }
     }
 
+    /// The registered handle as the type it is, when it is a `T`: an
+    /// object-store `S3File` behind [`Self::Registered`]. `None` for every
+    /// core variant, which a caller matches on, and for a wrapper - a page
+    /// cache, a coding, a record medium - over a registered handle.
+    #[must_use]
+    pub fn downcast_ref<T: 'static>(&self) -> Option<&T> {
+        match self {
+            Self::Registered(handle) => RegisteredHandle::as_any(&**handle).downcast_ref(),
+            _ => None,
+        }
+    }
+
+    /// The registered handle as the type it is, mutably, when it is a `T`.
+    pub fn downcast_mut<T: 'static>(&mut self) -> Option<&mut T> {
+        match self {
+            Self::Registered(handle) => RegisteredHandle::as_any_mut(&mut **handle).downcast_mut(),
+            _ => None,
+        }
+    }
+
     /// Borrow the held implementation through its media contract.
     fn as_media(&self) -> &dyn crate::IOMedia {
         match self {
@@ -1014,12 +976,7 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3Folder(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3Path(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3File(inner) => inner,
+            Self::Registered(inner) => &**inner,
             #[cfg(feature = "http")]
             Self::HttpSession(inner) => inner,
             #[cfg(feature = "http")]
@@ -1052,12 +1009,7 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3Folder(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3Path(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3File(inner) => inner,
+            Self::Registered(inner) => &mut **inner,
             #[cfg(feature = "http")]
             Self::HttpSession(inner) => inner,
             #[cfg(feature = "http")]
@@ -1106,17 +1058,12 @@ impl crate::IOMedia for Holder {
         crate::IOMedia::merge_by(self.as_media())
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
-        crate::IOMedia::read_parquet_statistics(self.as_media())
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        crate::IOMedia::as_any(self.as_media())
     }
 
-    #[cfg(feature = "parquet")]
-    fn read_parquet_geospatial_statistics(
-        &self,
-        column: &str,
-    ) -> Result<crate::parquet::GeospatialStatistics> {
-        crate::IOMedia::read_parquet_geospatial_statistics(self.as_media(), column)
+    fn read_origin_field(&self) -> Result<Option<crate::Field>> {
+        crate::IOMedia::read_origin_field(self.as_media())
     }
 
     fn read_arrow_field(&self, options: &crate::media::RecordOptions) -> Result<crate::Field> {
@@ -1219,8 +1166,16 @@ impl IOBase for Holder {
         self.as_io_mut().append_bytes(bytes)
     }
 
+    fn upload_from(&mut self, source: &mut dyn std::io::Read, length: u64) -> Result<()> {
+        self.as_io_mut().upload_from(source, length)
+    }
+
     fn size(&self) -> u64 {
         self.as_io().size()
+    }
+
+    fn set_known_size(&mut self, size: u64) {
+        self.as_io_mut().set_known_size(size);
     }
 
     fn capacity(&self) -> u64 {
@@ -1301,12 +1256,24 @@ impl IOBase for Holder {
         self.as_io_mut().remove(recursive)
     }
 
+    fn discard(&self) -> Result<bool> {
+        self.as_io().discard()
+    }
+
     fn parent(&self) -> Option<Self> {
         self.as_io().parent()
     }
 
     fn child_by_path(&self, name: &str) -> Result<Self> {
         self.as_io().child_by_path(name)
+    }
+
+    fn as_leaf(&self) -> Result<Option<Self>> {
+        self.as_io().as_leaf()
+    }
+
+    fn as_container(&self) -> Result<Option<Self>> {
+        self.as_io().as_container()
     }
 
     fn ls(&self, recursive: bool, include_private: bool) -> crate::Listing {

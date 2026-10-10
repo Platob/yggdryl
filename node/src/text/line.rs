@@ -399,7 +399,7 @@ impl JsTextLine {
         self.inner.bodytype().as_str().to_owned()
     }
 
-    /// The line past its row header: what `currhashcode` hashes.
+    /// The line past its row header: what `hashcode` hashes.
     ///
     /// Text, always: what the constructor or the reader decoded.
     #[napi(getter)]
@@ -429,8 +429,8 @@ impl JsTextLine {
     /// line is an event of the
     /// graph, and a message parsed out of it states this among its `srcuuids`.
     #[napi(getter)]
-    pub fn curruuid(&self) -> String {
-        self.inner.get_curruuid().to_string()
+    pub fn uuid(&self) -> String {
+        self.inner.get_uuid().to_string()
     }
 
     /// The identity every event of one lifecycle shares: derived from the
@@ -449,8 +449,8 @@ impl JsTextLine {
 
     /// The XXH3-64 of `body` and nothing else.
     #[napi(getter)]
-    pub fn currhashcode(&self) -> BigInt {
-        BigInt::from(self.inner.get_currhashcode())
+    pub fn hashcode(&self) -> BigInt {
+        BigInt::from(self.inner.get_hashcode())
     }
 
     /// The XXH3-64 of the cross code, `0n` where there is none.
@@ -462,8 +462,8 @@ impl JsTextLine {
     /// When the line happened, nanoseconds since the Unix epoch, UTC: the
     /// stated instant, else `mtime`, else `0n`.
     #[napi(getter)]
-    pub fn currunix(&self) -> BigInt {
-        BigInt::from(self.inner.get_currunix())
+    pub fn transunix(&self) -> BigInt {
+        BigInt::from(self.inner.get_transunix())
     }
 
     /// Where the line stands in its source: the row number under

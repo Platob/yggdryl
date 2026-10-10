@@ -832,6 +832,49 @@ mod pushdown {
         }
     }
 
+    /// The schema a `select` answers is one, whether the field is declared in
+    /// full or left to the resource, and it is the one the read publishes.
+    #[test]
+    fn a_select_answers_one_schema_whether_the_field_is_declared_in_full_or_stored() {
+        let mut names = vec!["answer.arrows", "answer.avro", "answer.csv"];
+        if cfg!(feature = "parquet") {
+            names.push("answer.parquet");
+        }
+        let columns = |field: &Field| -> Vec<(String, DataType)> {
+            field
+                .fields()
+                .iter()
+                .map(|column| (column.name().to_owned(), column.dtype().clone()))
+                .collect()
+        };
+        for name in names {
+            let handle = stored(name);
+            let selected = handle
+                .record_options()
+                .unwrap()
+                .with_select("price, id")
+                .unwrap();
+            let by_resource = handle.read_arrow_field(&selected).unwrap();
+            let declared = selected.clone().with_field(wide());
+            let by_declaration = handle.read_arrow_field(&declared).unwrap();
+
+            let expected = vec![
+                ("price".to_owned(), DataType::Float64),
+                ("id".to_owned(), DataType::Int64),
+            ];
+            assert_eq!(columns(&by_resource), expected, "{name}");
+            assert_eq!(columns(&by_declaration), expected, "{name}");
+
+            // And the rows land under the shape both answered.
+            let read = handle.read_arrow_reader(&declared).unwrap().schema();
+            assert_eq!(
+                columns(&Field::from_arrow_schema(declared.name(), read.as_ref()).unwrap()),
+                expected,
+                "{name}"
+            );
+        }
+    }
+
     #[test]
     fn an_absent_resource_narrows_its_declared_schema_too() {
         let handle = handle("absent.arrows");
@@ -898,6 +941,58 @@ mod rows {
 
         assert_eq!(rows(&handle, &options), 4);
         assert_eq!(handle.read_arrow_field(&options).unwrap(), schema());
+    }
+
+    /// The ids a handle holds, in the order they are stored.
+    fn stored_ids(handle: &Buffer, options: &RecordOptions) -> Vec<i64> {
+        let mut ids = Vec::new();
+        for batch in handle.read_arrow_reader(options).unwrap() {
+            let batch = batch.unwrap();
+            let column = batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap();
+            ids.extend_from_slice(column.values());
+        }
+        ids
+    }
+
+    /// The row bounds of a records write are the write's, applied once where
+    /// it shapes its rows: an offset of two and a bound of three over ten
+    /// rows write three rows - the third to the fifth - and not the one the
+    /// bound left after the offset had been taken from it already.
+    #[test]
+    fn a_records_write_applies_its_row_offset_and_row_bound_once() {
+        let record = |id: i64| NativeRow { id, symbol: None };
+        for batch_row_size in [None, Some(1), Some(4)] {
+            let mut written = handle("write-bounds.arrows");
+            let plain = written.record_options().unwrap().with_field(schema());
+            let mut bounded = plain.clone().with_row_offset(2).with_max_row_size(3);
+            if let Some(rows) = batch_row_size {
+                bounded = bounded.with_batch_row_size(rows);
+            }
+
+            let result = written
+                .overwrite_records((0..10).map(record), &bounded)
+                .unwrap();
+            assert_eq!(
+                stored_ids(&written, &plain),
+                [2, 3, 4],
+                "overwrite, batches of {batch_row_size:?}"
+            );
+            assert_eq!(result.written_rows, 3, "batches of {batch_row_size:?}");
+
+            // An append takes the same window of what it is offered.
+            written
+                .append_records((10..20).map(record), &bounded)
+                .unwrap();
+            assert_eq!(
+                stored_ids(&written, &plain),
+                [2, 3, 4, 12, 13, 14],
+                "append, batches of {batch_row_size:?}"
+            );
+        }
     }
 
     #[test]
@@ -1465,10 +1560,13 @@ mod write {
             RecordOptions::Ipc(_)
         ));
         #[cfg(feature = "parquet")]
-        assert!(matches!(
-            handle("t.parquet").record_options().unwrap(),
-            RecordOptions::Parquet(_)
-        ));
+        assert!(
+            handle("t.parquet")
+                .record_options()
+                .unwrap()
+                .settings::<yggdryl::parquet::ParquetOptions>()
+                .is_some()
+        );
 
         // An encoding with no implementation is named rather than guessed.
         let message = handle("t.orc").record_options().unwrap_err().to_string();
@@ -1483,12 +1581,17 @@ mod write {
     #[test]
     fn a_parquet_leaf_answers_the_root_its_rows_land_under() {
         let mut handle = handle("t.parquet");
-        let RecordOptions::Parquet(parquet) = handle.record_options().unwrap() else {
+        let Some(parquet) = handle
+            .record_options()
+            .unwrap()
+            .settings::<yggdryl::parquet::ParquetOptions>()
+            .cloned()
+        else {
             panic!("a .parquet name reads as Parquet");
         };
         let mut declared = schema();
         declared.set_metadata([("comment", "trades")]).unwrap();
-        let options = RecordOptions::Parquet(parquet.with_key_value("writer", "rust"))
+        let options = RecordOptions::from(parquet.with_key_value("writer", "rust"))
             .with_field(declared)
             .with_safe(true);
         handle.overwrite_arrow_reader(reader(), &options).unwrap();

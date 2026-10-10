@@ -4,7 +4,7 @@ Every storage implementation is one positional `IOBase` handle: a caller writes 
 
 | Section | Owns | Build |
 | --- | --- | --- |
-| [Handles](#handles) | the `Holder` enum, what a name composes to, roles, delegation | default |
+| [Handles](#handles) | the `Holder` enum, what a name composes to, roles, delegation, the storage backends a crate claims | default |
 | [Bytes](#bytes) | `pread`/`pwrite`, addresses, laziness, kinds, streams, cursors, media type, codings, open/close, clear/remove | default |
 | [Values](#values) | whole bytes, digests, structured JSON/YAML/TOML/XML scalars, `std::io` adapters | default |
 | [StreamSerie](#records) | Arrow batch reads, the three write intents, pushdown, limits, native rows | default; `parquet` for Parquet |
@@ -13,7 +13,7 @@ Every storage implementation is one positional `IOBase` handle: a caller writes 
 | [Buffer](#buffer) | in-memory bytes | default |
 | [Local](#local) | `LocalPath`, `LocalFolder`, mapped `LocalFile` | default |
 | [Filesystems](#filesystems) | a `pyarrow.fs` filesystem read as the native role it stands for; the Arrow-style `FileSystem` bridge - `FsPath`, `FsFolder`, `FsFile` - for a foreign one | default |
-| [Object stores](#object-stores) | `S3Path`, `S3Folder`, `S3File` over Amazon S3, Google Cloud Storage and Azure Blob Storage | `s3` feature |
+| [Object stores](#object-stores) | `S3Path`, `S3Folder`, `S3File` over Amazon S3, Google Cloud Storage and Azure Blob Storage, the storage backend the core claims | `s3` feature |
 | [HTTP](#http) | `Session`, `Request`, `Response`, `Stream` over any `http`/`https` URL, and `Server` hosting any handle | `http` feature; `http2`, `http3` |
 | [Buffered](#buffered) | the page cache over any handle | default |
 | [ZIP](#zip) | `ZipPath`, `ZipNode`, `ZipLeaf` inside one archive, nested archives included | default, Rust only |
@@ -27,8 +27,10 @@ Holder::local(path) -> Result<Holder>          // LocalPath: the role is decided
 Holder::folder(path) / Holder::file(path)      // commit to a role up front
 Holder::buffer(Buffer) -> Holder               // in memory
 Holder::from_url(location, properties)         // a Url, or any identifier that locates one: the scheme picks the backend
+Holder::from_handle(&holder) -> Result<Holder> // the same resource again, on the same client, nothing sent
+holder.downcast_ref::<T>() -> Option<&T>       // a claimed backend's handle as the type it is
 holder.into_declared_media() -> Holder         // compose what the name declares, reading nothing
-holder.open() -> Result<()>                    // into_media, then open; keeps schema and footer caches
+holder.open() -> Result<()>                    // into_media, then open; the medium's cache is served until close
 holder.as_io() -> &dyn IOBase                  // the variant as the trait object
 ```
 
@@ -37,11 +39,11 @@ holder.as_io() -> &dyn IOBase                  // the variant as the trait objec
 | Location | Held as |
 | --- | --- |
 | `file:` | a `LocalPath`, its role decided when an operation needs it; with a fragment, a member of a [ZIP archive](#zip) |
-| `s3:`, `gs:`, `az:` and their aliases, an Amazon S3 bucket's ARN | the [object store](#object-stores)'s location, under the `s3` feature and the store's own properties |
+| `s3:`, `gs:`, `az:` and their aliases, an Amazon S3 bucket's ARN | the [object store](#object-stores)'s location - an `S3Path` held as `Holder::Registered`, the handle of the [storage backend](#storage-backends) the core claims under the `s3` feature - under the store's own properties |
 | `http:`, `https:` | the [HTTP](#http) request that reads and writes the resource, under the `http` feature and the `HttpOptions` properties |
-| `s3tables://<bucket>[/<namespace>[/<table>]]`, a table bucket's ARN, a table's ARN | what it names in an [Amazon S3 Tables](../media/iceberg.md#a-table-by-its-location) table bucket, under the `s3tables` feature: the catalog or a namespace - a description, no request - or the Iceberg table, at one `GetTableMetadataLocation` after the one `ListTableBuckets` per page a location stating neither the bucket's ARN nor its account pays (one `GetTable` for a table's ARN, read as the ARN rather than as the location it locates); more than a namespace and a table below the bucket is refused at `$.url` |
+| `s3tables://<bucket>[/<namespace>[/<table>]]`, a table bucket's ARN, a table's ARN | what it names in an [Amazon S3 Tables](../media/iceberg.md#a-table-by-its-location) table bucket, through the `Locator` the `s3tables` feature claims: the catalog or a namespace - a description, no request - or the Iceberg table, at one `GetTableMetadataLocation` after the one `ListTableBuckets` per page a location stating neither the bucket's ARN nor its account pays (one `GetTable` for a table's ARN, read as the ARN rather than as the location it locates); more than a namespace and a table below the bucket is refused at `$.url` |
 
-`media_type` and `codec` are read here whatever the byte backend; a catalog, a namespace and a table declare neither. An identifier that names no location, and a scheme no backend of the build holds, are refused by name.
+`media_type` and `codec` are read here whatever the byte backend, a claimed one's included; a catalog, a namespace and a table declare neither. A location a claimed `Locator` names is asked before the identifier is lowered and answered as the object it names ([Registering](../warehouse/index.md#registering)); the local, ZIP and HTTP backends are `from_url`'s own arms, and every other byte backend is a claimed `StorageBackend`, asked once the identifier is lowered, after the local and ZIP arms and before HTTP ([Storage backends](#storage-backends)). An identifier that names no location is refused by name, and so is a scheme no core arm, no claimed backend and no locator holds, naming the crate to install.
 
 === "Rust"
 
@@ -94,14 +96,14 @@ holder.as_io() -> &dyn IOBase                  // the variant as the trait objec
 | `Buffer` | an in-memory byte array | `holder.Buffer` |
 | `LocalFolder`, `LocalPath`, `LocalFile` | a local directory, an undecided local location, a mapped local leaf | `holder.LocalFolder`, `holder.LocalPath`, `holder.LocalFile` |
 | `FsFolder`, `FsPath`, `FsFile` | the same three bridged over a foreign Arrow `FileSystem`; a filesystem this build holds itself - PyArrow's local, S3, GCS and Azure ones, a subtree over one - is the local or object-store role above instead | `holder.FsFolder`, `holder.FsPath`, `holder.FsFile`, each answering `LocalFolder`/`S3Folder` and the like for a filesystem held natively |
-| `S3Folder`, `S3Path`, `S3File` | a prefix or container, an undecided location, one object on an [object store](#object-stores) | `holder.S3Folder`, `holder.S3Path`, `holder.S3File` |
+| `Registered` | the handle of a [storage backend](#storage-backends) a crate claims, boxed, every verb its own: an [object store](#object-stores)'s prefix or container, undecided location or object (`S3Folder`, `S3Path`, `S3File`), which `downcast_ref` and `downcast_mut` answer as the type it is | `holder.S3Folder`, `holder.S3Path`, `holder.S3File`, picked by that type |
 | `HttpSession`, `HttpRequest`, `HttpResponse`, `HttpStream` | a session over a base URL, the resource a URL names, one answer's body, a body left on the wire, over [HTTP](#http) | `http.Session`, `http.Request`, `http.Response`, `http.Stream` |
 | `ZipNode`, `ZipPath`, `ZipLeaf` | the archive root or a member prefix, an undecided member location, one member of a [ZIP archive](#zip) | Rust only |
-| `Catalog`, `Namespace`, `Table` | a [warehouse](../warehouse/index.md) object held as the handle it is - a catalog or a namespace a container whose `ls` yields its children as handles and whose byte verbs are refused, a table the rows its own handle holds; what `Holder::from_url` answers for a location in an [Amazon S3 Tables](../media/iceberg.md#a-table-by-its-location) table bucket | `warehouse.Catalog`, `warehouse.Namespace`, `warehouse.Table`; JavaScript `IOBase.from(object)` |
+| `Catalog`, `Namespace`, `Table` | a [warehouse](../warehouse/index.md) object held as the handle it is - a catalog or a namespace a container whose `ls` yields its children as handles and whose byte verbs are refused, a table the rows its own handle holds; what a claimed `Locator` answers in `Holder::from_url`, for a location in an [Amazon S3 Tables](../media/iceberg.md#a-table-by-its-location) table bucket | `warehouse.Catalog`, `warehouse.Namespace`, `warehouse.Table`; JavaScript `IOBase.from(object)` |
 | `Buffered` | any of the others behind the [page cache](#buffered) | `holder.Buffered` |
 | `Coded` | any of the others, presenting the decoded bytes of a content coding | `coding.Identity`, `Gzip`, `Zlib`, `Zstd` |
 | `Text` | any handle retained as plain-text records | `media.Text` |
-| `Media` | any handle retained behind its record encoding | `media.Ipc`, `media.Parquet`, `media.Avro` |
+| `Media` | any handle retained behind its record encoding, the medium the [register](../media/index.md#registering-a-medium) claims for its media type | `media.Ipc`, `media.Parquet`, `media.Avro` |
 | `Uri` | an identifier - `Uri`, `Url`, `Urn`, `Arn` through `Holder::from` - holding what it names, resolved through `Holder::from_url` on first use ([as a handle](../uri/index.md#as-a-handle)) | Rust only; `IOBase(uri)` answers the backend's own class |
 
 The last four own the `Holder` they wrap; `repr` renders that stack outermost first and `into_handle` descends one layer. `into_text`, `into_coded`, `buffered`, `into_media` and `into_declared_media` never stack. JavaScript has one `IOBase` class over the whole enum.
@@ -325,9 +327,9 @@ Everything else is pre-implemented: a folder holds no bytes of its own - `pread`
 A wrapper forwards the contract to the handle it holds with one macro per trait. Rust only: neither binding can add a backend.
 
 ```text
-delegate_iobase!(handle)                      // storage contract, open, opened, close; no records
+delegate_iobase!(handle)                      // storage contract, the capability verbs, open, opened, close; no records
 delegate_iomedia!(handle)                     // dimensions, options, Field and reader reads, typed writes
-delegate_iobase!(handle, except_lifecycle)    // omits clear, remove, is_atomic, is_tabular, is_io
+delegate_iobase!(handle, except_lifecycle)    // omits clear, remove, upload_from, discard, is_atomic, is_tabular, is_io
 delegate_iobase!(handle: pread, size, ...)    // only the named methods; the rest keep the trait default
 ```
 
@@ -360,6 +362,55 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(wrapper.handle.as_slice(), b"AAPL");
     Ok(())
 }
+```
+
+### Storage backends
+
+A byte backend beside the core's own arms reaches `Holder` through a register, as a [medium](../media/index.md#registering-a-medium) reaches `Media`. Rust only: a binding holds a claimed backend's handles as the classes it picks by their type.
+
+| A crate states | Where |
+| --- | --- |
+| a `StorageBackend` unit struct and its static: the crate's `name`, the `schemes` its locations spell, `is_property` - the properties it reads for itself - and `holder`, the handle a location opens, sending nothing | the backend's own file |
+| `RegisteredHandle` on every handle it answers - `implementation_name`, `exists` (its role's answer), `reopen` (the same resource on the same client, nothing sent), `as_any`, `as_any_mut` - beside the handle's whole `IOBase` | each handle's file |
+| the capability verbs its store specializes, each an `IOBase` method with a default: `upload_from` (a value of `length` bytes from a reader; read whole, then `write_all_bytes`), `discard` (drop the stage, answering whether nothing is left; `false`, the caller removes), `as_leaf` and `as_container` (the location re-described as the leaf or the container it names; `None`, the handle as it is), `set_known_size` (a stated length; ignored), `owned_stream_bytes` (the stream a container's leaves are read through; `None`, read positionally) | the handle's `IOBase` |
+| `holder::claim_backend(&X_BACKEND, "my-crate")` | the crate's `install()` |
+
+A claim takes every scheme the backend names, all or none, once for the life of the process. A scheme claimed already is refused as `Error::Conflict` naming the first claimant; a claim in the core's own name, a backend naming no scheme or one scheme twice, and a scheme a core arm holds - `file`, `http`, `https`, `mem`, `urn`, `arn` - are refused at `$.url`. `backend_for` is the lookup `Holder::from_url` asks once a location is lowered, after the local and ZIP arms and before HTTP; `backends()` lists the claims, each once, in the order of its first scheme. A location's query states the backend's properties: handed to `holder` before the caller's, so a name stated twice is the caller's, and taken off the location the handle reports; a parameter the backend does not read is refused by name, as ``invalid storage location expression at byte 0: the query parameter "versionId" names no property the `s3` backend reads``. What the backend answers is held as `Holder::Registered` and described as every backend's handle is (`media_type`, `codec`); `Holder::from_handle` answers its `reopen`, `Holder::exists` its `exists`, `downcast_ref` and `downcast_mut` the handle as its type, and every capability verb is the handle's own through the `Holder`. `delegate_iobase!` forwards the capability verbs but `owned_stream_bytes` with the rest of the contract, so a wrapper over a backend's handle keeps them and its stream is read through the wrapper. A `Locator` is the other register `from_url` reads: asked before the location is lowered, it names a catalog service's objects rather than holding bytes. A scheme no core arm, no claimed backend and no locator holds is refused as ``filesystem "ftp" does not support holding a location of this scheme; install the crate that claims it and call its `install()` ``. The core claims the object stores' ten schemes itself under the `s3` feature ([Object stores](#object-stores)), until `yggdryl-s3` does. A complete backend - each location a local file, every capability verb its own - is the test backend of `rust/tests/holder/backend.rs`.
+
+```rust
+use yggdryl::holder::{Holder, StorageBackend, backend_for, backends, claim_backend};
+use yggdryl::s3::{S3Path, S3_BACKEND};
+use yggdryl::{IOBase, MimeType, Scheme, Url};
+
+// The core claims the object stores' ten schemes itself, until `yggdryl-s3` does.
+let s3 = backend_for(&Scheme::S3).expect("claimed under the s3 feature");
+assert_eq!(s3.name(), "yggdryl-s3");
+assert_eq!(s3.schemes().len(), 10);
+assert!(backends().iter().any(|backend| backend.name() == "yggdryl-s3"));
+// A scheme a core arm holds is no backend's.
+assert!(backend_for(&Scheme::FILE).is_none());
+
+// A location of a claimed scheme is that backend's handle, described as any
+// other; holding it sends nothing.
+let url = Url::from_str("s3://trades/lake/part.bin")?;
+let held = Holder::from_url(&url, [("region", "eu-west-1"), ("media_type", "application/vnd.apache.parquet")])?;
+assert!(matches!(held, Holder::Registered(_)));
+assert_eq!(held.downcast_ref::<S3Path>().expect("a location").key(), "lake/part.bin");
+assert_eq!(held.media_type().base(), &MimeType::PARQUET);
+
+// A scheme is claimed once: a second claim names the first claimant.
+let refused = claim_backend(&S3_BACKEND, "my-crate").unwrap_err().to_string();
+assert_eq!(refused, "expected to create a storage backend at \"s3\", got an existing yggdryl");
+
+// A query parameter the backend does not read is refused by name.
+let url = Url::from_str("s3://trades/lake/part.bin?versionId=3")?;
+let refused = Holder::from_url(&url, [("region", "eu-west-1")]).unwrap_err().to_string();
+assert!(refused.contains("names no property the `s3` backend reads"), "{refused}");
+
+// A scheme nothing holds names the crate to install.
+let url = Url::from_str("ftp://example.com/trades.csv")?;
+let refused = Holder::from_url(&url, [("region", "eu-west-1")]).unwrap_err().to_string();
+assert!(refused.contains("install the crate that claims it and call its `install()`"), "{refused}");
 ```
 
 ## Bytes
@@ -1132,7 +1183,7 @@ A name declaring a coding is composed at construction, so `IOBase("app.log.gz")`
 
 ### Open and close
 
-A handle works without `open`; opening moves materialization to a known point and keeps cached state until `close`. Python binds the pair to `with`, JavaScript adds `Symbol.dispose`.
+A handle works without `open`; opening moves materialization to a known point and keeps cached state until `close`, and a closed handle serves a medium's cached metadata only for the options' `cache_ttl` - `0`, the default, asks the store on every call (the table below). Python binds the pair to `with`, JavaScript adds `Symbol.dispose`.
 
 === "Rust"
 
@@ -1193,8 +1244,9 @@ A handle works without `open`; opening moves materialization to a known point an
             rows += batch.num_rows
     assert rows == 2
 
-    # Outside a scope the same calls still work - each one just fetches fresh,
-    # which is exactly right for a resource another writer may be changing.
+    # Outside a scope the same calls still work - each one just fetches fresh
+    # (the default `cache_ttl` of 0 is realtime), which is exactly right for a
+    # resource another writer may be changing.
     assert IOBase(target).read_arrow_field() == field
     ```
 
@@ -1220,15 +1272,21 @@ A handle works without `open`; opening moves materialization to a known point an
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
-| Implementation | `open` caches |
-| --- | --- |
-| [`Buffer`](#buffer) | nothing; `opened` stays `false` |
-| [`LocalFile`](#local) | descriptor and memory mapping |
-| [`Coded`](../media/compression.md) | the decoded value |
-| [IPC](../media/ipc.md) | schema and dimensions |
-| [Parquet](../media/parquet.md) | the footer |
-| [Avro](../media/avro.md) | header and block metadata |
-| [Text](../media/text.md) | resolved field, coding plan, dimensions |
+| Implementation | `open` caches | Closed, under `cache_ttl` |
+| --- | --- | --- |
+| [`Buffer`](#buffer) | nothing; `opened` stays `false` | nothing |
+| [`LocalFile`](#local) | descriptor and memory mapping | not served |
+| [`Coded`](../media/compression.md) | the decoded value | not served |
+| [IPC](../media/ipc.md) | the origin's field and the dimensions | the same entry |
+| [Parquet](../media/parquet.md) | the footer, which `IOMedia::as_any` answers as a `ParquetFooter`, with the origin's field and the dimensions | the same entry |
+| [Avro](../media/avro.md) | header and block metadata: the origin's field and the dimensions | the same entry |
+| [CSV](../media/csv.md) | the origin's field and the dialect it was inferred under, answered to options reading the document as they did | the same entry |
+| [Text](../media/text.md) | the line count; a line states no record shape of its own, so the origin is none | the same entry |
+| [XML for Analysis](../media/xmla.md) | the origin's field | the same entry |
+| [Excel](../media/excel.md) | the parsed workbook | the same entry |
+| [Iceberg](../media/iceberg.md) `IcebergTable` | nothing at `open`: the current document and the manifest list its last commit wrote, held from first use until `close` or a clone and replaced by each commit | not governed: the table format's own cache |
+
+A media wrapper's entry is one [`MediaCache`](../media/index.md#the-metadata-cache): served while the handle is open and, on a closed handle, while it is younger than the options' `cache_ttl` in milliseconds. A write through the wrapper refreshes it with what the write published where what is written is the origin (IPC, Parquet, Avro) and drops it where the origin is a reading of it (CSV, XMLA, Excel, text); `clear` sets a leaf's entry empty, `pwrite`, `truncate`, `create_bytes`, `set_media_type` and a borrowed `handle_mut` drop it, and `remove` and `close` drop it with the session ([the metadata cache](../media/index.md#the-metadata-cache)). A resource another writer may be changing wants the default.
 
 ### Clear and remove
 
@@ -1685,13 +1743,14 @@ cargo bench --bench media --features parquet -- io_scalar
 
 ## Records
 
-One Arrow batch read and three explicit write intents on every handle. The handle's media type picks the encoding through `record_options()`; one [`RecordOptions`](../media/index.md#options) is the only settings argument - Rust requires it, Python takes keyword-only `options=` and each of its properties by keyword, JavaScript a trailing `options?` and a plain object of its properties ([settings by name](../media/index.md#settings-by-name)). A write completes its rows onto the field the resource already stores by the [declared-column rule](../types/cast.md): a required stored column refuses a value it cannot hold, a null or a missing column by name, and the resource is left as it was.
+One Arrow batch read and three explicit write intents on every handle. The handle's media type picks the encoding through `record_options()`, the medium the [register](../media/index.md#registering-a-medium) claims for it; one [`RecordOptions`](../media/index.md#options) is the only settings argument - Rust requires it, Python takes keyword-only `options=` and each of its properties by keyword, JavaScript a trailing `options?` and a plain object of its properties ([settings by name](../media/index.md#settings-by-name)). A write completes its rows onto the field the resource already stores by the [declared-column rule](../types/cast.md): a required stored column refuses a value it cannot hold, a null or a missing column by name, and the resource is left as it was.
 
 === "Rust"
 
     ```text
     read_arrow_reader(&self, options: &RecordOptions) -> Result<BatchReader>
-    read_arrow_field(&self, options: &RecordOptions) -> Result<Field>
+    read_arrow_field(&self, options: &RecordOptions) -> Result<Field>   // the declared root, else the origin's, narrowed by the select
+    read_origin_field(&self) -> Result<Option<Field>>   // the whole root the origin holds, no declaration, no clause; None where it states no shape
     row_size(&self) -> Result<u64>          // whole media; projection and limits never change it
     column_size(&self) -> Result<usize>
     merge_by(&self) -> Result<Selector>     // the key a merge naming none matches on; empty but on an Iceberg table
@@ -1707,7 +1766,7 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     write_arrow_batch(&mut self, batch: RecordBatch, mode: IOMode, options: &RecordOptions) -> Result<IOResult>
     write_records(&mut self, records, mode: IOMode, options: &RecordOptions) -> Result<IOResult>
 
-    read_serie(&self, options: Option<&RecordOptions>) -> Result<StreamChunkedSerie>   // None: the handle's own
+    read_serie(&self, options: Option<&RecordOptions>) -> Result<Serie>   // None: the handle's own
     write_serie(&mut self, value: Serie, mode: IOMode, options: Option<&RecordOptions>) -> Result<IOResult>
     overwrite|append|merge_serie(&mut self, value: Serie, options: Option<&RecordOptions>) -> Result<IOResult>
 
@@ -1725,7 +1784,7 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     overwrite|append|merge_records(records, *, options=None) -> IOResult
     write_arrow_reader|table|batch(value, mode, *, options=None) -> IOResult
     write_records(records, mode, *, options=None) -> IOResult
-    read_serie(*, options=None) -> StreamChunkedSerie
+    read_serie(*, options=None) -> Serie
     write_serie(value, mode="overwrite", *, options=None) -> IOResult
     overwrite|append|merge_serie(value, *, options=None) -> IOResult
 
@@ -1743,7 +1802,7 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     overwrite|append|mergeRecords(records, options?) -> IOResult | Promise<IOResult>
     writeArrowReader|Table|Batch(value, mode, options?) -> IOResult
     writeRecords(records, mode, options?) -> IOResult | Promise<IOResult>
-    readSerie(options?) -> StreamChunkedSerie
+    readSerie(options?) -> Serie
     writeSerie(value, mode?, options?) -> IOResult
     overwrite|append|mergeSerie(value, options?) -> IOResult
 
@@ -1938,7 +1997,7 @@ fs.rmSync(root, { recursive: true, force: true })
 
 ### Column pushdown
 
-The options' field selects and casts in one pass; `select` narrows by name. [Parquet](../media/parquet.md) skips the column chunks, [Arrow IPC](../media/ipc.md) skips decode and allocation.
+A read decodes the declared field's children - the origin's with none declared, where the medium knows them before it decodes (a Parquet footer, an Avro header; an Arrow IPC stream projects under a declaration alone) - intersected with the columns the `select` and the early half of the `filter` read, and casts what it decoded onto the declared field in the same pass; `select` narrows by name. A declared column outside the selection is never asked for, so a full declaration under a `select` decodes the selected columns alone. [Parquet](../media/parquet.md) skips the column chunks, [Arrow IPC](../media/ipc.md) skips decode and allocation.
 
 === "Rust"
 
@@ -1986,6 +2045,12 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
     // `select` narrows by name instead, in the order the names are given.
     let selecting = plain.clone().with_select("symbol")?;
     let first = handle.read_arrow_reader(&selecting)?.next().unwrap()?;
+    assert_eq!(first.num_columns(), 1);
+    assert_eq!(first.schema().field(0).name(), "symbol");
+
+    // A full declaration under a `select` decodes the selected column alone.
+    let declared = plain.clone().with_field(handle.read_arrow_field(&plain)?).with_select("symbol")?;
+    let first = handle.read_arrow_reader(&declared)?.next().unwrap()?;
     assert_eq!(first.num_columns(), 1);
     assert_eq!(first.schema().field(0).name(), "symbol");
 
@@ -2048,6 +2113,12 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
     selecting = handle.record_options()
     selecting.select = ["symbol"]
     assert handle.read_arrow_reader(options=selecting).read_all().column_names == ["symbol"]
+
+    # A full declaration under a `select` decodes the selected column alone.
+    declared = handle.record_options()
+    declared.field = handle.read_arrow_field()
+    declared.select = ["symbol"]
+    assert handle.read_arrow_reader(options=declared).read_all().column_names == ["symbol"]
     ```
 
 === "JavaScript"
@@ -2091,11 +2162,17 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
     // `select` narrows by name instead, in the order the names are given.
     const selected = handle.readArrowReader(options.withSelect(['symbol'])).intoTable()
     assert.deepEqual(selected.schema.fields.map((field) => field.name), ['symbol'])
+
+    // A full declaration under a `select` decodes the selected column alone.
+    const declared = handle
+      .readArrowReader(options.withField(handle.readArrowField()).withSelect(['symbol']))
+      .intoTable()
+    assert.deepEqual(declared.schema.fields.map((field) => field.name), ['symbol'])
     ```
 
 ### Limits
 
-`row_offset` skips leading result rows, `max_row_size` counts the result rows after it and `max_byte_size` their uncompressed Arrow bytes. All three apply last - a plan's `offset` and `limit` are the first two - and a satisfied limit stops pulling.
+`row_offset` skips leading result rows, `max_row_size` counts the result rows after it and `max_byte_size` their uncompressed Arrow bytes. All three apply last - a plan's `offset` and `limit` are the first two - and a satisfied limit stops pulling. Each is applied once: a medium takes a bound natively only as a fetch plan, the exact trim runs once after it, and `overwrite_records` and its twins pull no row past the skip and the bound where no `where` keeps rows out, leaving the exact trim to the write that shapes its rows, so a skip of 2 and a bound of 3 over ten rows land three rows.
 
 === "Rust"
 
@@ -2503,7 +2580,7 @@ A limit stops pulling, so the rows past it were never read and count nowhere. A 
 
 ### Absent and unknown
 
-An absent resource reads as no batches; an encoding this build does not implement is named, never guessed.
+An absent resource reads as no batches; an encoding no claim answers is named, with the crate to install, never guessed.
 
 === "Rust"
 
@@ -2519,10 +2596,11 @@ An absent resource reads as no batches; an encoding this build does not implemen
         0
     );
 
-    // An encoding this build does not implement is named rather than guessed.
+    // An encoding no claim answers is named rather than guessed.
     let orc = Buffer::new().with_media_type(MimeType::ORC.into());
     let message = orc.record_options().unwrap_err().to_string();
     assert!(message.contains("application/vnd.apache.orc"), "{message}");
+    assert!(message.contains("install the crate that claims it"), "{message}");
     ```
 
 === "Python"
@@ -2541,7 +2619,7 @@ An absent resource reads as no batches; an encoding this build does not implemen
     empty = IOBase(root / "absent.arrows")
     assert empty.read_arrow_reader().read_all().num_rows == 0
 
-    # An encoding this build does not implement is named rather than guessed.
+    # An encoding no claim answers is named rather than guessed.
     orc = IOBase(root / "trades.orc")
     with pytest.raises(ValueError, match="application/vnd.apache.orc"):
         orc.record_options()
@@ -2558,7 +2636,7 @@ An absent resource reads as no batches; an encoding this build does not implemen
     empty.mediaType = MimeType.ARROW_STREAM
     assert.equal([...empty.readArrowReader()].length, 0)
 
-    // An encoding this build does not implement is named rather than guessed.
+    // An encoding no claim answers is named rather than guessed.
     const orc = IOBase.fromBytes()
     orc.mediaType = MimeType.ORC
     assert.throws(() => orc.recordOptions(), /application\/vnd\.apache\.orc/)
@@ -4253,7 +4331,7 @@ npm run --prefix node bench:holder
 
 ## Object stores
 
-`S3Path`, `S3Folder` and `S3File` reach Amazon S3 (and every store answering its API), Google Cloud Storage and Azure Blob Storage through each store's REST API over synchronous HTTP/1.1 - no SDK, no async runtime. Behind the non-default `s3` feature. The scheme picks the store: `s3`/`s3a`/`s3n`, `gs`/`gcs`, `az`/`abfs`/`abfss`/`wasb`/`wasbs`, and a handle reports the spelling it was handed.
+`S3Path`, `S3Folder` and `S3File` reach Amazon S3 (and every store answering its API), Google Cloud Storage and Azure Blob Storage through each store's REST API over synchronous HTTP/1.1 - no SDK, no async runtime. Behind the non-default `s3` feature. The scheme picks the store: `s3`/`s3a`/`s3n`, `gs`/`gcs`, `az`/`abfs`/`abfss`/`wasb`/`wasbs`, and a handle reports the spelling it was handed. The ten schemes are `S3_BACKEND`'s, the [storage backend](#storage-backends) the core claims itself under the feature until `yggdryl-s3` does: `Holder::from_url` holds a location of any of them as the `S3Path` it names, `Holder::Registered` as every claimed backend's handle is, which `downcast_ref` answers as the role it is, and each role states the capability verbs its store specializes - an upload in parts, a dropped stage, a location re-described as its object or its prefix, a stated length.
 
 ```text
 s3::file(url) -> Result<S3File>                 // s3::folder, s3::located (a Holder) alike
@@ -4261,6 +4339,7 @@ s3::file_with(url, S3Options) -> Result<S3File>
 s3::file_at(Provider, container, key)           // a raw key, not a URL; folder_at, path_at alike
 S3Options::from_properties(pairs)               // PyIceberg s3.*/gcs.*/adls.*, PyArrow, env names
 S3File::stats() -> StatsSnapshot                // the requests that actually went out
+Holder::from_url("s3://..", properties)         // an S3Path held as Holder::Registered
 ```
 
 === "Rust"
@@ -4324,6 +4403,7 @@ The request count is the contract, asserted by tests.
 | operation | Amazon S3 | Google Cloud Storage | Azure Blob Storage |
 | --- | --- | --- | --- |
 | building a handle, resolving a child, a media type or a partition | none | none | none |
+| holding a role again (`Holder::from_handle`), a location or an object re-described as the object or the prefix it names (`as_leaf`, `as_container`), a stated length (`set_known_size`), a dropped stage (`discard`) | none | none | none |
 | resolving a `lake/` location | none | none | none |
 | resolving any other location | one single-key listing, or two; the listing that finds an object states its size, so no `HEAD` follows | the same | the same |
 | `exists` on a `lake/` location | one single-key listing; a bucket root one `HEAD` | the same | the same |
@@ -4336,6 +4416,7 @@ The request count is the contract, asserted by tests.
 | `size` on a closed handle | one `HEAD`; none while open, or once a listing or a tail read stated it | one `objects.get`; none while open, or once a listing or a tail read stated it | one `HEAD`; none while open, or once a listing stated it |
 | a whole write | one `PUT` | one `multipart/related` `POST` | one `PUT` |
 | a large write | `parts + 2` | `chunks + 1` | `blocks + 1` |
+| an upload from a reader (`upload_from`) | one `PUT` below the multipart threshold; above it `parts + 2`, one part of the source held at a time | as a write | as a write |
 | an exclusive create (`create_bytes`), won or lost | one `PUT` with `If-None-Match: *`; a large one `parts + 2`, the condition on `CompleteMultipartUpload` and a lost upload aborted; one more `PUT` per `409 ConditionalRequestConflict` under the retry budget (a large one abandoned and sent again, `parts + 2` more); `412 PreconditionFailed` the conflict | one `POST` with `ifGenerationMatch=0`; a large one `chunks + 1`, the condition on the initiating `POST`; `412 conditionNotMet` the conflict | one `PUT` with `If-None-Match: *`; a large one `blocks + 1`, the condition on `Put Block List`; `409 BlobAlreadyExists` or `412 ConditionNotMet` the conflict |
 | an append | one `GET` and one write; no `GET` while open | the same | the same |
 | a removal | one `DELETE`, no probe | one `objects.delete` | one `DELETE` |
@@ -4344,7 +4425,7 @@ The request count is the contract, asserted by tests.
 | the stream of a prefix, a `lake/` location or a glob | its listing, then one `GET` per object as the stream reaches it | the same | the same |
 | emptying or removing a prefix | one listing and one bulk delete per 1000 keys | per 100 | per 256 |
 
-A recursive listing is one flat listing, because keys in byte order already are depth-first pre-order. A ranged read learns the length from `Content-Range`, and `S3File::with_known_size` takes one a manifest already stated, which is how an [Iceberg](../media/iceberg.md) scan reads each data file with one `GET`. A move between two objects is the copy and the removal, the value crossing through the client: a server-side copy (`CopyObject`) is not what a move does yet.
+A recursive listing is one flat listing, because keys in byte order already are depth-first pre-order. A ranged read learns the length from `Content-Range`, and `IOBase::set_known_size` - `S3File::with_known_size` by value - takes one a manifest already stated, which is how an [Iceberg](../media/iceberg.md) scan reads each data file with one `GET`. A move between two objects is the copy and the removal, the value crossing through the client: a server-side copy (`CopyObject`) is not what a move does yet.
 
 A bucket's region that a redirect corrected is kept on the session every client built from the same options shares - 64 buckets at most, the least recently learned let go first - so the next client on that bucket starts signed for its region and sent to its host: the redirect, and the `HEAD` that found the region, are paid once per session rather than once per client, which on a table is once per data file. A Google bearer token is held by the options value its clients were built on, one per credential source and scope, so two `gs://` clients under one credential ask for one token between them and clients under different credentials never share one.
 

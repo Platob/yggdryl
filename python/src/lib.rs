@@ -45,10 +45,10 @@ mod holder;
 mod http;
 mod iceberg;
 mod identifier;
+mod instrument;
 mod iobase;
 mod iomedia;
 mod ioresult;
-mod isin_registry;
 mod join;
 mod key_serie;
 mod logging;
@@ -57,7 +57,6 @@ mod marketdatatype;
 mod media;
 mod mic;
 mod parameters;
-mod pluginside;
 mod properties;
 mod protocol;
 mod scalar;
@@ -430,7 +429,10 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
     let listing = PyDict::new(py);
     listing.set_item(
         "data_type_ids",
-        DataTypeId::ALL.map(DataTypeId::as_str).to_vec(),
+        DataTypeId::all()
+            .into_iter()
+            .map(DataTypeId::as_str)
+            .collect::<Vec<_>>(),
     )?;
     listing.set_item(
         "data_type_kinds",
@@ -503,9 +505,9 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
 /// listing: kept out of that function's own body so it stays under the
 /// crate's line-count lint.
 fn graph_enum_listings(listing: &Bound<'_, pyo3::types::PyDict>) -> PyResult<()> {
-    use yggdryl::graph::{
-        ElementColumn, EventColumn, MarketColumn, MarketKind, MarketView, MdUpdateAction,
-        OperationColumn,
+    use yggdryl::graph::{ElementColumn, EventColumn};
+    use yggdryl_market::graph::{
+        MarketColumn, MarketKind, MarketView, MdUpdateAction, OperationColumn,
     };
 
     listing.set_item(
@@ -541,6 +543,10 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     // The core's logging tree, hosted by `logging`: records reach the
     // Python logger of their Rust module path at the levels it states.
     logging::install(module.py())?;
+    // The crates split off the core claim what they register before a
+    // class can read a name of theirs, in dependency order.
+    yggdryl_market::install().map_err(value_error)?;
+    yggdryl_fix::install().map_err(value_error)?;
     register_classes(module)?;
     register_functions(module)?;
     module.add(
@@ -568,7 +574,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("DEFAULT_SPILL_BYTE_SIZE", yggdryl::DEFAULT_SPILL_BYTE_SIZE)?;
     // The row header a ULBridge log writes, so a caller reads a bridge
     // capture without spelling the expression a second time.
-    module.add("ULBRIDGE_ROWHEADER", yggdryl::ULBRIDGE_ROWHEADER)?;
+    module.add("ULBRIDGE_ROWHEADER", yggdryl_fix::ULBRIDGE_ROWHEADER)?;
     // The machine this process runs on, read once by the core: intake reads
     // `file://<HOSTNAME>/x` as the local path, and no URL the core writes
     // names it - in-process storage names `localhost`.
@@ -612,8 +618,8 @@ fn register_expression(module: &Bound<'_, PyModule>) -> PyResult<()> {
 }
 
 /// Register the member tables the enum-family classes are built from at
-/// import: `State`, `MarketDataKind`, `MarketDataType`, `Side`, `TimeInForce`
-/// and `PluginSide` - and the code readings `Country` and `Mic` redirect to.
+/// import: `State`, `MarketDataKind`, `MarketDataType`, `Side` and
+/// `TimeInForce` - and the code readings `Country` and `Mic` redirect to.
 fn register_enum_members(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(state::state_members, module)?)?;
     module.add_function(wrap_pyfunction!(state::state_from_spelling, module)?)?;
@@ -637,9 +643,6 @@ fn register_enum_members(module: &Bound<'_, PyModule>) -> PyResult<()> {
         wrap_pyfunction!(timeinforce::timeinforce_members, module)?,
         wrap_pyfunction!(timeinforce::timeinforce_from_spelling, module)?,
         wrap_pyfunction!(timeinforce::timeinforce_from_fix, module)?,
-        wrap_pyfunction!(pluginside::pluginside_members, module)?,
-        wrap_pyfunction!(pluginside::pluginside_from_spelling, module)?,
-        wrap_pyfunction!(pluginside::pluginside_from_plugin_type, module)?,
     ] {
         module.add_function(function)?;
     }
@@ -702,8 +705,8 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<version::PyVersion>()?;
     module.add_class::<identifier::PyIdentifier>()?;
     module.add_class::<identifier::PyIdentifiers>()?;
-    module.add_class::<isin_registry::PyIsinRegistry>()?;
-    module.add_class::<isin_registry::PyResolution>()?;
+    module.add_class::<instrument::PyInstruments>()?;
+    module.add_class::<instrument::PyResolution>()?;
     module.add_class::<eusipa::PyEusipa>()?;
     module.add_class::<fix::PyFixFieldIterator>()?;
     module.add_class::<fix::PyFixMsg>()?;
@@ -775,6 +778,7 @@ fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(coding::zlib_dumps_raw, module)?)?;
     module.add_function(wrap_pyfunction!(coding::zstd_loads, module)?)?;
     module.add_function(wrap_pyfunction!(coding::zstd_dumps, module)?)?;
+    module.add_function(wrap_pyfunction!(fix::fix_plugin_side, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_schema, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_schema_carrying, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_schema_tags, module)?)?;
