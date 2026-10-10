@@ -247,6 +247,8 @@ paths = [
   "scripts/check_api_inventory.py",
   "python/yggdryl/**",
   "node/**",
+  "python/pyproject.toml",
+  "scripts/release_packages.py",
 ]
 jobs = ["inventory"]
 

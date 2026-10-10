@@ -2887,8 +2887,10 @@ python scripts/check_docs_examples.py --lang javascript   # needs the built addo
   created after registry publication, and manual runs rehearse only.
 - Publishes are idempotent, the tag is last, and a released version is never
   reused.
-- A version is out on all three registries or on none. `preflight` reads
-  crates.io, PyPI and npm before anything builds and refuses a branch
+- A version is out on all three registries or on none - every name on each:
+  every published crate on crates.io, `yggdryl` on PyPI and on npm, as
+  `scripts/release_packages.py` names them. `preflight` reads every one
+  before anything builds and refuses a branch
   push that would publish a version some of them already carry, because the
   tree under a branch is not the tree those artifacts were built from and one
   number would come to name two libraries. Such a version is finished from the
@@ -2901,7 +2903,11 @@ python scripts/check_docs_examples.py --lang javascript   # needs the built addo
   rather than opening a second. A failed `preflight` files one too: three
   manifests disagreeing is the loudest failure there is and the one that
   publishes no version to name, so the report reads the tree instead.
-- Root Cargo, Python, and Node versions match exactly. Publish crates.io, PyPI,
+- Every manifest carries one version: `scripts/release_packages.py version` is
+  the one check, run by `preflight` and by CI's inventory job. Publish
+  crates.io - every crate in the order the same script reads off the
+  manifests, a crate after every workspace crate it names, a dev-dependency
+  included, `sources` dry-running them all in one `cargo publish` - PyPI and
   npm only after platform smoke tests import and exercise the artifacts.
 - One job per platform builds everything the platform ships: the `yggdryl`
   command, the wheels and, where npm carries the platform, the Node.js module,
@@ -2910,10 +2916,15 @@ python scripts/check_docs_examples.py --lang javascript   # needs the built addo
   switches on for a crate the core also uses is declared in the workspace
   manifest (`ffi` on the Arrow crates, `std` on `log`), and every build in the
   job sees the same `--target` and environment.
-- A bump moves seven files together, and `preflight` reads three of them:
-  `Cargo.toml` and `Cargo.lock`, `python/pyproject.toml`, `node/package.json`
-  and `node/package-lock.json`, and the two generated documentation manifests
+- A bump moves seven files together: `Cargo.toml` - the workspace version and
+  each workspace crate's `=<version>` pin in `[workspace.dependencies]` - and
+  `Cargo.lock`, `python/pyproject.toml`, `node/package.json` and
+  `node/package-lock.json`, and the two generated documentation manifests
   `docs/assets/fix.json` and `docs/assets/playground.json`, which stamp
-  `node/package.json`'s version.
+  `node/package.json`'s version. `preflight` reads four of them through
+  `scripts/release_packages.py version`; `Cargo.lock` is held by `--locked`
+  and the two manifests by the Node.js job's `--check`.
 - Credentials stay in repository configuration: Cargo and npm secrets, PyPI
-  trusted publishing. No stored PyPI password, no fourth registry.
+  trusted publishing. No stored PyPI password, no fourth registry. A new
+  crate needs a `CARGO_REGISTRY_TOKEN` allowed to publish new crates before
+  its first release.

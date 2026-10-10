@@ -938,6 +938,10 @@ jobs:
           python-version: "3.12"
       - name: Check the API inventories against the crate and both bindings
         run: python scripts/check_api_inventory.py
+      # The release publishes one version everywhere or nowhere, so a manifest
+      # a bump forgot fails here rather than in its preflight.
+      - name: Every manifest carries one version
+        run: python scripts/release_packages.py version
 
   leaves:
     # Every leaf crate `rows.toml` lists under `rust/<name>` - `market` and
