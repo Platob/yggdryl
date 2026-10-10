@@ -1717,6 +1717,75 @@ fn a_side_less_follower_states_the_side_of_the_chain_it_joins() {
     assert_eq!(again.get_side(), Side::Sell);
 }
 
+/// D41, decision 25: a current message matches the previous alive message
+/// of its kind and side sharing one identifier of the same type and value,
+/// whatever source spelled it. An order a bridge placed under its own
+/// `OMS_OrderID` - read as `oms:orderid`, filling the base `orderid` - is
+/// joined by the venue's report stating only `OrderID(37)` of that value
+/// and no `ClOrdID(11)`: two cross codes, one chain, re-keyed onto the
+/// order's, the order's `ClOrdID` and `oms:orderid` propagated onto the
+/// report; the same report on the other side joins nothing.
+#[test]
+fn a_venue_report_stating_only_the_bridges_order_identifier_joins_the_order() {
+    crate::install::installed();
+    use yggdryl::graph::Element;
+    use yggdryl_market::Side;
+    let codec = reader();
+    let placed = b"8=FIX.4.4|35=D|49=B|56=S|34=10|52=20260921-10:00:00|11=C-1|55=AAPL|54=1|38=100|40=2|44=10|OMS_ORDERID=X-1|60=20260921-10:00:00|10=0|";
+    let report = |side: &str| {
+        format!(
+            "8=FIX.4.4|35=8|49=S|56=B|34=11|52=20260921-10:00:01|37=X-1|17=E1|150=0|39=0|55=AAPL|54={side}|38=100|44=10|151=100|14=0|6=0|60=20260921-10:00:01|10=0|"
+        )
+    };
+    let parsed = [placed.to_vec(), report("1").into_bytes()]
+        .map(|line| codec.sole_line(&line).expect("a message"));
+    assert_eq!(
+        parsed[0]
+            .get_identifiers()
+            .get_from(&"oms:orderid".parse::<IdKey>().unwrap()),
+        Some("X-1")
+    );
+    assert_eq!(
+        parsed[0].get_identifiers().get(&IdType::OrderId),
+        Some("X-1")
+    );
+    assert_eq!(parsed[1].get_identifiers().get(&IdType::ClOrdId), None);
+    assert_eq!(parsed[0].get_crosscode(), "10:1:C-1");
+    assert_eq!(parsed[1].get_crosscode(), "10:1:X-1");
+    let walked = codec
+        .lifecycle(parsed.clone())
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("the walk");
+    let [order, ack] = walked.as_slice() else {
+        panic!("the order and its report, not {}", walked.len())
+    };
+    assert_eq!(ack.get_prevuuid(), Some(order.get_uuid()), "joined");
+    assert_eq!(ack.get_crosscode(), "10:1:C-1", "re-keyed onto the order's");
+    assert_eq!(ack.get_crossuuid(), order.get_crossuuid());
+    assert_eq!(ack.get_identifiers().get(&IdType::ClOrdId), Some("C-1"));
+    assert_eq!(
+        ack.get_identifiers()
+            .get_from(&"oms:orderid".parse::<IdKey>().unwrap()),
+        Some("X-1"),
+        "the bridge's key propagates"
+    );
+    assert_eq!(
+        text(ack, 11),
+        Some("C-1".to_owned()),
+        "the predecessor's ClOrdID(11) is written onto a follower stating none"
+    );
+
+    // The other side shares the identifier and is another chain.
+    let sell = codec.sole_line(report("2").as_bytes()).expect("a message");
+    assert_eq!(sell.get_side(), Side::Sell);
+    let walked = codec
+        .lifecycle([parsed[0].clone(), sell])
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("the walk");
+    assert_eq!(walked[1].get_prevuuid(), None);
+    assert_eq!(walked[1].get_crosscode(), "10:2:X-1");
+}
+
 /// A quote is unsided, so the side it tags is its own: a status report
 /// following it stating no `Side(54)` takes none from the quote - neither in
 /// the message nor on its wire - and takes the quote's legs instead.
@@ -1956,7 +2025,10 @@ fn a_following_message_takes_the_metadata_keys_of_its_chain_it_does_not_state() 
 /// A follower naming no security carries its chain's security identifiers
 /// whole - read off `SecurityID(48)` under `SecurityIDSource(22)` and the
 /// `SecAltIDGrp(454)`, the CUSIP the ISIN embeds included - writing no
-/// field, and one naming another ISIN takes none of them.
+/// field; one naming another ISIN is another instrument, and since
+/// decision 25 matches a message with a chain of its instrument where both
+/// state one, it is another chain whatever identifiers it shares, and
+/// takes none of them.
 #[test]
 fn a_follower_stating_no_security_takes_its_chains_identifiers_and_another_isin_takes_none() {
     crate::install::installed();
@@ -1997,7 +2069,16 @@ fn a_follower_stating_no_security_takes_its_chains_identifiers_and_another_isin_
             "tag {tag}: carried, never written"
         );
     }
-    assert_eq!(other.get_prevuuid(), Some(ack.get_uuid()));
+    assert_eq!(
+        other.get_prevuuid(),
+        None,
+        "another instrument under the order's identifiers: another chain"
+    );
+    assert_eq!(
+        other.get_crosscode(),
+        "10:1:O1",
+        "its own code, re-keyed onto nothing"
+    );
     assert_eq!(other.get_isincode(), Some("US5949181045"));
     assert_eq!(
         other.get_securityids().get(&IdType::Cusip),
@@ -3395,17 +3476,19 @@ fn a_walk_learns_a_derivative_from_what_its_message_spells() {
 }
 
 /// A pipeline's lake: a table laid out as `python/tests/medallion.py` lays
-/// one out - the row as Iceberg states it, numbered by this table alone,
-/// partitioned by the quarter hour, sorted by the instant, the place and
-/// the hash, the identity columns required - and the window a stage reads
-/// it back inside.
+/// one out - the row as Apache Doris reads an Iceberg table (decision 20:
+/// an instant at microseconds under its zone, the write truncating a
+/// nanosecond), numbered by this table alone, partitioned by the quarter
+/// hour, sorted by the instant, the place and the hash, the identity
+/// columns required - and its rows read back inside a stage's window under
+/// the row the stage wrote.
 #[cfg(feature = "iceberg")]
 mod lake {
     use yggdryl::expression::{Ordering, Projection};
     use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
     use yggdryl::local::LocalFolder;
     use yggdryl::media::{IORecordOptions, RecordOptions};
-    use yggdryl::{Field, IOMedia, Scheme};
+    use yggdryl::{ArrowCastOptions, Field, IOMedia, Scheme, Serie};
 
     /// A stage's table numbers its own schema: the identifiers a source
     /// table's row carried come off at every depth, through the document.
@@ -3434,8 +3517,8 @@ mod lake {
         row: &Field,
     ) -> (IcebergTable<LocalFolder>, std::path::PathBuf) {
         let mut schema = unnumbered(row)
-            .into_scheme_compat(&Scheme::ICEBERG)
-            .expect("the row as Iceberg states it")
+            .into_scheme_compat(&Scheme::DORIS)
+            .expect("the row as Doris reads it")
             .with_partition_by(["time_bucket('15 minutes', transunix) as partunix"
                 .parse::<Projection>()
                 .unwrap()])
@@ -3480,9 +3563,11 @@ mod lake {
     }
 
     /// The capture's day, read in the table's own order with the partition
-    /// column it computed taken off.
-    pub(super) fn window(table: &IcebergTable<LocalFolder>) -> RecordOptions {
-        table
+    /// column it computed taken off and cast onto `row`, the row before the
+    /// table laid it out for Doris, so a microsecond instant reads back
+    /// under the row's own unit - the medallion's `stored_rows`.
+    pub(super) fn rows(table: &IcebergTable<LocalFolder>, row: &Field) -> Serie {
+        let options: RecordOptions = table
             .record_options()
             .unwrap()
             .with_select("* exclude (partunix)")
@@ -3490,7 +3575,12 @@ mod lake {
             .with_filter(
                 "transunix >= '2026-08-14T00:00:00Z' and transunix < '2026-08-15T00:00:00Z'",
             )
+            .unwrap();
+        table
+            .read_serie(Some(&options))
             .unwrap()
+            .cast(row, ArrowCastOptions::default())
+            .expect("the stored rows under the row the stage wrote")
     }
 }
 
@@ -3540,15 +3630,15 @@ fn an_execution_split_off_a_fill_survives_a_lake_round_trip_into_the_lifecycle()
     // of the fixed ones.
     let text_options = yggdryl::media::RecordOptions::Text(Box::new(options.clone()));
     let lake = lake::table;
-    let window = lake::window;
     // The lines stored as the pipeline stores them, then read back.
     let lines = source.read_serie(Some(&text_options)).unwrap();
-    let (mut logs, logs_path) = lake("logs", lines.require_field().unwrap());
+    let logs_row = lines.require_field().unwrap().clone();
+    let (mut logs, logs_path) = lake("logs", &logs_row);
     let result = logs.overwrite_serie(lines, None).unwrap();
     assert_eq!(result.written_rows, 2, "{result:?}");
     let parse = || {
         codec
-            .parse_text_serie(logs.read_serie(Some(&window(&logs))).unwrap())
+            .parse_text_serie(lake::rows(&logs, &logs_row))
             .unwrap()
     };
     let parsed: Vec<FixMsg> = codec
@@ -3573,13 +3663,13 @@ fn an_execution_split_off_a_fill_survives_a_lake_round_trip_into_the_lifecycle()
         "the walk in memory keeps the fill"
     );
 
-    let (mut table, path) = lake("fix", parse().field());
+    let fix_row = parse().field().clone();
+    let (mut table, path) = lake("fix", &fix_row);
     let result = table.overwrite_serie(parse().into(), None).unwrap();
     assert_eq!(result.written_rows, 3, "{result:?}");
 
-    let options = window(&table);
     let stored: Vec<FixMsg> = codec
-        .messages_serie(table.read_serie(Some(&options)).unwrap())
+        .messages_serie(lake::rows(&table, &fix_row))
         .unwrap()
         .collect::<yggdryl::Result<_>>()
         .expect("every stored row rebuilds");
@@ -3626,11 +3716,7 @@ fn an_execution_split_off_a_fill_survives_a_lake_round_trip_into_the_lifecycle()
         "the walk over the stored rows keeps the fill"
     );
     let walked: Vec<FixMsg> = codec
-        .messages_serie(
-            codec
-                .lifecycle_serie(table.read_serie(Some(&options)).unwrap())
-                .unwrap(),
-        )
+        .messages_serie(codec.lifecycle_serie(lake::rows(&table, &fix_row)).unwrap())
         .unwrap()
         .collect::<yggdryl::Result<_>>()
         .expect("the serie walk over the stored rows");
@@ -3648,8 +3734,8 @@ fn an_execution_split_off_a_fill_survives_a_lake_round_trip_into_the_lifecycle()
 /// keeps a column's name, its datatype and its `doc` and no `FIX:` key, so
 /// every row comes back under columns the dictionary explains by name
 /// alone - and a row read back digests as the parse did, which is what the
-/// window folds a twin by: the three hops logged again under the identity
-/// they restate fold in the lake exactly as they fold in memory, and the
+/// window folds a twin by: a hop logged again under the identity it
+/// restates folds in the lake exactly as it folds in memory, and the
 /// stored rows are the parsed messages, identity for identity.
 #[cfg(feature = "iceberg")]
 #[test]
@@ -3718,7 +3804,7 @@ fn the_capture_read_back_from_a_lake_walks_to_the_identities_it_walks_to_in_memo
 
     // In memory: the parse, and the walk over it in the order the table
     // hands it back - its instant, its place, its code - with the window
-    // and without: three twins restating the identity they repeat. Two
+    // and without: a twin restating the identity it repeats. Two
     // messages of one instant keep the order they arrive in, so the walk
     // in memory takes the table's order to answer what the table's walk
     // answers.
@@ -3727,22 +3813,29 @@ fn the_capture_read_back_from_a_lake_walks_to_the_identities_it_walks_to_in_memo
     parsed.sort_by_key(|held| (held.get_transunix(), held.get_seqnum(), held.get_hashcode()));
     let walked = walk(&parsed, FixCodec::DEFAULT_DEDUP_WINDOW_MS);
     let every = walk(&parsed, 0);
+    // One twin, not three, and 41 walked, not 39, since decision 21: an
+    // official clock half a second or more off `SendingTime(52)` no longer
+    // dates its message, so two of the three hops the old one-second delay
+    // dated onto their `TransactTime(60)` now stand at their own sending
+    // clocks, under identities of their own, and no window folds them -
+    // under a 1,001 ms delay, the old inclusive second, the walk is 39 over
+    // three twins again; the medallion's `silver.fix_messages` moved
+    // 39 -> 41 the same way.
     assert_eq!(
         (walked.len(), every.len()),
-        (39, 42),
-        "three twins fold in memory"
+        (41, 42),
+        "the twin folds in memory"
     );
-    assert_eq!(twins(&every).len(), 3);
+    assert_eq!(twins(&every).len(), 1);
     assert_eq!(twins(&walked).len(), 0);
 
     // Through the lake: the same rows, the same messages, the same walk.
-    let (mut table, path) = lake::table("capture", parse().field());
+    let row = parse().field().clone();
+    let (mut table, path) = lake::table("capture", &row);
     let result = table.overwrite_serie(parse().into(), None).unwrap();
     assert_eq!(result.written_rows, 94 + 57, "{result:?}");
     let stored = messages(
-        table
-            .read_serie(Some(&lake::window(&table)))
-            .unwrap()
+        lake::rows(&table, &row)
             .into_chunked_stream(None, None)
             .unwrap(),
     );

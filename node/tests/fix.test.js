@@ -1513,14 +1513,17 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
 
   test('the event view exposes every precise clock, market and operation fact', () => {
     const message = fixedCodec(seed()).parseFixLine(Buffer.from(
-      '8=FIX.4.4|35=D|49=SENDER|56=TARGET|34=7|50=TRADER|52=20240102-10:15:30|1=ACC-1|11=A1|37=O-1|55=AAPL|22=4|48=US0378331005|54=1|15=USD|38=100|996=Shares|44=10.5|31=10.25|32=40|6=10.3|14=40|151=60|140=9.75|58=note|60=20240102-10:15:31|10=0|',
+      '8=FIX.4.4|35=D|49=SENDER|56=TARGET|34=7|50=TRADER|52=20240102-10:15:30|1=ACC-1|11=A1|37=O-1|55=AAPL|22=4|48=US0378331005|54=1|15=USD|38=100|996=Shares|44=10.5|31=10.25|32=40|6=10.3|14=40|151=60|140=9.75|58=note|60=20240102-10:15:30.400|10=0|',
     ))
     // The message expands to the one order it states, a typed leaf answering
     // every fact the graph vocabulary names.
     const event = operationOf(message)
     assert.ok(event instanceof graph.OrderEvent)
 
-    assert.equal(event.transunix, SENDING_NS + 1_000_000_000n)
+    // The transaction stands 400 ms from the sending clock, less than the
+    // default half-second delay, so it dates the event; it stood a whole
+    // second off until decision 21 made the delay half a second, strict.
+    assert.equal(event.transunix, SENDING_NS + 400_000_000n)
     assert.equal(event.creaunix, event.transunix)
     assert.equal(event.execunix, null)
     // The message was received when its sender sent it.
@@ -2401,21 +2404,27 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
 
   test('the official time delay bounds which clock dates the message', () => {
     const registry = seed()
-    assert.equal(new fix.FixCodec(registry).officialTimeDelayMs, 1_000)
-    assert.equal(new fix.FixCodec(registry, { officialTimeDelayMs: undefined }).officialTimeDelayMs, 1_000)
+    // Half a second since decision 21, the gap less than it; it was one second.
+    assert.equal(new fix.FixCodec(registry).officialTimeDelayMs, 500)
+    assert.equal(new fix.FixCodec(registry, { officialTimeDelayMs: undefined }).officialTimeDelayMs, 500)
     assert.equal(new fix.FixCodec(registry, { officialTimeDelayMs: 0 }).officialTimeDelayMs, 0)
     assert.equal(new fix.FixCodec(registry, { officialTimeDelayMs: -1 }).officialTimeDelayMs, -1)
     assert.throws(() => new fix.FixCodec(registry, { officialTimeDelayMs: 1.5 }), /whole number/i)
 
     const codec = reading(registry)
     const SENT = 1_787_308_200_415_000_000n
-    // A transaction half a second in front of the sending clock is the same
-    // event said twice, so the more exact saying of it dates the message.
+    // A transaction 465 ms in front of the sending clock is the same event said
+    // twice, so the more exact saying of it dates the message.
     const near = codec.parseFixLine(
-      Buffer.from('8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|11=A|10=0|'),
+      Buffer.from('8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.950|11=A|10=0|'),
     )
-    assert.equal(near.transunix, 1_787_308_199_900_000_000n)
+    assert.equal(near.transunix, 1_787_308_199_950_000_000n)
     assert.equal(near.creaunix, near.transunix)
+    // Exactly the delay in front of it is another event: the gap must be less.
+    const atDelay = codec.parseFixLine(
+      Buffer.from('8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.915|11=A|10=0|'),
+    )
+    assert.equal(atDelay.transunix, SENT)
     // Five seconds out is a different event of the session's day.
     const apart = codec.parseFixLine(
       Buffer.from('8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:55|11=A|10=0|'),
@@ -2428,10 +2437,10 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const stamped = codec.parseFixLine(
       Buffer.from(
         '8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=2|' +
-          '769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.900|770=1|10=0|',
+          '769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.950|770=1|10=0|',
       ),
     )
-    assert.equal(stamped.transunix, 1_787_308_199_900_000_000n)
+    assert.equal(stamped.transunix, 1_787_308_199_950_000_000n)
     const unranked = codec.parseFixLine(
       Buffer.from('8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|769=20260821-10:30:00.400|770=23|10=0|'),
     )
@@ -2448,7 +2457,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const shut = reading(registry, { officialTimeDelayMs: 0 })
     assert.equal(
       shut.parseFixLine(
-        Buffer.from('8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|11=A|10=0|'),
+        Buffer.from('8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.950|11=A|10=0|'),
       ).transunix,
       SENT,
     )
@@ -4860,16 +4869,20 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // ten rows stating no FIX type state no sending time either, so each is
     // dated by its line - seven deliveries at their own instants, none a
     // twin, where the one instant every line shared made them two, one of
-    // them a twin. It is 38 since the trade capture's side stating no
-    // Side(54) splits off an execution of side UKNW.
+    // them a twin. It was 38 since the trade capture's side stating no
+    // Side(54) splits off an execution of side UKNW. It is 40 since decision
+    // 21 dated a message by its official clock only less than half a second
+    // from its SendingTime(52): the frame hop of order 00079132558GLXC0's
+    // fill, its TransactTime(60) 743 ms off, is dated by its sending clock,
+    // so it and its execution are twins of nothing.
     const walked = [...codec.lifecycle(messages)]
     const expired = walked.filter((message) => message.state === 'EXPIRED')
     const retained = walked.filter((message) => message.state !== 'EXPIRED')
-    assert.equal(retained.length, 38)
+    assert.equal(retained.length, 40)
     assert.equal(expired.length, 1)
-    assert.equal(walked.length, 39)
-    // A walk remembering nothing answers the three as well, each an identity
-    // it had already answered, and nothing else.
+    assert.equal(walked.length, 41)
+    // A walk remembering nothing answers the one twin as well, an identity it
+    // had already answered, and nothing else.
     const every = [...codec.withDedupWindowMs(null).lifecycle(messages)]
     assert.equal(every.length, 42)
     const seen = new Set()
@@ -4889,10 +4902,12 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const removed = Object.fromEntries(
       [...inputCounts].map(([type, count]) => [type, count - (retainedCounts.get(type) ?? 0)]).filter(([, count]) => count > 0),
     )
-    // The 56 split executions fold into eight (A12): 54 + 48; and the three
-    // twins the window yields once - a report, an execution and a cancel
-    // reject. Of the ten typeless rows nine are deliveries of their own.
-    assert.deepEqual(removed, { 8: 104, '': 1, D: 1, cancelreject: 7 })
+    // The 56 split executions fold into eight (A12): 54 + 48; and the twin
+    // the window yields once - a cancel reject. Of the ten typeless rows nine
+    // are deliveries of their own. The window also yielded a report and an
+    // execution once, 104 reports removed, until decision 21 dated that fill's
+    // frame hop by its sending clock.
+    assert.deepEqual(removed, { 8: 102, '': 1, D: 1, cancelreject: 7 })
 
     // The default cross-code chains five retained bridge messages, each
     // stating its predecessor. It was six until a lifecycle chained within
@@ -4903,11 +4918,14 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(walked.filter((message) => message.prevuuid !== null).length, 5)
     // seqnum > 0 now marks a place after another event of the same instant:
     // split executions beside their reports - and beside the trade - and
-    // same-instant chain steps.
-    assert.equal(walked.filter((message) => message.seqnum > 0).length, 12)
+    // same-instant chain steps. It was 12 until decision 21 dated the frame
+    // hop of order 00079132558GLXC0's fill by its sending clock: that hop and
+    // the execution split off beside it are yielded now, not twins, and the
+    // execution stands after its report.
+    assert.equal(walked.filter((message) => message.seqnum > 0).length, 13)
     // A walked message descends from the whole chain before it. A fully merged
     // delivery keeps every observation's source, with each source belonging to
-    // one output; only the four twins the window yields once take their own
+    // one output; only the twins the window yields once take their own
     // sources with them, now that seqnum no longer feeds hashcode and the
     // six rows that state no FIX type fold their provenance in instead of
     // losing it. Two cancel rejects lost theirs as well until the row
@@ -4922,7 +4940,10 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.ok(retained.every((message) =>
       message.srcuuids.length > 0 && message.srcuuids.every((source) => inputSources.has(source))))
     const retainedSources = retained.flatMap((message) => message.srcuuids)
-    assert.equal(new Set(retainedSources).size, inputSources.size - 4)
+    // Two sources fewer are lost since decision 21: the frame hop of order
+    // 00079132558GLXC0's fill and its execution, dated by their sending clock,
+    // are yielded rather than twins and keep the sources they name; it was 4.
+    assert.equal(new Set(retainedSources).size, inputSources.size - 2)
 
     const [expiry] = expired
     const predecessor = retained.find((message) => message.uuid === expiry.prevuuid)
@@ -5016,25 +5037,30 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // A12: 56 executions split off the fills, and one of side UKNW off
     // the trade capture.
     assert.equal(messages.length, 94 + 57)
+    // 39 until decision 21 dated a message by its official clock only less
+    // than half a second from its `SendingTime(52)`: the frame hop of order
+    // `00079132558GLXC0`'s fill, its `TransactTime(60)` 743 ms off, is dated
+    // by its sending clock, so it and its execution are twins of nothing.
     const walked = [...codec.lifecycle(messages)]
-    assert.equal(walked.length, 39)
+    assert.equal(walked.length, 41)
 
-    // Twenty-one deliveries are market data - eight fills, the eight reports
-    // they were split off, now their orders' reports, three orders, less a
-    // fill and a report the window yields once, the trade capture's fill,
-    // and the NOVN order's three steps: the venue's acknowledgement - an
-    // execution report of no fill is now its order's leaf, which is what
-    // moved the count from eighteen - the restatement the walk reads as
-    // `UPDATED`, and the expiry. Nothing is refused: the trade itself is no
-    // market data, since a trade's fills are the executions its parse
-    // splits off (A12).
+    // Twenty-three deliveries are market data - eight fills, the eight
+    // reports they were split off, now their orders' reports, three orders,
+    // the trade capture's fill, and the NOVN order's three steps: the
+    // venue's acknowledgement - an execution report of no fill is now its
+    // order's leaf, which is what moved the count from eighteen - the
+    // restatement the walk reads as `UPDATED`, and the expiry. Nothing is
+    // refused: the trade itself is no market data, since a trade's fills are
+    // the executions its parse splits off (A12). Twenty-one until decision
+    // 21, which made a fill and a report the window yielded once deliveries
+    // of their own.
     const operations = [...codec.marketData(walked)]
-    assert.equal(operations.length, 21)
+    assert.equal(operations.length, 23)
     const census = {}
     for (const operation of operations) census[operation.kind] = (census[operation.kind] ?? 0) + 1
-    assert.deepEqual(census, { execution_event: 8, order_event: 13 })
-    // The two a walk remembering nothing answers beside them each repeat an
-    // identity already there.
+    assert.deepEqual(census, { execution_event: 9, order_event: 14 })
+    // A walk remembering nothing answers the same deliveries: none repeats
+    // an identity already there.
     const every = [...codec.marketData([...codec.withDedupWindowMs(null).lifecycle(messages)])]
     assert.equal(every.length, 23)
     const seen = new Set()
@@ -5044,12 +5070,16 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // Every order folds into a book and every execution is recorded among
     // its book's events - a fill moved its book through its order's report
     // already - so a book stands at every instant an order states, and one
-    // where only an execution does, an event-only book: eleven books, the
+    // where only an execution does, an event-only book: thirteen books, the
     // NOVN order's three steps each its book's instant, each a delta book -
-    // with no grid and no snapshot input no book is complete. The last holds
-    // nothing, its unpriced order having rested and left at one instant.
+    // with no grid and no snapshot input no book is complete. The last two
+    // hold nothing: the unpriced order's cancel request and the reject that
+    // ends it, each the delta of its own instant. Eleven until decision 21
+    // dated that reject, sent a second after the transaction it states, and
+    // the frame hop of order `00079132558GLXC0`'s fill by their sending
+    // clocks: each stands at an instant of its own.
     const books = [...new graph.BookIterator(operations, 0)]
-    assert.equal(books.length, 11)
+    assert.equal(books.length, 13)
     assert.ok(books.every((book) => !book.isComplete))
     const last = books[books.length - 1]
     assert.equal(last.ticker, '2454')
@@ -5067,9 +5097,15 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       '3:0:TW0002454006',
       '3:0:XX0000000001',
     ])
+    const cancelled = books[books.length - 2]
+    assert.equal(cancelled.crosscode, last.crosscode)
     assert.deepEqual([last.limits('BUYS'), last.limits('SELL'), last.alive()], [[], [], []])
-    assert.deepEqual(last.delta().map((delta) => delta.price), [null, null])
-    assert.deepEqual(last.events(), [])
+    assert.deepEqual(cancelled.alive(), [])
+    assert.deepEqual(
+      [...cancelled.delta(), ...last.delta()].map((delta) => delta.price),
+      [null, null],
+    )
+    assert.deepEqual([...cancelled.events(), ...last.events()], [])
     // Re-pinned from the run, as `rust/fix/tests/root/ulbridge.rs` pins it: the
     // book digests its entries and delta rather than side summaries (A2),
     // no book control but its scope (A1), no lanes (A10), and the delta's
@@ -5096,9 +5132,11 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // It moved again when a book split what its instant recorded into its
     // `delta` - the orders and quotes - and its `events` - the executions
     // and the snapshot controls - and came to digest the events after the
-    // delta: this book holds no event, so it feeds the empty list's count
-    // beside its two delta entries.
-    assert.equal(last.hashcode, 10_745_751_629_392_559_435n)
+    // delta: this book held no event, so it fed the empty list's count
+    // beside its two delta entries. It moved again when decision 21 dated
+    // the reject a second after the cancel request: this book is the
+    // reject's instant alone and digests its one delta.
+    assert.equal(last.hashcode, 16_012_236_961_469_281_692n)
   })
 
   test('a transaction time stating only a day leaves the sending clock standing', () => {

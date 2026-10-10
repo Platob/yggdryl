@@ -166,7 +166,9 @@ impl Side {
 
     /// The one leg this side tags: itself, and [`Self::Unknown`] for
     /// [`Self::Both`], which holds both legs and so tags no one of them -
-    /// what a walk slots a quote's names by and what a follower reads a
+    /// the side a lifecycle walk slots every element's names by, an
+    /// order's as a quote's or a book entry's, so a bid and an offer going
+    /// by one name are two entries, and what a follower reads a
     /// predecessor's tag as.
     pub(crate) const fn tagged(self) -> Self {
         match self {

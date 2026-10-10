@@ -76,7 +76,7 @@ class LogFile:
     @property
     def flush_level(self) -> int: ...
 
-CompatibilityScheme = Literal["arrow", "spark", "polars", "pandas", "iceberg"]
+CompatibilityScheme = Literal["arrow", "spark", "polars", "pandas", "iceberg", "doris"]
 IOMode = Literal["overwrite", "append", "merge", "readonly", "random"]
 Representation = Literal["value", "bits"]
 

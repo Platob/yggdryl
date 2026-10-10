@@ -212,6 +212,7 @@ the rewritten field carries the bits; a bare datatype states nothing and widens.
 | `spark` | `uint8` -> `int16`, `uint64` -> `decimal128(20,0)`, `fixed_size_serie` -> `serie`; `datetime64(ns)` refused; a column stating `FIELD:representation=bits`: `uintN` -> `intN` |
 | `polars`, `pandas` | no map (refused naming the key/value struct); Polars keeps unsigned and `fixed_size_serie` |
 | `iceberg` | `int8`, `int16`, `uint8`, `uint16` -> `int32`; no duration or interval; a column stating `FIELD:representation=bits`: `uint32` -> `int32`, `uint64` -> `int64` |
+| `doris` | Apache Doris's Iceberg reader: Iceberg's rewrites and refusals, and every `datetime64` not at microseconds laid out at microseconds under its own zone (`timestamptz_ns` -> `timestamptz`; a write casts the values, seconds and milliseconds exactly, nanoseconds truncated); a `time32`/`time64`, `null`, `variant`, `geometry` or `geography` refused |
 
 Anything else (`duckdb`, ...) is refused, listing the accepted targets.
 A column stating `bits` keeps the declaration, so the cast onto it shares the

@@ -390,9 +390,10 @@ with tempfile.TemporaryDirectory() as directory:
 `lifecycle` is the one cross-message stage: it collects the finite capture,
 sorts it, folds repeated deliveries and chains each message to the live one of
 its order and side under one `crossuuid`, within one market data kind (`marketdatakind`); a
-report stating no side joins the one side alive under its identifiers - its
-chain identities (`orderid`, `clordid`, `quoteid`, `tradeid`, `tradereportid`,
-never `execid`, `trdmatchid` or `quotereqid`) and the first value a lineage
+report stating no side joins the one side alive under its identifiers - a
+message joins the live one of its kind, side and instrument sharing one identifier
+of the same type and value, every type of its `identifiers` but a shared one
+(`trdmatchid`, `quotereqid`, `mdreqid`, a parent slot), and the first value a lineage
 field names - and every message of a chain carries the chain's first
 `crosscode`, a replace under a new `ClOrdID` included. A message citing two
 live chains is joined to neither: it stands under its own identity and carries

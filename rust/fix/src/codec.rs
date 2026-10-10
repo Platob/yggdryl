@@ -641,20 +641,22 @@ impl FixCodec {
     pub const DEFAULT_BATCH_ROW_SIZE: usize = 32 * 1024;
 
     /// How far from `SendingTime(52)` an official transaction clock may
-    /// stand and still date the message, when the caller states none.
+    /// stand and still date the message, when the caller states none: half
+    /// a second, the gap less than it.
     ///
     /// The venue's clock and the session's are two clocks, and what stands
     /// between them is the hop: a transaction stamped when it happened
     /// reaches the wire microseconds later out of a matching engine and
     /// tens of milliseconds later through a bridge, so a clock that close
     /// is the same event said twice and the more exact saying of it is the
-    /// venue's. A `TransactTime(60)` a whole second off the sending clock
-    /// is a different event of the session's day - a resend of an older
-    /// order, a report batched behind the trades it covers, a clock nobody
-    /// disciplined - and dating the message by it would move it out of the
-    /// order it was sent in. One second is wide enough to hold every hop a
-    /// capture actually shows and narrow enough that nothing else crosses.
-    pub const DEFAULT_OFFICIAL_TIME_DELAY_MS: i64 = 1_000;
+    /// venue's. A `TransactTime(60)` half a second or more off the sending
+    /// clock is read as a different event of the session's day - a resend
+    /// of an older order, a report batched behind the trades it covers, a
+    /// clock nobody disciplined - because dating the message by it would
+    /// move it out of the order it was sent in. Half a second holds a
+    /// bridge's hop ten times over and is narrow enough that another event
+    /// of the same second does not pass for this one.
+    pub const DEFAULT_OFFICIAL_TIME_DELAY_MS: i64 = 500;
 
     /// [`Self::DEFAULT_OFFICIAL_TIME_DELAY_MS`] as the nanosecond distance a
     /// dating compares, for the doors that build a message without a codec
@@ -1147,8 +1149,9 @@ impl FixCodec {
     /// stand and still date the message, in milliseconds.
     ///
     /// The sending clock is the reference every parse dates against, and the
-    /// message is dated by the best official clock standing within this
-    /// distance of it, on either side. The `TransactTime(60)` the message
+    /// message is dated by the best official clock standing less than this
+    /// distance from it, on either side - a clock exactly this far off is
+    /// another event. The `TransactTime(60)` the message
     /// states outranks everything; below it stand the `TrdRegTimestamp(769)`
     /// occurrences of a `TrdRegTimestamps(768)` group, ranked by what their
     /// `TrdRegTimestampType(770)` says each one is - the event itself before

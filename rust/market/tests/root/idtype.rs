@@ -1030,6 +1030,91 @@ fn a_chain_identity_is_one_of_ten_members_and_nothing_else() {
     }
 }
 
+/// A chain name is every type the `identifiers` map holds but the ones
+/// many elements share (decision 25): a chain identity, a report's own
+/// reference, a regulatory trade identifier, a lineage type and any other
+/// word name the live chain that states them; a match's `trdmatchid`, which
+/// both orders it filled state, a request many chains answer (`quotereqid`,
+/// `mdreqid`) and the parent-order slot `parent{chain identity}` - the
+/// previous value the walk writes, and a bridge's hierarchy parent under
+/// any chain identity's spelling - name none, and neither does a security
+/// or a party, which live in the other two maps.
+#[test]
+fn a_chain_name_is_every_identifier_type_but_a_shared_one_and_the_parent_slot() {
+    crate::install::installed();
+    for known in &IdType::KNOWN {
+        if known.is_chain_identity() {
+            assert!(known.is_chain_name(), "{known}: a chain identity");
+        }
+    }
+    for named in [
+        IdType::ExecId,
+        IdType::SecondaryExecId,
+        IdType::Tvtic,
+        IdType::MdEntryId,
+        IdType::MdEntryRefId,
+        IdType::ReportTrackingNumber,
+        IdType::RegTradeId,
+        IdType::PrevRegTradeId,
+        IdType::OrigClOrdId,
+        IdType::TradeReportRefId,
+    ] {
+        assert!(named.is_chain_name(), "{named}");
+    }
+    for excluded in [IdType::TrdMatchId, IdType::QuoteReqId, IdType::MdReqId] {
+        assert!(
+            !excluded.is_chain_name(),
+            "{excluded}: many elements share it"
+        );
+        assert!(!excluded.is_chain_identity(), "{excluded}");
+    }
+    // The parent-order slot names none - the previous value of a type with
+    // two parents, and the parent spelled under a one-parent type, which
+    // FIX names otherwise (`parentclordid`, `parenttradereportid`) - while
+    // the chain's first value, the last parent, does.
+    for (slot, lineage) in [
+        ("parentorderid", "origorderid"),
+        ("parenttradeid", "origtradeid"),
+        ("parentquoteid", "origquoteid"),
+        ("parentsecondaryorderid", "origsecondaryorderid"),
+    ] {
+        assert!(!kind(slot).is_chain_name(), "{slot}: the previous value");
+        assert!(kind(lineage).is_chain_name(), "{lineage}: the first value");
+        assert_eq!(kind(slot).parent_of().map(|(_, at)| at), Some(0));
+        assert_eq!(kind(lineage).parent_of().map(|(_, at)| at), Some(1));
+    }
+    for slot in ["parentclordid", "parenttradereportid", "ParentClOrdID"] {
+        assert!(
+            !kind(slot).is_chain_name(),
+            "{slot}: a bridge's parent order"
+        );
+        assert_eq!(kind(slot).parent_of(), None, "{slot}: a word of its own");
+    }
+    // A security and a party live in the other two maps and name no chain;
+    // any other word - a bridge's own, a word no parent rule reads - names
+    // the chain that states it.
+    for word in [
+        "venueorderid",
+        "reforderid",
+        "firmtradeid",
+        "parentexecid",
+        "parentisin",
+        "originalorderid",
+        "allocid",
+        "housekey",
+    ] {
+        assert!(kind(word).is_chain_name(), "{word}");
+    }
+    for apart in [
+        IdType::Account,
+        IdType::ExecutingFirm,
+        IdType::Isin,
+        IdType::InstrumentId,
+    ] {
+        assert!(!apart.is_chain_name(), "{apart}: a security or a party");
+    }
+}
+
 #[test]
 fn a_base_type_lists_its_parents_nearest_first() {
     crate::install::installed();

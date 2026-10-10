@@ -3827,7 +3827,11 @@ fn leaf_metadata_round_trips_through_arrow() {
 /// A book folds one instant's steps of a chain in the chain's order however
 /// its source read them back: a table sorting a first step's unstated place
 /// after the second's hands the cancel's reject before the cancel, and the
-/// book still reads the cancel first.
+/// book still reads the cancel first. The reject is sent 400 ms after the
+/// transaction it states, so that transaction dates it at the cancel's
+/// instant; sent a whole second after, as the capture this is drawn from
+/// sends it, it is dated by its own sending clock since decision 21 made the
+/// delay half a second, the gap less than it.
 #[test]
 fn a_book_folds_one_instants_steps_of_a_chain_in_the_chains_order() {
     crate::install::installed();
@@ -3836,7 +3840,7 @@ fn a_book_folds_one_instants_steps_of_a_chain_in_the_chains_order() {
         "8=FIX.4.2|35=D|49=B|56=S|34=70|52=20260814-21:50:00|11=C-1|55=2454|54=2|38=100|40=2|44=10|60=20260814-21:50:00|10=0|",
         "8=FIX.4.2|35=8|49=S|56=B|34=71|52=20260814-21:50:01|11=C-1|37=O-1|17=X1|150=0|39=0|54=2|55=2454|38=100|44=10|151=100|14=0|6=0|60=20260814-21:50:01|10=0|",
         "8=FIX.4.2|35=F|49=B|56=S|34=72|52=20260814-21:59:46|11=C-2|41=C-1|37=O-1|54=2|55=2454|38=100|60=20260814-21:59:46|10=0|",
-        "8=FIX.4.2|35=9|49=S|56=B|34=73|52=20260814-21:59:47|11=C-2|37=O-1|41=C-1|39=8|434=1|60=20260814-21:59:46|10=0|",
+        "8=FIX.4.2|35=9|49=S|56=B|34=73|52=20260814-21:59:46.400|11=C-2|37=O-1|41=C-1|39=8|434=1|60=20260814-21:59:46|10=0|",
     ];
     let messages: Vec<FixMsg> = lines
         .iter()

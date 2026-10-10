@@ -634,9 +634,11 @@ test('compatibility normalization mirrors core Arrow and conservative Spark poli
     () => extension.intoSchemeCompat('spark'),
     /would relabel Arrow extension storage/,
   )
+  // The target list names `doris` last since decision 20 added
+  // `Scheme::DORIS`, the sixth compatibility target.
   assert.throws(
     () => source.intoSchemeCompat('postgres'),
-    /expected one of arrow, spark, polars, pandas, iceberg, got "postgres"/,
+    /expected one of arrow, spark, polars, pandas, iceberg, doris, got "postgres"/,
   )
 })
 

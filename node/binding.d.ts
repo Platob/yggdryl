@@ -713,7 +713,7 @@ export type BytesDataTypeId =
 
 /** Core compatibility targets supported by DataType and Field projection. */
 export type CompatibilityScheme =
-  'arrow' | 'spark' | 'polars' | 'pandas' | 'iceberg'
+  'arrow' | 'spark' | 'polars' | 'pandas' | 'iceberg' | 'doris'
 
 /** Required intent for a generic record-write entry point. */
 export type IOMode = 'overwrite' | 'append' | 'merge' | 'readonly' | 'random'

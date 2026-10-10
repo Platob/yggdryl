@@ -21,6 +21,7 @@ fn every_foreign_engine_reads_a_claimed_kind_as_its_int32_code() {
             &Scheme::POLARS,
             &Scheme::PANDAS,
             &Scheme::ICEBERG,
+            &Scheme::DORIS,
         ] {
             assert_eq!(
                 dtype.clone().into_scheme_compat(scheme).unwrap(),

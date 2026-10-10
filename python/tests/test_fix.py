@@ -727,31 +727,38 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     # execution is of side UKNW.
     assert len(messages) == 151
     walked = list(codec.lifecycle(messages))
-    # Three of the 42 deliveries are twins restating the live message they
-    # repeat, under its identity: the window yields each identity once. The
+    # One of the 42 deliveries is a twin restating the live message it
+    # repeats, under its identity: the window yields each identity once. The
     # capture's ten typeless rows state no sending time, so each is dated by
-    # its own line: seven deliveries, none a twin.
-    assert len(walked) == 39
+    # its own line: seven deliveries, none a twin. It was three twins until
+    # decision 21 dated a message by its official clock only less than half a
+    # second from its SendingTime(52): the frame hop of order
+    # 00079132558GLXC0's fill, its TransactTime(60) 743 ms off, is dated by
+    # its sending clock, so it and its execution are twins of nothing.
+    assert len(walked) == 41
     every = list(codec.with_dedup_window_ms(None).lifecycle(messages))
     assert len(every) == 42
     seen: set[object] = set()
     once = [held.uuid for held in every if not (held.uuid in seen or seen.add(held.uuid))]
     assert once == [held.uuid for held in walked]
 
-    # Twenty-one deliveries are market data - eight fills and ten order
-    # reports, a fill and a report of the twenty yielded once, and the NOVN
-    # order's three steps: the venue's acknowledgement - an execution report
-    # of no fill, its order's leaf - the restatement and the expiry - and
-    # none is refused: the trade whose side states no Side(54) split into a
-    # fill of side UKNW.
+    # Twenty-three deliveries are market data - nine fills and eleven order
+    # reports, and the NOVN order's three steps: the venue's acknowledgement -
+    # an execution report of no fill, its order's leaf - the restatement and
+    # the expiry - and none is refused: the trade whose side states no
+    # Side(54) split into a fill of side UKNW. Twenty-one until decision 21,
+    # which made the fill and the report the window yielded once deliveries
+    # of their own.
     operations = list(codec.market_data(walked))
-    assert len(operations) == 21
-    assert sorted(operation.kind for operation in operations) == ["execution_event"] * 8 + ["order_event"] * 13
+    assert len(operations) == 23
+    assert sorted(operation.kind for operation in operations) == ["execution_event"] * 9 + ["order_event"] * 14
 
     # Every order folds and every execution is recorded among its book's
-    # events; the unpriced sell order of 2454 rests at its side's unpriced
-    # level and leaves at the same instant, so the last book holds nothing
-    # and states both in its delta. The
+    # events; the unpriced sell order of 2454 is refused nowhere: its cancel
+    # request and the reject that ends it are each the delta of a book of
+    # its own instant - one instant until decision 21, which dates the
+    # reject, sent a whole second after the transaction it states, by its
+    # sending clock - and neither book holds anything. The
     # hash moved with the split fills, the sided cross codes,
     # the book's own bid and ask facts (A12, A17, A20), the metadata a
     # follower takes from its chain, the four-letter side code the
@@ -778,22 +785,28 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     # event feeds where a side nobody stated fed. It moved again when a book
     # split what its instant recorded into its `delta` - the orders and
     # quotes - and its `events` - the executions and the snapshot controls -
-    # and came to digest the events after the delta: this book holds no
-    # event, so it feeds the empty list's count beside its two delta entries.
+    # and came to digest the events after the delta: this book held no
+    # event, so it fed the empty list's count beside its two delta entries.
+    # It moved again when decision 21 dated the reject a second after the
+    # cancel request: the last book is the reject's instant alone and
+    # digests its one delta. Two books more since then, thirteen: that one,
+    # and the book of the instant the frame hop of order 00079132558GLXC0's
+    # fill is dated at by its sending clock.
     books = list(graph.BookIterator(operations))
-    assert len(books) == 11
+    assert len(books) == 13
     assert not any(book.is_complete for book in books)
-    last = books[-1]
+    cancelled, last = books[-2], books[-1]
     assert last.ticker == "2454"
     assert (last.isincode, last.crosscode) == ("TW0002454006", "3:0:TW0002454006")
-    assert last.alive == []
-    assert [delta.price for delta in last.delta] == [None, None]
-    assert last.events == [], "no execution touched its instant"
+    assert cancelled.crosscode == last.crosscode
+    assert cancelled.alive == last.alive == []
+    assert [delta.price for delta in [*cancelled.delta, *last.delta]] == [None, None]
+    assert cancelled.events == last.events == [], "no execution touched either instant"
     # Every execution of the capture is an event of exactly one book, and no
     # book records an order or a quote among its events.
-    assert sum(len(book.executions) for book in books) == 8
+    assert sum(len(book.executions) for book in books) == 9
     assert all(len(book.executions) == len(book.events) for book in books)
-    assert last.hashcode == 10_745_751_629_392_559_435
+    assert last.hashcode == 16_012_236_961_469_281_692
     # Every book is keyed by the ISIN its inputs state, else their ticker:
     # the masked line's number keys its own book, and the trade capture's
     # execution, of an instrument no order names, opens that instrument's.
@@ -3224,7 +3237,7 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     wire = (
         b"8=FIX.4.4|35=D|49=SENDER|56=TARGET|34=7|52=20240102-10:15:30|"
         b"11=A1|55=AAPL|54=1|15=USD|38=100|44=10.5|31=10.25|32=40|"
-        b"6=10.3|14=40|151=60|140=9.75|58=note|60=20240102-10:15:31|10=0|"
+        b"6=10.3|14=40|151=60|140=9.75|58=note|60=20240102-10:15:30.400|10=0|"
     )
     message = codec.parse_fix_line(wire)
 
@@ -3264,10 +3277,12 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert operation.kind == "order_event"
     leaf = operation.as_order_event()
     assert isinstance(leaf, OrderEvent)
-    # The transaction stands one second from the sending clock, which is
-    # exactly the codec's default delay, so the two are the one event said
-    # twice and the more exact saying of it dates the message.
-    assert event.transunix == CLOCK_NS + 1_000_000_000
+    # The transaction stands 400 ms from the sending clock, less than the
+    # codec's default half-second delay, so the two are the one event said
+    # twice and the more exact saying of it dates the message. It stood a
+    # whole second off, the old default, until decision 21 made the delay
+    # half a second and the gap less than it.
+    assert event.transunix == CLOCK_NS + 400_000_000
     assert event.creaunix == event.transunix
     assert event.execunix is None
     assert event.sendunix == CLOCK_NS
@@ -3373,10 +3388,10 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert message.by_tag(58).as_py() == "note"
     assert message.by_tag(HASHCODE_TAG).as_py() == message.hashcode
     assert message.by_tag(UUID_TAG) == message.uuid
-    # The instant is the transaction, one second from the sending clock and
-    # so inside the codec's default delay.
+    # The instant is the transaction, 400 ms from the sending clock and so
+    # inside the codec's default delay.
     assert message.by_tag(UNIX_TAG).as_py() == dt.datetime.fromtimestamp(
-        (CLOCK_NS + 1_000_000_000) / 1e9, dt.timezone.utc
+        (CLOCK_NS + 400_000_000) / 1e9, dt.timezone.utc
     )
     # The cross code is stored as `{kind}:{side}:{base}`.
     assert message.by_tag(CROSSCODE_TAG).as_py() == "10:1:A1"
@@ -4504,20 +4519,26 @@ def test_a_security_source_reads_by_its_name_and_an_unknown_one_is_kept(seed: Fi
 
 def test_official_time_delay_bounds_which_clock_dates_the_message(seed: FixRegistry) -> None:
     """Python forwards the parse's official-clock reading and its one pin."""
-    assert FixCodec(seed).official_time_delay_ms == 1_000
-    assert FixCodec(seed, official_time_delay_ms=None).official_time_delay_ms == 1_000
+    # Half a second since decision 21, the gap less than it; it was one second.
+    assert FixCodec(seed).official_time_delay_ms == 500
+    assert FixCodec(seed, official_time_delay_ms=None).official_time_delay_ms == 500
     assert FixCodec(seed, official_time_delay_ms=0).official_time_delay_ms == 0
     assert FixCodec(seed, official_time_delay_ms=-1).official_time_delay_ms == -1
 
     codec = FixCodec(seed, exclude_msgtypes=[])
     sending = 1_787_308_200_415_000_000
-    # A transaction half a second in front of the sending clock is the same
-    # event said twice, so the more exact saying of it dates the message.
+    # A transaction 465 ms in front of the sending clock is the same event said
+    # twice, so the more exact saying of it dates the message.
     near = codec.parse_fix_line(
-        b"8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|11=A|10=0|"
+        b"8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.950|11=A|10=0|"
     )
-    assert near.transunix == 1_787_308_199_900_000_000
+    assert near.transunix == 1_787_308_199_950_000_000
     assert near.creaunix == near.transunix
+    # Exactly the delay in front of it is another event: the gap must be less.
+    at_delay = codec.parse_fix_line(
+        b"8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.915|11=A|10=0|"
+    )
+    assert at_delay.transunix == sending
     # Five seconds out is a different event of the session's day.
     apart = codec.parse_fix_line(
         b"8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:55|11=A|10=0|"
@@ -4529,9 +4550,9 @@ def test_official_time_delay_bounds_which_clock_dates_the_message(seed: FixRegis
     # when the report reached a repository, which is not that.
     stamped = codec.parse_fix_line(
         b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=2|"
-        b"769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.900|770=1|10=0|"
+        b"769=20260821-10:30:00.400|770=23|769=20260821-10:29:59.950|770=1|10=0|"
     )
-    assert stamped.transunix == 1_787_308_199_900_000_000
+    assert stamped.transunix == 1_787_308_199_950_000_000
     # With only the unranked stamp, the one clock every message carries keeps it.
     unranked = codec.parse_fix_line(
         b"8=FIX.4.4|35=AE|52=20260821-10:30:00.415|768=1|"
@@ -4546,7 +4567,7 @@ def test_official_time_delay_bounds_which_clock_dates_the_message(seed: FixRegis
     ).transunix == 1_787_308_195_000_000_000
     shut = FixCodec(seed, exclude_msgtypes=[], official_time_delay_ms=0)
     assert shut.parse_fix_line(
-        b"8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|11=A|10=0|"
+        b"8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.950|11=A|10=0|"
     ).transunix == sending
 
 
@@ -5752,6 +5773,15 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
         assert all(registry.get(code)["crosscode"] == registry.get(isin)["crosscode"] for isin, code in resolved), name
     for catalog, name in ((bronze, "fix_messages"), (silver, "books"), (silver, "quotes")):
         assert "instcode" in catalog.table(f"record_keeping.{name}").field(), name
+    # Every table is laid out as Apache Doris reads an Iceberg table
+    # (`into_scheme_compat("doris")`): an instant at microseconds under its
+    # zone, never Iceberg v3's `timestamptz_ns`, which Doris maps to nothing.
+    for qualified in medallion.TABLES:
+        catalog, name = qualified.split(".")
+        stored = lake.catalogs[catalog].table(f"record_keeping.{name}").field()
+        assert "(ns" not in str(stored.dtype), qualified
+        if "transunix" in stored:
+            assert stored["transunix"].dtype == DataType("datetime64(us, UTC)"), qualified
     # The report reads every table off the lake, the instruments too.
     medallion.report(lake)
     report = capsys.readouterr().out
@@ -5767,8 +5797,11 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     # The lifecycle walks the messages alone - a line holding none is
     # excluded, a repeat within the dedup window folded - as the bridge
     # capture test pins them - and writes each back under the table's
-    # schema, where an enum column is the plain integer its codes are.
-    assert written["silver.fix_messages"].written_rows == 39
+    # schema, where an enum column is the plain integer its codes are. 41
+    # since decision 21 dated the frame hop of order 00079132558GLXC0's fill,
+    # its TransactTime(60) 743 ms off, by its sending clock: it and its
+    # execution are no twins the window folds; it was 39.
+    assert written["silver.fix_messages"].written_rows == 41
     refined = StreamChunkedSerie.from_serie(silver.table("record_keeping.fix_messages").read_serie()).into_arrow_reader().read_all()
     for column in ("state", "marketdatakind", "marketdatatype"):
         assert refined.column(column).null_count == 0, column

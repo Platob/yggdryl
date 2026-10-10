@@ -3054,11 +3054,12 @@ export declare class FixCodec {
    * epoch hour at a time rather than collecting and sorting the whole
    * capture, off when unstated;
    * `officialTimeDelayMs` is how far from `SendingTime(52)` an official
-   * transaction clock may stand and still date the message, the core's
-   * one second when unstated; `dedupWindowMs` is how long, in
-   * milliseconds of event time, `lifecycle` remembers an identity it
-   * yielded so it yields that identity once - the core's one minute when
-   * unstated, and `null`, zero or a negative window remembering none;
+   * transaction clock may stand and still date the message, the gap less
+   * than it - the core's half second when unstated; `dedupWindowMs` is
+   * how long, in milliseconds of event time, `lifecycle` remembers an
+   * identity it yielded so it yields that identity once - the core's one
+   * minute when unstated, and `null`, zero or a negative window
+   * remembering none;
    * `marketMetadata` is whether a market operation carries its message's
    * unmapped fields - its parties, `Account(1)` and regulatory trade
    * identifiers stay its `partyids` and `identifiers` - and lifts the
@@ -3215,7 +3216,7 @@ export declare class FixCodec {
    * message's own, else a capture reaching that field, else the line's
    * `mtime`, else the codec's `defaultSendingTime`, else UTC now, and the
    * instant `transunix` is read against it - the stated one, else the
-   * official clock standing within `officialTimeDelayMs` of it, else it.
+   * official clock standing less than `officialTimeDelayMs` from it, else it.
    * A clock the parse supplied is never the message's own: neither the
    * wire nor the row's `sendingtime` column states it.
    * `withCaptureNames` is what decides which capture is which, once for
@@ -3405,8 +3406,8 @@ export declare class FixMsg {
    * tag, a crate column, one of the FIX fields a message lifts,
    * `Text(58)` - fills the holder that owns it and leaves the row. `SendingTime` reads UTC now
    * when the value states none; the event's instant is the stated one,
-   * else the official transaction clock standing within the core's default
-   * one-second delay of that sending time - a `TransactTime(60)`, else a
+   * else the official transaction clock standing less than the core's
+   * default half-second delay from that sending time - a `TransactTime(60)`, else a
    * ranked `TrdRegTimestamp(769)` - else the sending time itself, the
    * creation the stated one, else the instant, and the execution of a
    * report stating no execution clock that instant too. What

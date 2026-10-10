@@ -2801,7 +2801,7 @@ fn the_default_refusals_are_the_session_traffic_and_the_typeless_row() {
 }
 
 /// The sending clock is the reference and the message happened at the best
-/// official clock standing within the codec's delay of it.
+/// official clock standing less than the codec's delay from it.
 ///
 /// `TrdRegTimestamp(769)` says nothing on its own - the same tag carries an
 /// execution's instant, a desk's receipt and the moment a report reached a
@@ -2820,32 +2820,44 @@ fn the_regulatory_group_dates_a_message_by_type_before_nearness() {
             .get_transunix()
     };
     // A publicly-reported stamp ten milliseconds off never dates a message,
-    // so the execution half a second off is the one that does: what the
-    // stamp is about decides before how near it stands.
+    // so the execution four hundred milliseconds off - inside the default
+    // half second - is the one that does: what the stamp is about decides
+    // before how near it stands.
     assert_eq!(
         dated(
             "8=FIX.4.4|35=AE|52=20260102-10:15:30|768=2|\
-             769=20260102-10:15:29.990|770=11|769=20260102-10:15:29.500|770=1|10=0|"
+             769=20260102-10:15:29.990|770=11|769=20260102-10:15:29.600|770=1|10=0|"
         ),
-        1_767_348_929_500_000_000
+        1_767_348_929_600_000_000
     );
     // A desk receipt is a hop the message crossed rather than the event, so
     // the execution outranks it even standing further from the sending clock.
     assert_eq!(
         dated(
             "8=FIX.4.4|35=AE|52=20260102-10:15:30|768=2|\
-             769=20260102-10:15:29.990|770=6|769=20260102-10:15:29.500|770=1|10=0|"
+             769=20260102-10:15:29.990|770=6|769=20260102-10:15:29.600|770=1|10=0|"
         ),
-        1_767_348_929_500_000_000
+        1_767_348_929_600_000_000
     );
     // Two stamps of one rank - an execution time and a broker execution -
     // and the nearer of them decides.
     assert_eq!(
         dated(
             "8=FIX.4.4|35=AE|52=20260102-10:15:30|768=2|\
-             769=20260102-10:15:29.990|770=5|769=20260102-10:15:29.500|770=1|10=0|"
+             769=20260102-10:15:29.990|770=5|769=20260102-10:15:29.600|770=1|10=0|"
         ),
         1_767_348_929_990_000_000
+    );
+    // An execution exactly half a second off stands at the default delay
+    // rather than inside it, so the delay refuses it and the one clock every
+    // message carries keeps the message (decision 21: the gap must be less
+    // than the delay).
+    assert_eq!(
+        dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|768=1|\
+             769=20260102-10:15:29.500|770=1|10=0|"
+        ),
+        SENDING
     );
     // Only stamps about the trade's afterlife: a submission to a repository
     // is not when the trade happened, so the one clock every message carries
@@ -2893,10 +2905,19 @@ fn the_transaction_outranks_the_group_and_a_far_one_falls_through_to_it() {
     // it.
     assert_eq!(
         dated(
+            "8=FIX.4.4|35=AE|52=20260102-10:15:30|60=20260102-10:15:29.600|768=1|\
+             769=20260102-10:15:29.990|770=1|10=0|"
+        ),
+        1_767_348_929_600_000_000
+    );
+    // A transaction nine hundred milliseconds off, which the one-second
+    // default admitted, stands past the half-second one: the group answers.
+    assert_eq!(
+        dated(
             "8=FIX.4.4|35=AE|52=20260102-10:15:30|60=20260102-10:15:29.100|768=1|\
              769=20260102-10:15:29.990|770=1|10=0|"
         ),
-        1_767_348_929_100_000_000
+        1_767_348_929_990_000_000
     );
     // A transaction the delay refuses leaves the question open, and the
     // group answers it: the parse falls through to the best stamp inside the
@@ -2934,37 +2955,59 @@ fn a_dictionary_declaring_no_group_reads_no_regulatory_clock() {
 }
 
 /// The delay is the codec's own and bounds which official clock may date a
-/// message.
+/// message: only a clock standing less than the delay from the sending clock
+/// does.
 #[test]
 fn the_official_time_delay_is_the_codecs_own_and_bounds_the_transaction() {
     crate::install::installed();
-    assert_eq!(FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS, 1_000);
+    // Half a second since decision 21, which also made the bound strict: it
+    // was one second, inclusive.
+    assert_eq!(FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS, 500);
     let codec = super::fixed_codec(Arc::new(FixRegistry::new()));
     assert_eq!(
         codec.official_time_delay_ms(),
         FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS
     );
-    let line = b"8=FIX.4.4|35=D|52=20260102-10:15:30|60=20260102-10:15:29.500|10=0|";
     let sending = 1_767_348_930_000_000_000;
+    // Half a second of hop: outside the default delay and outside one stated
+    // at exactly that distance, because the gap must be less than the delay,
+    // and inside one a millisecond wider.
+    let line = b"8=FIX.4.4|35=D|52=20260102-10:15:30|60=20260102-10:15:29.500|10=0|";
     let transaction = 1_767_348_929_500_000_000;
-    // Half a second of hop: inside the default delay, inside one stated at
-    // exactly that distance, outside one nanosecond tighter, and outside
-    // every nonpositive one - a delay of zero admits only a transaction
-    // equal to the sending clock, which is the reading that dates nothing
-    // the sending clock did not already date.
-    for (delay, expected) in [
-        (FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS, transaction),
-        (500, transaction),
-        (499, sending),
-        (0, sending),
-        (-1, sending),
+    // A nanosecond less than half a second: inside the default delay, and
+    // outside one a millisecond tighter.
+    let near = b"8=FIX.4.4|35=D|52=20260102-10:15:30|60=20260102-10:15:29.500000001|10=0|";
+    let near_transaction = 1_767_348_929_500_000_001;
+    // A transaction equal to the sending clock: a nonpositive delay admits
+    // only that one, which is the reading that dates nothing the sending
+    // clock did not already date.
+    let equal = b"8=FIX.4.4|35=D|52=20260102-10:15:30|60=20260102-10:15:30|10=0|";
+    for (delay, line, expected) in [
+        (FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS, &line[..], sending),
+        (500, &line[..], sending),
+        (501, &line[..], transaction),
+        (
+            FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS,
+            &near[..],
+            near_transaction,
+        ),
+        (499, &near[..], sending),
+        (0, &near[..], sending),
+        (-1, &near[..], sending),
+        (0, &equal[..], sending),
+        (-1, &equal[..], sending),
     ] {
         let dated = codec
             .clone()
             .with_official_time_delay_ms(delay)
             .parse_fix_line(line)
             .expect("the line parses");
-        assert_eq!(dated.get_transunix(), expected, "a {delay} ms delay");
+        assert_eq!(
+            dated.get_transunix(),
+            expected,
+            "a {delay} ms delay over {}",
+            String::from_utf8_lossy(line)
+        );
         assert_eq!(dated.get_creaunix(), Some(dated.get_transunix()));
     }
 }
@@ -3168,29 +3211,31 @@ mod clock_intake_tests {
             );
         }
         let message = codec
-            .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|60=20260102-10:15:31|")
+            .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|60=20260102-10:15:30.499999999|")
             .unwrap();
         assert!(message.by_tag(52).unwrap().as_datetime64().is_some());
         assert!(message.by_tag(60).unwrap().as_datetime64().is_some());
-        // The transaction stands one second from the sending clock, which is
-        // exactly the default delay, so the two are the one event said twice
-        // and the more exact saying of it dates the message. `TransactTime`
-        // stays the typed field it was, and neither clock fills `snapunix`,
-        // which says this row is a reading a walk took.
+        // The transaction stands a nanosecond less than half a second from
+        // the sending clock, which is less than the default delay, so the
+        // two are the one event said twice and the more exact saying of it
+        // dates the message. `TransactTime` stays the typed field it was,
+        // and neither clock fills `snapunix`, which says this row is a
+        // reading a walk took.
         assert_eq!(
             message
                 .by_tag(60)
                 .unwrap()
                 .temporal_count_at(TimeUnit::Nanosecond),
-            Some(1_767_348_931_000_000_000)
+            Some(1_767_348_930_499_999_999)
         );
-        assert_eq!(message.get_transunix(), 1_767_348_931_000_000_000);
+        assert_eq!(message.get_transunix(), 1_767_348_930_499_999_999);
         assert_eq!(message.get_creaunix(), Some(message.get_transunix()));
         assert_eq!(message.get_snapunix(), None);
-        // One nanosecond further and they are two events: the sending clock
-        // is the one every message carries, so it keeps the message.
+        // One nanosecond further stands exactly at the delay, and they are
+        // two events: the sending clock is the one every message carries, so
+        // it keeps the message.
         let apart = codec
-            .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|60=20260102-10:15:31.000000001|")
+            .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|60=20260102-10:15:30.5|")
             .unwrap();
         assert_eq!(apart.get_transunix(), 1_767_348_930_000_000_000);
         assert_eq!(
@@ -3211,11 +3256,9 @@ mod clock_intake_tests {
     #[test]
     fn the_delay_converts_to_nanoseconds_and_saturates() {
         crate::install::installed();
-        assert_eq!(FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS, 1_000);
-        assert_eq!(
-            default_official_time_delay_ns(),
-            FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS * 1_000_000
-        );
+        // Half a second since decision 21; it was one second.
+        assert_eq!(FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS, 500);
+        assert_eq!(default_official_time_delay_ns(), 500_000_000);
         let codec = codec();
         assert_eq!(
             official_time_delay_ns(&codec),
@@ -4146,6 +4189,24 @@ mod equivalence {
     /// `instrumentid` derived, as every listing code is filled onto a
     /// message of that listing or of none (D42); the capture holds no FX
     /// pair, so no row minted a number.
+    /// It last moved when an official clock came to date a message only
+    /// standing less than the codec's delay from `SendingTime(52)`, and the
+    /// delay became half a second (decision 21; it was one second,
+    /// inclusive): three frames state their `TransactTime(60)` 743 ms
+    /// (`ulbridge[004]`, the execution split off it with it), 757 ms
+    /// (`ulbridge[033]`) and exactly 1,000 ms (`ulbridge[130]`) from their
+    /// sending clock, and no regulatory stamp nearer than 506 ms, so each
+    /// is dated by its sending clock - `transunix`, `creaunix` and `uuid`
+    /// moved, and the split's `srcuuids` with them. Walked, the first no
+    /// longer shares the identity of the hops of its report the transaction
+    /// still dates, so it and its execution are yielded beside them
+    /// (`lifecycle[006]`, `[007]`: 41 messages, 39 before); the order
+    /// `00079132559GLXC0` opens its chain at the sending clock
+    /// (`lifecycle[008]`, third at that instant), its followers'
+    /// `creaunix`, `prevunix`, `prevuuid`, `hashcode` and `uuid` moving with
+    /// it (`[018]`, `[035]`); the reject is a second later
+    /// (`lifecycle[038]`); every other walked row is the one before it,
+    /// shifted, and no other section moved.
     #[test]
     fn the_codec_answers_what_it_answered() {
         crate::install::installed();
@@ -4286,8 +4347,11 @@ mod lifecycle_identifiers {
             .any(|anomaly| anomaly.field() == "crosscode")
     }
 
-    /// The capture walks to 39 rows - 42 with the three twins a walk that
-    /// remembers none restates - and every one derives its cross hash from
+    /// The capture walks to 41 rows - 42 with the one twin a walk that
+    /// remembers none restates; 39 and three twins until decision 21 dated
+    /// the frame hop of order `00079132558GLXC0`'s fill and its execution,
+    /// whose `TransactTime(60)` stands 743 ms after their `SendingTime(52)`,
+    /// by that sending clock - and every one derives its cross hash from
     /// its stored cross code and, where it states one, its cross element
     /// from that hash; every follower stands under its predecessor's code
     /// and cross element, and no message cites two live chains.
@@ -4295,7 +4359,7 @@ mod lifecycle_identifiers {
     fn every_walked_row_derives_its_cross_identity_from_its_code() {
         crate::install::installed();
         let walk = walked(&codec());
-        assert_eq!(walk.len(), 39);
+        assert_eq!(walk.len(), 41);
         assert_eq!(walked(&codec().with_dedup_window_ms(0)).len(), 42);
         let mut coded = 0;
         for message in &walk {
@@ -4316,7 +4380,10 @@ mod lifecycle_identifiers {
                 "{code}"
             );
         }
-        assert_eq!(coded, 26);
+        // 28 since decision 21 yields the frame hop of order
+        // `00079132558GLXC0`'s fill and its execution, both coded, as
+        // deliveries of their own; it was 26.
+        assert_eq!(coded, 28);
         let mut followers = 0;
         for message in &walk {
             let Some(previous) = message.get_prevuuid() else {

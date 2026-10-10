@@ -460,9 +460,11 @@ impl IdType {
     /// reference an event states about itself or about a request many
     /// chains answer - `execid`, `trdmatchid`, `tvtic`, `quotereqid`,
     /// `mdreqid`, `mdentryid`, the regulatory trade identifiers - names no
-    /// chain, and neither does a security, a party, the account, a parent
-    /// type or any other word. The types that have parents
-    /// ([`Self::parents`]); what a lifecycle walk names live chains by.
+    /// chain of its own, and neither does a security, a party, the account,
+    /// a parent type or any other word. The types that have parents
+    /// ([`Self::parents`]), and whose every value stays a lifecycle chain's
+    /// name until the chain ends, where any other chain name
+    /// ([`Self::is_chain_name`]) is the live statement's alone.
     ///
     /// ```
     /// # yggdryl_market::install().unwrap();
@@ -490,6 +492,57 @@ impl IdType {
                 | Self::SecondaryFirmTradeId
                 | Self::TradeReportId
         )
+    }
+
+    /// Whether a value of this type names the live lifecycle chain that
+    /// states it - what a lifecycle walk matches a current element to a
+    /// previous alive one of its kind, instrument and side by (decision
+    /// 25): every type an operation's `identifiers` hold - a chain identity
+    /// ([`Self::is_chain_identity`]), a report's own reference (`execid`,
+    /// `tvtic`), a book entry's `mdentryid`, a regulatory trade identifier,
+    /// a lineage type (`origclordid`, `origorderid`, `tradereportrefid`:
+    /// the chain's first value) and any other word a bridge spells - but
+    /// the ones many elements share, whose value names something other than
+    /// its own chain: `trdmatchid`, which both orders one match filled
+    /// state, `quotereqid`, which every dealer answering one request
+    /// states, `mdreqid`, which every entry of one subscription states, and
+    /// the parent-order slot `parent{chain identity}` - `parentorderid`, the
+    /// previous value a walk writes from the chain's own, `parentclordid`,
+    /// `parenttradeid` - which a bridge spells a hierarchy parent by, so two
+    /// child orders of one parent stay two; the chain's first value
+    /// (`origclordid`, `origorderid`, `tradereportrefid`) names its chain. A
+    /// security and a party name no chain either: they live in the other
+    /// two maps. Not `const`, because it reads the word after `parent`.
+    ///
+    /// ```
+    /// # yggdryl_market::install().unwrap();
+    /// use yggdryl_market::IdType;
+    ///
+    /// assert!(IdType::OrderId.is_chain_name());
+    /// assert!(IdType::ExecId.is_chain_name(), "the live report's own");
+    /// assert!(IdType::OrigClOrdId.is_chain_name(), "the chain's first value");
+    /// assert!("venueorderid".parse::<IdType>().unwrap().is_chain_name());
+    /// assert!(!IdType::TrdMatchId.is_chain_name(), "both orders of a match state it");
+    /// assert!(!IdType::QuoteReqId.is_chain_name(), "every dealer answers it");
+    /// assert!(!IdType::MdReqId.is_chain_name(), "every entry of a subscription");
+    /// assert!(!"parentorderid".parse::<IdType>().unwrap().is_chain_name(), "the previous value");
+    /// assert!(!"parentclordid".parse::<IdType>().unwrap().is_chain_name(), "a bridge's parent order");
+    /// assert!("parentexecid".parse::<IdType>().unwrap().is_chain_name(), "a word of its own");
+    /// assert!(!IdType::Isin.is_chain_name(), "a security");
+    /// ```
+    #[must_use]
+    pub fn is_chain_name(&self) -> bool {
+        if matches!(self, Self::TrdMatchId | Self::QuoteReqId | Self::MdReqId)
+            || self.is_security()
+            || self.is_party()
+        {
+            return false;
+        }
+        !self
+            .as_str()
+            .strip_prefix("parent")
+            .and_then(|base| base.parse::<Self>().ok())
+            .is_some_and(|base| base.is_chain_identity())
     }
 
     /// Whether this type names a party: the account, a party of no role, a

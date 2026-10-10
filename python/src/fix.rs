@@ -1796,8 +1796,8 @@ impl PyFixMsg {
     /// owns it and leaves the row. The clocks settle: `SendingTime` is the stated one,
     /// else UTC now, so a message meant to compare equal to another states
     /// one; the instant `transunix` is the stated one, else the official
-    /// transaction clock standing within the crate's default one-second
-    /// delay of `SendingTime` - a `TransactTime`, else a ranked
+    /// transaction clock standing less than the crate's default half-second
+    /// delay from `SendingTime` - a `TransactTime`, else a ranked
     /// `TrdRegTimestamp` - else `SendingTime` itself, and the creation the
     /// stated one, else the instant. What `OrigSendingTime` says is the
     /// lifecycle's to read.
@@ -2247,8 +2247,8 @@ impl PyFixMsg {
     /// When the operation the message states happened - its transaction
     /// instant: nanoseconds since the Unix epoch, UTC -
     /// the stated instant, else the official transaction clock standing
-    /// within the codec's `official_time_delay_ms` of `SendingTime`, else
-    /// that `SendingTime`.
+    /// less than the codec's `official_time_delay_ms` from `SendingTime`,
+    /// else that `SendingTime`.
     #[getter]
     fn transunix(&self) -> i64 {
         self.inner.get_transunix()
@@ -2929,8 +2929,9 @@ impl PyFixCodec {
     /// collecting and sorting the whole capture, off by default;
     /// `official_time_delay_ms` is how far from `SendingTime(52)` an
     /// official transaction clock may stand and still date the message, the
-    /// core's one second when unstated, and a nonpositive delay admits only
-    /// a transaction clock equal to the sending clock; `dedup_window_ms` is
+    /// gap less than it - the core's half second when unstated - and a
+    /// nonpositive delay admits only a transaction clock equal to the
+    /// sending clock; `dedup_window_ms` is
     /// how long, in milliseconds of event time, `lifecycle` remembers an
     /// identity it yielded so it yields that identity once - not given, the
     /// core's one minute, and `None`, zero or a negative window remembering
@@ -3305,8 +3306,8 @@ impl PyFixCodec {
     /// message's own, else a `SendingTime` capture, else the line's
     /// `transunix`, else the codec's `default_sending_time`, else UTC now,
     /// and the instant `transunix` is read against it - the stated one, else
-    /// the official clock standing within `official_time_delay_ms` of it,
-    /// else it. A clock the parse supplied is never the message's own:
+    /// the official clock standing less than `official_time_delay_ms` from
+    /// it, else it. A clock the parse supplied is never the message's own:
     /// `header().stated_sendingtime` is false, and neither the wire nor the
     /// row's `sendingtime` column states it.
     ///

@@ -1310,11 +1310,13 @@ fn tag_positions(columns: &[super::schema::Column]) -> Vec<(i32, usize)> {
     held
 }
 
-/// Two instants standing no further apart than `delay`, in either
-/// direction: what makes an official clock and a sending clock the one
-/// event said twice. A nonpositive delay admits only equality.
+/// Two instants standing less than `delay` apart, in either direction:
+/// what makes an official clock and a sending clock the one event said
+/// twice. Two standing exactly `delay` apart are two events, and a
+/// nonpositive delay admits only equality.
 fn within(unix: i64, reference: i64, delay: i64) -> bool {
-    unix.abs_diff(reference) <= delay.unsigned_abs()
+    let gap = unix.abs_diff(reference);
+    gap == 0 || u64::try_from(delay).is_ok_and(|delay| gap < delay)
 }
 
 /// The rank `TransactTime(60)` takes among the official clocks: what the
@@ -1758,10 +1760,10 @@ impl FixMsg {
         // transaction it reports happened, else when it was sent - the one
         // clock every message carries. A parse structures what a line said
         // and dates it against the sending clock, taking the official
-        // transaction over it only where the two stand within
-        // `official_time_delay_ns` of each other and are therefore the one
-        // event said twice; what a resend's `OrigSendingTime(122)` says, and
-        // what a `TransactTime(60)` further off than that says, is the
+        // transaction over it only where the two stand less than
+        // `official_time_delay_ns` apart and are therefore the one event
+        // said twice; what a resend's `OrigSendingTime(122)` says, and what
+        // a `TransactTime(60)` that far off or further says, is the
         // lifecycle's to read off the structured message.
         if !stated_unix {
             message
@@ -1781,15 +1783,16 @@ impl FixMsg {
     }
 
     /// When the operation this message states happened - its `transunix`:
-    /// the best official clock standing within `delay` of the sending clock,
-    /// else the sending clock itself.
+    /// the best official clock standing less than `delay` from the sending
+    /// clock, else the sending clock itself.
     ///
     /// The sending clock is the reference because every message carries one
     /// and no message carries two. An official clock is the more exact
     /// saying of when the event happened, and the distance between the two
     /// is the only evidence a parse has that they are saying the same thing:
-    /// inside the delay they are one event and the official clock wins,
-    /// outside it they are two and the parse keeps the clock it can trust.
+    /// less than the delay apart they are one event and the official clock
+    /// wins, the delay or more apart they are two and the parse keeps the
+    /// clock it can trust.
     /// Rank decides between several that qualify - what the message says its
     /// transaction was before what a regulatory stamp says a hop was - and
     /// the nearer of two equal ranks decides after that, the earlier

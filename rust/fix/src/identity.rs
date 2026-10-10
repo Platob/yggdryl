@@ -466,7 +466,7 @@ pub(super) const MARKET_TAGS: [i32; 47] = [
     62,              // ValidUntilTime: exprunix
     432,             // ExpireDate: exprunix
     2749,            // ExecutionTimestamp: execunix
-    60,              // TransactTime: execunix, and transunix within the delay
+    60,              // TransactTime: execunix, and transunix under the delay
     768,             // NoTrdRegTimestamps, a clock group: transunix, execunix
     140,             // PrevClosePx: prevpx
     99,              // StopPx: stoppx

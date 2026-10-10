@@ -38,8 +38,8 @@ use yggdryl::{
 use yggdryl::{StructType, Uuid};
 use yggdryl_market::IdKey;
 use yggdryl_market::graph::{
-    BookEvent, BookIterator, BookRef, ExecutionEvent, Market, MarketData, MdUpdateAction,
-    Operation, OrderEvent, QuoteEvent, TradeEvent,
+    BookEvent, BookIterator, BookRef, EventIterator, ExecutionEvent, Market, MarketData,
+    MdUpdateAction, Operation, OrderEvent, QuoteEvent, TradeEvent,
 };
 use yggdryl_market::{IdSource, IdType, Identifier, Side};
 
@@ -401,6 +401,82 @@ fn a_walk_step_at_a_deep_touch_allocates_alike_at_8_and_1024_entries() {
     assert!(
         deep <= shallow + 2,
         "a walk step allocated {deep} times at a touch 1,024 deep but {shallow} times at 8"
+    );
+}
+
+/// One order alive under four names: its cross code `O-{index}`, an
+/// `orderid`, a `clordid`, a `secondaryorderid` and the `execid` of its
+/// live report.
+fn allocation_live_order(index: usize) -> OrderEvent {
+    let mut order = OrderEvent::at(1_700_000_000_000_000_000 + index as i64 * 1_000_000);
+    order.set_crosscode(format!("O-{index}"));
+    order.set_side(Side::Buy, true);
+    order.set_state(State::New);
+    for (kind, value) in [
+        (IdType::OrderId, format!("A-{index}")),
+        (IdType::ClOrdId, format!("C-{index}")),
+        (IdType::SecondaryOrderId, format!("S-{index}")),
+        (IdType::ExecId, format!("E-{index}-0")),
+    ] {
+        order
+            .insert_identifier(Identifier::new(IdKey::base(kind), &value).unwrap())
+            .unwrap();
+    }
+    order.finalize();
+    order
+}
+
+/// One step of the lifecycle walk - an order's report stating its chain's
+/// `orderid` and a new `execid`, under no cross code of its own - makes as
+/// many allocations with 1,024 live chains as with 8, each chain going by
+/// four names: the report finds its chain by one probe per identifier it
+/// states, borrowed, files the new `execid` and releases the old one through
+/// the chain's own record, so no name costs a copy per live chain. What
+/// this count cannot show - that no step reads the live chains one by one -
+/// `rust/market/tests/graph/iterator.rs` pins on the index itself: a name's
+/// slot holds one chain per category, side and instrument, whatever the
+/// count of chains going by it.
+#[test]
+fn a_lifecycle_walk_step_allocates_alike_at_8_and_1024_live_chains() {
+    crate::install::installed();
+    let step = |chains: usize| {
+        let reports = [1, 2].map(|turn| {
+            let mut report =
+                OrderEvent::at(1_700_000_000_000_000_000 + (chains + turn) as i64 * 1_000_000);
+            report.set_side(Side::Buy, true);
+            report.set_state(State::PartiallyFilled);
+            for (kind, value) in [
+                (IdType::OrderId, format!("A-{}", chains / 2)),
+                (IdType::ExecId, format!("E-{}-{turn}", chains / 2)),
+            ] {
+                report
+                    .insert_identifier(Identifier::new(IdKey::base(kind), &value).unwrap())
+                    .unwrap();
+            }
+            report.finalize();
+            report
+        });
+        let mut walk =
+            EventIterator::new((0..chains).map(allocation_live_order).chain(reports), true);
+        for _ in 0..chains {
+            assert_eq!(walk.next().unwrap().get_prevuuid(), None);
+        }
+        let first = walk.next().unwrap();
+        assert!(
+            first.get_prevuuid().is_some(),
+            "the first report joins its order"
+        );
+        let (allocations, second) = counted(|| walk.next().unwrap());
+        assert_eq!(second.get_prevuuid(), Some(first.get_uuid()));
+        assert_eq!(second.get_crosscode(), format!("10:1:O-{}", chains / 2));
+        assert_eq!(walk.alive().count(), chains);
+        black_box((first, second));
+        allocations
+    };
+    let (shallow, deep) = (step(8), step(1_024));
+    assert!(
+        deep <= shallow + 2,
+        "a walk step allocated {deep} times with 1,024 live chains but {shallow} times with 8"
     );
 }
 

@@ -24,6 +24,7 @@ enum Target {
     Polars,
     Pandas,
     Iceberg,
+    Doris,
 }
 
 impl Target {
@@ -38,6 +39,8 @@ impl Target {
             Ok(Self::Pandas)
         } else if scheme == &Scheme::ICEBERG {
             Ok(Self::Iceberg)
+        } else if scheme == &Scheme::DORIS {
+            Ok(Self::Doris)
         } else {
             Err(Error::InvalidDataType {
                 kind: "Compatibility",
@@ -57,6 +60,7 @@ impl Target {
             Self::Polars => "PolarsCompatibility",
             Self::Pandas => "PandasCompatibility",
             Self::Iceberg => "IcebergCompatibility",
+            Self::Doris => "DorisCompatibility",
         }
     }
 
@@ -68,6 +72,7 @@ impl Target {
             Self::Polars => "Polars",
             Self::Pandas => "pandas",
             Self::Iceberg => "Iceberg",
+            Self::Doris => "Doris",
         }
     }
 
@@ -78,7 +83,10 @@ impl Target {
 
     /// Whether the engine has a first-class map type.
     const fn supports_map(self) -> bool {
-        matches!(self, Self::Arrow | Self::Spark | Self::Iceberg)
+        matches!(
+            self,
+            Self::Arrow | Self::Spark | Self::Iceberg | Self::Doris
+        )
     }
 
     /// Whether the engine keeps a fixed-size serie layout distinct from a serie.
@@ -88,8 +96,8 @@ impl Target {
 
     /// The signed integer of `unsigned`'s width a column stating
     /// `FIELD:representation=bits` is exchanged as: wherever the engine
-    /// names that width and no unsigned one - Spark every width, Iceberg
-    /// `int` and `long` - else none, and the matrix rewrites the column as
+    /// names that width and no unsigned one - Spark every width, Iceberg and
+    /// Doris `int` and `long` - else none, and the matrix rewrites the column as
     /// any other. Arrow, Polars and pandas hold unsigned integers themselves.
     fn bits_twin(self, unsigned: &DataType) -> Option<DataType> {
         let signed = match unsigned {
@@ -102,7 +110,7 @@ impl Target {
         let named = match self {
             Self::Arrow | Self::Polars | Self::Pandas => false,
             Self::Spark => true,
-            Self::Iceberg => matches!(signed, DataType::Int32 | DataType::Int64),
+            Self::Iceberg | Self::Doris => matches!(signed, DataType::Int32 | DataType::Int64),
         };
         named.then_some(signed)
     }
@@ -124,6 +132,35 @@ impl DataType {
     /// Every other target is deliberately conservative: a layout-only
     /// difference is rewritten, while a difference that would reinterpret
     /// values returns a path-aware error instead of silently changing meaning.
+    ///
+    /// [`Scheme::DORIS`] is the one target that changes a resolution: Apache
+    /// Doris's Iceberg catalog reads a timestamp at microseconds and maps no
+    /// `timestamp_ns` or `timestamptz_ns`, so a timestamp of any other unit is
+    /// laid out at microseconds under its own zone, and a write onto the
+    /// laid-out field casts the values - a second or a millisecond count
+    /// widened exactly, a nanosecond one truncated to whole microseconds.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scheme, TimeUnit, Timezone};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let zoned = DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?;
+    /// assert_eq!(zoned.clone().into_scheme_compat(&Scheme::ICEBERG)?, zoned);
+    /// assert_eq!(
+    ///     zoned.into_scheme_compat(&Scheme::DORIS)?,
+    ///     DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC)?
+    /// );
+    /// assert_eq!(
+    ///     DataType::datetime64(TimeUnit::Millisecond, Timezone::NAIVE)?
+    ///         .into_scheme_compat(&Scheme::DORIS)?,
+    ///     DataType::datetime64(TimeUnit::Microsecond, Timezone::NAIVE)?
+    /// );
+    /// assert!(DataType::Time64(TimeUnit::Microsecond)
+    ///     .into_scheme_compat(&Scheme::DORIS)
+    ///     .is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -150,7 +187,7 @@ impl Field {
     /// An unsigned integer column, at any depth, stating
     /// `FIELD:representation=bits` is exchanged as the signed integer of its
     /// width wherever the target names that width - Spark every width,
-    /// Iceberg `uint32` and `uint64` - rather than widened, and keeps the
+    /// Iceberg and Doris `uint32` and `uint64` - rather than widened, and keeps the
     /// declaration, so a cast onto the rewritten field carries the bits:
     /// a `uint64` digest is an Iceberg `long` rather than a `decimal(20, 0)`.
     ///
@@ -344,7 +381,8 @@ fn normalize_scalar(target: Target, dtype: &DataType, path: &Path<'_>) -> Result
         Target::Spark => spark_scalar(dtype, path),
         Target::Polars => polars_scalar(dtype, path),
         Target::Pandas => pandas_scalar(dtype, path),
-        Target::Iceberg => iceberg_scalar(dtype, path),
+        Target::Iceberg => iceberg_scalar(Target::Iceberg, dtype, path),
+        Target::Doris => doris_scalar(dtype, path),
     }
 }
 
@@ -731,7 +769,9 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
 /// to the signed one that holds it, and there is no elapsed-time or calendar
 /// interval type at all. Time-of-day is microseconds and a timestamp is
 /// microseconds or nanoseconds, so any other resolution is a value cast.
-fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
+/// `target` names the engine a refusal is reported for: Iceberg, or Doris
+/// for the part of the vocabulary [`doris_scalar`] leaves to it.
+fn iceberg_scalar(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
     use DataType as D;
     match dtype {
         // A column of nulls is what Iceberg's always-null `unknown` spells.
@@ -752,15 +792,15 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         D::UInt64 => Ok((D::decimal128(20, 0)?, true)),
         D::Float16 => Ok((D::Float32, true)),
         D::Date64 => incompatible(
-            Target::Iceberg,
+            target,
             path,
-            "date64 milliseconds require a value cast to Iceberg date32 days",
+            format_smolstr!("date64 milliseconds require a value cast to {} date32 days", target.engine()),
         ),
         // Iceberg `time` is microseconds since midnight.
         D::Time64(TimeUnit::Microsecond) => Ok((dtype.clone(), false)),
         leaf_dtype @ (D::Time32(_) | D::Time64(_)) => {
  let leaf = &leaf_dtype.time_type().expect("the variant was just matched");
-unit_mismatch(Target::Iceberg, path, "time-of-day", leaf.unit(), "us")
+unit_mismatch(target, path, "time-of-day", leaf.unit(), "us")
 },
         // `timestamp`/`timestamptz` are microseconds; the `_ns` pair is nanoseconds.
         D::DateTime64 {
@@ -769,20 +809,20 @@ unit_mismatch(Target::Iceberg, path, "time-of-day", leaf.unit(), "us")
         } => Ok((dtype.clone(), false)),
         leaf_dtype @ D::DateTime64 { .. } => {
  let leaf = &leaf_dtype.datetime_type().expect("the variant was just matched");
-            unit_mismatch(Target::Iceberg, path, "timestamp", leaf.unit(), "us or ns")
+            unit_mismatch(target, path, "timestamp", leaf.unit(), "us or ns")
         }
         leaf_dtype @ (D::Duration32(_) | D::Duration64(_)) => {
  let leaf = &leaf_dtype.duration_type().expect("the variant was just matched");
 incompatible(
-            Target::Iceberg,
+            target,
             path,
-            format_smolstr!("Iceberg has no elapsed-time type, got {}({})", dtype.name(), leaf.unit()),
+            format_smolstr!("{} has no elapsed-time type, got {}({})", target.engine(), dtype.name(), leaf.unit()),
         )
 },
         D::Interval(leaf) => incompatible(
-            Target::Iceberg,
+            target,
             path,
-            format_smolstr!("Iceberg has no calendar interval type, got interval({leaf})"),
+            format_smolstr!("{} has no calendar interval type, got interval({leaf})", target.engine()),
         ),
         // Plain `binary`, and `fixed[n]`, which is also how `uuid` is
         // stored, pass unchanged; every other byte leaf exchanges as plain
@@ -798,28 +838,82 @@ incompatible(
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
-            narrow_decimal(Target::Iceberg, dtype, *precision, *scale, path)
+            narrow_decimal(target, dtype, *precision, *scale, path)
         }
         // The fixed leaf is `decimal128(38, 18)` to the target: the name goes,
         // the digits stay. Its wide twin has nowhere to go.
-        D::Decimal => narrow_decimal(Target::Iceberg, dtype, 38, 18, path),
+        D::Decimal => narrow_decimal(target, dtype, 38, 18, path),
         D::BigDecimal => incompatible(
-            Target::Iceberg,
+            target,
             path,
-            SmolStr::new_static("bigdecimal requires a coefficient value cast and Iceberg precision is limited to 38"),
+            format_smolstr!("bigdecimal requires a coefficient value cast and {} precision is limited to 38", target.engine()),
         ),
         D::Decimal256 { precision, scale } => incompatible(
-            Target::Iceberg,
+            target,
             path,
             format_smolstr!(
-                "decimal256({precision}, {scale}) requires a coefficient value cast and Iceberg precision is limited to 38"
+                "decimal256({precision}, {scale}) requires a coefficient value cast and {} precision is limited to 38",
+                target.engine()
             ),
         ),
         // Iceberg v3 owns all three: `variant`, `geometry(C)`, and
         // `geography(C, A)` are the format's own spellings, parameters
         // included, so each passes unchanged.
         D::Variant | D::Geometry(_) | D::Geography(_) => Ok((dtype.clone(), false)),
-        other => unreachable_container(Target::Iceberg, other, path),
+        other => unreachable_container(target, other, path),
+    }
+}
+
+/// The part of the Iceberg subset Apache Doris's Iceberg catalog reads.
+///
+/// Doris maps an Iceberg column through one table
+/// (<https://doris.apache.org/docs/lakehouse/catalogs/iceberg-catalog>,
+/// "Column Type Mapping"): `timestamp` and `timestamptz` to `datetime(6)`,
+/// microseconds, and every Iceberg type the table does not name to
+/// `UNSUPPORTED`. The format-version-3 `timestamp_ns` and `timestamptz_ns`
+/// are not named, so a timestamp of any unit but microseconds is laid out at
+/// microseconds, its zone - or its naivety - kept: the one rewrite here that
+/// is a value cast, which the write onto the laid-out field performs, a
+/// second or a millisecond count widened exactly and a nanosecond one
+/// truncated to whole microseconds. `time`,
+/// `unknown`, `variant`, `geometry` and `geography` are not named either and
+/// have no layout Doris reads as the same values, so each is refused. The
+/// rest - integers, floats, `decimal(P<=38, S)`, `date`, `string`, `binary`,
+/// `fixed(N)`, `uuid`, and `struct`, `map` and `list` - is Iceberg's.
+fn doris_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
+    use DataType as D;
+    match dtype {
+        D::DateTime64 { unit, timezone } if *unit != TimeUnit::Microsecond => Ok((
+            D::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: *timezone,
+            },
+            true,
+        )),
+        leaf_dtype @ (D::Time32(_) | D::Time64(_)) => {
+            let leaf = &leaf_dtype
+                .time_type()
+                .expect("the variant was just matched");
+            incompatible(
+                Target::Doris,
+                path,
+                format_smolstr!(
+                    "Doris's Iceberg catalog maps no time-of-day column, got {} of {}",
+                    dtype.name(),
+                    leaf.unit()
+                ),
+            )
+        }
+        D::Null | D::Variant | D::Geometry(_) | D::Geography(_) => incompatible(
+            Target::Doris,
+            path,
+            format_smolstr!(
+                "Doris's Iceberg catalog maps no {} column, got {}",
+                dtype.kind(),
+                dtype.name()
+            ),
+        ),
+        _ => iceberg_scalar(Target::Doris, dtype, path),
     }
 }
 

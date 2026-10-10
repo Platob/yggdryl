@@ -126,7 +126,7 @@ of, else the codec's ``default_sending_time``, else UTC now
 read once - a clock the parse supplied is never the message's own, so the
 wire and the ``sendingtime`` column state none - and the instant
 ``transunix`` is the stated one, else the official
-transaction clock standing within ``official_time_delay_ms`` of that
+transaction clock standing less than ``official_time_delay_ms`` from that
 ``SendingTime`` - a ``TransactTime``, else the ``TrdRegTimestamp`` its
 ``TrdRegTimestampType`` says is about the event or a hop - else that
 ``SendingTime``; what ``OrigSendingTime`` says is the lifecycle's to read off
@@ -192,7 +192,8 @@ zero, a negative width or ``None`` disables them; ``sorted_lifecycle`` states
 that the lifecycle's messages arrive in instant order, so it walks them one
 epoch hour at a time instead of sorting the whole capture, while
 ``official_time_delay_ms`` is how far from ``SendingTime(52)`` an official
-transaction clock may stand and still date the message, and ``dedup_window_ms``
+transaction clock may stand and still date the message - the gap less than it,
+half a second when not given - and ``dedup_window_ms``
 is how long, in milliseconds of event time, the lifecycle remembers an identity
 it yielded so it yields that identity once - one minute when not given, and
 ``None``, zero or a negative window remembering none. A stage is a call, and

@@ -12,7 +12,7 @@ The owned logical type of one value: immutable, and cloning never allocates.
 | Serializes | one structural model under JSON, YAML, TOML |
 | Defaults | one non-null default per variant, freshly allocated |
 | Limits | recursion 64; a default above 64 MiB errors |
-| Compatibility | `arrow`, `spark`, `polars`, `pandas`, `iceberg`; layout rewrites only |
+| Compatibility | `arrow`, `spark`, `polars`, `pandas`, `iceberg`, `doris`; layout rewrites only, but `doris`'s instant at microseconds ([Apache Doris](#apache-doris)) |
 | Rust only | the enum itself; [`is_struct` and `into_struct_type`](#as-a-struct) |
 | JavaScript | the model as JSON only: no YAML, TOML or `pretty` |
 | Serializes strings, bytes | one `string` tag and one `binary` tag with `layout` naming the leaf and `fixed` or `max` beside it ([String](text/string.md#serialized-shape), [Bytes](text/bytes.md#serialized-shape)) |
@@ -800,6 +800,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
 | `spark` | `uint8` -> `int16`, `uint64` -> `decimal128(20,0)`, `fixed_size_serie` -> `serie`; a column stating `bits`: `uintN` -> `intN` |
 | `polars`, `pandas` | no map, and the error names key/value structs; Polars keeps unsigned and `fixed_size_serie` |
 | `iceberg` | `int8`, `int16`, `uint8`, `uint16` -> `int32`; keeps `fixed[n]`, us/ns timestamps; no duration or interval; a column stating `bits`: `uint32` -> `int32`, `uint64` -> `int64` |
+| `doris` | `iceberg`'s, then an s, ms or ns timestamp -> us under its own zone; no `time`, `null`, `variant`, `geometry` or `geography` ([Apache Doris](#apache-doris)) |
 
 On a [Field](field.md) the call keeps name, nullability, and metadata, and rebuilds the Arrow projection cache only when something changed.
 [Iceberg](../media/iceberg.md) is a closed primitive vocabulary, not an engine.
@@ -880,6 +881,82 @@ struct's children state their own.
     assert.equal(iceberg.dtype.getField('count').dtype.toString(), 'decimal128(20,0)')
     ```
 
+### Apache Doris
+
+`doris` lays a schema out as Apache Doris's Iceberg catalog reads an Iceberg table: the
+[`iceberg`](#compatibility-rewriting) layout, narrowed to the types Doris's
+[column type mapping](https://doris.apache.org/docs/lakehouse/catalogs/iceberg-catalog) names.
+Doris reads `timestamp` and `timestamptz` at microseconds (`datetime(6)`) and maps no format-version-3
+`timestamp_ns` or `timestamptz_ns`, so a timestamp of any other unit - zoned or naive - is laid out
+at microseconds under its own zone: the one resolution change any target makes, which the write onto
+the laid-out field casts, widening a second or a millisecond count exactly and truncating each
+nanosecond value to whole microseconds. Every Iceberg type that table does not name is `UNSUPPORTED` in Doris, so
+`time`, `null` (`unknown`), `variant`, `geometry` and `geography` are refused at their path;
+`uuid`, `fixed[n]`, `struct`, `map` and `list` keep Iceberg's layout. A reader of such a table that
+wants the nanoseconds back casts each batch onto the row it wrote.
+JavaScript spells it `intoSchemeCompat('doris')`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field, Scheme, StructType, TimeUnit, Timezone};
+
+    let row = DataType::from(StructType::from_fields([
+        Field::new("at", DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?, false),
+        Field::new("small", DataType::UInt8, false),
+    ])?)
+    .required_field("row");
+
+    let doris = row.clone().into_scheme_compat(&Scheme::DORIS)?;
+    assert_eq!(
+        doris.fields()[0].dtype(),
+        &DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC)?
+    );
+    assert_eq!(doris.fields()[1].dtype(), &DataType::Int32);
+    // Iceberg itself keeps the nanoseconds.
+    let iceberg = row.into_scheme_compat(&Scheme::ICEBERG)?;
+    assert_eq!(
+        iceberg.fields()[0].dtype(),
+        &DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?
+    );
+
+    // A type Doris maps nothing for is refused at its path.
+    let error = DataType::from(StructType::from_fields([Field::new(
+        "opened",
+        DataType::Time64(TimeUnit::Microsecond),
+        true,
+    )])?)
+    .into_scheme_compat(&Scheme::DORIS)
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("$.opened") && error.contains("maps no time-of-day column"));
+    ```
+
+=== "Python"
+
+    ```python
+    import pytest
+
+    from yggdryl import DataType, Field
+
+    row = Field(
+        "row",
+        DataType.from_fields([
+            Field("at", "datetime64(ns, UTC)", nullable=False),
+            Field("small", "uint8", nullable=False),
+        ]),
+        nullable=False,
+    )
+
+    doris = row.into_scheme_compat("doris")
+    assert doris.dtype["at"].dtype == DataType("datetime64(us, UTC)")
+    assert doris.dtype["small"].dtype == DataType("int32")
+    assert row.into_scheme_compat("iceberg").dtype["at"].dtype == DataType("datetime64(ns, UTC)")
+
+    with pytest.raises(ValueError, match="maps no time-of-day column"):
+        DataType.from_fields([Field("opened", "time64(us)")]).into_scheme_compat("doris")
+    ```
+
 ## Building the enum directly
 
 Building the enum by hand is Rust only; `validate` is in Python too. It catches states the public enum admits but no constructor produces.
@@ -910,6 +987,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 - nesting past 64 -> error, in parsing, default construction, and compatibility walks alike; `into_struct_type` counts the level its wrap adds.
 - `into_scheme_compat("duckdb")` -> refused by name, listing the accepted targets.
 - `datetime64(ns)` to `spark` -> refused with `got ns` and the node path; scale never clamped, extension metadata never relabeled.
+- `datetime64(ns, UTC)` to `doris` -> `datetime64(us, UTC)`, the zone kept, and a write onto it truncates each value to whole microseconds; `datetime64(s)` and `datetime64(ms)` -> `datetime64(us)` too, widened exactly; `time64(us)` to `doris` -> refused, since Doris maps no Iceberg `time`.
 - `DataType::UInt64.into_scheme_compat(&Scheme::ICEBERG)` -> `decimal128(20, 0)` always: a bare datatype states no `FIELD:representation`, only a field does.
 - `DataType.fromArrow({})` -> `TypeError`: only a `DataType`, datatype text or an Apache Arrow JS type is read, and an arbitrary object is never stringified.
 - `int`, `float`, `char`, `String`, `Boolean` -> grammar meanings (`int32`, `float32`, `utf8`, `boolean`), not FIX.

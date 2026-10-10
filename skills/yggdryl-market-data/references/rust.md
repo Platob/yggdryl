@@ -183,8 +183,9 @@ assert_eq!(merged.get_srcuuids(), [Uuid::from_v8(1), Uuid::from_v8(2)]);
 
 ## Walk a stream into chains
 
-`EventIterator` chains a stream by cross identity (and by the chain identities a live
-element's `identifiers` hold, never an `execid`), re-keys each element onto its
+`EventIterator` chains a stream by cross identity (and by one identifier of the same type and
+value a live element of its kind, side and instrument holds - every type of its `identifiers`
+but a shared one: `trdmatchid`, `quotereqid`, `mdreqid`, a parent slot), re-keys each element onto its
 chain's side and first cross code, yields a twin as a restatement rather than a successor, retires a
 chain at a terminal state and emits one `EXPIRED` at a deadline. An order's or
 an execution's chain is keyed by side - a quote's is one chain whatever side

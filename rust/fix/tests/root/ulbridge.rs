@@ -487,10 +487,15 @@ mod dataset {
                 .collect::<Vec<_>>()
         };
         let whole = walk(&codec);
-        assert_eq!(whole.len(), 39);
+        assert_eq!(whole.len(), 41);
         // The window yields each identity once: a walk remembering none also
-        // answers the three twins it restated, each an identity it had
-        // already answered, and nothing else.
+        // answers the one twin it restated, an identity it had already
+        // answered, and nothing else. It was three twins until decision 21
+        // dated a message by its official clock only less than half a second
+        // from its `SendingTime(52)`: the frame hop of order
+        // `00079132558GLXC0`'s fill states its `TransactTime(60)` 743 ms
+        // after its sending clock, so it and the execution split off it are
+        // dated by that clock and are twins of nothing.
         let every = walk(&codec.clone().with_dedup_window_ms(0));
         assert_eq!(every.len(), 42);
         let mut seen = std::collections::HashSet::new();
@@ -596,7 +601,14 @@ mod dataset {
         // were two deliveries, one of them a twin the window dropped; at
         // their own instants they are seven deliveries and no twin. One more
         // is the execution of side `UKNW` the trade capture splits off.
-        assert_eq!(direct.len(), 39);
+        //
+        // It is 41 since decision 21 dates a message by its official clock
+        // only less than half a second from its `SendingTime(52)`: the
+        // frame hop of order `00079132558GLXC0`'s fill, whose
+        // `TransactTime(60)` stands 743 ms after its sending clock, is dated
+        // by that clock, so it and its execution are deliveries of their own
+        // rather than twins of the hops the transaction still dates.
+        assert_eq!(direct.len(), 41);
         assert_eq!(
             direct
                 .iter()
@@ -733,8 +745,12 @@ mod dataset {
             read.set_srcuuids(Vec::new());
             delivered.set_srcuuids(Vec::new());
         }
-        // Every session event the walk answers names a line of each read.
-        assert_eq!((unions, events), (26, 26));
+        // Every session event the walk answers names a line of each read:
+        // 28 since decision 21 made the frame hop of order
+        // `00079132558GLXC0`'s fill and its execution - a `TransactTime(60)`
+        // 743 ms after their `SendingTime(52)`, dated by the sending clock -
+        // deliveries of their own rather than twins; it was 26.
+        assert_eq!((unions, events), (28, 28));
         let stated = |messages: Vec<FixMsg>| {
             let schema = super::format_target(&registry());
             messages
@@ -1478,13 +1494,16 @@ mod dataset {
         // shared one instant because each typeless row is now dated by its
         // own line, one per fill (A12), every hop's execution of one fill
         // folded onto one, and the trade capture's execution of side
-        // `UKNW` - less the three twins its window yields once, and the
-        // sorted door expands those.
+        // `UKNW` - less the one twin its window yields once, and the sorted
+        // door expands it. It was three twins until decision 21 dated the
+        // frame hop of order `00079132558GLXC0`'s fill, whose
+        // `TransactTime(60)` stands 743 ms after its `SendingTime(52)`, by
+        // that sending clock: it and its execution are twins of nothing.
         let walked = codec
             .lifecycle(messages)
             .collect::<yggdryl::Result<Vec<_>>>()
             .expect("the capture walks");
-        assert_eq!(walked.len(), 39);
+        assert_eq!(walked.len(), 41);
         let (operations, refused): (Vec<_>, Vec<_>) =
             codec.market_data(walked.clone()).partition(Result::is_ok);
         let operations: Vec<MarketData> = operations.into_iter().map(Result::unwrap).collect();
@@ -1492,10 +1511,10 @@ mod dataset {
             .into_iter()
             .map(|held| held.unwrap_err().to_string())
             .collect();
-        // Twenty-one of the deliveries are market data - eight fills, the
+        // Twenty-three of the deliveries are market data - eight fills, the
         // eight reports they were split off, now their orders' reports,
-        // three orders, less a fill and a report the window yields once,
-        // the execution the trade capture of line 112 splits off, and the
+        // three orders, the execution the trade capture of line 112 splits
+        // off, and the
         // NOVN order's three steps: the venue's acknowledgement of it - an
         // execution report of no fill, its order's leaf - the restatement
         // the walk reads as `UPDATED`, and the expiry the walk dates at its
@@ -1505,9 +1524,12 @@ mod dataset {
         // splits off - and its single side states no `Side(54)`, so that
         // execution is of side `UKNW`.
         assert!(refused.is_empty(), "{refused:?}");
-        assert_eq!(operations.len(), 21);
-        // The two a walk remembering nothing answers beside them each repeat
-        // an identity already there.
+        // Twenty-one until decision 21, a fill and its report the window
+        // yielded once: their frame hop is dated by its sending clock since,
+        // its `TransactTime(60)` 743 ms off, and is a twin of nothing.
+        assert_eq!(operations.len(), 23);
+        // A walk remembering nothing answers the same deliveries: none
+        // repeats an identity already there.
         let every: Vec<MarketData> = codec
             .market_data(
                 codec
@@ -1532,7 +1554,7 @@ mod dataset {
         }
         assert_eq!(
             census,
-            BTreeMap::from([("execution_event", 8), ("order_event", 13)])
+            BTreeMap::from([("execution_event", 9), ("order_event", 14)])
         );
         let at = |operation: &MarketData| {
             let event: &dyn Event = match operation {
@@ -1558,19 +1580,26 @@ mod dataset {
         // book and every execution an event of it, so a book stands at
         // every instant one states - the one instant only an execution
         // touched among them, an event-only book. The Sell order of
-        // `2454` states no price: it rests at its side's one unpriced level
-        // rather than being refused, and it leaves the side at the same
-        // instant, so the one book of that instant applies both in its delta
-        // and holds nothing. Eleven books come out - the NOVN order's three
-        // steps each its book's instant - each a delta book - with no grid
-        // and no snapshot input no book is complete, a code's first
-        // following no book - and the last is that one.
+        // `2454` states no price and is refused nowhere: its cancel request
+        // and the reject that ends it are each the delta of a book of its
+        // own instant, and neither book holds anything. Thirteen books come
+        // out - the NOVN order's three steps each its book's instant - each
+        // a delta book - with no grid and no snapshot input no book is
+        // complete, a code's first following no book - and the last is the
+        // reject's. It was eleven until decision 21 dated a message by its
+        // official clock only less than half a second from its
+        // `SendingTime(52)`: the frame hop of order `00079132558GLXC0`'s
+        // fill, its `TransactTime(60)` 743 ms off, is dated by its sending
+        // clock and is a book of that instant beside the one its transaction
+        // still dates, and the `2454` reject, sent a whole second after the
+        // transaction it states, stands a second after its cancel request
+        // rather than at its instant.
         let books: Vec<yggdryl_market::graph::BookEvent> =
             BookIterator::new(operations.clone().into_iter().map(Ok), 0)
                 .expect("a book iterator")
                 .collect::<yggdryl::Result<Vec<_>>>()
                 .expect("every operation folds");
-        assert_eq!(books.len(), 11);
+        assert_eq!(books.len(), 13);
         assert!(books.iter().all(|book| !book.is_complete()));
         let key = |operation: &MarketData| (operation.book_crosscode().to_owned(), at(operation));
         let stood: BTreeSet<(String, i64)> = books
@@ -1584,13 +1613,18 @@ mod dataset {
             .map(key)
             .collect();
         assert_eq!(stood, booked);
-        // Three of those instants each hold one order that ended before its
+        // Five of those instants each hold one order that ended before its
         // book held it: two first reported filled, with nothing left to rest
-        // and no live entry to continue, and one restating the fill that
-        // ended an order its book stopped holding at an earlier instant. Each
-        // places nothing - what was alive before it is alive after it - yet
-        // each is the one order in the delta of the book of its instant, the
-        // fill it reports recorded among that book's events.
+        // and no live entry to continue, two restating the fill that ended an
+        // order its book stopped holding at an earlier instant, and the
+        // reject ending the unpriced `2454` order. Each places nothing - what
+        // was alive before it is alive after it - yet each is the one order
+        // in the delta of the book of its instant, the fill it reports,
+        // where it reports one, recorded among that book's events. It was
+        // three until decision 21: the frame hop of order
+        // `00079132558GLXC0`'s fill, dated by its sending clock, now first
+        // reports it filled and the hop its transaction dates restates it,
+        // and the reject stands at an instant of its own.
         let ended: Vec<&MarketData> = operations
             .iter()
             .filter(|operation| {
@@ -1609,8 +1643,8 @@ mod dataset {
             .collect();
         assert_eq!(
             ended.len(),
-            3,
-            "one ended order alone at each of three instants"
+            5,
+            "one ended order alone at each of five instants"
         );
         for order in ended {
             let MarketData::OrderEvent(event) = order else {
@@ -1697,9 +1731,24 @@ mod dataset {
         assert!(last.limits(yggdryl_market::Side::Buy).next().is_none());
         assert!(last.limits(yggdryl_market::Side::Sell).next().is_none());
         assert_eq!(last.alive().count(), 0);
-        let delta: Vec<&yggdryl_market::graph::MarketData> = last.delta().collect();
+        // The unpriced order's cancel request and the reject that ends it
+        // stood at one instant, the deltas of one book, until decision 21:
+        // the reject states its `TransactTime(60)` a whole second before its
+        // `SendingTime(52)`, so its sending clock dates it and the cancel
+        // request is the delta of the book before it, which holds nothing
+        // either.
+        let cancelled = &books[books.len() - 2];
+        assert_eq!(cancelled.book_crosscode(), last.book_crosscode());
+        assert_eq!(cancelled.alive().count(), 0);
+        assert_eq!(last.delta().count(), 1, "its exit alone");
+        let delta: Vec<&yggdryl_market::graph::MarketData> =
+            cancelled.delta().chain(last.delta()).collect();
         assert_eq!(delta.len(), 2, "the unpriced order and its exit");
-        assert_eq!(last.events().len(), 0, "no execution touched its instant");
+        assert_eq!(
+            cancelled.events().len() + last.events().len(),
+            0,
+            "no execution touched either instant"
+        );
         assert_eq!(
             delta
                 .iter()
@@ -1791,8 +1840,12 @@ mod dataset {
         // orders and quotes - and its `events` - the executions and the
         // snapshot controls - and came to digest the events after the
         // delta: this book holds no event, so it feeds the empty list's
-        // count beside its two delta entries.
-        assert_eq!(last.get_hashcode(), 10_745_751_629_392_559_435);
+        // count beside its two delta entries. It moved again when decision
+        // 21 dated the reject by its own sending clock, a second after the
+        // transaction it states: this book is the reject's instant alone and
+        // digests its one delta, the cancel request the delta of the book
+        // before it.
+        assert_eq!(last.get_hashcode(), 16_012_236_961_469_281_692);
 
         // No leaf keys a typed fact, save the one the NOVN delivery's hops
         // disagree on: its rows state two `OMSDEALERORDERID` values, the
@@ -1835,7 +1888,12 @@ mod dataset {
         // seven identifier keys are read into its sets and its four others
         // ride, and the restatement and the expiry the delivery's hops
         // folded each read six and keep five, the `OMSDEALERORDERID` the
-        // hops disagree on among them - 62 kept and 54 read in all.
+        // hops disagree on among them - 62 kept and 54 read until decision
+        // 21. It dates the frame hop of order `00079132558GLXC0`'s fill by
+        // its sending clock, its `TransactTime(60)` 743 ms off, so that hop
+        // is no twin and it and its execution are two more leaves carrying
+        // their message's twelve keys each, five kept and seven read: 140
+        // over the twenty-three, 72 kept and 68 read in all.
         let by_sources: HashMap<&[yggdryl::Uuid], &FixMsg> = walked
             .iter()
             .map(|message| (message.get_srcuuids(), message))
@@ -1878,7 +1936,7 @@ mod dataset {
                 lifted += 1;
             }
         }
-        assert_eq!((carried, lifted), (62, 54));
+        assert_eq!((carried, lifted), (72, 68));
         let of_line = |seqnum: u64| {
             lines
                 .iter()

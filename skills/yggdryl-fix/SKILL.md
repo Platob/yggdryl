@@ -36,7 +36,7 @@ order, so a report and the execution split off it are places 0 and 1.
 **Lifecycle is the only cross-message stage**: `lifecycle` collects a finite
 capture, sorts it by event time, folds duplicate deliveries, places each
 message by content among the messages of its instant (a content repeated
-there keeps its place), chains it to the live one of its order within its own `marketdatakind` - by its chain identities, `orderid`, `clordid`, `quoteid`, `tradeid`, `tradereportid` and their secondary ones, never `execid`, `trdmatchid` or `quotereqid`, and by the first value a lineage field names, `OrigClOrdID(41)`, `OrigTradeID(1126)`, `TradeReportRefID(572)` - (`crossuuid`,
+there keeps its place), chains it to the live one of its order within its own `marketdatakind`, side and instrument - by one identifier of the same type and value, every type of its `identifiers` but a shared one (`trdmatchid`, `quotereqid`, `mdreqid`, a parent slot), and by the first value a lineage field names, `OrigClOrdID(41)`, `OrigTradeID(1126)`, `TradeReportRefID(572)` - (`crossuuid`,
 `prevuuid`; an order and an execution under one cross code are two chains), re-keys it onto its chain's side and first cross code, takes every bridge `metadata` key of the chain it does not state
 and the ids its dictionary follows, each with its parents, states a message citing two live chains as a conflict - a `FixAnomaly` under `crosscode`, warned once per kind - rather than picking one, and learns instrument associations.
 Nothing chains unasked.

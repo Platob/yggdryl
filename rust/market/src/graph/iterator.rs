@@ -130,22 +130,22 @@ pub(crate) mod sealed {
         /// [`Market::get_side`](super::super::Market::get_side) of a sided
         /// kind ([`MarketDataKind::is_sided`]), whose cross code carries it,
         /// so its base code is what an element stating no side joins it by;
-        /// `Side::Unknown` for any other kind - a quote's side is a tag - and
-        /// for an element the walk does not chain.
+        /// `Side::Unknown` for any other kind - a quote's side is a tag -
+        /// and for an element the walk does not chain.
         fn walked_side(&self) -> Side;
-        /// The side a name the element goes by is alive on: its chain's
-        /// side ([`Self::walked_side`]) for a sided kind, and an unsided
-        /// element's own tag - FIX scopes an `MDEntryID(278)` by its
-        /// `MDEntryType(269)`, so a bid and an offer going by one name are
-        /// two entries - `Side::Unknown` where it tags none or both legs
-        /// ([`Side::Both`]).
+        /// The side a name the element goes by is alive on: the one leg
+        /// its own statement tags, whatever its kind - a sided chain's side,
+        /// a quote's or a book entry's tag, so a bid and an offer going by
+        /// one `MDEntryID(278)` are two entries ([`Side::tagged`]) -
+        /// `Side::Unknown` where it tags none or both legs ([`Side::Both`]),
+        /// and for an element the walk does not chain. A name is matched on
+        /// its side whenever both the element and the holder state one.
         fn walked_slot(&self) -> Side;
-        /// Whether the element may join another chain by a name or a base
-        /// code it shares with it: every chained element but one filed as
-        /// an execution ([`MarketDataKind::Execution`]), which is a chain of
-        /// its own and follows only its own cross code - whatever its state,
-        /// so an order's report of a fill still joins its order.
-        fn walked_joins(&self) -> bool;
+        /// [`Market::get_instcode`](super::super::Market::get_instcode): the
+        /// instrument the element states, which a name is matched on
+        /// whenever both the element and the holder state one; `None` for
+        /// an element the walk does not chain.
+        fn walked_instcode(&self) -> Option<&str>;
         /// [`Market::marketdatakind`](super::super::Market::marketdatakind):
         /// the category a chain holds elements of only.
         fn walked_kind(&self) -> MarketDataKind;
@@ -230,8 +230,8 @@ pub(crate) mod sealed {
         fn walked_slot(&self) -> Side {
             self.get_side().tagged()
         }
-        fn walked_joins(&self) -> bool {
-            self.marketdatakind() != MarketDataKind::Execution
+        fn walked_instcode(&self) -> Option<&str> {
+            self.get_instcode()
         }
         fn walked_kind(&self) -> MarketDataKind {
             self.marketdatakind()
@@ -380,9 +380,8 @@ pub(crate) mod sealed {
             self.as_event_operation()
                 .map_or(Side::Unknown, |operation| operation.get_side().tagged())
         }
-        fn walked_joins(&self) -> bool {
-            self.as_event_operation()
-                .is_some_and(|operation| operation.marketdatakind() != MarketDataKind::Execution)
+        fn walked_instcode(&self) -> Option<&str> {
+            self.as_event_operation()?.get_instcode()
         }
         fn walked_kind(&self) -> MarketDataKind {
             self.marketdatakind()
@@ -412,19 +411,33 @@ enum Source<E, I> {
 /// where it states no cross code, within the element's
 /// [`MarketDataKind`] - a chain holds one category,
 /// so an order and an execution under one cross code are two chains and a
-/// fill never follows the order it filled. A chain goes by names beside
-/// its cross element: every value of a chain identity type
-/// ([`IdType::is_chain_identity`]) - an `OrderID`, a `ClOrdID`, a `QuoteID`,
-/// a `TradeID`, never an `ExecID` or a `QuoteReqID`, which name a report or
-/// a request many chains answer - that its statements stated, the old value
-/// beside the new after a replace, and the chain's first value a lineage
-/// field names (`OrigClOrdID(41)`, `OrigTradeID(1126)`,
-/// `TradeReportRefID(572)`) under the base it names, each held by the
-/// first live chain of its category and side that stated it until that
-/// chain ends. An element arriving under an identity a live element of its
-/// category holds, or citing a chain by such a name - so a report that
-/// spells only the `ClOrdID` a live order was placed under still finds the
-/// order - is stated as the one after it by its own
+/// fill never follows the order it filled - and, for a sided kind
+/// ([`MarketDataKind::is_sided`]), within its side, so a buy and a sell are
+/// two chains whatever they share. A current element matches the previous
+/// alive element of its kind, of the same instrument
+/// ([`Market::get_instcode`]) where both state one, of the same side
+/// whenever both state one - the side an order's or an execution's chain
+/// is keyed by, the leg a quote or a book entry tags, so a bid and an offer
+/// going by one `MDEntryID(278)` are two entries - sharing one identifier
+/// of the same type and value ([`IdType::is_chain_name`]): a chain goes by
+/// names beside its cross element - every value of a chain identity type
+/// ([`IdType::is_chain_identity`]) that its statements stated, the old value
+/// beside the new after a replace; the chain's first value a lineage field
+/// names (`OrigClOrdID(41)`, `OrigTradeID(1126)`, `TradeReportRefID(572)`)
+/// under the base it names; and, for every other type its live statement
+/// holds - an `ExecID`, a bridge's own word - that value alone, released by
+/// the next statement that holds another or none, so a chain of many
+/// reports is bounded by its identities and never by its reports. An
+/// identifier many elements share names none: a match's `TrdMatchID(880)`,
+/// which both orders it filled state, a request many chains answer
+/// (`QuoteReqID(131)`, `MDReqID(262)`) and a parent order's slot
+/// (`parentorderid`, `parentclordid`). Each name is held by the first live
+/// chain of its category, side and instrument that stated it until that
+/// chain ends, and matched by type and value whatever source spelled it. An
+/// element arriving under an identity a live element of its category holds,
+/// or citing a chain by such a name - so a report that spells only the
+/// `ClOrdID` a live order was placed under still finds the order - is
+/// stated as the one after it by its own
 /// [`Element::with_previous`], so it records its predecessor, stands after
 /// it where they share an instant and carries the lifecycle forward; what
 /// that answers is what the walk yields. An element citing two live chains
@@ -582,15 +595,23 @@ pub struct EventIterator<E, I> {
     alive: HashMap<Chain, Live<E>>,
     /// Every name a live chain goes by ([`chain_names`]: its chain
     /// identities under their types, its first value a lineage field names
-    /// under the base), by scheme then name, under the identity that holds
+    /// under the base, every other type's value its live statement holds
+    /// under that type), by scheme then name, under the identity that holds
     /// it and the side the name is alive on ([`Walked::walked_slot`]) - a
-    /// sided chain's side, a quote's tag - one holder per side and category,
-    /// the first chain that stated it, until that chain ends: a name an
-    /// element states is a chain it cites, and an element stating no side
-    /// cites every side a name is alive on. Two levels, so a name is looked
-    /// up by the borrowed scheme and name an element states and never by a
-    /// copy of them. Bounded by the identifier changes of the live chains -
-    /// one entry per distinct name a chain stated - never by their reports.
+    /// sided chain's side, a quote's or an entry's tag - one holder per
+    /// side, category and instrument ([`Walked::walked_instcode`], read off
+    /// the holder's live element), the first chain that stated it, until
+    /// that chain ends: a name an element states is a chain it cites, on
+    /// its side where both state one, of its instrument where both state
+    /// one, and an element stating no side or no instrument cites every
+    /// one a name is alive on. Two levels, so a name is looked up by the
+    /// borrowed scheme and name an element states and never by a copy of
+    /// them, and a slot holds at most one chain per category, side and
+    /// instrument going by the name, never one per chain
+    /// (`rust/market/tests/graph/iterator.rs` pins the slot's length).
+    /// Bounded by the identifier changes of the live chains - one entry per
+    /// distinct chain identity a chain stated, one per other type its live
+    /// statement holds - never by their reports.
     named: HashMap<IdType, HashMap<String, Vec<(Side, Chain)>>>,
     /// The live identities of each base cross code - the code without the
     /// prefix [`Market::stored_crosscode`](super::Market::stored_crosscode)
@@ -750,7 +771,9 @@ where
             self.expirations.remove(&(deadline, identity));
         }
         if is_alive(element) {
-            let side = element.walked_slot();
+            let slot = element.walked_slot();
+            let instrument = element.walked_instcode();
+            let alive = &self.alive;
             for (scheme, name) in chain_names(element) {
                 // Looked up borrowed first, as the bases are: a chain settled
                 // again under the names it already goes by allocates nothing.
@@ -764,15 +787,22 @@ where
                 };
                 // One side per identity: the one its latest statement tags.
                 let held = slots.len();
-                slots.retain(|(held, chain)| *chain != identity || *held == side);
+                slots.retain(|(held, chain)| *chain != identity || *held == slot);
                 let moved_off = slots.len() != held;
-                // One live holder per side and category: the first chain
-                // that stated the name holds it until it ends, so a second
-                // chain stating it files nothing for it.
-                if slots
-                    .iter()
-                    .any(|(held, chain)| *held == side && chain.1 == identity.1)
-                {
+                // One live holder per side, category and instrument: the
+                // first chain that stated the name holds it until it ends,
+                // so a second chain stating it files nothing for it. The
+                // holder's instrument is its live element's, so a chain
+                // that learnt one keeps the name without filing it again.
+                if slots.iter().any(|(held, chain)| {
+                    *held == slot
+                        && (*chain == identity
+                            || (chain.1 == identity.1
+                                && alive
+                                    .get(chain)
+                                    .and_then(|live| live.element.walked_instcode())
+                                    == instrument))
+                }) {
                     if moved_off
                         && !slots.iter().any(|(_, chain)| *chain == identity)
                         && let Some(known) = self.names_of.get_mut(&identity)
@@ -783,7 +813,7 @@ where
                     }
                     continue;
                 }
-                slots.push((side, identity));
+                slots.push((slot, identity));
                 let known = self.names_of.entry(identity).or_default();
                 if !known
                     .iter()
@@ -792,6 +822,7 @@ where
                     known.push((scheme, name.to_owned()));
                 }
             }
+            self.release(identity, element);
             let base = base_crosscode(element.get_crosscode());
             // Only a sided element stating a side is a side its base is
             // alive on: no other chain is keyed by a side.
@@ -848,6 +879,44 @@ where
                 }
             }
             self.retired.push((arrived, identity, element.clone()));
+        }
+    }
+
+    /// Releases the names `identity` filed that are not its live
+    /// statement's: a chain identity's every value stays the chain's until
+    /// it ends, so a late report citing the old one still finds it; any
+    /// other type's value is the live statement's alone, so a chain of many
+    /// reports holds one record per type, never one per report. One walk of
+    /// the chain's own record, a `retain` on each slot released, nothing per
+    /// live chain.
+    fn release(&mut self, identity: Chain, element: &E) {
+        let Some(known) = self.names_of.get_mut(&identity) else {
+            return;
+        };
+        let mut at = 0;
+        while let Some((scheme, name)) = known.get(at) {
+            let kept = scheme.is_chain_identity()
+                || chain_names(element).any(|(held, value)| held == *scheme && value == name);
+            if kept {
+                at += 1;
+                continue;
+            }
+            let (scheme, name) = known.remove(at);
+            let empty = self.named.get_mut(&scheme).is_some_and(|names| {
+                if let Some(slots) = names.get_mut(&name) {
+                    slots.retain(|(_, held)| *held != identity);
+                    if slots.is_empty() {
+                        names.remove(&name);
+                    }
+                }
+                names.is_empty()
+            });
+            if empty {
+                self.named.remove(&scheme);
+            }
+        }
+        if known.is_empty() {
+            self.names_of.remove(&identity);
         }
     }
 
@@ -1104,46 +1173,30 @@ where
     ///
     /// A sided kind's chains are keyed by side: an order's or an
     /// execution's cross code carries the side, so a buy and a sell under
-    /// one `ClOrdID` are two chains, and a name is alive on each side apart;
-    /// a quote's are not, so every statement of one quote under its code is
-    /// one chain whatever side it tags - but a name a quote goes by is alive
-    /// on the side it tags, as FIX scopes an `MDEntryID(278)` by its entry
-    /// type, so a bid and an offer going by one name are two chains, and a
-    /// tagged statement names the quote of its side, else the untagged quote
-    /// holding both legs. An element stating no side names the one side
-    /// alive under its base cross code - where both are, the base names
-    /// neither and its names decide - and every live chain its names are
-    /// alive under on any side. An execution names nothing by a name or a
-    /// base: it is a chain of its own, followed only under its own cross
-    /// code. No element names by a name a chain one of its siblings stands
-    /// in - an element split off the same message, such as two entries of
-    /// one batch going by the batch's own identifier, are two entries. Every
-    /// chain an element names is one of its own category.
+    /// one `ClOrdID` are two chains; a quote's are not, so every statement
+    /// of one quote under its code is one chain whatever side it tags. A
+    /// name is alive on the side its holder's statement tags, whatever the
+    /// kind, and an element names by it the holder of its side where both
+    /// state one - a bid and an offer going by one `MDEntryID` are two
+    /// entries, a tagged statement names the untagged quote holding both
+    /// legs - and of its instrument where both state one; stating no side,
+    /// or no instrument, it names every holder the name is alive under. An
+    /// element stating no side names the one side alive under its base
+    /// cross code too - where both are, the base names neither and its
+    /// names decide. No element names by a name a chain one of its siblings
+    /// stands in - an element split off the same message, such as two
+    /// entries of one batch going by the batch's own identifier, are two
+    /// entries. Every chain an element names is one of its own category: an
+    /// execution names executions, never the order it filled.
     fn identity_of(&self, element: &E) -> (Chain, Option<String>) {
         let kind = element.walked_kind();
         let own = (element.get_crossuuid(), kind);
-        if !element.walked_joins() {
-            return (own, None);
-        }
         let mut cited = Cited::default();
         if self.alive.contains_key(&own) {
             cited.add(own, Cite::Own);
         }
-        let side = element.walked_side();
         let alive = |identity: &Chain| identity.1 == kind && self.alive.contains_key(identity);
-        // A chain an element split off the same message stands in: its
-        // sibling's, never one it continues.
-        let sources = element.get_srcuuids();
-        let sibling = |identity: &Chain| {
-            !sources.is_empty()
-                && self.alive.get(identity).is_some_and(|live| {
-                    live.element
-                        .get_srcuuids()
-                        .iter()
-                        .any(|source| sources.contains(source))
-                })
-        };
-        if side == Side::Unknown {
+        if element.walked_side() == Side::Unknown {
             let base = base_crosscode(element.get_crosscode());
             if let Some(held) = (!base.is_empty()).then(|| self.bases.get(base)).flatten() {
                 let mut live = held.iter().filter(|identity| alive(identity));
@@ -1152,8 +1205,29 @@ where
                 }
             }
         }
+        // A chain an element split off the same message stands in - its
+        // sibling's, never one it continues - and one of another instrument
+        // are no chain it names.
+        let sources = element.get_srcuuids();
+        let instrument = element.walked_instcode();
+        let joined = |identity: &Chain| {
+            identity.1 == kind
+                && self.alive.get(identity).is_some_and(|live| {
+                    let live = &live.element;
+                    (sources.is_empty()
+                        || !live
+                            .get_srcuuids()
+                            .iter()
+                            .any(|source| sources.contains(source)))
+                        && instrument.is_none_or(|code| {
+                            live.walked_instcode().is_none_or(|held| held == code)
+                        })
+                })
+        };
+        // The side a name is matched on wherever both state one: stating
+        // none, the element cites every side the name is alive on.
         let slot = element.walked_slot();
-        let joined = |identity: &Chain| alive(identity) && !sibling(identity);
+        let on_side = |held: Side| slot == Side::Unknown || held == Side::Unknown || held == slot;
         for (scheme, name) in chain_names(element) {
             if cited.is_conflict() {
                 break;
@@ -1161,25 +1235,13 @@ where
             let Some(slots) = self.named.get(&scheme).and_then(|names| names.get(name)) else {
                 continue;
             };
-            if slot == Side::Unknown {
-                for (_, identity) in slots.iter().filter(|(_, identity)| joined(identity)) {
-                    cited.add(*identity, Cite::Name(scheme.clone(), name));
-                }
-                continue;
-            }
-            let on = |wanted: Side| {
-                slots
-                    .iter()
-                    .find(|(held, identity)| *held == wanted && joined(identity))
-                    .map(|(_, identity)| *identity)
-            };
-            // A tagged statement of an unsided kind names the quote holding
-            // both legs - untagged, or `BOTH` - where none of its side goes
-            // by it: a fallback, never a second candidate.
-            if let Some(identity) =
-                on(slot).or_else(|| (side == Side::Unknown).then(|| on(Side::Unknown)).flatten())
+            // A slot holds at most one chain per category, side and
+            // instrument going by the name.
+            for (_, identity) in slots
+                .iter()
+                .filter(|(held, identity)| on_side(*held) && joined(identity))
             {
-                cited.add(identity, Cite::Name(scheme, name));
+                cited.add(*identity, Cite::Name(scheme.clone(), name));
             }
         }
         match cited {
@@ -1318,12 +1380,13 @@ where
 
 /// The names a chain goes by in the walk's index, read off one element as
 /// [`EventIterator::settle`] files them and [`EventIterator::identity_of`]
-/// looks them up: each identifier of a chain identity type
-/// ([`IdType::is_chain_identity`]) under that type, and each a lineage field
-/// states - the chain's first value - under the base it names
-/// ([`Walked::walked_origin_of`]). A per-report reference, a security, a
-/// party, the previous-value slot the walk writes and every other word name
-/// no chain. Borrowed: a chain identity is a member, cloned for nothing.
+/// looks them up: each identifier of a type that names a chain
+/// ([`IdType::is_chain_name`]: every type but one many elements share - a
+/// match's `TrdMatchID`, a request many chains answer, a parent order's
+/// slot) under its own type, matched by type and value whatever source
+/// spelled it, and each a lineage field states - the chain's first value -
+/// under the base it names too ([`Walked::walked_origin_of`]). Borrowed: a
+/// type is a member or a word held inline, cloned for nothing.
 fn chain_names<E: Walked>(element: &E) -> impl Iterator<Item = (IdType, &str)> {
     element
         .walked_identifiers()
@@ -1331,7 +1394,7 @@ fn chain_names<E: Walked>(element: &E) -> impl Iterator<Item = (IdType, &str)> {
         .flat_map(Identifiers::iter)
         .flat_map(move |id| {
             let kind = id.kind();
-            kind.is_chain_identity()
+            kind.is_chain_name()
                 .then(|| kind.clone())
                 .into_iter()
                 .chain(element.walked_origin_of(kind))

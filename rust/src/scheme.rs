@@ -43,6 +43,7 @@ enum SchemeWire {
     Wasb,
     Wasbs,
     Spark,
+    Doris,
     Polars,
     Pandas,
     Python,
@@ -122,6 +123,9 @@ impl Scheme {
     pub const WASBS: Self = Self(SchemeWire::Wasbs);
     /// The Apache Spark SQL interchange namespace.
     pub const SPARK: Self = Self(SchemeWire::Spark);
+    /// The Apache Doris interchange namespace: the Iceberg tables Doris's
+    /// Iceberg catalog reads.
+    pub const DORIS: Self = Self(SchemeWire::Doris);
     /// The Polars interchange namespace.
     pub const POLARS: Self = Self(SchemeWire::Polars);
     /// The pandas interchange namespace.
@@ -133,13 +137,16 @@ impl Scheme {
     ///
     /// [`Self::ARROW`] is the identity target; the rest are progressively more
     /// conservative subsets of the pinned Arrow model. [`Self::ICEBERG`] is the
-    /// table-format subset, so it is both a metadata namespace and a target.
-    pub const COMPATIBILITY_TARGETS: [Self; 5] = [
+    /// table-format subset, so it is both a metadata namespace and a target,
+    /// and [`Self::DORIS`] is the part of it Apache Doris's Iceberg catalog
+    /// reads.
+    pub const COMPATIBILITY_TARGETS: [Self; 6] = [
         Self::ARROW,
         Self::SPARK,
         Self::POLARS,
         Self::PANDAS,
         Self::ICEBERG,
+        Self::DORIS,
     ];
 
     /// Parse and validate a URI scheme or metadata protocol namespace.
@@ -185,6 +192,7 @@ impl Scheme {
             SchemeWire::Wasb => "WASB",
             SchemeWire::Wasbs => "WASBS",
             SchemeWire::Spark => "SPARK",
+            SchemeWire::Doris => "DORIS",
             SchemeWire::Polars => "POLARS",
             SchemeWire::Pandas => "PANDAS",
             SchemeWire::Python => "PYTHON",
@@ -226,6 +234,7 @@ impl Scheme {
             SchemeWire::Wasb => "wasb",
             SchemeWire::Wasbs => "wasbs",
             SchemeWire::Spark => "spark",
+            SchemeWire::Doris => "doris",
             SchemeWire::Polars => "polars",
             SchemeWire::Pandas => "pandas",
             SchemeWire::Python => "python",
@@ -374,6 +383,7 @@ impl Scheme {
                 | SchemeWire::Polars
                 | SchemeWire::Pandas
                 | SchemeWire::Iceberg
+                | SchemeWire::Doris
         )
     }
 
@@ -432,6 +442,7 @@ impl FromStr for Scheme {
             5 if value.eq_ignore_ascii_case("arrow") => Some(Self::ARROW),
             5 if value.eq_ignore_ascii_case("field") => Some(Self::FIELD),
             5 if value.eq_ignore_ascii_case("spark") => Some(Self::SPARK),
+            5 if value.eq_ignore_ascii_case("doris") => Some(Self::DORIS),
             6 if value.eq_ignore_ascii_case("digest") => Some(Self::DIGEST),
             6 if value.eq_ignore_ascii_case("polars") => Some(Self::POLARS),
             6 if value.eq_ignore_ascii_case("pandas") => Some(Self::PANDAS),

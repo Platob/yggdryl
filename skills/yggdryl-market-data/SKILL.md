@@ -73,11 +73,14 @@ Hold these facts:
   chain's first as `origorderid`, a changed `clordid` leaves `origclordid`
   (`FIX:parents` states the list a FIX field has). A FIX lifecycle message takes the `metadata` keys and
   only the ids its dictionary follows, each with its parents. `EventIterator` joins a stream by cross
-  identity and by the type and value of a chain identity a live element went by
-  (`orderid`, `clordid`, `quoteid`, `tradeid`, `tradereportid` and their
-  secondary ones - never `execid`, `trdmatchid` or `quotereqid`) or the chain's
+  identity and by one identifier of the same type and value a live element of
+  its kind, side and instrument holds (`IdType::is_chain_name`: a chain identity -
+  `orderid`, `clordid`, `quoteid`, `tradeid`, `tradereportid` and their secondary
+  ones - by every value it went by, any other type by its live statement's value,
+  never a shared `trdmatchid`, `quotereqid`, `mdreqid` or parent slot) or the chain's
   first value a lineage identifier names (`origclordid`, `origorderid`), filed
-  under its base, each name held by the first live chain that stated it; an
+  under its base, each name held by the first live chain of its kind, side and
+  instrument that stated it; an
   element citing two live chains joins neither - it stands under its own
   identity, `Operation::note_conflict` tells it (a FIX message's `FixAnomaly`)
   and the walk warns once per kind - and every element of a chain is re-keyed
@@ -284,10 +287,10 @@ Hold these facts:
    trades, and every book - delta or complete - answers them from the top of
    book it settled on.
 7. Join and chain by identity: `crossuuid` is one chain whatever identifier an
-   event used; a later event joins a live one of its side and its
-   `marketdatakind` through the type and value of a chain identity
-   (`orderid`, `clordid`, `quoteid`, `tradeid`..., whatever its source, never
-   an `execid`) - a quote's name alive on the side it tags, so a bid and an
+   event used; a later event joins a live one of its side, its instrument and its
+   `marketdatakind` through the type and value of one shared identifier
+   (`orderid`, `clordid`, `quoteid`, `tradeid`, `execid`..., whatever its source, never
+   a shared `trdmatchid`, `quotereqid` or `mdreqid`) - a quote's name alive on the side it tags, so a bid and an
    offer going by one name are two chains - and one stating no side joins the
    single side alive under its code; one citing two chains joins neither. Name identifiers there, as `Identifier`s,
    rather than inventing a column.

@@ -1267,17 +1267,26 @@ mod naming {
         assert_eq!(named_identities(&walk), 0);
     }
 
-    /// A per-report reference - an `ExecID(17)`, a `TrdMatchID(880)` -
-    /// names no chain, so two orders whose reports share one stay two
-    /// chains, and a chain of many reports holds one record per identity
-    /// type it goes by, never one per report.
+    /// A report's own reference - an `ExecID(17)` - names the live chain
+    /// that states it: a chain holds one record per type for the value its
+    /// live statement holds, released by the next statement, so a chain of
+    /// many reports holds its chain identities and one record per reference
+    /// type, never one per report. An identifier many elements share names
+    /// no chain and is filed nowhere (decision 25): a match's
+    /// `TrdMatchID(880)`, which both orders it filled state, a request many
+    /// chains answer - `quotereqid`, `mdreqid` - and a parent order's slot -
+    /// `parentorderid`, `parentclordid`.
     #[test]
-    fn a_per_report_reference_names_no_chain() {
+    fn a_per_report_reference_names_the_live_report_alone() {
         crate::install::installed();
+        use yggdryl_market::Side;
         let trdmatchid = IdType::TrdMatchId;
-        let report = |ms: i64, order: &str, exec: &str| {
-            anonymous(
+        let report = |ms: i64, side: Side, order: &str, exec: &str| {
+            super::sided(
+                "",
                 ms,
+                side,
+                State::PartiallyFilled,
                 &[
                     (ORDER_ID, order),
                     (EXEC_ID, exec),
@@ -1286,10 +1295,10 @@ mod naming {
             )
         };
         let arrived = vec![
-            named_at("O-1", 10, &ORDER_ID, "A"),
-            named_at("O-2", 11, &ORDER_ID, "B"),
-            report(20, "A", "E1"),
-            report(21, "B", "E1"),
+            super::sided("O-1", 10, Side::Buy, State::New, &[(ORDER_ID, "A")]),
+            super::sided("O-2", 11, Side::Sell, State::New, &[(ORDER_ID, "B")]),
+            report(20, Side::Buy, "A", "E1"),
+            report(21, Side::Sell, "B", "E1"),
         ];
         let mut walk = EventIterator::new(arrived, true);
         let walked: Vec<OrderEvent> = walk.by_ref().collect();
@@ -1297,49 +1306,174 @@ mod naming {
         assert_eq!(
             walked[3].get_prevuuid(),
             Some(walked[1].get_uuid()),
-            "B's report joins B, never A by the execution they share"
+            "B's report joins B: the execution they share is alive on the buy side alone, the match nowhere"
         );
-        assert_eq!(walked[3].get_crosscode(), "10:0:O-2");
+        assert_eq!(walked[3].get_crosscode(), "10:2:O-2");
         assert_eq!(walk.alive().count(), 2);
-        assert!(named_chains(&walk, &EXEC_ID, "E1").is_empty());
-        assert!(named_chains(&walk, &trdmatchid, "M1").is_empty());
+        let (buy, sell) = (walked[0].get_crossuuid(), walked[1].get_crossuuid());
         assert_eq!(
-            named_chains(&walk, &ORDER_ID, "A"),
-            [walked[0].get_crossuuid()]
+            named_chains(&walk, &EXEC_ID, "E1"),
+            [buy, sell],
+            "one per side"
         );
+        assert_eq!(
+            named_chains(&walk, &trdmatchid, "M1"),
+            [],
+            "a match names no chain"
+        );
+        assert_eq!(named_chains(&walk, &ORDER_ID, "A"), [buy]);
 
         // One order, a client order identifier and sixty-four reports each
-        // stating an execution of its own: two records, whatever the count.
+        // stating an execution of its own: three records, whatever the
+        // count - the live report's execution alone is filed.
         let mut order = named_at("O-1", 0, &ORDER_ID, "A");
         order
             .insert_identifier(identifier(&CL_ORD_ID, "C"))
             .unwrap();
         order.finalize();
         let reports = (1..=64).map(|step| {
-            let mut report = report(step, "A", &format!("E{step}"));
+            let mut report = anonymous(step, &[(ORDER_ID, "A"), (EXEC_ID, &format!("E{step}"))]);
             report.set_state(State::PartiallyFilled);
             report.finalize();
             report
         });
         let mut walk = EventIterator::new(std::iter::once(order).chain(reports), true);
-        assert_eq!(walk.by_ref().count(), 65);
+        let walked: Vec<OrderEvent> = walk.by_ref().collect();
+        assert_eq!(walked.len(), 65);
         assert_eq!(walk.alive().count(), 1);
-        assert_eq!(name_records(&walk), 2, "orderid and clordid, once each");
-        assert!(named_chains(&walk, &EXEC_ID, "E64").is_empty());
+        assert_eq!(
+            name_records(&walk),
+            3,
+            "orderid, clordid and the live execid"
+        );
+        let chain = walked[0].get_crossuuid();
+        assert_eq!(named_chains(&walk, &EXEC_ID, "E64"), [chain]);
+        assert!(
+            named_chains(&walk, &EXEC_ID, "E63").is_empty(),
+            "released by the next report"
+        );
+        assert!(named_chains(&walk, &EXEC_ID, "E1").is_empty());
+
+        // The exclusions file nothing, whoever states them.
+        let excluded = anonymous(
+            0,
+            &[
+                (ORDER_ID, "A"),
+                (trdmatchid, "M1"),
+                (IdType::QuoteReqId, "R1"),
+                (IdType::MdReqId, "MD1"),
+                (super::parent_order_id(), "P1"),
+                ("parentclordid".parse().unwrap(), "K1"),
+            ],
+        );
+        let mut walk = EventIterator::new(vec![excluded], true);
+        assert_eq!(walk.by_ref().count(), 1);
+        assert_eq!(named_chains(&walk, &IdType::TrdMatchId, "M1"), []);
+        assert_eq!(named_chains(&walk, &IdType::QuoteReqId, "R1"), []);
+        assert_eq!(named_chains(&walk, &IdType::MdReqId, "MD1"), []);
+        assert_eq!(named_chains(&walk, &super::parent_order_id(), "P1"), []);
+        assert_eq!(
+            named_chains(&walk, &"parentclordid".parse().unwrap(), "K1"),
+            []
+        );
+        assert_eq!(name_records(&walk), 1, "the orderid alone");
+    }
+
+    /// A name's slot holds at most one chain per category, side and
+    /// instrument going by it, never one per chain, so reading it is no
+    /// scan of the live chains: 1,024 live orders split off one message -
+    /// siblings, which never join one another - all going by one `clordid`
+    /// on one side of one instrument leave one record under the name, and
+    /// as many as there are instruments and sides where they differ.
+    #[test]
+    fn a_name_slot_holds_one_chain_per_category_side_and_instrument() {
+        crate::install::installed();
+        use yggdryl_market::Side;
+        use yggdryl_market::graph::Market;
+        let batch = yggdryl::Uuid::from_v8(77);
+        let sibling = |index: usize, side: Side, instrument: Option<&str>| {
+            let mut order = OrderEvent::at(1_700_000_000_000_000_000 + index as i64);
+            order.set_crosscode(format!("O-{index}"));
+            order.set_side(side, true);
+            order.set_state(State::New);
+            order.set_instcode(instrument.map(yggdryl::Str::new), true);
+            order
+                .insert_identifier(identifier(&CL_ORD_ID, "C"))
+                .unwrap();
+            order.set_srcuuids(vec![batch]);
+            order.finalize();
+            order
+        };
+        let mut walk = EventIterator::new(
+            (0..1_024).map(|index| sibling(index, Side::Buy, Some("US0378331005"))),
+            true,
+        );
+        assert!(walk.by_ref().all(|order| order.get_prevuuid().is_none()));
+        assert_eq!(walk.alive().count(), 1_024);
+        assert_eq!(named_chains(&walk, &CL_ORD_ID, "C").len(), 1);
+        assert_eq!(name_records(&walk), 1);
+        let mut walk = EventIterator::new(
+            (0..1_024).map(|index| {
+                let side = if index % 2 == 0 {
+                    Side::Buy
+                } else {
+                    Side::Sell
+                };
+                let instrument = ["US0378331005", "US5949181045", "FR0000120271"][index % 3];
+                sibling(index, side, Some(instrument))
+            }),
+            true,
+        );
+        assert_eq!(walk.by_ref().count(), 1_024);
+        assert_eq!(
+            named_chains(&walk, &CL_ORD_ID, "C").len(),
+            6,
+            "two sides of three instruments"
+        );
     }
 
     /// A replace keeps the old value a living identity of the chain beside
-    /// the new one, filed under the base, and files the lineage field's raw
-    /// type nowhere.
+    /// the new one, filed under the base - a chain identity's every value
+    /// stays until the chain ends - and files the lineage field's own type
+    /// as every other type is filed: for the live statement alone.
     #[test]
-    fn a_replace_files_both_values_under_the_base_and_no_lineage_slot() {
+    fn a_replace_files_both_values_under_the_base_and_under_the_lineage_slot() {
         crate::install::installed();
         let walked = super::replace_chain();
         let walk = &walked.1;
         let chain = walked.0[0].get_crossuuid();
         assert_eq!(named_chains(walk, &CL_ORD_ID, "C1"), [chain]);
         assert_eq!(named_chains(walk, &CL_ORD_ID, "C2"), [chain]);
-        assert!(named_chains(walk, &IdType::OrigClOrdId, "C1").is_empty());
+        assert_eq!(
+            named_chains(walk, &IdType::OrigClOrdId, "C1"),
+            [chain],
+            "the live statement is the lineage report, which states it"
+        );
+        // A report stating no lineage field carries the replace's: a
+        // follower takes every identifier it lacks, so the slot stays filed
+        // as the live statement's beside both client order identifiers.
+        let mut replace = named_at("O-200", 20, &CL_ORD_ID, "C2");
+        replace
+            .insert_identifier(identifier(&IdType::OrigClOrdId, "C1"))
+            .unwrap();
+        replace.finalize();
+        let arrived = vec![
+            named_at("O-100", 10, &CL_ORD_ID, "C1"),
+            replace,
+            anonymous(30, &[(CL_ORD_ID, "C2")]),
+        ];
+        let mut walk = EventIterator::new(arrived, true);
+        let walked: Vec<OrderEvent> = walk.by_ref().collect();
+        assert_eq!(walked[2].get_prevuuid(), Some(walked[1].get_uuid()));
+        assert_eq!(
+            walked[2].get_identifiers().get(&IdType::OrigClOrdId),
+            Some("C1"),
+            "carried"
+        );
+        assert_eq!(named_chains(&walk, &IdType::OrigClOrdId, "C1"), [chain]);
+        assert_eq!(named_chains(&walk, &CL_ORD_ID, "C1"), [chain]);
+        assert_eq!(named_chains(&walk, &CL_ORD_ID, "C2"), [chain]);
+        assert_eq!(name_records(&walk), 3);
     }
 
     /// The conflict an element citing two live chains is: warned under its
@@ -1667,7 +1801,8 @@ fn an_unsided_order_joins_the_one_live_side_of_its_base_under_the_stored_code() 
 /// whatever side it tags, so a bid statement and an offer statement under
 /// one code are one chain, each following the one before. A name a quote
 /// goes by is alive on the side it tags - FIX scopes an `MDEntryID(278)` by
-/// its `MDEntryType(269)` - so under two codes a bid and an offer going by
+/// its `MDEntryType(269)`, and decision 25 matches a name on its side
+/// whenever both state one - so under two codes a bid and an offer going by
 /// one name are two chains; a statement tagging no side joins the one
 /// quote alive under the name, and a tagged one the untagged quote holding
 /// both legs.
@@ -1745,6 +1880,29 @@ fn one_quote_identifier_is_one_chain_whatever_side_its_statements_state() {
     )
     .collect();
     assert_eq!(walked[2].get_prevuuid(), None);
+
+    // Two quotes answering one request state its `QuoteReqID(131)` and
+    // stay two chains: the request names none of the dealers answering it.
+    let answering = |code: &str, ms: i64, quoteid: &str| {
+        let mut quote = QuoteEvent::at(at(ms));
+        quote.set_crosscode(code.to_owned());
+        quote.set_bidpx(Some("99".parse().unwrap()), true);
+        quote
+            .insert_identifier(identifier(&IdType::QuoteId, quoteid))
+            .unwrap();
+        quote
+            .insert_identifier(identifier(&IdType::QuoteReqId, "R1"))
+            .unwrap();
+        quote.finalize();
+        quote
+    };
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![answering("D1-Q", 10, "Q1"), answering("D2-Q", 20, "Q2")],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_prevuuid(), None, "a request names no chain");
+    assert_eq!(walked[1].get_crosscode(), "14:0:D2-Q");
 
     // A tagged statement continues the untagged quote going by its name.
     let walked: Vec<QuoteEvent> = EventIterator::new(

@@ -170,3 +170,43 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
     it (its delta and its events), sorted - superseding D40.6's "the delta's and the events' uuids
     and the previous book's uuid"; the medallion can go from a book to the log lines it used and
     from a cross code to every FIX message and leaf of that chain.
+29. D45's readings (`p12/d45_design.md`, "Put to the user") are taken as recommended, by decision
+    24's rule for pace, each overridable: the count anchored on the chain's first stated total
+    (the user's "compare the execid ... updates the real consumed and update the remaining
+    quantities") - a later stated CumQty/LeavesQty that disagrees is warned, not adopted, so the
+    capture's order 557 ends 472 / 128 `PARTIALLY_FILLED` (its From Exchange `151=0` frames
+    describe the exchange-side child); the ended-chain tombstone (D45.8, 60 s) lands in P12, so a
+    replayed execid restates its chain and the capture's executions read 39 / 21 / 7; ExecRefID(19)
+    read by tag inside `FixMsg::fill_of`, no `FIX:idmap` entry (the dictionary hash stands); the
+    ledger for orders only (quotes later); `execid` stays in the followed set; disagreement,
+    overfill and unidentified fills are deduplicated warnings, not `FixAnomaly`; order 9623's
+    `partfilled` read through `State::from_spelling`; decision 27 (EXEC/TRAD `quantity` =
+    `lastqty`) lands in P12's commit.
+30. P13, the CBlock counters (its own small commit, first of the next lanes): "ensure also in the
+    cfb files fix ingestion parsing it ignores silently the components having the numingroups fields
+    since our representations are structures and correct group list typed". Read as: a CBlock
+    grammar - a message root, a group's entry, a folded second binding of one wire type - that
+    states a NumInGroup counter as a plain member beside the group it counts (or a counter the
+    reader knows counts a group the same structure holds) has that counter member dropped by the
+    reader, silently - no warning, no `FixMerge::dropped` entry - and the message, the group and
+    every other member kept, since a group is its typed list and its length the count; today that
+    message is dropped whole with a warning (`catalog.rs` validate_references, pinned by
+    `rust/fix/tests/root/cfb.rs` `a_message_the_catalog_will_not_hold_is_named_at_its_grammar_binding`).
+    The catalog's own refusal stays for a dictionary built by hand; the reader never produces one.
+31. P14, the text line's metadata (design D47, then its own commit): "add then also in textline
+    generated schema a metadata map str str which can parse key values handling doubled keyed
+    values json serialized to list and value default json serialized" (`p14/user_instruction.md`).
+    Read, to be settled by D47: the plain-text row a `TextLine` generates gains a `metadata`
+    column, `map<utf8, utf8>`, filled by a key-value reading of the line the options ask for; a key
+    stated twice or more holds the JSON array of its values in order; a value that is not plain
+    text is held as its JSON serialization.
+32. P15, CSV over the text line (design D48, then its own commit): "then make the csv like media
+    internally use the existing text line implementations but auto handling headers or infer
+    headers with separator etc optimizely". Read: the delimited-text media (`text/csv`,
+    `text/tab-separated-values`) read and write through the text medium's line machinery (the
+    bounded physical-line splitting, the transport's decoding, `TextLine`) instead of a second
+    tokenizer of their own, a header row handled or inferred and the separator inferred, at no
+    worse cost than today's reader (its benchmark and allocation pins the bar).
+33. With 31: "thus first medaillon layer can accept key value inputs with this metadata field
+    too" - the medallion's first (bronze) layer reads key-value log lines into that `metadata`
+    column beside the FIX capture it reads today.
