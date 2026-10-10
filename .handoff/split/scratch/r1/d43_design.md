@@ -24,8 +24,11 @@ market or FIX surface is missing from the `yggdryl` wheel and addon (`python/src
 `IsinRegistry`, `FixCodec`, the market classes in the one `_native` module; `node/src/lib.rs` the
 same), and B5 (`$S/b5_manager_prompt.md`) exists to let a consumer install the market view alone -
 a packaging convenience the user postponed to the PR after the release (`user_decisions.md` 7).
-`release_packages.py` already anticipates them (`version` reads `python/market/pyproject.toml` and
-`node/market/package.json` when they exist, `:108-128`), so B5 adds no plumbing R1 lacks.
+`release_packages.py`'s `version` already reads B5's manifests (`python/market/pyproject.toml` and
+`node/market/package.json` when they exist, `:108-128`); the rest is B5's: `PYPI = ["yggdryl"]` and
+`NPM = ["yggdryl"]` (`:39-40`) gain the market names, `build` gains the market wheel and sdist, and
+`publish-npm` - which publishes only `yggdryl@$version` from `working-directory: node` with its five
+binaries (`release.yml:829-855`) - gains a step for `node/market`.
 
 ## The version bump: 0.1.21 -> 0.1.22, the seven files
 
@@ -44,8 +47,10 @@ in `0f411f5ce`:
 
 `python3 scripts/release_packages.py version` answers `0.1.22` (every manifest agrees; a workspace
 pin not spelled `=<version>` is refused, `:100-101`); `crates` answers `yggdryl yggdryl-market
-yggdryl-fix`. CI's inventory job runs `version` on every pull request (`.github/workflows/
-ci.yml:944`), so a manifest a later bump forgets fails on the PR, not in the release.
+yggdryl-fix`. CI's inventory job runs `version` (`.github/workflows/ci.yml:944`) on every pull
+request that touches a manifest - `Cargo.toml` runs every job; `python/pyproject.toml`, `node/**`
+and `scripts/release_packages.py` select the inventory row (`rows.toml:242-253`) - so a manifest a
+later bump forgets fails on the PR, not in the release.
 
 The handoff sentence "the version stays `0.1.21` until S9" (`DESIGN.md:17,89,2931` D1) is
 **superseded** by the user's decision 6; `MARKET_SPLIT_CONTINUE.md` and `MARKET_SPLIT_NEXT.md`
@@ -79,10 +84,13 @@ everything reads `release_packages.py`:
 5. **`release`** (`:857-901`, "crates.io, tag and GitHub release"): needs `[preflight, sources,
    publish-pypi, publish-npm]`; `for crate in $CRATES` - skip when the sparse index already holds
    `"vers":"$version"`, else `cargo publish --locked -p "$crate"` under
-   `CARGO_REGISTRY_TOKEN` (`:878-890`); one invocation per crate in dependency order, because
-   `cargo publish` returns once crates.io serves what it uploaded, so the next crate's verification
-   finds its dependency. Not `cargo publish --workspace`: the workspace holds three `publish =
-   false` members and the per-crate loop is what makes a repaired run skip the crates already up.
+   `CARGO_REGISTRY_TOKEN` (`:878-890`); one invocation per crate in dependency order, because the
+   per-crate loop skips the crates already on the index, so a repaired run is idempotent (cargo
+   1.90+'s `--workspace` would skip the `publish = false` members itself; that is not the reason).
+   One edge a later lane may close: `cargo publish` waits about 60 s for the index to serve the
+   upload and on a timeout warns and exits 0, so the next crate's verification can fail to find
+   `yggdryl =0.1.22` and leave the version half out - a retry of `cargo publish -p` once after a
+   sparse-index poll is the fix, and the `report` job names the half-out state until then.
    Then `gh release create v$version --target $GITHUB_SHA --generate-notes` once (`:891-901`): the
    tag is created last and is the one record that the release is complete.
 6. **`report`** (`:903-1011`): on a failed or cancelled publishing run, every crate, PyPI and npm
@@ -103,9 +111,10 @@ A fourth crate (M6's) joins the release by its manifest alone: no workflow edit.
    `publish-update` only. Re-read `https://index.crates.io/yg/gd/yggdryl-market` and
    `.../yggdryl-fix` just before the go: the 404s on record are from 2026-10-08/09 (`DESIGN.md:
    361-368`, `$S/s5_define_report.md:130-135`).
-2. **Nothing new on PyPI or npm** for R1: both names stay `yggdryl`, already configured (PyPI
-   trusted publishing, the npm secret). The `yggdryl-market` pending publisher and npm bootstrap
-   are B5's, postponed.
+2. **Nothing new on PyPI or npm** for R1: both names stay `yggdryl`, published by PyPI and npm
+   trusted publishing (OIDC under the `pypi` and `npm` environments, `id-token: write`, npm 11.5+;
+   `release.yml:36-43,803-808,819-823`), already bound to this repository - no stored secret for
+   either. The `yggdryl-market` pending publisher and npm bootstrap are B5's, postponed.
 3. **The merge of PR #209 into `main`** after P9, P7, P8, P5R have landed green and the live AWS
    run has reported (`.handoff/next/LIVE_AWS_TEST_PROMPT.md`, its report
    `.handoff/next/LIVE_AWS_RESULTS.md`). The merge is a push to `main` whose version 0.1.22 has no
@@ -122,8 +131,12 @@ B5, S7, S8, S9 after, from a PR cut from `main`. Recommended HEAD for the merge:
 holding the live AWS report, over P5R, with the newest CI run on the branch green to `CI result` -
 because (a) `release_packages.py` derives the crate set from the manifests, so merging before M6
 keeps 0.1.22 to the three crates the user named, and merging after M6 would publish six more
-names under one version (and need six more `publish-new` grants); (b) P9 adds the `instrumentuuid`
-column the live prompt's step 3d checks, so the live run has to follow P9; (c) a version is out
+names under one version (and need six more `publish-new` grants); (b) P9 adds the instruments
+table and the `instcode` column (the instrument's crosscode, `utf8`, tag 65_054 - `user_decisions.md`
+9) the live prompt's step 3d checks (`LIVE_AWS_TEST_PROMPT.md:50-55`), so the live run has to
+follow P9; (c) P7 (D40.5) is the user's hashing correction, which P9 leaves on today's rule
+(`$S/p9/d42_design.md`, "Put to the user" 3), so a merge before P7 would ship 0.1.22 with the
+uncorrected uuids - the merge waits on P7 as it waits on the live run; (d) a version is out
 everywhere or nowhere, and the tree merged is the tree built. R1 can run on any green HEAD of the
 branch in principle (the plumbing is version-driven), but a HEAD before P9 would publish 0.1.22
 without the Instrument the user scoped into it.
@@ -135,11 +148,14 @@ without the Instrument the user scoped into it.
   on `0f411f5ce`; the commit message does not record the command or its output, and DESIGN.md's
   S4 results hold only `cargo package --locked --list -p yggdryl` (`DESIGN.md:2678`). No CI job
   dry-runs a publish or builds the sdist (`ci.yml` has neither; only `release.yml`'s `sources`
-  does, on a release or a rehearsal). The next lane's chain runs `$S/r1/r1_release.sh --prove`
-  on the branch (no bump) and the results commit records its log: the dry run, `cargo package
-  --list` for the two new crates (README.md present, `seed.json` in market, nothing under
-  `market/`/`fix/` in the core's list), the sdist listing `rust/market/Cargo.toml` and
-  `rust/fix/Cargo.toml`.
+  does, on a release or a rehearsal). The next lane runs `$S/r1/r1_release.sh --prove` **after
+  its commit and before its push**, on the clean committed tree (the script refuses a dirty tree,
+  and the chain runs while the tree holds the phase edits, so it is not a chain step), and the
+  results commit records its log: the dry run, `cargo package --list` for the two new crates
+  (README.md present, nothing under `market/`/`fix/` in the core's list), the sdist listing
+  `rust/market/Cargo.toml` and `rust/fix/Cargo.toml`, the wheel's command, the two docs manifests'
+  `--check`, the npm audit. The seed's path is P9's to settle (`d42_design.md` D42.13), so the
+  script asserts nothing about it.
 - **F2 - a new name's first publish happens last.** `release` runs after PyPI and npm (`:866`), so
   a token without `publish-new`, or a name taken between the go and the run, leaves 0.1.22 on PyPI
   and npm and not on crates.io - half out, which `preflight` then refuses on `main` until a tag push
@@ -163,7 +179,7 @@ without the Instrument the user scoped into it.
   commit re-spells the three lines: 0.1.22 on the branch since `0f411f5ce`, published by the merge.
 - **F6 - the medallion CLI commits no instruments.** `python/tests/medallion.py main()` builds the
   codec without a registry (`:534-540`), so the live AWS prompt's step 3d ("the instruments table
-  ... present and filled") cannot pass on the CLI path today. P9 fixes it (D42.10); recorded here
+  ... present and filled") cannot pass on the CLI path today. P9 fixes it (D42.14); recorded here
   because R1's gate depends on it.
 - **F7 - the sdist's content is unverified.** Whether maturin 1.15 includes `rust/market` and
   `rust/fix` (path dependencies through `[workspace.dependencies]`) while the core's
@@ -175,16 +191,29 @@ without the Instrument the user scoped into it.
   paragraph, its `ci.yml` and `rows.toml` anchors are stale and its AGENTS §6 anchors no longer
   match (the release reader's count). Not R1's work (B5 is postponed) but recorded so B5 re-derives
   the script from the tree it runs on, as the continue prompt requires.
+- **F9 - the proof script is linked from no handoff entry.** `r1_release.sh` is named here alone;
+  `MARKET_SPLIT_CONTINUE.md`'s release step should say `r1_release.sh --prove` is the first
+  release's proof and that the merge is the release. The P9 results commit adds the line.
+- **F10 - AGENTS.md §6 misnames the credentials.** `AGENTS.md:2927` says "Cargo and npm secrets,
+  PyPI trusted publishing"; the workflow has npm on trusted publishing too (`release.yml:41-43`).
+  Re-spell as "the Cargo secret; PyPI and npm trusted publishing" in the P9 results commit.
 
 ## Proof a later release runs (no publish)
 
-`$S/r1/r1_release.sh <version>` is the bump-and-prove script for 0.1.23 and after (0.1.22 is
-bumped); `r1_release.sh --prove` runs the proofs alone on the current version. It refuses `main`
-and a dirty tree, reads the three registries read-only through `curl` under the proxy
-environment and stops on an unreachable one, moves the version in the seven files (the lock
-through `cargo update --workspace`, the two docs manifests through their node scripts after
-`npm run --prefix node build:debug`), then proves: `cargo publish --locked --dry-run` over the
-crates `release_packages.py crates` lists in one invocation, `cargo package --locked --list` per
-crate, `maturin build` of the wheel into `$S/dist` with its `tar`/`unzip` listing, `npm pack
---dry-run`, `git diff --stat`. It never runs `cargo publish` without `--dry-run`, never pushes,
-never tags, edits no workflow; it ends by printing what the user does (the token, the merge).
+`$S/r1/r1_release.sh <version>` bumps a release candidate for 0.1.23 and after (0.1.22 is bumped)
+and **stops**, printing "commit the bump, then run `--prove`": the proof runs on a committed tree,
+as the release's `sources` job does, and cargo's VCS check needs no `--allow-dirty`.
+`r1_release.sh --prove` runs the proofs on the current version. Both refuse `main` and a detached
+HEAD; `--prove` refuses a dirty tree; the bump refuses a target at or below the current version,
+reads the three registries read-only through `curl` under the proxy environment (30 s each) and
+stops on an unreachable one, then moves the version in the seven files (the lock through `cargo
+update --workspace`, the two docs manifests through their node scripts after `npm run --prefix
+node build:debug`, the market manifests too once B5 adds them). `--prove` builds the debug addon,
+then proves: `cargo publish --locked --dry-run` over the crates `release_packages.py crates` lists
+in one invocation, `cargo package --locked --list` per crate, the two docs manifests' `--check`,
+`Cargo.lock`'s six workspace packages at the version, `maturin build --profile dev` of the wheel
+(CI's wheel job's profile) into `$R1_OUT`, else a fresh temporary directory it prints, with its
+`unzip`/`tar` listings written to files and read from them, `npm pack --dry-run`, `git diff
+--stat`. It never runs `cargo publish` without `--dry-run`, never pushes, never tags, edits no
+workflow; it ends by saying what the lane does (commit, push, read CI) and what the user does (the
+token, the merge).
