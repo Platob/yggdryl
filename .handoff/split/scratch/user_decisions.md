@@ -92,3 +92,16 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
     from the graph's hashing of its content and instant, `prevuuid` the version it replaces), the
     current instrument being the latest version per key; the store and the medallion's instruments
     table hold the versions.
+19. P10 (with decision 18): "And then registry keeping correct time sorted deduplicated" - each
+    `(instcode, mic)` key's instrument events are held sorted by their instant (`transunix`), a
+    version arriving out of order inserted at its place with the `prevuuid` links following the
+    order, and deduplicated: a statement that changes no content appends no version, two equal
+    versions are one.
+20. P11, a lane of its own (core + Python + docs + the medallion): "Add also field compatibility
+    scheme to doris to cast timestamp ns timezoned to timestamp us zoned since iceberg
+    timestamptz_ns is not handled by doris, apply it in medaillon example" - a `Scheme::DORIS`
+    compatibility scheme beside `Scheme::ICEBERG` and `Scheme::SPARK` (`rust/src/scheme.rs`,
+    `rust/src/compatibility.rs`, `into_scheme_compat`): a zoned nanosecond timestamp becomes a zoned
+    microsecond one (Iceberg v3 `timestamptz_ns` -> `timestamptz`), with whatever else Apache
+    Doris's Iceberg reader cannot read (from its type-mapping documentation), and the medallion
+    example writes its tables under it.
