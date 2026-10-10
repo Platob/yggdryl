@@ -106,7 +106,7 @@ S7, S8 and S9 are postponed to a later PR from `main` after the release.
 
 0. **P9 (D42)**: the Instrument replaces the ISIN registry - `rust/market/src/instrument.rs`, a graph
    element holding every identifier mapping, the custom ISIN, forex auto-creation, the underlying and
-   the legs, the characteristics in the cross code, the market rows' `instrumentcode`; on today's names,
+   the legs, the characteristics in the cross code, the market rows' `instcode`; on today's names,
    before P7. Design: `p9/d42_design.md` and `p9/crosscode_decision.md`; the instruction
    `p9/user_instruction.md`.
 1. **P7 (D40)**: the user's six items and their refinement - the FIX row named by the registry where

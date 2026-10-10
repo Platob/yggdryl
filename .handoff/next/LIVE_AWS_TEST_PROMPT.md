@@ -50,7 +50,7 @@ Profile: <PROFILE>   Region: <REGION>   (ask me if I did not fill these in)
    d. Compare: every table's `read`/`wrote`/`skipped` line of run 1 and of run 2
       must equal the local baseline's, run 2 must append nothing to
       `log_messages` (the keyed append skips every line), and the instruments
-      table and every market table's `instrumentcode` column must be present and
+      table and every market table's `instcode` column must be present and
       filled where the local run fills them. Record each stage's seconds and its
       request counts from both runs.
 

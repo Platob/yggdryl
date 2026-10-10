@@ -29,6 +29,7 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
    alone, the CFI a fact beside it; CFI class + characteristics key everything no agency numbers
    (forex, forwards, swaps, options, futures, strategies). Answered "Bare ISIN for securities
    (Recommended)"; the decision's items 2-9 stand unless the user says otherwise.
-9. The market rows carry `instrumentcode` - the instrument's `crosscode` as text (`utf8`, tag
+9. The market rows carry `instcode` - the instrument's `crosscode` as text (`utf8`, tag
    `65_054`) - instead of an `instrumentuuid`: "Replace the instrumentuuid of market to
-   instrumentcode mapped to the instrument crosscode". A re-keyed instrument keeps `aliascodes`.
+   instrumentcode mapped to the instrument crosscode", then "Use instcode instead of
+   instrumentcode". A re-keyed instrument keeps `aliascodes`.
