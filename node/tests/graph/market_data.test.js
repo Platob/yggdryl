@@ -63,7 +63,7 @@ test('every leaf wraps and names its kind', () => {
     assert.ok(data.intoLeaf().equals(leaf))
     assert.ok(new graph.MarketData(data).equals(data))
     // The element and market facts delegate to the leaf.
-    for (const name of ['uuid', 'crosscode', 'price', 'side', 'hashcode', 'marketdatakind', 'isincode']) {
+    for (const name of ['uuid', 'crosscode', 'price', 'side', 'hashcode', 'marketdatakind', 'instcode', 'isincode']) {
       assert.equal(data[name], leaf[name], name)
     }
   })
@@ -147,13 +147,15 @@ test('the field is the lifted marketdata struct', () => {
   for (const name of ['transunix', 'price', 'isincode', 'fxrates', 'bidpx', 'askccy', 'identifiers', 'bookscope']) {
     assert.ok(names.includes(name), name)
   }
-  // A1/A10: six identity, nine event, thirty-six market and five
-  // operation columns, the three book controls a book's delta replays by,
-  // and the six nested columns closing the row: 65 in all.
-  assert.equal(names.length, 6 + 9 + 36 + 5 + 3 + 6)
-  assert.deepEqual(names.slice(56, 59), ['bookscope', 'bookaction', 'bookposition'])
-  assert.equal(field.fieldAt(58).dtype.id, 'uint32')
-  assert.deepEqual(names.slice(59), NESTED)
+  // A1/A10: six identity, nine event, thirty-seven market - `instcode`
+  // after `securityids` (D42) - and five operation columns, the three book
+  // controls a book's delta replays by, and the six nested columns closing
+  // the row: 66 in all.
+  assert.equal(names.length, 6 + 9 + 37 + 5 + 3 + 6)
+  assert.equal(names.indexOf('instcode'), names.indexOf('securityids') + 1)
+  assert.deepEqual(names.slice(57, 60), ['bookscope', 'bookaction', 'bookposition'])
+  assert.equal(field.fieldAt(59).dtype.id, 'uint32')
+  assert.deepEqual(names.slice(60), NESTED)
   // When an element last executed is a market fact, stated among the
   // market columns, and the party ids an operation names an operation one.
   assert.ok(names.indexOf('execunix') > names.indexOf('state'))

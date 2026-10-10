@@ -54,6 +54,7 @@ const partyids: Identifiers = event.partyids
 const securityids: Identifiers = event.securityids
 const bidpx: string | null = event.bidpx
 const bidccy: string | null = event.bidccy
+const instcode: string | null = event.instcode
 const isincode: string | null = event.isincode
 const fxrates: Record<string, string> = event.fxrates
 const marketdatakind: string = event.marketdatakind
@@ -180,7 +181,7 @@ void side
 void identifiers
 void partyids
 void securityids
-void [bidpx, bidccy, isincode, fxrates, marketdatakind]
+void [bidpx, bidccy, instcode, isincode, fxrates, marketdatakind]
 void kind
 void followed
 void leaf

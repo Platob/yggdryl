@@ -1,4 +1,4 @@
-//! The thirty-six columns every market element is stated in.
+//! The thirty-seven columns every market element is stated in.
 //!
 //! One column per fact [`Market`] answers, under one name and one datatype
 //! each, in one order, so every generated schema of a market - an
@@ -12,7 +12,7 @@ use super::{FxRates, Market};
 use crate::{IdKey, IdType, Identifier, Identifiers};
 use crate::{MarketDataKind, MarketDataType, Side};
 use yggdryl::{
-    Ccy, Cfi, DataType, Decimal, Field, Isin, Mic, Result, Scalar, TimeUnit, Timezone, Unit,
+    Ccy, Cfi, DataType, Decimal, Field, Isin, Mic, Result, Scalar, Str, TimeUnit, Timezone, Unit,
 };
 
 /// One column of the market facts every market element answers.
@@ -45,6 +45,9 @@ pub enum MarketColumn {
     /// `map<utf8, utf8>` keyed as [`IdKey`] spells a key, the base key of
     /// each type its type alone.
     SecurityIds,
+    /// The cross code of the instrument it is about: the instruments
+    /// table's key, a real ISIN or a `class:body`.
+    InstCode,
     /// The ISIN it names: the `ISIN` security identifier, projected.
     IsinCode,
     /// The detailed CFI classification.
@@ -100,7 +103,7 @@ impl MarketColumn {
     /// Every market column in canonical row order: the category and the
     /// type first, then what the element is about - its prices, then its
     /// quantities - the instrument, the execution and the quote.
-    pub const ALL: [Self; 36] = [
+    pub const ALL: [Self; 37] = [
         Self::MarketDataKind,
         Self::MarketDataType,
         Self::Price,
@@ -113,6 +116,7 @@ impl MarketColumn {
         Self::Unit,
         Self::Side,
         Self::SecurityIds,
+        Self::InstCode,
         Self::IsinCode,
         Self::CfiCode,
         Self::MicCode,
@@ -155,6 +159,7 @@ impl MarketColumn {
             Self::Unit => "unit",
             Self::Side => "side",
             Self::SecurityIds => "securityids",
+            Self::InstCode => "instcode",
             Self::IsinCode => "isincode",
             Self::CfiCode => "cficode",
             Self::MicCode => "miccode",
@@ -198,6 +203,7 @@ impl MarketColumn {
             Self::Unit => "Unit",
             Self::Side => "Side",
             Self::SecurityIds => "Security IDs",
+            Self::InstCode => "Instrument Code",
             Self::IsinCode => "ISIN Code",
             Self::CfiCode => "CFI Code",
             Self::MicCode => "MIC Code",
@@ -251,6 +257,9 @@ impl MarketColumn {
             Self::SecurityIds => {
                 "The security identifiers the element names, one per type, sorted by key: the type to its value, the type's answer; what each source stated of a type is side information in metadata under securityids.src:type."
             }
+            Self::InstCode => {
+                "The cross code of the instrument the element is about - a real ISIN for a security an agency numbered, a CFI class and its characteristics for an FX pair or a derivative - the instruments table's key; null where no instrument is resolved."
+            }
             Self::IsinCode => "The ISIN the element names: its isin security identifier.",
             Self::CfiCode => "The detailed CFI classification of the instrument.",
             Self::MicCode => "The market the instrument trades on, as its MIC.",
@@ -291,7 +300,7 @@ impl MarketColumn {
     /// execution clock at nanoseconds UTC, a sorted
     /// `map<utf8, utf8>` for the identifiers and the metadata, a sorted
     /// `map<ccy, decimal>` for the rates - keys and values required - and
-    /// `utf8` for the ticker.
+    /// `utf8` for the ticker and the instrument code.
     #[must_use]
     pub fn datatype(self) -> DataType {
         match self {
@@ -329,7 +338,7 @@ impl MarketColumn {
                 timezone: Timezone::UTC,
             },
             Self::FxRates => fxrates_datatype(),
-            Self::Ticker => DataType::utf8(),
+            Self::Ticker | Self::InstCode => DataType::utf8(),
             Self::Metadata => DataType::map_of(DataType::utf8(), DataType::utf8(), true)
                 .expect("a sorted utf8 map is a datatype"),
         }
@@ -437,6 +446,7 @@ impl MarketColumn {
                 })?
             }
             Self::Ticker => element.get_ticker().map(Scalar::from),
+            Self::InstCode => element.get_instcode().map(Scalar::from),
             Self::Metadata => {
                 let metadata = element.get_metadata();
                 (!metadata.is_empty()).then(|| {
@@ -585,6 +595,7 @@ impl MarketColumn {
                 true,
             ),
             Self::Ticker => element.set_ticker(value.as_str().map(SmolStr::new), true),
+            Self::InstCode => element.set_instcode(value.as_str().map(Str::new), true),
             Self::Metadata => element.set_metadata(
                 value.as_mapping().map(|entries| {
                     entries

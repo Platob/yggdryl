@@ -200,10 +200,12 @@ def test_the_field_is_the_lifted_marketdata_struct() -> None:
     ]
     assert names.index("marketdatakind") == 15
     assert names[16] == "marketdatatype"
-    # The strike is the market fact after the ticker, before the metadata.
-    assert len(names) == 65
-    assert names.index("strikepx") == names.index("ticker") + 1 == 49
-    assert names[50] == "metadata"
+    # The strike is the market fact after the ticker, before the metadata;
+    # sixty-six columns since `instcode` joined after `securityids`.
+    assert len(names) == 66
+    assert names.index("instcode") == names.index("securityids") + 1
+    assert names.index("strikepx") == names.index("ticker") + 1 == 50
+    assert names[51] == "metadata"
     assert str(field["strikepx"].dtype) == "decimal"
     for name in (
         "transunix",

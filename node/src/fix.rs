@@ -56,9 +56,9 @@ use yggdryl_market::graph::{Market, Metadata, Operation};
 
 use crate::field::JsField;
 use crate::graph::{JsMarketData, JsMarketDataRowIterator};
+use crate::instrument::JsInstruments;
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
 use crate::iomedia::JsBatchReader;
-use crate::isin_registry::JsIsinRegistry;
 use crate::text::codec::JsScalar;
 use crate::text::line::{JsFieldPath, JsTextLine, path_from_input};
 use crate::{
@@ -1716,6 +1716,15 @@ impl JsFixMsg {
         crate::identifier::JsIdentifiers::from_core(self.inner.get_securityids())
     }
 
+    /// The cross code of the instrument the message is about - its real
+    /// ISIN, or the `class:body` an FX pair spells (`IF:EUR/USD`) - written
+    /// by a parse where the message alone spells it and by a lifecycle's
+    /// fill from the instrument it resolves; `null` where none is known.
+    #[napi(getter)]
+    pub fn instcode(&self) -> Option<String> {
+        self.inner.get_instcode().map(ToOwned::to_owned)
+    }
+
     /// The instrument's ISIN, borrowed from `securityids`, or `null`.
     #[napi(getter)]
     pub fn isincode(&self) -> Option<String> {
@@ -2548,7 +2557,7 @@ impl JsFixCodec {
     /// unmapped fields - its parties, `Account(1)` and regulatory trade
     /// identifiers stay its `partyids` and `identifiers` - and lifts the
     /// identifiers among them into the set their type belongs to, on when
-    /// unstated; `isinRegistry` is the `IsinRegistry` every `lifecycle`
+    /// unstated; `instruments` is the `Instruments` every `lifecycle`
     /// learns into and fills from, shared so a walk run after another starts
     /// from what the first learned, each walk learning into its own when
     /// unstated; `source` is the id of the dictionary's source the codec
@@ -2566,8 +2575,8 @@ impl JsFixCodec {
     }
 
     /// A codec over the registry the process environment names,
-    /// `FixRegistry.fromEnv()`, sharing the instrument registry it names
-    /// too, `IsinRegistry.fromEnv()` - unless `isinRegistry` names another
+    /// `FixRegistry.fromEnv()`, sharing the instruments it names too,
+    /// `Instruments.fromEnv()` - unless `instruments` names another
     /// - pinned by the options the constructor takes. The one constructor
     /// that attaches the process's own; `new FixCodec(...)` attaches none,
     /// and a commit of what the walks learned is always the caller's.
@@ -2575,11 +2584,11 @@ impl JsFixCodec {
     pub fn from_env(options: Option<FixCodecOptions<'_>>) -> Result<Self> {
         let attach = options
             .as_ref()
-            .is_none_or(|options| options.isin_registry.is_none());
+            .is_none_or(|options| options.instruments.is_none());
         let mut codec = Self::open(None, options)?;
         if attach {
-            let instruments = yggdryl_market::IsinRegistry::from_env().map_err(napi_error)?;
-            codec.inner = codec.inner.with_isin_registry(Arc::clone(instruments));
+            let instruments = yggdryl_market::Instruments::from_env().map_err(napi_error)?;
+            codec.inner = codec.inner.with_instruments(Arc::clone(instruments));
         }
         Ok(codec)
     }
@@ -2659,8 +2668,8 @@ impl JsFixCodec {
                 .try_with_default_sending_time(Some(sending_time_from_js(held)?))
                 .map_err(napi_error)?;
         }
-        if let Some(held) = &options.isin_registry {
-            inner = inner.with_isin_registry(Arc::clone(&held.inner));
+        if let Some(held) = &options.instruments {
+            inner = inner.with_instruments(Arc::clone(&held.inner));
         }
         if let Some(held) = options.market_metadata {
             inner = inner.with_market_metadata(held);
@@ -2680,12 +2689,12 @@ impl JsFixCodec {
         JsFixRegistry::from_arc(Arc::clone(&self.registry))
     }
 
-    /// The `IsinRegistry` every `lifecycle` this codec runs shares - the
+    /// The `Instruments` every `lifecycle` this codec runs shares - the
     /// same table the caller holds - or `null` where each walk learns into
     /// its own.
     #[napi(getter)]
-    pub fn isin_registry(&self) -> Option<JsIsinRegistry> {
-        self.inner.isin_registry().map(JsIsinRegistry::from_shared)
+    pub fn instruments(&self) -> Option<JsInstruments> {
+        self.inner.instruments().map(JsInstruments::from_shared)
     }
 
     /// The byte a numeric frame splits on, or `null` where the line decides.
@@ -3411,11 +3420,11 @@ pub struct FixCodecOptions<'env> {
     /// into the set their type belongs to - part of the leaf's identity; the
     /// core's `true` when unstated.
     pub market_metadata: Option<bool>,
-    /// The `IsinRegistry` every `lifecycle` learns into and fills from,
+    /// The `Instruments` every `lifecycle` learns into and fills from,
     /// shared so a walk run after another starts from what the first
     /// learned; each walk learns into its own, starting empty, when unstated.
-    #[napi(ts_type = "IsinRegistry")]
-    pub isin_registry: Option<ClassInstance<'env, JsIsinRegistry>>,
+    #[napi(ts_type = "Instruments")]
+    pub instruments: Option<ClassInstance<'env, JsInstruments>>,
     /// The id of the dictionary's source this codec reads under, folded:
     /// the catalog entry (`FixRegistry.sources()`) whose plugin side every
     /// message the codec builds states as its `msgpluginside`, resolved

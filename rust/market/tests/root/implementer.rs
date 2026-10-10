@@ -7,7 +7,7 @@
 
 use yggdryl_market::graph::{Market, OrderEvent};
 use yggdryl_market::implementer;
-use yggdryl_market::{IdKey, IdType, Identifier, IsinRegistry, MarketDataKind, Side};
+use yggdryl_market::{IdKey, IdType, Identifier, Instruments, MarketDataKind, Side};
 
 /// A forwarder answers what its item answers: the one fold an identifier
 /// word reads by - the one a public spelling of a type folds through - and
@@ -61,17 +61,14 @@ fn a_type_item_function_answers_what_its_associated_item_answers() {
     event
         .insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "US0378331005").unwrap())
         .unwrap();
-    let mut public = IsinRegistry::new();
-    let mut routed = IsinRegistry::new();
+    let mut public = Instruments::new();
+    let mut routed = Instruments::new();
     assert!(public.learn(&event));
-    let learned = implementer::isin_registry_learn_stating(
-        &mut routed,
-        &event,
-        Some(event.get_origccy()),
-        None,
-        None,
-        None,
-    );
+    let stated = implementer::Stated {
+        origccy: Some(event.get_origccy()),
+        ..implementer::Stated::default()
+    };
+    let learned = implementer::instruments_learn_stating(&mut routed, &event, &stated);
     assert!(learned.moved);
     assert_eq!(learned.full, None);
     assert_eq!(routed.get("US0378331005"), public.get("US0378331005"));

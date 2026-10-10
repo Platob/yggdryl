@@ -35,7 +35,7 @@ use yggdryl::implementer::{
     merge_event_element, merge_timed, moved, restate_event, right_is_reference, stated,
 };
 use yggdryl::xxhash::Xxh3;
-use yggdryl::{Ccy, Cfi, Decimal, Isin, Mic, Result, Unit};
+use yggdryl::{Ccy, Cfi, Decimal, Isin, Mic, Result, Str, Unit};
 
 /// Free-form facts a market element carries beside its typed ones: never an
 /// identifier, which has a typed home in [`Market::get_securityids`] or an
@@ -332,6 +332,19 @@ pub trait Market {
     fn get_ticker(&self) -> Option<&str>;
     /// Sets [`Self::get_ticker`].
     fn set_ticker(&mut self, ticker: Option<SmolStr>, overwrite: bool);
+    /// The cross code of the instrument this element is about
+    /// ([`Instrument::get_crosscode`](crate::Instrument)): a real ISIN for a
+    /// security an agency numbered, a `class:body` for an FX pair or a
+    /// derivative - the instruments table's own key, so a reader joins a
+    /// market table to it on `instcode = crosscode` with no lookup. Written
+    /// by a parse where the code is a function of the element's own facts
+    /// and by a lifecycle's fill from the resolved instrument, followed
+    /// along a chain, fed to no digest: a reading of facts the row already
+    /// feeds, as `crossuuid` is.
+    fn get_instcode(&self) -> Option<&str>;
+    /// Records the cross code of the instrument this element is about;
+    /// `None` clears it.
+    fn set_instcode(&mut self, code: Option<Str>, overwrite: bool);
     /// The free-form facts the element carries; a shared empty map where it
     /// carries none.
     fn get_metadata(&self) -> &Metadata;
@@ -1346,6 +1359,13 @@ fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
             better(this.get_origccy().clone(), previous.get_origccy(), false),
             |ccy| this.set_origccy(ccy, true),
         );
+        // And the instrument's code, the instrument fact every row carries.
+        if this.get_instcode().is_none()
+            && let Some(code) = previous.get_instcode()
+        {
+            this.set_instcode(Some(Str::new(code)), true);
+            changed = true;
+        }
     }
     changed |= moved(
         this.get_cficode().cloned(),
@@ -1604,6 +1624,15 @@ pub(crate) fn merge_market<E: Market + ?Sized>(this: &mut E, other: &E, later: b
             later,
         ),
         |ticker| this.set_ticker(ticker, true),
+    );
+    changed |= moved(
+        this.get_instcode().map(Str::new),
+        stated(
+            this.get_instcode().map(Str::new),
+            other.get_instcode().map(Str::new),
+            later,
+        ),
+        |code| this.set_instcode(code, true),
     );
     // Two statements naming different ISINs name two instruments, whose
     // identifiers never mix: the leading statement's stand whole.

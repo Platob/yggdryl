@@ -666,7 +666,7 @@ impl IdType {
     /// `omsunderlyingisincode` and `fix.underlying.isin` name an ISIN;
     /// `underlyingsecurityid`, which states no type, and
     /// `underlyinglegisin`, another instrument's again, name none. What an
-    /// [`IsinRegistry`](crate::IsinRegistry) reads an instrument's
+    /// [`Instruments`](crate::Instruments) reads an instrument's
     /// underlying by - a bridge's key on a FIX message, a column of a golden
     /// file - and never a security identifier of the instrument itself,
     /// which [`Self::from_key_end`] goes on refusing.

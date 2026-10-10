@@ -684,7 +684,7 @@ pub(crate) mod casts {
 // ASCII validity, which is all a *storage* layer needs. This is the rest of
 // it - what the six characters say - and it lives here rather than in any
 // protocol module because a CFI is a value, not a message: FIX's
-// `CFICode(461)`, an ISIN registry's classification and a lake column all
+// `CFICode(461)`, an instrument's classification and a lake column all
 // read the same six characters the same way, and a protocol that owned the
 // reading would be a second one.
 //

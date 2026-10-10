@@ -7,7 +7,7 @@
 //! them says.
 //!
 //! That split is the point. [`Cfi::refined`] is the same fold whether the
-//! two codes came off a FIX wire, an ISIN registry or two columns of a
+//! two codes came off a FIX wire, the instruments or two columns of a
 //! table, so a FIX-shaped copy of it would be a second answer to one
 //! question. What is genuinely FIX's is the chain below: that
 //! `CFICode(461)` is the classification of record - a bridge's

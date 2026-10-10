@@ -271,12 +271,15 @@ mod internal {
     /// 64 - 24 = 40 fewer, 32 after padding to sixteen, so 656 and 800; the
     /// operation's own facts gave up two 56-byte `IdMap`s for two sets,
     /// exactly 2 * (56 - 24) = 64 fewer, from 128 to 64, so the two
-    /// operation holders are 656 + 64 = 720 and 800 + 64 = 864. A moved
+    /// operation holders are 656 + 64 = 720 and 800 + 64 = 864. Every holder
+    /// moved by sixteen when `instcode` joined `MarketFacts`, D42: one
+    /// `Option<Str>` of twenty-four, eight of them the padding the facts
+    /// carried, so 672, 816, 736 and 880. A moved
     /// number is a design answer, never a number to re-pin from a whole run.
     #[test]
     fn the_holders_are_the_sizes_the_build_reported_when_first_pinned() {
         crate::install::installed();
-        assert_eq!(graph_facts::sizes(), [656, 800, 720, 864]);
+        assert_eq!(graph_facts::sizes(), [672, 816, 736, 880]);
     }
 
     /// An undated holder's identity is RFC 9562 UUIDv8 over the code it

@@ -21,7 +21,7 @@ use yggdryl_market::graph::{
     BookIterator, BookRef, ExecutionKind, Market, MarketData, MarketKind, MdUpdateAction,
     Operation, OperationEvent, OperationKind, OrderKind, QuoteKind,
 };
-use yggdryl_market::implementer::IsinTable;
+use yggdryl_market::implementer::InstrumentTable;
 use yggdryl_market::implementer::OperationEventFacts;
 use yggdryl_market::implementer::base_crosscode;
 use yggdryl_market::{
@@ -1077,7 +1077,7 @@ fn entry_crosscode(batch: &FixMsg, members: &[Member], place: &str) -> String {
 
 /// The messages a batch splits into, one per entry of its entry group
 /// ([`batch_groups`]), each split again as a message of its category is.
-fn batch_entries(batch: &FixMsg, instruments: Option<&IsinTable>) -> Vec<FixMsg> {
+fn batch_entries(batch: &FixMsg, instruments: Option<&InstrumentTable>) -> Vec<FixMsg> {
     let Some((counter, inner)) = batch_groups(batch.header().msgtype()) else {
         return Vec::new();
     };
@@ -1164,7 +1164,7 @@ fn batch_entry(
     kind: MarketDataKind,
     members: Vec<Member>,
     place: &str,
-    instruments: Option<&IsinTable>,
+    instruments: Option<&InstrumentTable>,
 ) -> Vec<FixMsg> {
     let crosscode = entry_crosscode(batch, &members, place);
     let mut entry = batch.clone();
@@ -1257,7 +1257,7 @@ impl FixMsg {
     /// its own state otherwise, has an identity of its own, and names its
     /// source's identity beside its source's sources as its own; the source
     /// keeps what it states, its own state included.
-    pub(super) fn split(mut self, instruments: Option<&IsinTable>) -> (Self, Vec<Self>) {
+    pub(super) fn split(mut self, instruments: Option<&InstrumentTable>) -> (Self, Vec<Self>) {
         let category = self.marketdatakind();
         if category.is_batch() {
             let entries = batch_entries(&self, instruments);

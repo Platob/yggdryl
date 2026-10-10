@@ -95,13 +95,13 @@ test('the enum listings name the column vocabulary and the market kinds', () => 
   assert.ok(enums.mdUpdateActions.includes('snapshot'))
   assert.equal(enums.elementColumns.length, 6)
   assert.equal(enums.eventColumns.length, 9)
-  assert.equal(enums.marketColumns.length, 36)
+  assert.equal(enums.marketColumns.length, 37)
   assert.equal(enums.operationColumns.length, 5)
   assert.deepEqual(enums.operationColumns, ['ordqty', 'timeinforce', 'tradable', 'identifiers', 'partyids'])
   // When an element last executed is a market fact, never an event's.
   assert.ok(enums.marketColumns.includes('execunix'))
   assert.equal(enums.eventColumns.includes('execunix'), false)
-  for (const column of ['isincode', 'fxrates', 'bidpx', 'bidqty', 'bidccy', 'askpx', 'askqty', 'askccy']) {
+  for (const column of ['instcode', 'isincode', 'fxrates', 'bidpx', 'bidqty', 'bidccy', 'askpx', 'askqty', 'askccy']) {
     assert.ok(enums.marketColumns.includes(column), column)
   }
   // A named fact is a column name: every one the three listings spell is a

@@ -44,6 +44,20 @@ impl Isin {
     const AGENCY_PREFIXES: [&str; 10] =
         ["EU", "EZ", "XA", "XB", "XC", "XD", "XF", "XK", "XS", "XT"];
 
+    /// The prefix of a number this crate mints ([`Self::minted`]): inside
+    /// ISO 3166's user-assigned `QM`-`QZ`, which no national agency numbers
+    /// under, and none of the agency prefixes - so a number under it in any
+    /// table is this crate's and nothing else's.
+    pub const MINTED_PREFIX: &str = "QY";
+
+    /// The low bits of a digest a minted number spells: nine base-36 digits
+    /// always hold them, `36^9` being above `2^46`.
+    const MINTED_BITS: u32 = 46;
+
+    /// The base-36 digits a minted national number is written in, most
+    /// significant first.
+    const MINTED_DIGITS: &[u8; 36] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
     /// Validate and construct a securities identification number: twelve
     /// ASCII bytes of the number's shape, upper-cased.
     ///
@@ -175,7 +189,10 @@ impl Isin {
     /// agency prefixes - the ECB's `EU`, the DSB's `EZ`, the international
     /// `XS` and its neighbours, `XT` for a referential instrument. `ZZ`,
     /// which ISO 6166 gives a derivative no agency has numbered yet, and
-    /// the user-assigned `XX` are listed nowhere.
+    /// the user-assigned `XX` are listed nowhere, and neither is `QY`, the
+    /// user-assigned prefix of the numbers this crate mints
+    /// ([`Self::minted`]) - so a minted number ranks one, below every real
+    /// number, and no national identifier or country is derived from it.
     ///
     /// ```
     /// use yggdryl::Isin;
@@ -185,6 +202,7 @@ impl Isin {
     /// assert!(Isin::is_listed_prefix("XT0000000000"));
     /// assert!(!Isin::is_listed_prefix("ZZ0000000008"));
     /// assert!(!Isin::is_listed_prefix("XX0000000001"));
+    /// assert!(!Isin::is_listed_prefix("QYLTVIRYHNX5"));
     /// ```
     #[must_use]
     pub fn is_listed_prefix(text: &str) -> bool {
@@ -264,6 +282,72 @@ impl Isin {
             sum += value;
         }
         u8::try_from((10 - sum % 10) % 10).ok()
+    }
+
+    /// The number this crate mints for an instrument no agency numbers,
+    /// from the 128-bit digest of its key: `QY`, then the low 46 bits of
+    /// `digest` as nine base-36 digits, most significant first and
+    /// zero-padded, then the check digit that closes them
+    /// ([`Self::closing_digit`]).
+    ///
+    /// A pure function of the digest, so every process mints one number for
+    /// one key, and no digest is computed here. The number closes under a
+    /// prefix no agency numbers under ([`Self::is_listed_prefix`]): rank
+    /// one, so a real number replaces it whatever the order, and
+    /// [`Self::is_minted`] tells it from a `QY` number another system
+    /// stated. Allocates nothing: the twelve bytes are held inline.
+    ///
+    /// ```
+    /// use yggdryl::{CodeValue, Isin};
+    ///
+    /// let digest = yggdryl::xxhash::xxh128(b"IF:EUR/USD");
+    /// let minted = Isin::minted(digest);
+    /// assert_eq!(minted.as_str(), "QYLTVIRYHNX5");
+    /// assert!(Isin::is_closed(minted.as_str()));
+    /// assert_eq!(minted.rank(), 1);
+    /// assert!(Isin::is_minted(minted.as_str(), digest));
+    /// ```
+    #[must_use]
+    pub fn minted(digest: u128) -> Self {
+        Self(
+            Self::minted_bytes(digest)
+                .into_iter()
+                .map(char::from)
+                .collect(),
+        )
+    }
+
+    /// Whether `text` is the number [`Self::minted`] mints from `digest`:
+    /// the `QY` prefix, the nine digits the digest's low bits spell and the
+    /// digit closing them, compared byte for byte - no digest is computed.
+    /// A `QY` number of another national number is a number another system
+    /// stated, never a mint of this key.
+    ///
+    /// ```
+    /// use yggdryl::Isin;
+    ///
+    /// let digest = yggdryl::xxhash::xxh128(b"IF:EUR/USD");
+    /// assert!(Isin::is_minted("QYLTVIRYHNX5", digest));
+    /// assert!(!Isin::is_minted("QY0000000000", digest));
+    /// ```
+    #[must_use]
+    pub fn is_minted(text: &str, digest: u128) -> bool {
+        text.as_bytes() == Self::minted_bytes(digest)
+    }
+
+    /// The twelve bytes [`Self::minted`] holds for `digest`.
+    fn minted_bytes(digest: u128) -> [u8; ISIN_WIDTH] {
+        let mut number = [0_u8; ISIN_WIDTH];
+        number[..2].copy_from_slice(Self::MINTED_PREFIX.as_bytes());
+        let mut low = digest & ((1_u128 << Self::MINTED_BITS) - 1);
+        for slot in number[2..11].iter_mut().rev() {
+            *slot = Self::MINTED_DIGITS[usize::try_from(low % 36).expect("a base-36 digit")];
+            low /= 36;
+        }
+        // Two letters and nine base-36 digits: the shape the Luhn digit closes.
+        let body = std::str::from_utf8(&number[..11]).expect("minted ASCII");
+        number[11] = b'0' + Self::closing_digit(body).expect("a minted body closes");
+        number
     }
 
     /// Why an upper-cased, twelve-byte spelling is not a number's shape,

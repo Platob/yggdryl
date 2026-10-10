@@ -449,36 +449,41 @@ assert chained.num_rows == 4 and len(set(chained.column("crossuuid").to_pylist()
 
 ## Share what lifecycles learn about instruments
 
-A lifecycle learns each message's ISIN - the one key - its CFI code, country,
-market, ticker, currency, pair and security codes into an `IsinRegistry`, and
-fills what later messages of that instrument leave unsaid, as `derived`
-identifiers and the ticker, CFI and currency facts, never the wire; a parse
-through the same codec fills derived identifiers from the table its door
-fixed. A codec without one learns into a registry of each walk's own;
-`isin_registry=` shares one across walks run one after another, bound to a
+A lifecycle learns each message's instrument into an `Instruments`, keyed by
+its cross code - a real ISIN for a security, `class:body` for an FX pair or a
+derivative, its `QY` number minted - with its CFI code, country, market,
+ticker, currency, pair and security codes, and fills what later messages of
+that instrument leave unsaid, as `derived` identifiers, the ticker, CFI and
+currency facts and the instrument's cross code as `instcode`, never the wire;
+a parse through the same codec fills derived identifiers from the table its
+door fixed. A codec without one learns into a collection of each walk's own;
+`instruments=` shares one across walks run one after another, bound to a
 store with `from_url` and written back with `commit()` only where it moved,
-and `FixCodec.from_env()` shares the process's own, `IsinRegistry.from_env()`,
-laid over the embedded common instruments `IsinRegistry.seeded()` holds. A
-row carries the national number its ISIN embeds - Holcim's Valor below -
-and its market's country's currency where it states none.
-A structured product's EUSIPA category is learned off a bridge's own key
-(`EUSIPACode`, `OMS_SSPACategory`, ...) as the row's `eusipacode`, an `int`
-that `yggdryl.Eusipa` names; the key is lifted into no identifier map.
+and `FixCodec.from_env()` shares the process's own, `Instruments.from_env()`,
+laid over the embedded common instruments `Instruments.seeded()` holds. An
+instrument - a `dict` of its columns, its listings nested - carries the
+national number its ISIN embeds - Holcim's Valor below - and each listing its
+market's country's currency where it states none. A structured product's
+EUSIPA category is learned off a bridge's own key (`EUSIPACode`,
+`OMS_SSPACategory`, ...) as the instrument's `eusipacode`, an `int` that
+`yggdryl.Eusipa` names; the key is lifted into no identifier map. A row's
+`instcode` joins the instruments table on `crosscode`.
 
 ```python
 from pathlib import Path
 
-from yggdryl import Eusipa, IsinRegistry
+from yggdryl import Eusipa, Instruments
 from yggdryl.fix import FixCodec, FixRegistry
 
-instruments = IsinRegistry()
-codec = FixCodec(FixRegistry.from_handle(Path("config/fix")), isin_registry=instruments)
+instruments = Instruments()
+codec = FixCodec(FixRegistry.from_handle(Path("config/fix")), instruments=instruments)
 
 # The first walk states Holcim's ISIN, RIC, CFI code, ticker and market.
 stated = [b"8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|207=XSWX|10=0|"]
 list(codec.lifecycle(codec.parse_lines(stated)))
-assert instruments.get("CH0012214059")["ric"] == "HOLN.S"
-assert instruments.get("CH0012214059")["valor"] == "1221405", "the Valor a CH ISIN embeds"
+holcim = instruments.get("CH0012214059")
+assert holcim["listings"][0]["codes"] == {"ric": "HOLN.S"}, "a listing code is its market's"
+assert holcim["securityids"]["valor"] == "1221405", "the Valor a CH ISIN embeds"
 
 # A bridge key states a structured product's category beside its ISIN.
 product = [b"8=FIX.4.4|35=D|11=C|22=4|48=CH0123456789|55=ACMEL|207=XSWX|OMS_SSPACategory=2300|10=0|"]
@@ -492,8 +497,15 @@ assert (category.code, category.name) == (2300, "Constant Leverage Certificate")
 assert parsed.isincode == "CH0012214059" and parsed.securityids.is_derived("isin")
 [later] = codec.lifecycle([parsed])
 assert later.cficode is not None and later.cficode.as_py() == "ESVUFR"
+assert later.instcode == "CH0012214059", "the instrument's cross code"
+
+# An FX pair no agency numbers: its code and its minted number are spelled
+# from the message alone, and the walk learns its instrument.
+[pair] = codec.lifecycle(codec.parse_lines([b"8=FIX.4.4|35=D|11=F|55=EUR/USD|54=1|38=1000000|10=0|"]))
+assert (pair.instcode, pair.isincode) == ("IF:EUR/USD", "QYLTVIRYHNX5") == ("IF:EUR/USD", Instruments.mint("IF:EUR/USD"))
+assert instruments.get(pair.instcode)["currency"] == "USD", "the quote leg"
 # The table is an Arrow stream: a golden file loads with `from_url`.
-assert IsinRegistry.from_arrow_reader(instruments.into_arrow_reader()).get("CH0012214059") is not None
+assert Instruments.from_arrow_reader(instruments.into_arrow_reader()).get("CH0012214059") is not None
 ```
 
 ## Follow a replace chain's parents

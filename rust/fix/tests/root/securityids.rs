@@ -375,7 +375,16 @@ fn a_narrow_row_reads_a_view_of_a_bridged_or_derived_code_back_as_that_code() {
     assert!(anomalies(&back).is_empty(), "{:?}", anomalies(&back));
 
     let detected = parsed(b"8=FIX.4.4|35=D|11=A1|55=EUR/USD|54=1|38=1|10=0|");
-    assert_eq!(ids(&detected), ["derived:forex=EUR/USD", "forex=EUR/USD"]);
+    // The FX pair derived its minted ISIN, D42.
+    assert_eq!(
+        ids(&detected),
+        [
+            "derived:forex=EUR/USD",
+            "derived:isin=QYLTVIRYHNX5",
+            "forex=EUR/USD",
+            "isin=QYLTVIRYHNX5"
+        ]
+    );
     let back = narrow_round_trip(&detected, &["forexcode"]);
     assert_eq!(ids(&back), ids(&detected));
     assert!(anomalies(&back).is_empty(), "{:?}", anomalies(&back));
@@ -1114,7 +1123,16 @@ fn a_detected_pairs_cells_read_back_as_the_rows_word_and_only_the_pair_follows_t
             .set(55, yggdryl::Scalar::from("GBP/USD"))
             .expect("the symbol writes");
     }
-    assert_eq!(ids(&parse), ["derived:forex=GBP/USD", "forex=GBP/USD"]);
+    assert_eq!(
+        ids(&parse),
+        [
+            "derived:forex=GBP/USD",
+            "derived:isin=QYINNQW8Q3S5",
+            "forex=GBP/USD",
+            "isin=QYINNQW8Q3S5"
+        ],
+        "the pair and its minted number follow the symbol, D42"
+    );
     assert_eq!(ids(&read), ids(&parse), "the pair follows the symbol");
     assert_eq!(
         cells(&parse),

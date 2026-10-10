@@ -1,17 +1,18 @@
-//! `rust/market/src/isin_registry/env.rs`: the process default, resolved once from
-//! `YGGDRYL_ISIN_REGISTRY_URI`, the home directory or nothing, in the
+//! `rust/market/src/instrument/env.rs`: the process default, resolved once from
+//! `YGGDRYL_INSTRUMENTS_URI`, the home directory or nothing, in the
 //! documented order, laid over the seed, and shared with the codec the
 //! environment names.
 
 use yggdryl::{Ccy, Isin, Mic, Url};
-use yggdryl_market::{IdType, IsinEntry, IsinRegistry};
+use yggdryl_market::{IdType, Instrument, Instruments, Listing};
 
 const HOLCIM: &str = "CH0012214059";
 const APPLE: &str = "US0378331005";
 const MICROSOFT: &str = "US5949181045";
 
-fn row(code: &str) -> IsinEntry {
-    IsinEntry::new(Isin::new(HOLCIM).unwrap())
+fn row(code: &str) -> Instrument {
+    Instrument::for_security(Isin::new(HOLCIM).unwrap())
+        .unwrap()
         .try_with_code(IdType::Common, code)
         .unwrap()
 }
@@ -30,43 +31,49 @@ fn the_process_default_lays_the_store_over_the_seed() {
     ) {
         return;
     }
-    let location = std::env::var("YGGDRYL_ISIN_REGISTRY_URI").expect("the child's location");
+    let location = std::env::var("YGGDRYL_INSTRUMENTS_URI").expect("the child's location");
     let url = Url::from_location(&location).unwrap();
     let none: [(&str, &str); 0] = [];
-    let mut store = IsinRegistry::from_url(&url, none).expect("a first run");
+    let mut store = Instruments::from_url(&url, none).expect("a first run");
     assert!(store.is_empty(), "bound without the seed");
     store
         .merge(
-            IsinEntry::new(Isin::new(APPLE).unwrap())
-                .with_miccode(Some(Mic::new("XNAS").unwrap()))
-                .with_ticker(Some("AAPL".into()))
-                .with_currency(Some(Ccy::new("CHF").unwrap())),
+            Instrument::for_security(Isin::new(APPLE).unwrap())
+                .unwrap()
+                .with_listing(
+                    Listing::new(Some(Mic::new("XNAS").unwrap()))
+                        .with_ticker(Some("AAPL".into()))
+                        .with_currency(Some(Ccy::new("CHF").unwrap())),
+                )
+                .unwrap(),
         )
         .unwrap();
     store.commit().expect("committed");
 
-    let registry = IsinRegistry::from_env().expect("the default resolves");
+    let registry = Instruments::from_env().expect("the default resolves");
     let held = registry.lock().expect("the registry");
     assert!(!held.is_dirty(), "clean after the load");
-    assert_eq!(held.len(), IsinRegistry::seeded().len());
+    assert_eq!(held.len(), Instruments::seeded().len());
     let apple = held.get(APPLE).expect("the seed's and the store's");
+    let nasdaq = Mic::new("XNAS").unwrap();
     assert_eq!(
-        apple.currency().map(Ccy::as_str),
+        apple
+            .listing(Some(&nasdaq))
+            .and_then(|listing| listing.currency())
+            .map(Ccy::as_str),
         Some("CHF"),
         "the store's value wins"
     );
     assert_eq!(
-        apple.fisn().map(yggdryl::Fisn::as_str),
-        IsinRegistry::seeded()
-            .get(APPLE)
-            .and_then(IsinEntry::fisn)
-            .map(yggdryl::Fisn::as_str),
+        apple.fisn(),
+        Instruments::seeded().get(APPLE).and_then(Instrument::fisn),
         "a fact the store does not state stays the seed's"
     );
     assert!(apple.fisn().is_some());
     assert_eq!(
         held.get(MICROSOFT)
-            .and_then(IsinEntry::currency)
+            .and_then(|held| held.listing(Some(&nasdaq)))
+            .and_then(|listing| listing.currency())
             .map(Ccy::as_str),
         Some("USD"),
         "a seed row the store has none of"
@@ -86,10 +93,10 @@ fn the_process_default_is_the_homes_folder_and_an_install_wins_before_it_resolve
     ) {
         return;
     }
-    let mut installed = IsinRegistry::new();
+    let mut installed = Instruments::new();
     installed.merge(row("C-INSTALLED")).unwrap();
-    IsinRegistry::install_env(installed).expect("installed first");
-    let registry = IsinRegistry::from_env().expect("the installed one");
+    Instruments::install_env(installed).expect("installed first");
+    let registry = Instruments::from_env().expect("the installed one");
     let held = registry.lock().expect("the registry");
     assert_eq!(
         held.get(HOLCIM).unwrap().get(&IdType::Common),
@@ -97,7 +104,7 @@ fn the_process_default_is_the_homes_folder_and_an_install_wins_before_it_resolve
     );
     assert!(held.holder().is_none(), "installed, bound to nothing");
     drop(held);
-    assert!(IsinRegistry::install_env(IsinRegistry::new()).is_err());
+    assert!(Instruments::install_env(Instruments::new()).is_err());
     let home = std::env::var("HOME").expect("the child's home");
     assert!(
         !std::path::Path::new(&home).join(".config").exists(),
@@ -110,7 +117,7 @@ mod internal {
     use yggdryl::local::LocalFolder;
     use yggdryl::{IOBase, Url};
     use yggdryl_market::IdType;
-    use yggdryl_market::internals::isin_registry_env::autoload;
+    use yggdryl_market::internals::instrument_env::autoload;
 
     use super::row;
 
@@ -128,7 +135,7 @@ mod internal {
         let root = crate::scratch("autoload");
         let home = LocalFolder::new(root.join("home")).unwrap();
 
-        let seeded = yggdryl_market::IsinRegistry::seeded().len();
+        let seeded = yggdryl_market::Instruments::seeded().len();
         let unbound = autoload(None, None).unwrap();
         assert_eq!(unbound.len(), seeded);
         assert!(unbound.holder().is_none() && !unbound.is_dirty());
@@ -142,12 +149,15 @@ mod internal {
             .url()
             .expect("a URL")
             .to_string();
-        assert!(bound.ends_with("/home/.config/yggdryl/isin/"), "{bound}");
+        assert!(
+            bound.ends_with("/home/.config/yggdryl/instruments/"),
+            "{bound}"
+        );
         assert!(!root.join("home/.config").exists(), "nothing laid out yet");
         configured.merge(row("C-1")).unwrap();
         configured.commit().unwrap();
         assert!(
-            root.join("home/.config/yggdryl/isin/part-0.arrows")
+            root.join("home/.config/yggdryl/instruments/part-0.arrows")
                 .is_file()
         );
         let again = autoload(None, Some(home.clone())).unwrap();
@@ -228,7 +238,7 @@ mod internal {
             .to_string();
         assert!(error.contains("mem"), "{error}");
         std::fs::write(
-            root.join("home/.config/yggdryl/isin/part-0.arrows"),
+            root.join("home/.config/yggdryl/instruments/part-0.arrows"),
             b"not an arrow stream",
         )
         .unwrap();

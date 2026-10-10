@@ -78,8 +78,10 @@ def test_the_enum_listings_name_the_column_vocabulary() -> None:
         *enums.OPERATION_COLUMNS,
     ):
         assert hasattr(event, column), column
-    # Thirty-six market facts since the origin currency joined after `currency`.
-    assert len(enums.MARKET_COLUMNS) == 36 and len(enums.OPERATION_COLUMNS) == 5
+    # Thirty-seven market facts since `instcode`, the cross code of the
+    # instrument an element is about, joined after `securityids`.
+    assert len(enums.MARKET_COLUMNS) == 37 and len(enums.OPERATION_COLUMNS) == 5
+    assert enums.MARKET_COLUMNS.index("instcode") == enums.MARKET_COLUMNS.index("securityids") + 1
     assert enums.MARKET_COLUMNS.index("origccy") == enums.MARKET_COLUMNS.index("currency") + 1
     assert enums.MARKET_COLUMNS.index("strikepx") == enums.MARKET_COLUMNS.index("ticker") + 1
     # When an element last executed is a market fact, never an event's.

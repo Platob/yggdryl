@@ -87,10 +87,12 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | batches back to the wire | `codec.write_arrow_reader(reader, &mut sink)?` | `codec.write_arrow_reader(reader, sink)` | `codec.writeArrowReader(reader, { write })` |
 | chain order lifecycles | `codec.lifecycle(messages)` | `codec.lifecycle(messages)` | `codec.lifecycle(messages)` |
 | chain rows already in Arrow | `codec.lifecycle_arrow_reader(reader)?` | `codec.lifecycle_arrow_reader(reader)` | `codec.lifecycleArrowReader(reader)` |
-| share what lifecycles learn about instruments, and what parses fill from | `codec.with_isin_registry(Arc::new(Mutex::new(IsinRegistry::from_url(&url, props)?)))`, `FixCodec::from_env()?` for the process's own, `registry.lock()?.commit()?` to write it back | `FixCodec(registry, isin_registry=IsinRegistry.from_url(path))`, `FixCodec.from_env()`, `registry.commit()` | `new fix.FixCodec(registry, { isinRegistry: IsinRegistry.fromUrl(path) })`, `fix.FixCodec.fromEnv()`, `registry.commit()` |
-| the common instruments, before any store | `IsinRegistry::seeded()` - what `from_env` lays its store over; `IsinRegistry::seeded_from_url(&url, props)?` lays a store you name over it, its rows winning | `IsinRegistry.seeded()`, `IsinRegistry.seeded_from_url(path)` | `IsinRegistry.seeded()`, `IsinRegistry.seededFromUrl(path)` |
-| what a lifecycle learned about an instrument, per market | `registry.listings(isin)` (one row per market, MIC order), `get_listing(isin, &mic)`, `entry.firstunix()` and `entry.lastunix()` - the earliest and the latest message instants stating the ISIN, moved by every learn that passes either - beside `updunix()`, the last moved fact, and `entry.origccy()`, the issue currency a message stated in crate tag `65018` | `listings(isin)`, `get_listing(isin, "XSWX")`, `row["firstunix"]`, `row["lastunix"]`, `row["origccy"]` | `listings(isin)`, `getListing(isin, 'XSWX')`, `row.firstunix`, `row.lastunix`, `row.origccy` |
-| which instrument a message means | `registry.resolve(&msg)` (ISIN, then `LOOKUP_CODES`, then ticker on its market, then - scored, a fill taking it only under `set_economic_match(true)` - its `FinancialInstrumentShortName(2737)` in its currency) | `registry.resolve(msg)` -> `Resolution` | `registry.resolve(msg)` -> a plain object |
+| share what lifecycles learn about instruments, and what parses fill from | `codec.with_instruments(Arc::new(Mutex::new(Instruments::from_url(&url, props)?)))`, `FixCodec::from_env()?` for the process's own, `instruments.lock()?.commit()?` to write it back | `FixCodec(registry, instruments=Instruments.from_url(path))`, `FixCodec.from_env()`, `instruments.commit()` | `new fix.FixCodec(registry, { instruments: Instruments.fromUrl(path) })`, `fix.FixCodec.fromEnv()`, `instruments.commit()` |
+| the common instruments, before any store | `Instruments::seeded()` - what `from_env` lays its store over; `Instruments::seeded_from_url(&url, props)?` lays a store you name over it, its rows winning | `Instruments.seeded()`, `Instruments.seeded_from_url(path)` | `Instruments.seeded()`, `Instruments.seededFromUrl(path)` |
+| what a lifecycle learned about an instrument | `instruments.get(key)` - by its cross code, an alias or an ISIN, real or minted - then `instrument.listings()` (one per market, MIC order), `listing(Some(&mic))`, `firstunix()` and `lastunix()` - the earliest and the latest message instants that met it - beside `updunix()`, the last moved fact, `origccy()`, `underlying()`, `legs()`, `characteristics()`, `metadata()` | `get(key)` a `dict`, `listings(key)`, `get_listing(key, "XSWX")`, `row["firstunix"]`, `row["metadata"]` | `get(key)` a plain object, `listings(key)`, `getListing(key, 'XSWX')`, `row.firstunix`, `row.metadata` |
+| the instrument a row is about | `msg.get_instcode()` - the instrument's cross code, crate tag `65054`, the instruments table's key: join on `instcode = crosscode`, or `instcode` among `aliascodes` for a row filled before a re-key | `msg.instcode` | `msg.instcode` |
+| the number minted for an instrument no agency numbers | `Instrument::minted_number(code)` (`QY` + nine base-36 digits + check digit; `IF:EUR/USD` is `QYLTVIRYHNX5`) | `Instruments.mint(code)` | the instrument's `isin` |
+| which instrument a message means | `instruments.resolve(&msg)` (ISIN, then the cross code its facts spell, then a minted number, then `LOOKUP_CODES`, then ticker on its market, then - scored, a fill taking it only under `set_economic_match(true)` - its `FinancialInstrumentShortName(2737)` in its currency) | `instruments.resolve(msg)` -> `Resolution` | `instruments.resolve(msg)` -> a plain object |
 | one message as graph leaves | `msg.market_data()?`, `msg.into_market_data()?` | `msg.market_data()` | `msg.marketData()` |
 | sorted market data | `codec.market_data(messages)` | `codec.market_data(messages)` | `codec.marketData(messages)` |
 | books as `marketdata` rows | `codec.book_arrow_reader(msgs, 0, None)?`, `Some(&filter)` to narrow | `codec.book_arrow_reader(msgs, snapshot_millis=0, filter=None)` | `codec.bookArrowReader(msgs, 0, filter)` |
@@ -427,45 +429,58 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   the reading (the wire's, a bridge key's) holds states nothing; any other
   replaces the type's base key, its named sources staying as evidence, and a
   view disagreeing with a held base key it may not replace is dropped with an
-  anomaly naming the view column - whether a code was derived is lost (a
-  registry- or caller-derived code reads back stated). Write `securityids` for
+  anomaly naming the view column - whether a code was derived is lost (an
+  instruments- or caller-derived code reads back stated). Write `securityids` for
   a round trip that keeps sources.
 - Instrument learning is the lifecycle's, never the parse's: each walk learns
-  every message's ISIN - the one key - CFI code, country of issue, the
-  underlying it is written on (`UnderlyingSecurityID(309)`, a bridge's
-  `UnderlyingISIN`; lifted into no `securityids`), a structured product's
-  EUSIPA category (`eusipacode`, off a bridge key whose folded name ends
-  `eusipa`, `eusipacode`, `eusipacategory`, `sspa`, `sspacode` or
-  `sspacategory` - `EUSIPACode=2300`, `OMS_SSPACategory=1260` - four digits
-  once trimmed, two different ones stating none; lifted into no map, the
-  entry kept as it came), market, ticker, currency,
-  pair and security codes into an `IsinRegistry`, a valid
-  stated value filling and replacing whatever the time, and fills what later
-  messages of that instrument leave unsaid - `derived` identifiers, the
-  ticker, the CFI code and the currency as market facts - never the wire,
-  `CFICode(461)` or the message's identity. A parse through a codec sharing a
-  registry fills derived identifiers from the table its door fixed as it
-  opened, nothing else, and learns nothing. Without `isin_registry=` each walk
-  learns into its own, starting empty, and a parse fills nothing; pass one
-  registry - bound to a store with `from_url` and written back with
-  `commit()` only where it moved, or the process's own `from_env()`, which
-  `FixCodec.from_env()` attaches - to share it across walks run one after
-  another. A code of `IsinRegistry::LOOKUP_CODES` - a CUSIP, a SEDOL, a RIC, a
-  Bloomberg symbol - leads back to its instrument like a ticker on its market,
-  one instrument per code; a parse fills from those exact keys alone, never
-  from a short name's score. A message's `origccy` (crate tag `65018`, no FIX
-  field) is learned as the instrument's issue currency and filled where a
-  later message states none; `origin_currency` reads the currency otherwise.
-  `from_env()` starts from the embedded seed of common instruments
-  (`IsinRegistry.seeded()`, the store's rows winning), and a row the
-  registry folds carries the CUSIP, SEDOL, WKN or Valor its ISIN embeds and
-  its market's country's currency where it states none - defaults a
-  statement replaces. In a medallion pipeline commit the codec's registry
-  once, as the stage right after the FIX-message parse, after the refined
-  write has drained the lifecycle: one snapshot, nothing where clean. The
-  capture's own lines are appended by key (`append_serie` on a table whose
-  `identifier-field-ids` is the row's key: a line already stored in its
-  partition is skipped, no file rewritten); every derived table is
+  every message's instrument into an `Instruments`, keyed by its cross code -
+  a security by its real ISIN alone, an FX pair, a forward, a swap, an option,
+  a future or a strategy by `class:body`, its CFI class and the
+  characteristics its message spells (`OC:US0378331005:2026-12-18:200`,
+  `FF:EU0009658145:2026-12`, `KE:<leg>+<leg>`), the underlying and the legs
+  resolved to the codes the collection keys, a derivative stating only its
+  venue's ISIN a placeholder re-keyed once its body arrives, the old code kept
+  in `aliascodes`. It learns the CFI code, country of issue, the underlying
+  (`UnderlyingSecurityID(309)`, a bridge's `UnderlyingISIN`; lifted into no
+  `securityids`), a strategy's `NoLegs(555)`, a structured product's EUSIPA
+  category (`eusipacode`, off a bridge key whose folded name ends `eusipa`,
+  `eusipacode`, `eusipacategory`, `sspa`, `sspacode` or `sspacategory` -
+  `EUSIPACode=2300`, `OMS_SSPACategory=1260` - four digits once trimmed, two
+  different ones stating none; lifted into no map, the entry kept as it came),
+  the descriptive fields (`Issuer(106)`, `SecurityDesc(107)`,
+  `SecurityType(167)` and eight more) as its `metadata`, market, ticker,
+  currency, pair and security codes - each source's under its own `src:type`
+  key - a valid stated value filling and replacing whatever the time, and
+  fills what later messages of that instrument leave unsaid - `derived`
+  identifiers, the ticker, the CFI code and the currency as market facts, the
+  instrument's cross code as `instcode` - never the wire, `CFICode(461)` or
+  the message's identity. The parse writes `instcode` only where the message
+  alone spells it - a stated real ISIN, a detected FX pair (`IF:EUR/USD`, its
+  minted number `QYLTVIRYHNX5` derived under `derived:isin` so its book is
+  `3:0:QYLTVIRYHNX5`) - and a parse through a codec sharing a collection fills
+  derived identifiers from the table its door fixed as it opened, nothing
+  else, and learns nothing. Without `instruments=` each walk learns into its
+  own, starting empty, and a parse fills nothing; pass one collection - bound
+  to a store with `from_url` and written back with `commit()` only where it
+  moved, or the process's own `from_env()`, which `FixCodec.from_env()`
+  attaches - to share it across walks run one after another. A code of
+  `Instruments::LOOKUP_CODES` - a CUSIP, a SEDOL, a RIC, a Bloomberg symbol -
+  leads back to its instrument like a ticker on its market, one instrument per
+  code; a parse fills from those exact keys alone, never from a short name's
+  score. A message's `origccy` (crate tag `65018`, no FIX field) is learned as
+  the instrument's issue currency and filled where a later message states
+  none; `origin_currency` reads the currency otherwise. `from_env()` starts
+  from the embedded seed of common instruments (`Instruments.seeded()`, the
+  store's rows winning), and an instrument the collection folds carries the
+  CUSIP, SEDOL, WKN or Valor its ISIN embeds and each listing its market's
+  country's currency where it states none - defaults a statement replaces. In
+  a medallion pipeline commit the codec's collection once, as the stage right
+  after the FIX-message parse, after the refined write has drained the
+  lifecycle: one snapshot of one row per instrument, nothing where clean; a
+  table laid out before the instrument row is refused by name, so drop and
+  recreate it. The capture's own lines are appended by key (`append_serie` on
+  a table whose `identifier-field-ids` is the row's key: a line already stored
+  in its partition is skipped, no file rewritten); every derived table is
   overwritten partition by partition.
 - `StrikePrice(202)` is read into the market fact `strikepx` (`Market`), the
   fixed row's `strikepx` column right after `ticker` (crate tag `65036`), so

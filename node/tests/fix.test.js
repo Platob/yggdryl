@@ -1576,7 +1576,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(event.askpx, null)
     // The message answers the same facts as getters.
     for (const name of [
-      'ticker', 'unit', 'securityids', 'spotrate', 'forwardpoints', 'identifiers', 'isincode', 'fxrates',
+      'ticker', 'unit', 'securityids', 'spotrate', 'forwardpoints', 'identifiers', 'instcode', 'isincode', 'fxrates',
       'bidpx', 'bidqty', 'bidccy', 'askpx', 'askqty', 'askccy',
     ]) {
       assert.deepEqual(message[name], event[name], name)
@@ -2236,7 +2236,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     console.log('ok')
   `
     const { execFileSync } = require('node:child_process')
-    // `FixCodec.fromEnv` resolves the process's instrument registry too, so
+    // `FixCodec.fromEnv` resolves the process's instruments too, so
     // the child's environment names a scratch store, never the real home.
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-fix-env-'))
     try {
@@ -2245,7 +2245,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
         ['-e', script, require.resolve('yggdryl'), SEED],
         {
           encoding: 'utf8',
-          env: { ...process.env, HOME: home, USERPROFILE: home, YGGDRYL_ISIN_REGISTRY_URI: path.join(home, 'isin') + path.sep },
+          env: { ...process.env, HOME: home, USERPROFILE: home, YGGDRYL_INSTRUMENTS_URI: path.join(home, 'instruments') + path.sep },
         },
       )
       assert.equal(output.trim(), 'ok')
@@ -2701,21 +2701,23 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // bridge columns (`omsdealeraccount`, `omsuserid`, `parentorderid`,
     // `parentclordid`, `omsdealerparentorderid`, `exchangeclientorderid`,
     // `transversalkey`, `ultraderclordid`, `omsinstrumentid`,
-    // `ullinkinstrumentid`) are no crate field - the 52 definitions
-    // `rust/fix/tests/root/crated.rs` pins, tags 65001 to 65052.
-    assert.equal(CRATE.length, 52)
-    assert.equal(CRATE_REGISTERED.length, 33)
-    assert.equal(CRATE_SCALARS.length, 32)
-    assert.equal(new fix.FixRegistry().size, 35)
-    assert.equal(scalars(new fix.FixRegistry()).length, 34)
+    // `ullinkinstrumentid`) are no crate field - the 53 definitions
+    // `rust/fix/tests/root/crated.rs` pins, tags 65001 to 65052 and
+    // `instcode` (65054, D42), the one tag past the row's `fixmsg` (65053).
+    assert.equal(CRATE.length, 53)
+    assert.equal(CRATE_REGISTERED.length, 34)
+    assert.equal(CRATE_SCALARS.length, 33)
+    assert.equal(new fix.FixRegistry().size, 36)
+    assert.equal(scalars(new fix.FixRegistry()).length, 35)
     // `SecurityID(48)`, `SecurityIDSource(22)` and the `Parties(453)` and
     // `SecAltIDGrp(454)` groups left the row for `fixentries`: the prefix's
     // `partyids` and `securityids` state them. A group kept whole is its list
     // alone, one column under the counter tag naming it.
     // The merged plugin-side column adds one tag and one field to the fixed
-    // row, and the origin currency one more of each.
-    assert.equal(schema.fieldLen, 153)
-    assert.equal(fix.schemaTags().length, 152)
+    // row, the origin currency one more of each, and the instrument's
+    // cross code, `instcode`, one more (D42).
+    assert.equal(schema.fieldLen, 154)
+    assert.equal(fix.schemaTags().length, 153)
     const at = schema.indexOf('msgtype')
     assert.deepEqual(
       [schema.fieldAt(at - 1).name, schema.fieldAt(at).name, schema.fieldAt(at + 1).name, schema.fieldAt(at + 2).name],
@@ -2727,10 +2729,13 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       assert.equal(schema.fieldAt(schema.indexOf(name)).fix.tag, tag, name)
     }
     assert.equal(schema.fieldAt(schema.indexOf('cficode')).fix.tag, 461)
-    // A11: the crate's own tags are numbered contiguously from 65001.
+    // A11: the crate's own tags are numbered contiguously from 65001 to
+    // 65052; `fixmsg` holds 65053 and `instcode` the tag past it.
     const crateTags = fix.crateFields().map((field) => field.fix.tag).sort((left, right) => left - right)
-    assert.deepEqual(crateTags, crateTags.map((_, at) => 65001 + at))
-    assert.equal(crateTags.at(-1), 65052, 'sourceurl closes the block')
+    assert.deepEqual(crateTags.slice(0, -1), crateTags.slice(0, -1).map((_, at) => 65001 + at))
+    assert.equal(crateTags.at(-2), 65052, 'sourceurl closes the block')
+    assert.equal(crateTags.at(-1), 65054, 'instcode, past fixmsg')
+    assert.equal(schema.fieldAt(schema.indexOf('instcode')).fix.tag, 65054)
     const crateNames = fix.crateFields().map((field) => field.name)
     for (const retired of ['omsdealeraccount', 'omsuserid', 'parentorderid', 'parentclordid',
       'omsdealerparentorderid', 'exchangeclientorderid', 'transversalkey', 'ultraderclordid', 'omsinstrumentid',

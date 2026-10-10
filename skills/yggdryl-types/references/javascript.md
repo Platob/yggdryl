@@ -570,7 +570,7 @@ assert.throws(() => DataType.from('datetime64(ns)').intoSchemeCompat('spark'), /
   child.
 - `DataType.kind` is the family (`DataType.time('ms').kind === 'temporal'`);
   the leaf is `id` (`'time32'`).
-- No `Eusipa`: an `IsinRegistry` row crosses a structured product's
+- No `Eusipa`: an instrument row of `Instruments` crosses a structured product's
   `eusipacode` as its number, which Rust's and Python's `Eusipa` name.
 - No `validateStructRoot`, `applyArrowBatch`, `pretty`, YAML/TOML schema
   writers, `uuidPacked`, `FieldScalar` or `FieldRecord`. A nullable struct

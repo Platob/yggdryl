@@ -3,7 +3,7 @@
 //! a security identifier is - its `SecurityIDSource(22)` code, its field
 //! names, the rule its value follows - is `rust/market/tests/root/idtype.rs`'s, and
 //! what a lifecycle learns between an instrument's identifiers is
-//! `rust/market/tests/root/isin_registry.rs`'s.
+//! `rust/market/tests/root/instrument.rs`'s.
 
 use yggdryl::Isin;
 use yggdryl_market::securityid::embedded;

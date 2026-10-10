@@ -41,9 +41,9 @@ use crate::field::{PyField, core_field_from_value};
 use crate::graph::market_data::{PyMarketData, PyMarketDataRowIterator};
 use crate::graph::{code_scalar, decimal_scalar, ellipsis, fxrates_dict, member, uuid_scalar};
 use crate::iceberg::folder_holder_from_value;
+use crate::instrument::PyInstruments;
 use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
-use crate::isin_registry::PyIsinRegistry;
 use crate::scalar::{PyScalar, from_py};
 use crate::serie::serie_source_of;
 use crate::stream_chunked_serie::PyStreamChunkedSerie;
@@ -2358,7 +2358,7 @@ impl PyFixMsg {
 
     /// The currency the instrument originates in - the one it was issued
     /// in - as the `ccy` code it is, where the message states it (the crate
-    /// field `origccy`) or a registry filled it; `None` where neither did,
+    /// field `origccy`) or the instruments filled it; `None` where neither did,
     /// never the currency.
     #[getter]
     fn origccy(&self) -> Option<PyScalar> {
@@ -2442,6 +2442,16 @@ impl PyFixMsg {
     #[getter]
     fn isincode(&self) -> Option<&str> {
         self.inner.get_isincode()
+    }
+
+    /// The cross code of the instrument the message is about - a stated
+    /// real ISIN, the `class:body` of a detected FX pair (`IF:EUR/USD`),
+    /// written at the parse from the message alone, else the code a
+    /// lifecycle filled from the instruments - what the instruments
+    /// table's `crosscode` joins on; `None` where nothing resolved it.
+    #[getter]
+    fn instcode(&self) -> Option<&str> {
+        self.inner.get_instcode()
     }
 
     /// The rates an amount in `currency` is divided by to state it in
@@ -2803,9 +2813,9 @@ impl PyFixCodec {
     /// `logging`, so the thread waiting on that worker must not hold it:
     /// held, the two wait on each other for good. One thread never showed
     /// it, because the worker was this thread. A parse door also takes the
-    /// instrument registry's lock as it opens, and a registry verb run
-    /// detached under that lock may warn, so no door takes the lock with
-    /// the GIL held either.
+    /// instruments' lock as it opens, and an instruments verb run detached
+    /// under that lock may warn, so no door takes the lock with the GIL
+    /// held either.
     fn released<T, F>(py: Python<'_>, door: F) -> T
     where
         F: FnOnce() -> T + Send,
@@ -2823,8 +2833,8 @@ impl PyFixCodec {
     const __hash__: Option<Py<PyAny>> = None;
 
     /// A codec over the registry the process environment names,
-    /// `FixRegistry.from_env()`, sharing the instrument registry it names
-    /// too, `IsinRegistry.from_env()` - unless the `isin_registry` pin
+    /// `FixRegistry.from_env()`, sharing the instruments it names too,
+    /// `Instruments.from_env()` - unless the `instruments` pin
     /// names another - pinned by the keywords the constructor takes. The
     /// one constructor that attaches the process's own; `FixCodec(...)`
     /// attaches none, and a commit of what the walks learned is always the
@@ -2843,13 +2853,11 @@ impl PyFixCodec {
             Some(pins) => pins.copy()?,
             None => PyDict::new(py),
         };
-        if !pins.contains("isin_registry")? {
+        if !pins.contains("instruments")? {
             let instruments = py
-                .detach(|| {
-                    yggdryl_market::IsinRegistry::from_env().map(PyIsinRegistry::from_shared)
-                })
+                .detach(|| yggdryl_market::Instruments::from_env().map(PyInstruments::from_shared))
                 .map_err(value_error)?;
-            pins.set_item("isin_registry", instruments)?;
+            pins.set_item("instruments", instruments)?;
         }
         cls.call((registry,), Some(&pins))
     }
@@ -2926,10 +2934,10 @@ impl PyFixCodec {
     /// how long, in milliseconds of event time, `lifecycle` remembers an
     /// identity it yielded so it yields that identity once - not given, the
     /// core's one minute, and `None`, zero or a negative window remembering
-    /// none; `isin_registry` is the `IsinRegistry` every `lifecycle` learns
-    /// into and fills from, shared so a walk run after another starts from
-    /// what the first learned - `None`, each walk learning into its own,
-    /// starting empty; `market_metadata`
+    /// none; `instruments` is the `Instruments` every `lifecycle` learns
+    /// into and fills from - every row's `instcode` among it - shared so a
+    /// walk run after another starts from what the first learned - `None`,
+    /// each walk learning into its own, starting empty; `market_metadata`
     /// is whether a market operation the codec builds carries, in its
     /// metadata, what its message states that no typed column reads and no
     /// identifier map of the leaf holds - its parties, its `Account(1)` and
@@ -2957,7 +2965,7 @@ impl PyFixCodec {
         sorted_lifecycle=false,
         official_time_delay_ms=None,
         dedup_window_ms=ellipsis(),
-        isin_registry=None,
+        instruments=None,
         market_metadata=true,
     ))]
     #[allow(clippy::too_many_arguments)]
@@ -2981,7 +2989,7 @@ impl PyFixCodec {
         sorted_lifecycle: bool,
         official_time_delay_ms: Option<i64>,
         dedup_window_ms: Py<PyAny>,
-        isin_registry: Option<PyRef<'_, PyIsinRegistry>>,
+        instruments: Option<PyRef<'_, PyInstruments>>,
         market_metadata: bool,
     ) -> PyResult<Self> {
         let registry = registry_or_env(registry)?;
@@ -3034,8 +3042,8 @@ impl PyFixCodec {
             let window: Option<i64> = window.extract()?;
             inner = inner.with_dedup_window_ms(window.unwrap_or(0));
         }
-        if let Some(held) = isin_registry {
-            inner = inner.with_isin_registry(Arc::clone(&held.inner));
+        if let Some(held) = instruments {
+            inner = inner.with_instruments(Arc::clone(&held.inner));
         }
         inner = inner.with_market_metadata(market_metadata);
         Ok(Self { inner, registry })
@@ -3047,12 +3055,12 @@ impl PyFixCodec {
         PyFixRegistry::from_arc(Arc::clone(&self.registry))
     }
 
-    /// The `IsinRegistry` every `lifecycle` this codec runs shares, the same
+    /// The `Instruments` every `lifecycle` this codec runs shares, the same
     /// table the caller holds, or `None` where each walk learns into its
     /// own.
     #[getter]
-    fn isin_registry(&self) -> Option<PyIsinRegistry> {
-        self.inner.isin_registry().map(PyIsinRegistry::from_shared)
+    fn instruments(&self) -> Option<PyInstruments> {
+        self.inner.instruments().map(PyInstruments::from_shared)
     }
 
     /// The nanosecond UTC `SendingTime` an undated new message takes - one

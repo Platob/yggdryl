@@ -21,8 +21,8 @@ user's go merges, and the merge is the release.
 
 **B5's separate `yggdryl-market` Python and npm packages are not needed for R1**: nothing of the
 market or FIX surface is missing from the `yggdryl` wheel and addon (`python/src/lib.rs` registers
-`IsinRegistry`, `FixCodec`, the market classes in the one `_native` module; `node/src/lib.rs` the
-same), and B5 (`$S/b5_manager_prompt.md`) exists to let a consumer install the market view alone -
+`IsinRegistry` - `Instruments` once P9 lands - `FixCodec`, the market classes in the one `_native`
+module; `node/src/lib.rs` the same), and B5 (`$S/b5_manager_prompt.md`) exists to let a consumer install the market view alone -
 a packaging convenience the user postponed to the PR after the release (`user_decisions.md` 7).
 `release_packages.py`'s `version` already reads B5's manifests (`python/market/pyproject.toml` and
 `node/market/package.json` when they exist, `:108-128`); the rest is B5's: `PYPI = ["yggdryl"]` and
@@ -148,10 +148,10 @@ without the Instrument the user scoped into it.
   on `0f411f5ce`; the commit message does not record the command or its output, and DESIGN.md's
   S4 results hold only `cargo package --locked --list -p yggdryl` (`DESIGN.md:2678`). No CI job
   dry-runs a publish or builds the sdist (`ci.yml` has neither; only `release.yml`'s `sources`
-  does, on a release or a rehearsal). The next lane runs `$S/r1/r1_release.sh --prove` **after
+  does, on a release or a rehearsal). The P9 lane runs `$S/r1/r1_release.sh --prove` **after
   its commit and before its push**, on the clean committed tree (the script refuses a dirty tree,
-  and the chain runs while the tree holds the phase edits, so it is not a chain step), and the
-  results commit records its log: the dry run, `cargo package --list` for the two new crates
+  and the chain runs while the tree holds the phase edits, so it is not a chain step) - steps 2
+  and 4 of `$S/p9/d42_design.md`'s plan - and its results commit records the log: the dry run, `cargo package --list` for the two new crates
   (README.md present, nothing under `market/`/`fix/` in the core's list), the sdist listing
   `rust/market/Cargo.toml` and `rust/fix/Cargo.toml`, the wheel's command, the two docs manifests'
   `--check`, the npm audit. The seed's path is P9's to settle (`d42_design.md` D42.13), so the
@@ -176,7 +176,8 @@ without the Instrument the user scoped into it.
   global.rs`). `cargo publish`'s verification builds the library alone, so the dry run passes; the
   README should say the dictionary is fetched or supplied, not shipped. Documentation, not plumbing.
 - **F5 - DESIGN.md still says 0.1.21 until S9** (`:17`, `:89`, the D1 row `:2931`). The P9 results
-  commit re-spells the three lines: 0.1.22 on the branch since `0f411f5ce`, published by the merge.
+  commit (d42's plan, step 4) re-spells the three lines: 0.1.22 on the branch since `0f411f5ce`,
+  published by the merge.
 - **F6 - the medallion CLI commits no instruments.** `python/tests/medallion.py main()` builds the
   codec without a registry (`:534-540`), so the live AWS prompt's step 3d ("the instruments table
   ... present and filled") cannot pass on the CLI path today. P9 fixes it (D42.14); recorded here
@@ -193,10 +194,17 @@ without the Instrument the user scoped into it.
   the script from the tree it runs on, as the continue prompt requires.
 - **F9 - the proof script is linked from no handoff entry.** `r1_release.sh` is named here alone;
   `MARKET_SPLIT_CONTINUE.md`'s release step should say `r1_release.sh --prove` is the first
-  release's proof and that the merge is the release. The P9 results commit adds the line.
+  release's proof and that the merge is the release. The P9 results commit (d42's plan, step 4)
+  adds the line.
 - **F10 - AGENTS.md §6 misnames the credentials.** `AGENTS.md:2927` says "Cargo and npm secrets,
   PyPI trusted publishing"; the workflow has npm on trusted publishing too (`release.yml:41-43`).
-  Re-spell as "the Cargo secret; PyPI and npm trusted publishing" in the P9 results commit.
+  Re-spell as "the Cargo secret; PyPI and npm trusted publishing" in the P9 results commit
+  (d42's plan, step 4).
+
+Every commit named above - P9's, the fix of a red job, the results commit - ends with exactly
+`Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` and
+`Claude-Session: https://claude.ai/code/session_01Gfky7FUx35U5i4UJcrQGKp` and no other
+`Co-Authored-By` (the program's standing rule, `.handoff/next/MARKET_SPLIT_CONTINUE.md`).
 
 ## Proof a later release runs (no publish)
 

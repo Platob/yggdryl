@@ -142,14 +142,17 @@ fn only_two_dated_values_order_and_only_one_variant_merges() {
 /// `delta`, the orders and quotes its instant applied, and its `events`,
 /// every other event its instant recorded - one 24-byte vector more, 16
 /// after padding, still narrower than the snapshot.
+/// Both moved by sixteen when `instcode` joined `MarketFacts`, D42: one
+/// `Option<Str>` of twenty-four, eight of them the padding the facts
+/// carried, so the book is 912 and the snapshot 928.
 #[test]
 fn the_enum_is_the_size_of_its_widest_inline_leaf() {
     crate::install::installed();
     use std::mem::size_of;
     assert_eq!(size_of::<MarketData>(), size_of::<SnapshotEvent>());
     assert!(size_of::<TradeEvent>() < size_of::<MarketData>());
-    assert_eq!(size_of::<BookEvent>(), 896);
-    assert_eq!(size_of::<MarketData>(), 912);
+    assert_eq!(size_of::<BookEvent>(), 912);
+    assert_eq!(size_of::<MarketData>(), 928);
 }
 
 /// The origin currency is the `marketdata` row's column right after the
@@ -164,7 +167,7 @@ fn the_origin_currency_cell_is_written_only_where_held() {
 
     let root = MarketData::field().expect("the marketdata row");
     let names: Vec<&str> = root.fields().iter().map(|field| field.name()).collect();
-    assert_eq!(names.len(), 65);
+    assert_eq!(names.len(), 66);
     let at = names
         .iter()
         .position(|name| *name == "origccy")

@@ -1,6 +1,6 @@
 [package]
 name = "yggdryl-market"
-description = "Market data for yggdryl: the four market enum kinds, the identifiers, the ISIN registry and the market-data graph, its books and their Arrow rows"
+description = "Market data for yggdryl: the four market enum kinds, the identifiers, the instruments and the market-data graph, its books and their Arrow rows"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

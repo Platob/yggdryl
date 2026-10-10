@@ -1,5 +1,5 @@
-//! One test file per file under `rust/market/src/isin_registry/` that
-//! answers for what `yggdryl-fix` owns, in `tests/isin_registry/`. A test
+//! One test file per file under `rust/market/src/instrument/` that
+//! answers for what `yggdryl-fix` owns, in `tests/instrument/`. A test
 //! reaches this crate through `yggdryl_fix::`, the market crate through
 //! `yggdryl_market::` and the core through `yggdryl::`.
 
@@ -7,7 +7,7 @@
 mod install;
 use std::path::PathBuf;
 
-#[path = "isin_registry/env.rs"]
+#[path = "instrument/env.rs"]
 mod env;
 
 /// A scratch folder under the temporary directory, cleared, that no test
@@ -18,7 +18,7 @@ fn scratch(label: &str) -> PathBuf {
         .path()
         .expect("a path")
         .join(format!(
-            "yggdryl-isin-registry-{label}-{}",
+            "yggdryl-instruments-{label}-{}",
             std::process::id()
         ));
     let _ = std::fs::remove_dir_all(&path);
@@ -26,11 +26,11 @@ fn scratch(label: &str) -> PathBuf {
     path
 }
 
-const ISOLATED_TEST: &str = "YGGDRYL_ISOLATED_ISIN_REGISTRY_TEST";
+const ISOLATED_TEST: &str = "YGGDRYL_ISOLATED_INSTRUMENT_TEST";
 
 /// Runs a process-global case in a child containing only that selected
 /// test, whose environment names scratch folders alone: `HOME` and
-/// `USERPROFILE` a scratch home, `YGGDRYL_ISIN_REGISTRY_URI` the folder
+/// `USERPROFILE` a scratch home, `YGGDRYL_INSTRUMENTS_URI` the folder
 /// `location` under it, and no FIX registry location. Answers whether this
 /// is the parent, which ran the child; the child answers `false` and runs
 /// the body.
@@ -48,10 +48,10 @@ fn run_isolated(test_name: &str, marker: &str, location: Option<&str>) -> bool {
         .env_remove("YGGDRYL_FIX_REGISTRY");
     match location {
         Some(location) => {
-            child.env("YGGDRYL_ISIN_REGISTRY_URI", home.join(location));
+            child.env("YGGDRYL_INSTRUMENTS_URI", home.join(location));
         }
         None => {
-            child.env_remove("YGGDRYL_ISIN_REGISTRY_URI");
+            child.env_remove("YGGDRYL_INSTRUMENTS_URI");
         }
     }
     let output = child.output().expect("the isolated test must start");

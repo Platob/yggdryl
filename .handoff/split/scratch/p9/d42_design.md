@@ -36,7 +36,7 @@ each by reading the file (no command was run to write this).
 | 3 | "create custom isin codes, fill country currency" | panel D42.3 (the `QY` minted number: nine base-36 digits of the identity's low 46 bits, Luhn-closed, rank 1), D42.12 (country and currency) |
 | 4 | "autocreating for forex pairs which dont have existing isin" | D42.11 (an FX pair detected off `Symbol(55)` - or stated as `forex` plus an `I*`/`J*`/`S*` class by any market element - is keyed `IF:EUR/USD`, mints its number into `derived:isin`, the lifecycle learns the instrument, its book is keyed by the minted number) |
 | 5 | "optional instrument underlying pointing to another instrument uuid ... and legs uuids list" | D42.9: `underlying: Option<Str>` and `legs: Vec<Leg>` hold the **codes** (the key names them by their codes, never their uuids - panel D42.1, "no cascading uuid in a key"); `underlying_uuid()` and `leg_uuids()` answer the uuids by the graph's cross rule; a leg's ratio is a key byte (`n*`), legs sorted (panel item 8) |
-| 6 | "characteristics to handle generic finance products like future options strikepx ... include it syntheticqlly in cross code then correct graph defined hashing in uuids" | panel D42.1: the body of a `class:body` code is the characteristics (forex, settle, underlying, expiry, month, strike, legs), written once by `Instrument::write_crosscode`. **The hashing correction is not P9's**: P9 leaves every instrument's `crossuuid`/`uuid` on today's `from_v8` rule, and the user's correction lands with P7 (D40.5) in this PR before the merge - the merge must not happen before P7 (d43's gate) |
+| 6 | "characteristics to handle generic finance products like future options strikepx ... include it syntheticqlly in cross code then correct graph defined hashing in uuids" | panel D42.1: the body of a `class:body` code is written once by `Instrument::write_crosscode` from the pair (`securityids`' `forex` entry, D42.9), the characteristics (settle, expiry, month, strike), the underlying and the legs. **The hashing correction is not P9's**: P9 leaves every instrument's `crossuuid`/`uuid` on today's `from_v8` rule, and the user's correction lands with P7 (D40.5) in this PR before the merge - the merge must not happen before P7 (d43's gate) |
 | 7 | "instrument cross uuid should rely on cficode + isincode, and fill the market intrumentuuid with this cross uuid" | panel D42.1 as the user confirmed (decision 8): a real ISIN alone keys an agency-numbered instrument, the CFI class keys everything no agency numbers; `crossuuid` by the graph's rule; decision 9 replaces the second half: the market row carries the instrument's **code** (`instcode`, D42.10), and the code's digest is the `crossuuid`, so the code carries both |
 
 ## What the panel decided (adopted, not restated)
@@ -49,7 +49,7 @@ each by reading the file (no command was run to write this).
 | D42.4 the hashing | an `Element`, no `Event`; `uuid = crossuuid`; `hashcode` the content code over every fact through typed accessors; `srcuuids` two at most; `instcode` a market holder (`Option<Str>`) with a setter taking `overwrite`, filled along a chain. **Amended** (D42.10): `instcode` is fed to no digest, as `crossuuid` is not | D42.9, D42.10, D42.17 |
 | D42.5 what moves | nothing but the placeholder re-key (`isin` -> `class:body`, the old code into `aliascodes`); multiplier and exercise out of the key; tenor-keyed and date-keyed forwards two instruments; `instcode = crosscode or instcode in aliascodes` the gold join | D42.9, D42.17 |
 | D42.6 the per-row cost | the packed-`i128` ISIN index, the `[u8; 128]` speller, two digests per creation, none per row; the table's `PARTITION:by truncate(crosscode, 2)`, `SORT:by crosscode`. **Amended** (D42.10): `FxMemo` gains no instrument slot | D42.13, D42.17 |
-| D42.7 the table | one row per Instrument element: the six element columns, `aliascodes`, `placeholder`, `cfi`, `country`, `currency`, `securityids`, the characteristics struct, `listings` nested, the three stamps; silver replayed from bronze. **Amended** (D42.13): `underlying` and `legs` hold codes, `identifiers` is dropped, `expiry` and `settle` are the key's text, the commit is today's whole overwrite | D42.13, D42.14 |
+| D42.7 the table | one row per Instrument element: the six element columns, `aliascodes`, `placeholder`, `cfi`, `country`, `currency`, `securityids`, the characteristics struct, `listings` nested, the three stamps; silver replayed from bronze. **Amended** (D42.13): `underlying` and `legs` hold codes, `identifiers` is dropped, `forex` is no characteristic (the pair's one holder is `securityids`' `forex` entry, D42.9), `expiry` and `settle` are the key's text, the commit is today's whole overwrite | D42.13, D42.14 |
 
 Three places where P9's position before P7 bends a panel sentence, decided here:
 
@@ -96,8 +96,9 @@ Deleted in the one commit, no alias, no shim, no dual reader (AGENTS "No back-co
 
 The sweep is grep-driven, not compiler-driven: `cargo check --keep-going` names every call site
 and no intra-doc link, and rustdoc under `-D warnings` (CI's lint jobs) names the links. Phase 0's
-list is `git grep -n -E 'IsinRegistry|IsinEntry|IsinTable|isin_registry|isinRegistry|YGGDRYL_ISIN_REGISTRY|check_isin_seed|config/isin'`
-over the whole tree, which reaches the sites `cargo check` cannot: `rust/market/src/idtype.rs:669`,
+list is `git grep -n -i -E 'isin[-_ ]?registr|IsinEntry|IsinTable|check_isin_seed|config/isin' -- . ':!.handoff'`
+(1,458 lines in 60-odd files today, `.handoff/` excluded because it records the old names on
+purpose), which reaches the sites `cargo check` cannot: `rust/market/src/idtype.rs:669`,
 `securityid.rs:3`, `lib.rs:6` (module docs); `rust/fix/src/codec.rs:732-744,1052-1076,2697-2701`,
 `enrich.rs:725`, `msg.rs:3884,3900,3923` (doc links inside re-spelled files);
 `rust/market/tests/root/implementer.rs:10,64-67`, `rust/market/tests/root/securityid.rs:6`;
@@ -166,11 +167,19 @@ pub struct Instrument {
 }
 pub struct Leg { code: Str, ratio: u32 }  // ratio 1 writes no `n*` prefix
 pub struct Characteristics {           // every field nullable; the body is written from them, never parsed back per row
-    forex: Option<Forex>, settle: Option<Settle>, settle2: Option<Settle>,   // Settle = Date(Date32) | Tenor(SmolStr)
+    settle: Option<Settle>, settle2: Option<Settle>,   // Settle = Date(Date32) | Tenor(SmolStr)
     expiry: Option<Expiry>,            // Expiry = Day(Date32) | Month { year: u16, month: u8, week: Option<u8> }
     strikepx: Option<Decimal>, multiplier: Option<Decimal>, exercise: Option<Exercise>,
-}
+}                                      // no `forex`: the pair is `securityids`' `forex` entry (below)
 ```
+
+**The FX pair has one holder**: `securityids`' `forex` entry (`IdType::Forex`, the market row's
+`forexcode` is its projection), never a `Characteristics` field - the panel's D42.1 list and
+D42.7 struct name `forex` among the characteristics, amended here, because a pair held twice on
+one element is two owners of one fact (AGENTS §1) and D42.13 persists only the projection.
+`write_crosscode` reads the pair for an `I*`, `J*` or `S*` body through `get(&IdType::Forex)`
+(one binary search, at the finalize, never per market row); `for_body` takes the pair as intake
+and writes it into `securityids` before it spells the code.
 
 The underlying and the legs are held as **codes**, not uuids (panel D42.7's `underlying: uuid`,
 `legs: serie<uuid>` amended): the `O*`, `H*`, `F*` and `K*` bodies are written from the
@@ -197,7 +206,8 @@ Readers: the registry's (`isin()`, `cficode()`, `country()`, `forexcode()`, `fis
 `isin_registry.rs:579-799` does, `with_listing(Listing)`, `with_underlying(&str)`,
 `with_legs(&[Leg])`, `with_characteristics`, `set_code`/`try_with_code`. **Two constructors write a
 code and there is no `new(&str)`**: `Instrument::for_security(isin)` and
-`Instrument::for_body(class, &Characteristics, underlying, legs)`, the second minting the number -
+`Instrument::for_body(class, forex: Option<&Forex>, &Characteristics, underlying, legs)` - the
+pair written into `securityids` as the body's one source, the second minting the number -
 a constructor taking the code text would give the key two owners (the text and the facts
 `write_crosscode` reads) that can disagree. A load (D42.13) rewrites the code from the typed
 columns and refuses a row whose stored `crosscode` differs, naming both at `$.crosscode`.
@@ -359,8 +369,11 @@ stating `forex=EUR/USD` and CFI `IFXXXP` and no ISIN creates `IF:EUR/USD` throug
 
 **The FIX path** adds what only a message spells:
 
-- **`FixMsg::stated_characteristics() -> Option<(class, Characteristics)>`**, beside
-  `stated_underlying_isin` (`msg.rs:3963`): the class from `CFICode(461)` as settled (`fix/cfi.rs`,
+- **`FixMsg::stated_characteristics() -> Option<(class, Option<Forex>, Characteristics)>`**,
+  beside `stated_underlying_isin` (`msg.rs:3963`) - the pair answered beside the class and the
+  characteristics as intake (what `derive_forex` settled off `Symbol(55)`, else the `forex`
+  entry of the message's `securityids`), for `for_body` to write into the instrument's
+  `securityids`: the class from `CFICode(461)` as settled (`fix/cfi.rs`,
   `PutOrCall(201)` refining `OM` into `OC`/`OP`); `MaturityDate(541)` with `MaturityDay` folded
   (`retired.rs:1014`), else `MaturityMonthYear(200)` as a month or a week; `StrikePrice(202)`
   (already read, `msg.rs:244,2539`); `SettlDate(64)`/`SettlDate2(193)` else `SettlType(63)`;
@@ -424,9 +437,9 @@ Carried over from `isin_registry/{store,env,seed}.rs` (`store.rs:14-138,147-435`
 - The row (panel D42.7, today's column names; every deviation from the panel named): the six
   element columns; `aliascodes: serie<utf8>`; `placeholder: boolean` required; `isin` (the real or
   minted number, nullable: a collision leaves a hole), `cficode: cfi`, `forexcode: forex`, `fisn:
-  fisn` - **projections of `securityids`**, as `cficode` is, holders of nothing (the panel hoists
-  `forex` into the characteristics; here it is the `forexcode` projection, one spelling with the
-  market row's column); `countrycode: country`; `currency: ccy`; `origccy: ccy`; `securityids` as
+  fisn` - **projections of `securityids`**, as `cficode` is, holders of nothing (the panel's
+  characteristics struct holds `forex`; here the pair's one holder is `securityids`' `forex`
+  entry, D42.9, and `forexcode` is its projection, one spelling with the market row's column); `countrycode: country`; `currency: ccy`; `origccy: ccy`; `securityids` as
   `map<utf8, utf8>` sorted (`identifier.rs:1183-1195`); **no `identifiers` column** (D42.8);
   `underlying: utf8` and `legs: serie<struct<code: utf8, ratio: int32>>` - codes, not the panel's
   uuids, for the reason D42.9 gives, the ratio carried because it is a key byte; `eusipacode:
@@ -444,6 +457,17 @@ Carried over from `isin_registry/{store,env,seed}.rs` (`store.rs:14-138,147-435`
 - `Instruments::from_holder`, `from_url`, `seeded_from_holder`, `seeded_from_url`, `set_holder`,
   `try_with_holder`, `holder()`, `commit() -> Result<IOResult>`: **today's commit contract,
   unchanged** - only where dirty (`is_dirty`), the store left exactly the snapshot whatever its
+  layout. **Dirty compares content with what the store holds** (implementing session, 2026-10-10,
+  the medallion's second run): the collection records, at every load and commit, each instrument's
+  content code (`hashcode`) and the window it was met in (`firstunix`, `lastunix`) by code
+  (`Stored`, `StoredRows`; the seed's recorded once beside its table), and `is_dirty` is "something
+  moved since" (the cheap flag) **and** the table differs from that record - an instrument added or
+  removed, a content code or a window edge moved. A fact that moves and moves back - D42.18's
+  disagreeing sources - leaves the record equal, so the medallion's replay commits nothing
+  (`IOResult(0, 0)`); `updunix` follows the flips and is recorded with nothing. A whole overwrite
+  where changed, as before; pinned in `rust/market/tests/instrument/store.rs`
+  (`a_fact_that_moves_and_moves_back_is_no_change_to_the_store`). The paragraph's next sentence
+  says what the layout does with the snapshot once a commit is owed: the store left exactly the snapshot whatever its
   layout: a leaf overwritten whole (Arrow IPC default), a plain folder one part, an Iceberg table
   whole (`Located::overwrite_whole`, `iceberg/mod.rs:273`; a partition refused at `$.holder`). Not
   the panel D42.7's "merged by `uuid` with `hashcode` the change detector": a keyed merge cannot
@@ -508,9 +532,13 @@ Carried over from `isin_registry/{store,env,seed}.rs` (`store.rs:14-138,147-435`
 - `python/tests/test_fix.py::test_the_medallion_pipeline_lands_every_stage_over_two_catalogs`
   (`:5625-5830`) re-spelled plus: every silver market row whose `isincode` the seed or the walk
   resolves holds a non-null `instcode` equal to the `crosscode` of one instruments row, or held in
-  its `aliascodes`; the FX pair's rows hold `instcode = IF:EUR/USD` and `isincode = QYLTVIRYHNX5`
-  (panel D42.2); the report prints the `silver.instruments` line; a second run commits no
-  instruments snapshot (`is_dirty` false, the table's snapshot count unchanged).
+  its `aliascodes`; the report prints the `silver.instruments` line; a second run commits no
+  instruments snapshot (`is_dirty` false, the table's snapshot count unchanged). **No FX clause**:
+  the capture it reads, `rust/tests/support/ulbridge.log`, holds no FX pair (`55=CCY/CCY` matches
+  no line; verified), and editing the shared capture would move `scale_ulbridge`'s pins. The FX
+  `instcode = IF:EUR/USD` / `isincode = QYLTVIRYHNX5` pins (panel D42.2) sit where a hand-built FX
+  message exists: `rust/fix/tests/root/forex.rs`, `rust/fix/tests/root/enrich.rs` (D42.17) and
+  `python/tests/test_instrument.py` (D42.15).
 
 ## D42.15 - the bindings
 
@@ -528,8 +556,9 @@ frozen)]` with the registry's doors re-spelled - `__new__(max_instruments=16384)
 `FixCodec(instruments=...)`, `FixCodec.from_env()` attaching `Instruments.from_env()`,
 `codec.instruments`; `FixMsg.instcode` property beside `isincode`. `python/yggdryl/instrument.py`
 re-exports; `__init__.py`, `__init__.pyi`, `_native.pyi` re-spelled; `python/tests/test_instrument.py`
-(the 31 registry tests re-spelled plus the mint, the FX creation, the placeholder re-key and
-`instcode` parity), `conftest.py` sets `YGGDRYL_INSTRUMENTS_URI`, `typing_bindings.py`,
+(the 31 registry tests re-spelled plus the mint, the FX creation - a hand-built `EUR/USD`
+message's row holding `instcode = IF:EUR/USD` and `isincode = QYLTVIRYHNX5` - the placeholder
+re-key and `instcode` parity), `conftest.py` sets `YGGDRYL_INSTRUMENTS_URI`, `typing_bindings.py`,
 `python/benchmarks/graph.py`.
 
 Node (§4): the request does not name Node, so **no door is added**. The existing `IsinRegistry`
@@ -638,6 +667,141 @@ is P7's; the FX books move as stated above); every `crossuuid` and `crosshashcod
 element; the S0/S2 pins; every cost pin not named above; the FX detection's wire pins
 (`rust/fix/tests/root/forex.rs` gains the `derived:isin` and `instcode` lines and loses none).
 
+## D42.18 - metadata and sourced identifiers (user decision 10)
+
+The user (2026-10-10, `user_decisions.md` 10): "Add also metadata in instrument to put any other
+complementary infos and identifiers to put other sources securityids". Two facts, one owner each:
+
+- **`Instrument::metadata: Metadata`** - the market crate's own `Metadata`
+  (`graph/market.rs`, `BTreeMap<SmolStr, SmolStr>`, what every market element holds under
+  `Market::get_metadata`; no second map type) - the complementary facts no typed field holds,
+  by key. Readers `metadata()`, `set_metadata(key, value)` (an empty key or value, one past
+  `MAX_METADATA_WIDTH` = 128 bytes, a new key past `MAX_METADATA` = 16 refused at `$.metadata`),
+  `try_with_metadata`, `remove_metadata`. **Merged on learn by key** (`Instruments::fold`, the
+  `Statement`'s `metadata` slice): a stated value fills a key the instrument lacks and replaces a
+  differing one; an equal one moves nothing, so a known instrument restated allocates nothing; a
+  new key past the bound is passed over with one warning per key, never a refusal of the row. Fed
+  to the content code (`digest_instrument`, under `metadata`, key then value), since it is a fact
+  the instrument states - so a metadata move moves `hashcode` alone, never the key or the identity.
+  Two sources disagreeing on one key within a run - the FIX lines' `SecurityType(167)` `CS` and the
+  bridge lines' `equity` for one instrument - replace each other at every statement and leave the
+  **last statement of the run**; the commit compares **content** (below), so the flips cost the store
+  nothing where the run ends as the store stands.
+  **The 25th column `metadata`**, a sorted `map<utf8, utf8>` (the market row's own `metadata`
+  datatype, `map_of(utf8, utf8, true)`), after `listings` and before the three stamps; read back
+  through `set_metadata`, a non-text key or value refused at `$.metadata`. **Seeded from a golden
+  file's columns no field reads**: a seed object's key other than the six a typed field reads
+  (`isin`, `cficode`, `countrycode`, `fisn`, `origccy`, `listings`) is a metadata entry, its value
+  text (`instrument/seed.rs`, `FIELD_KEYS`); a stored table's column no field reads lands in each
+  row's metadata under the column's name, a text cell as it is and any other as its JSON text
+  (`extend_from_arrow_reader`, the stream then landed under its own root and each row read whole -
+  the ordinary store, whose columns are all the row's, keeps the fast path of D42.19's note). The
+  generic `learn` carries no metadata: a market element's own `metadata` describes the event (a
+  bridge's unmapped keys), not the instrument.
+- **Sourced identifiers**: `securityids` holds every source's statement under its own `src:type`
+  key (`ullink:isin`, `bloomberg:figi`) as `Identifiers` already does under the base rule, and the
+  learn path carries them: the `Statement`'s `ids` are `(&IdKey, &str)` - every named source's
+  statement of any type, and the base keys of every type but the four key types (the ISIN, the
+  CFI, the pair and the short name, which have statement fields of their own), never a derivation
+  nor a base key echoing one (`states_own_key`) - adopted under their own keys by
+  `Instrument::from_statement`, `folded` (a listing-type key onto the listing of the stated market,
+  compared by `get_from(key)`) and `Instrument::statement` (so a stored row's sourced keys survive a
+  merge and a reload). The bound: `MAX_SECURITYIDS` = 2 x (`MAX_EQUIVALENTS` + 4) = 32 entries in
+  all - each type's base key beside one named source - a new named key past it passed over by name
+  (`accepts_equivalent(&IdKey)`); `MAX_EQUIVALENTS` keeps bounding the base types. `ENTRY_COST`
+  re-derived over the new struct (the 32 entries, the 16 metadata entries at the widest key and
+  value, the listing inline) and `ENTRY_CHARGE` **32 KiB** (was 16; `DEFAULT_MAX_INSTRUMENTS` x
+  32 KiB = 512 MiB, the memory claim re-spelled where it is stated).
+- **What a FIX message contributes** (`FixMsg::stated_metadata`, `rust/fix/src/msg.rs`
+  `INSTRUMENT_METADATA_TAGS`): the Instrument component's *descriptive* fields that no typed fact
+  holds, each under the dictionary's name for the field, its text trimmed, a null or empty field
+  unstated: `Issuer(106)` `issuer`, `SecurityDesc(107)` `securitydesc`, `SecurityType(167)`
+  `securitytype`, `SecuritySubType(762)` `securitysubtype`, `Product(460)` `product`,
+  `ProductComplex(1227)` `productcomplex`, `SecurityGroup(1151)` `securitygroup`,
+  `SecurityStatus(965)` `securitystatus`, `UnitOfMeasure(996)` `unitofmeasure`,
+  `StateOrProvinceOfIssue(471)` `stateorprovinceofissue`, `LocaleOfIssue(472)` `localeofissue` -
+  eleven, under `MAX_METADATA`. Not contributed: the component's identifiers (`securityids`), its
+  market, class, currency and country of issue (typed facts), the characteristics a cross code is
+  written from (`Characteristics`), the numeric and dated terms (`CouponRate(223)`,
+  `IssueDate(225)`, `Factor(228)`: typed facts of a later slice, not free text), the encoded
+  twins (`EncodedIssuer(349)`, `EncodedSecurityDesc(351)`), and the message's own metadata (a
+  bridge's unmapped keys describe the order). The text is borrowed off the row where the field
+  is text (`stated_text_by_tag`, `Cow::Borrowed`), so a message states them at no allocation;
+  `learn_and_fill` hands them to `learn_stating` through `Stated::metadata: &[(&str, &str)]` for
+  the learn alone - the fill reads none of it - and the capture's three pinned lines state at most
+  `167=CS`, inline, so the FIX lifecycle pin moves by nothing for them.
+
+## D42.19 - instcode shares the code's allocation (user decision 11)
+
+The user: "Make the instcode share single allocated from instrument crosscode". The Instrument
+holds its cross code **once**, as the crate's `Str` (`Instrument::crosscode`, 24 bytes, inline to
+23, one `Arc<str>` beyond - `INLINE_CAPACITY`), and every other holder of the code is a clone of
+that value: the table's key (`InstrumentTable::rows: BTreeMap<Str, Instrument>`, `isins:
+HashMap<i128, Str>`, `aliases: HashMap<Str, Str>`, the ticker and lookup indexes' `CodeSlots =
+SmallVec<[Str; 1]>`, the snapshot cursor's `after: Option<Str>`), the alias a re-key keeps, a
+dependent's `underlying` rewritten by the cascade, and every `instcode` a fill writes
+(`fill_unsettled`: `set_instcode(Some(instrument.crosscode.clone()), false)`). So a market row's
+`instcode` is a byte copy for a code of at most 23 bytes and one refcount for a longer one - an
+option's `OC:US0378331005:2026-12-18:200`, a strategy's - never an allocation, and the table copies
+no code into a `SmolStr` (`crosscode_smol` is gone; a refusal that names codes - `Unmatched::
+Ambiguous`, `CfiConflict`, `CurrencyConflict`, `BelowThreshold` - spells them from the `Str`'s own
+storage, `Str::storage`/`into_inner`, at no copy). Pinned: `rust/market/tests/root/instrument.rs`
+(a filled `instcode` of a long code shares the instrument's allocation - the two `as_str().as_ptr()`
+equal, which only one `Arc<str>` makes true) and `rust/market/tests/allocations.rs` (a thousand
+rows resolving one option whose code is longer than 23 bytes allocate nothing after the instrument
+exists, at two corpus sizes).
+
+**The reload's known-row path** (`extend_from_arrow_reader`): a row whose `crosscode` and
+`hashcode` are a held instrument's states exactly what is held - the content code digests every
+fact, the metadata of D42.18 included - so only its stamps can move, and they move where the
+instrument stands, read off the landed `utf8`, `uint64` and `datetime64` leaves through their
+typed accessors once per batch (AGENTS "a surface reading Arrow rows"): nothing is built per row,
+no `Serie::scalar(row)`, no `from_cells`, no `merge`. Any other row - a code the table lacks, a
+content code that differs (a fact moved, or a store written by a version digesting differently) -
+takes the whole path as before. A 64-bit collision passing a changed row as unchanged is the
+content code's own residual, accepted where `hashcode` is the change detector elsewhere.
+
+### D42.18/19 - what the pins measured (implementing session, 2026-10-10)
+
+- Green: `rust/market/tests/root/instrument.rs` (16: the two new tests,
+  `sourced_identifiers_and_metadata_are_learned_stored_and_read_back` and
+  `a_filled_instcode_shares_the_instruments_one_allocation_of_its_code`), `--test instrument` (33,
+  the seed's `internal::a_seed_objects_extra_key_is_a_metadata_entry` added; the column pins 24 ->
+  25 and 23 -> 24 moved once: "`metadata` joined the row, D42.18"), `--test allocations
+  filling_a_long_instcode_shares_the_instruments_allocation` (a thousand rows, a 31-byte `OC:` code,
+  0 allocations at 64 and 4,096), `the_instruments_snapshot_stream...` opening 11 (the 12 the phase-4
+  residue named is gone: the table's keys are the instruments' own `Str`), `rust/fix/tests/root/
+  enrich.rs::a_walk_learns_the_instruments_description_and_its_sourced_identifiers`.
+- Re-pinned once: the FIX landing 1524/1503/1541 -> 1533/1512/1550 and batch 213 -> 214, the
+  sentence naming `instcode`'s three arrays (`rust/fix/tests/allocations.rs`).
+- Fixed at cause and still red, **not re-pinned** (the program's hard rule; the foreground decides):
+  - `instruments_learn_a_new_instrument_into_its_row_inline`: 3 -> **1** (pin 0): the one
+    remaining allocation is the element's own `Identifiers` vector, reserved once at the statement's
+    count (`from_statement`); the listing is inline (`SmallVec<[Listing; 1]>`), the key a clone of
+    the instrument's `Str`, every index slot inline. Zero needs `Identifiers` to hold its first entry
+    inline, which moves every market element's size pins (`IDENTIFIERS_SIZE` 24, `MarketData` 928,
+    `BookEvent` 912) - a design answer the design did not take. D42.17's own rule for this row -
+    "the element's allocations and no more" - is what 1 states.
+  - `instruments_reload_known_rows_at_a_cost_per_batch`: [981, 7253] -> **[94, 94]** (pin [56, 56]):
+    the per-row path is gone (a known row is read off the landed leaves, nothing built); 94 is the
+    landing of the 25-column nested row per batch - the identity of the cast with no row work
+    measures the same 94 - against the flat 46-column row's 56: structural, as the FIX landing is.
+  - `the_instruments_snapshot_stream_is_constant_to_open_and_reads_by_row`: the drain 9/row -> **5
+    per row + 3** per doubling (pin 1 per row + 1): the nested values stream as ordered runs
+    (`Listing::into_row`, `Characteristics::into_row`, `Leg::into_row`, no named struct to fold); the
+    five are the row's run and one `Arc` per collection the row states - `securityids`, the
+    `listings` serie, its one listing's run and that listing's `codes` - the nested row's structural
+    minimum under the row-to-batch reader. A columnar builder for the snapshot would remove them
+    and is not P9's.
+  - `rust/fix/tests/allocations.rs::a_real_line_costs_the_same_at_every_stage_every_time`: lifecycle
+    **22/16/16** (pins 12/12/11; the phase-3 measurement 20/16/16): the fresh walk collection's
+    first learn pays the element's own storage - the identifiers' vector, one metadata node (all three
+    lines state `Product(460)`, which the native plan implies off `SecurityType(167)`), the bridge
+    line's listing codes (`Bloomberg`, and `instrumentid` under `oms:` and `ullink:` as decision 10
+    carries them). The metadata read itself costs nothing: text borrowed off the row, an integer
+    spelled inline (`StatedText`), read through the message's own tag index and never the fallback
+    by name, whose table would have cost two per message.
+
 ## Implementation plan
 
 One commit, one push. Phases in AGENTS order; each phase a partition of files by path, so workers
@@ -651,9 +815,9 @@ leads the chain when the last phase holding the cargo lock is settled. The calle
 | --- | --- | --- | --- | --- |
 | 0 - the sweep script | `$S/p9/p9_sweep.py` (the P4 sweep is the model: `git show 7b566b3b2:.handoff/split/scratch/p4_sweep.py`): exact-string edits `IsinRegistry`->`Instruments`, `IsinEntry`->`Instrument`, `IsinTable`->`InstrumentTable`, `isin_registry`->`instrument(s)` per site, `with_isin_registry`->`with_instruments`, `isinRegistry`->`instruments`, `YGGDRYL_ISIN_REGISTRY_URI`->`YGGDRYL_INSTRUMENTS_URI`, each anchor asserted to match once, driven by D42.8's `git grep`; `git mv` of the module, test, seed, docs and binding files | `python3 -I $S/p9/p9_sweep.py --check`; the `git grep` of D42.8 empty | - | - |
 | 1 - the core | `rust/src/isin.rs` (`minted`, `is_minted(text, digest)`, the `is_listed_prefix` rustdoc sentence on `QY`), `rust/tests/root/isin.rs` | `cargo check -p yggdryl --all-targets`; `cargo test -p yggdryl --test root isin` | none | every core pin |
-| 2 - market core | `rust/market/src/instrument.rs`, `characteristics.rs`, `listing.rs`, `instrument/{store,env,seed}.rs`, `instrument/seed.json`, `lib.rs`, `implementer.rs`, `idtype.rs:669`, `securityid.rs:3` (doc links), `graph/market.rs` (the holder's verbs, the follow; not the feed), `graph/facts.rs` (the field), `graph/market_column.rs`, `graph/arrow.rs:140-141`, `graph/view.rs`; delete `isin_registry.rs` + folder; `config/instruments/instruments.json`, `scripts/check_instruments_seed.py` | `cargo check -p yggdryl-market --all-targets`; `RUSTDOCFLAGS='-D warnings' cargo doc -p yggdryl-market --no-deps`; `cargo test -p yggdryl-market --test root instrument`; `--test root characteristics`; `--test root listing`; `--test instrument`; `--test graph market_column`; `--test graph arrow`; `--test graph market_data` (the sizes, re-pinned once); `--features internals --test instrument`; `python scripts/generate_internals.py --check` | `MarketColumn::ALL` 37, the row 66, the two sizes | `allocations` claims |
-| 3 - FIX crate | `rust/fix/src/{codec,enrich,msg,market,messages,forex,crated,schema,identity,build,lib}.rs` | `cargo check -p yggdryl-fix --all-targets --keep-going --message-format=short`; `RUSTDOCFLAGS='-D warnings' cargo doc -p yggdryl-fix --no-deps`; `cargo test -p yggdryl-fix --test root codec`; `--test root enrich`; `--test root forex`; `--test root schema`; `--test root crated`; `--test root securityids`; `--test root msg`; `--test root batch`; `--test instrument`; then the dump write and the hash test once, re-pinned with the sentence; the snapshot regenerated by its own writer once with the sentence | the dump, the hash, the census, 153/37/154, 53, the snapshot (the FX rows and the new key alone) | every non-FX `hashcode`/`uuid`/`crossuuid`/`crosshashcode` cell; fix cost rows |
-| 4 - tests and benches | `rust/market/tests/{root/{instrument,characteristics,listing,implementer,securityid}.rs, instrument.rs, instrument/*, root.rs, allocations.rs, iobase_calls.rs, graph/{book,market,market_column,arrow,facts,market_data}.rs}`, `rust/fix/tests/{instrument.rs, instrument/env.rs, root/{codec,enrich,batch,forex,schema,store,msg,securityids,crated,market}.rs}`, `rust/market/benchmarks/graph/{instrument,mod}.rs`, `graph.rs`, `rust/fix/benchmarks/fix/pipeline.rs` | the rows of phases 1-3 plus `cargo test -p yggdryl-market --test allocations instrument`; `--test iobase_calls instrument`; `cargo test -p yggdryl-fix --test allocations forex`; `cargo bench -p yggdryl-market --bench graph -- instrument --quick` | the allocations rows re-spelled | no cost pin rises |
+| 2 - market core, with its mirrored tests | sources: `rust/market/src/instrument.rs`, `characteristics.rs`, `listing.rs`, `instrument/{store,env,seed}.rs`, `instrument/seed.json`, `lib.rs`, `implementer.rs`, `idtype.rs:669`, `securityid.rs:3` (doc links), `graph/market.rs` (the holder's verbs, the follow; not the feed), `graph/facts.rs` (the field), `graph/market_column.rs`, `graph/arrow.rs:140-141`, `graph/view.rs`; delete `isin_registry.rs` + folder; `config/instruments/instruments.json`, `scripts/check_instruments_seed.py`. Tests (each written beside its source, so the smoke column can run): `rust/market/tests/root.rs` (`:37-38` -> `instrument`, `characteristics`, `listing`), `root/{instrument,characteristics,listing,implementer,securityid}.rs`, `instrument.rs` (the isolated runner, child name = path), `instrument/{env,seed,store}.rs`, `graph/{market_column,arrow,market_data,book,market,facts}.rs`; delete `tests/root/isin_registry.rs`, `tests/isin_registry.rs`, `tests/isin_registry/` | `cargo check -p yggdryl-market --all-targets`; `RUSTDOCFLAGS='-D warnings' cargo doc -p yggdryl-market --no-deps`; `cargo test -p yggdryl-market --test root instrument`; `--test root characteristics`; `--test root listing`; `--test root implementer`; `--test root securityid`; `--test instrument`; `--test graph market_column`; `--test graph arrow`; `--test graph market_data` (the sizes, re-pinned once); `--test graph book`; `--test graph market`; `--test graph facts`; `--features internals --test instrument`; `python scripts/generate_internals.py --check` | `MarketColumn::ALL` 37, the row 66, the two sizes | `allocations` claims |
+| 3 - FIX crate, with its mirrored tests | sources: `rust/fix/src/{codec,enrich,msg,market,messages,forex,crated,schema,identity,build,lib}.rs`. Tests: `rust/fix/tests/instrument.rs` + `instrument/env.rs` (the isolated runner, child name = path), `root/{codec,enrich,batch,forex,schema,store,msg,securityids,crated,market}.rs`, `root/equivalence.snapshot`; delete `tests/isin_registry.rs`, `tests/isin_registry/env.rs` | `cargo check -p yggdryl-fix --all-targets --keep-going --message-format=short`; `RUSTDOCFLAGS='-D warnings' cargo doc -p yggdryl-fix --no-deps`; `cargo test -p yggdryl-fix --test root codec`; `--test root enrich`; `--test root forex`; `--test root schema`; `--test root crated`; `--test root securityids`; `--test root msg`; `--test root batch`; `--test root market`; `--test instrument`; then the dump write and the hash test (`--test root store`) once, re-pinned with the sentence; the snapshot regenerated by its own writer once with the sentence | the dump, the hash, the census, 153/37/154, 53, the snapshot (the FX rows and the new key alone) | every non-FX `hashcode`/`uuid`/`crossuuid`/`crosshashcode` cell; fix cost rows |
+| 4 - cost pins and benches | `rust/market/tests/{allocations,iobase_calls}.rs` (the registry rows re-spelled, the new rows red first), `rust/market/benchmarks/graph/{instrument,mod}.rs`, `graph.rs`, `rust/fix/benchmarks/fix/pipeline.rs`; `rust/fix/tests/{allocations,iobase_calls}.rs` are run, not edited (D42.17) | `cargo test -p yggdryl-market --test allocations instrument`; `--test iobase_calls instrument`; `cargo test -p yggdryl-fix --test allocations forex`; `--test iobase_calls`; `cargo bench -p yggdryl-market --bench graph -- instrument --quick` | the allocations rows re-spelled | no cost pin rises |
 | 5 - Python | `python/src/{instrument,fix,lib}.rs`, `python/yggdryl/{instrument.py,__init__.py,__init__.pyi,_native.pyi}`, `python/tests/{test_instrument.py,test_fix.py,conftest.py,typing_bindings.py,medallion.py}`, `python/benchmarks/graph.py` | `VIRTUAL_ENV=python/.venv python/.venv/bin/python -m maturin develop -m python/Cargo.toml`; `python/.venv/bin/python -m pytest python/tests/test_instrument.py -x -q`; `... -m pytest python/tests/test_fix.py -k medallion -x -q` (the user's named validation); the `mypy --strict` line of §3 | - | - |
 | 6 - Node re-spelled | `node/src/{instrument,fix,lib}.rs`, `node/{binding.js,binding.d.ts}`, `node/tests/{instrument.test.js,instrument.types.ts,fix.test.js}`, `node/benchmarks/graph.js`; then `node/index.js`, `node/index.d.ts` regenerated | `npm run --prefix node build:debug`; `node --test node/tests/instrument.test.js`; `node --test node/tests/fix.test.js`; `npm run --prefix node test:package:debug` | the loader and declarations | no new door |
 | 7 - docs manifests | `docs/assets/{fix,playground}.json` | `node scripts/build_docs_fix.js && node scripts/build_docs_playground.js`, then `--check` | both | - |
@@ -661,15 +825,35 @@ leads the chain when the last phase holding the cargo lock is settled. The calle
 | 9 - inventories, contract | `.api-inventory.txt`, `.api-bindings.txt`, `AGENTS.md`, `.github/ci/rows.toml:47`, `rust/market/{Cargo.toml,README.md}`, `README.md`, `.handoff/next/LIVE_AWS_TEST_PROMPT.md` (the one-line drop of a pre-P9 instruments table) | `python scripts/check_api_inventory.py`; `python3 -m unittest discover -s scripts/tests -p test_ci_plan.py`; `python3 scripts/release_packages.py version` | - | - |
 | 10 - the chain | `$S/logs/chain.sh` adapted: the three crates' whole runs `--all-features --no-fail-fast`, clippy both lanes, `cargo doc -D warnings`, the rustdoc examples, the CLI tests, `pytest python/tests`, Node, the manifests, mkdocs, the inventories, the docs runners | one background script, one log, read once | the pins of phases 2-3 only | everything else |
 
-Then `cargo fmt --all` once after the last worker, the commit with the message file - ending with
-the attribution lines the implementing session's system reminder gives, never another session's -
-one push, the CI run read to `CI result`. The change touches `rust/src/isin.rs`, so every CI job
-runs.
+Then, in this order (the program's standing rules, `.handoff/next/MARKET_SPLIT_CONTINUE.md`):
+
+1. `cargo fmt --all` once after the last worker; the commit with the message file, ending with
+   exactly `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` and
+   `Claude-Session: https://claude.ai/code/session_01Gfky7FUx35U5i4UJcrQGKp` and no other
+   `Co-Authored-By`, whatever the harness's attribution reminder says.
+2. `$S/r1/r1_release.sh --prove` on that clean committed tree (it refuses a dirty one, so it is
+   no chain step), its log kept under `$R1_OUT` for step 4 (d43 F1).
+3. One push; the CI run read to `CI result` (the change touches `rust/src/isin.rs`, so every job
+   runs); a red job fixed at cause in a commit of its own, pushed, read again.
+4. The results commit, with the same two lines: DESIGN.md gains D42 and D43 (a row each in the
+   decisions table, the two designs' sections) and `### P9 results` holding the CI run and the
+   `--prove` log of step 2; the P7 and P5R documents amended as "What P7 changes" says -
+   DESIGN.md "## P7: design" (D40.2 `:2759,2766`, D40.3 `:2770-2784`, D40.5 `:2806`, reading 3
+   `:2874`, the D40 row `:2970`), `$S/p7/d40_design.md` (`:67-75`, `:78-92`, `:104-105`, `:114`,
+   `:164`, `:182`) and `$S/p5r_manager_prompt.md` (`:9`): `instuuid` dropped, 65_054 =
+   `instcode`, the lifted band `instcode, isin, cfi, mic`, D40.3's derivation superseded,
+   `Uuid::new(u128)` where they spell `Uuid::from_u128`, the registry's files, seed path and
+   `check_isin_seed.py` re-spelled onto the instrument's; d43's F5 (DESIGN.md `:17`, `:89`, `:2931`:
+   0.1.22 on the branch since `0f411f5ce`, published by the merge), F9 (`MARKET_SPLIT_CONTINUE.md`'s
+   release step names `r1_release.sh --prove` as the first release's proof and the merge as the
+   release) and F10 (AGENTS.md `:2927`: "the Cargo secret; PyPI and npm trusted publishing");
+   `MARKET_SPLIT_NEXT.md`'s `State`, `Checks` and `Next`. Pushed, CI read to `CI result`.
 
 ## What P7 changes
 
-Written here so P7's design (DESIGN.md "## P7: design", `$S/p7/d40_design.md`) is amended before it
-is implemented:
+Written here so P7's design (DESIGN.md "## P7: design", `$S/p7/d40_design.md`) and P5R's brief
+(`$S/p5r_manager_prompt.md:9`) are amended before they are implemented - by P9's results commit
+(plan step 4), not by this file alone:
 
 1. **`instuuid` is dropped from D40.2 and D40.3.** P9 lands `instcode` (decision 9) as the market
    holder after `securityids` and the crate tag 65_054. D40.3's derivation -

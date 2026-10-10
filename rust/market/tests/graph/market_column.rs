@@ -72,6 +72,7 @@ fn market_columns_round_trip_every_optional_band() {
         true,
     );
     source.set_ticker(Some(SmolStr::new("IBM")), true);
+    source.set_instcode(Some(yggdryl::Str::new("US0378331005")), true);
     source.set_strikepx(Some(decimal("4600.5")), true);
     source.set_metadata(
         Some(BTreeMap::from([(
@@ -110,6 +111,7 @@ fn market_columns_round_trip_every_optional_band() {
     assert_eq!(restored.get_side(), source.get_side());
     assert_eq!(restored.get_securityids(), source.get_securityids());
     assert_eq!(restored.get_isincode(), Some("US0378331005"));
+    assert_eq!(restored.get_instcode(), Some("US0378331005"));
     assert_eq!(restored.get_fxrates(), source.get_fxrates());
     assert_eq!(
         restored.get_securityids().get(&IdType::Bloomberg),
@@ -223,7 +225,7 @@ fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
 fn market_column_schema_has_one_owner_and_order() {
     crate::install::installed();
     let fields = MarketColumn::fields().unwrap();
-    assert_eq!(fields.len(), 36);
+    assert_eq!(fields.len(), 37);
     assert_eq!(
         fields.iter().map(|field| field.name()).collect::<Vec<_>>(),
         [
@@ -239,6 +241,7 @@ fn market_column_schema_has_one_owner_and_order() {
             "unit",
             "side",
             "securityids",
+            "instcode",
             "isincode",
             "cficode",
             "miccode",

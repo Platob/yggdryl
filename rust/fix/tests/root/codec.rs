@@ -4137,6 +4137,15 @@ mod equivalence {
     /// (`frames[005]` and its `verbatim` reading, `enrich[024]`) are keyed
     /// `21:0:<TradeID>`, else `21:0:<TradeReportID>`, their split
     /// execution's code, hashes and identities moving with the trade's.
+    /// It last moved when every FIX row gained `instcode` (65054), the
+    /// resolved instrument's cross code - a stated real ISIN at the parse,
+    /// the lifecycle's instrument otherwise, null where none resolves - fed
+    /// to no digest, so no `hashcode`, `uuid`, `crossuuid` or
+    /// `crosshashcode` cell moved; three walked messages naming no market
+    /// (`lifecycle[019]`, `[023]`, `[024]`) take the one listing's
+    /// `instrumentid` derived, as every listing code is filled onto a
+    /// message of that listing or of none (D42); the capture holds no FX
+    /// pair, so no row minted a number.
     #[test]
     fn the_codec_answers_what_it_answered() {
         crate::install::installed();
@@ -4520,7 +4529,7 @@ mod threads {
     use yggdryl::{IOMedia, Isin, MimeType, Timezone, Url};
     use yggdryl_fix::{FixCodec, FixMsg, fix_schema};
     use yggdryl_market::graph::Market;
-    use yggdryl_market::{IdType, IsinEntry, IsinRegistry};
+    use yggdryl_market::{IdType, Instrument, Instruments};
 
     /// The bridge capture as the bytes a `.log` file holds, and the options
     /// its rows are read under.
@@ -4986,9 +4995,9 @@ mod threads {
     /// learned by walking it once on one thread, with a common code beside
     /// every row that no message states - what a parse through the registry
     /// fills, derived - committed to a buffer so it stands clean.
-    fn learned_registry(bare: &FixCodec, bodies: &[Vec<u8>]) -> Arc<Mutex<IsinRegistry>> {
-        let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
-        let learning = bare.clone().with_isin_registry(Arc::clone(&instruments));
+    fn learned_registry(bare: &FixCodec, bodies: &[Vec<u8>]) -> Arc<Mutex<Instruments>> {
+        let instruments = Arc::new(Mutex::new(Instruments::new()));
+        let learning = bare.clone().with_instruments(Arc::clone(&instruments));
         let parsed: Vec<FixMsg> = learning
             .parse_lines(bodies)
             .filter_map(Result::ok)
@@ -4999,13 +5008,14 @@ mod threads {
         let mut registry = instruments.lock().expect("the registry");
         let isins: Vec<String> = registry
             .iter()
-            .map(|row| row.isin().as_str().to_owned())
+            .map(|row| row.isin().expect("a numbered instrument").to_owned())
             .collect();
         assert!(isins.len() > 2, "the capture names instruments: {isins:?}");
         for isin in &isins {
             registry
                 .merge(
-                    IsinEntry::new(Isin::new(isin).expect("a learned key"))
+                    Instrument::for_security(Isin::new(isin).expect("a learned key"))
+                        .expect("a security")
                         .try_with_code(IdType::Common, &format!("C-{isin}"))
                         .expect("a common code"),
                 )
@@ -5038,13 +5048,13 @@ mod threads {
         let held = lines(&source, &options);
         let bodies = bodies(&held);
         let instruments = learned_registry(&bare, &bodies);
-        let before: Vec<IsinEntry> = instruments
+        let before: Vec<Instrument> = instruments
             .lock()
             .expect("the registry")
             .iter()
             .cloned()
             .collect();
-        let one = bare.with_isin_registry(Arc::clone(&instruments));
+        let one = bare.with_instruments(Arc::clone(&instruments));
         let four = one.clone().with_threads(4);
         let composed = |codec: &FixCodec| codec.clone().with_capture_names(options.capture_names());
 
@@ -5089,7 +5099,7 @@ mod threads {
         let bodies = bodies(&held);
         let instruments = learned_registry(&bare, &bodies);
         let four = bare
-            .with_isin_registry(Arc::clone(&instruments))
+            .with_instruments(Arc::clone(&instruments))
             .with_threads(4)
             .with_capture_names(options.capture_names());
         let record: RecordOptions = options.clone().into();
@@ -5115,10 +5125,19 @@ mod threads {
         // A learn after the doors opened: no message of theirs sees it.
         {
             let mut registry = instruments.lock().expect("the registry");
-            let isin = registry.iter().next().expect("a row").isin().clone();
+            let isin = Isin::new(
+                registry
+                    .iter()
+                    .next()
+                    .expect("a row")
+                    .isin()
+                    .expect("a numbered instrument"),
+            )
+            .expect("a learned key");
             registry
                 .merge(
-                    IsinEntry::new(isin)
+                    Instrument::for_security(isin)
+                        .expect("a security")
                         .try_with_code(IdType::Belgian, belgian)
                         .expect("a code"),
                 )
@@ -5190,7 +5209,7 @@ mod threads {
         let held = lines(&source, &options);
         let bodies = bodies(&held);
         let instruments = learned_registry(&bare, &bodies);
-        let filling = bare.clone().with_isin_registry(Arc::clone(&instruments));
+        let filling = bare.clone().with_instruments(Arc::clone(&instruments));
         let composed = |codec: &FixCodec| codec.clone().with_capture_names(options.capture_names());
         let identity = |message: &FixMsg| {
             (
@@ -5267,8 +5286,8 @@ mod threads {
         held.commit().expect("committed");
         assert!(!held.is_dirty());
         for (without, with) in without.iter().zip(&with) {
-            let mut bare_learns = IsinRegistry::new();
-            let mut filled_learns = IsinRegistry::new();
+            let mut bare_learns = Instruments::new();
+            let mut filled_learns = Instruments::new();
             assert_eq!(bare_learns.learn(without), filled_learns.learn(with));
             assert!(
                 bare_learns.iter().eq(filled_learns.iter()),

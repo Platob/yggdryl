@@ -62,7 +62,7 @@
 //! # A parse reads the instrument table its door fixed
 //!
 //! Beside the dictionary, a parse depends on one more piece of reference
-//! data: the [`IsinTable`] the door fixed once, on the thread that opened
+//! data: the [`InstrumentTable`] the door fixed once, on the thread that opened
 //! it, from the registry the codec shares. Every message of one reading
 //! fills from that one table, no worker reaches the registry's lock, and a
 //! learn while the reading runs reaches no message of it. What a parse
@@ -79,6 +79,7 @@ use std::iter::FusedIterator;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::vec;
 
+use smallvec::SmallVec;
 use smol_str::{SmolStr, format_smolstr};
 
 use yggdryl::graph::{Element, Event};
@@ -86,8 +87,8 @@ use yggdryl::implementer::warned;
 use yggdryl::{Error, Result, Scalar, State, Uuid};
 use yggdryl_market::graph::{EventIterator, Market};
 use yggdryl_market::implementer::order;
-use yggdryl_market::implementer::{EconomicMemo, IsinTable, warn_full};
-use yggdryl_market::{IsinRegistry, Side};
+use yggdryl_market::implementer::{EconomicMemo, InstrumentTable, Stated, warn_full};
+use yggdryl_market::{Instruments, Leg, Side};
 
 use super::msg::{FixMsg, Viewed};
 use super::registry::FixRegistry;
@@ -111,7 +112,7 @@ use super::registry::FixRegistry;
 /// stamped ([`FixMsg::fill_instrument_ids`]).
 pub(super) fn enrich(
     registry: &FixRegistry,
-    instruments: Option<&IsinTable>,
+    instruments: Option<&InstrumentTable>,
     msg: FixMsg,
     viewed: Viewed,
 ) -> FixMsg {
@@ -133,7 +134,7 @@ pub(super) fn enrich(
 /// restated.
 pub(super) fn enrich_restated(
     registry: &FixRegistry,
-    instruments: Option<&IsinTable>,
+    instruments: Option<&InstrumentTable>,
     msg: FixMsg,
     viewed: Viewed,
 ) -> FixMsg {
@@ -151,7 +152,7 @@ pub(super) fn enrich_restated(
 /// detection fills, the rules then run over what detection filled.
 fn enrich_detected(
     registry: &FixRegistry,
-    instruments: Option<&IsinTable>,
+    instruments: Option<&InstrumentTable>,
     msg: FixMsg,
     viewed: Viewed,
 ) -> FixMsg {
@@ -705,8 +706,8 @@ impl Event for LifecycleMessage {
 /// codec shares across the walks it runs one after another, locked once per
 /// message.
 enum Codes {
-    Walk(IsinRegistry),
-    Shared(Arc<Mutex<IsinRegistry>>),
+    Walk(Instruments),
+    Shared(Arc<Mutex<Instruments>>),
 }
 
 impl Codes {
@@ -714,56 +715,84 @@ impl Codes {
     /// currency ([`FixMsg::stated_origccy`]), its country of
     /// issue beside it, where it states one its ISIN does not already say
     /// ([`FixMsg::stated_country`]), the instrument it is written on
-    /// ([`FixMsg::stated_underlying_isin`]) and the EUSIPA product category
-    /// a bridge's key states ([`FixMsg::stated_eusipa`]), lifted nowhere -
-    /// then fills
-    /// what it left unstated
+    /// ([`FixMsg::stated_underlying_isin`]), the EUSIPA product category
+    /// a bridge's key states ([`FixMsg::stated_eusipa`]) and the body of a
+    /// pair or a derivative ([`FixMsg::stated_body`]) with the legs of a
+    /// strategy ([`FixMsg::stated_legs`]), each leg's ISIN resolved to the
+    /// code of the instrument the collection keys by it, else kept as the
+    /// code it is - lifted nowhere - and the instrument's description
+    /// ([`FixMsg::stated_metadata`]), then fills what it left unstated
     /// ([`FixMsg::fill_instrument`]): the identifiers, the ticker, the CFI
-    /// code and the currency, settled no further than the market facts
-    /// they imply, since a parsed message is already clean and nothing a
-    /// fill writes reaches its identity - an economic match only where the
-    /// registry states it ([`IsinRegistry::is_economic_match`]), answered
-    /// once per short name and currency the walk meets while the
-    /// instruments stand still (`memo`). The one lock is held across the
-    /// learn and the fill, and the warning a full registry owes is raised
-    /// once it is let go of: the host a warning reaches may be waiting on
-    /// that very lock.
+    /// code, the currency and the instrument's cross code as `instcode`,
+    /// settled no further than the market facts they imply, since a parsed
+    /// message is already clean and nothing a fill writes reaches its
+    /// identity - an economic match only where the registry states it
+    /// ([`Instruments::is_economic_match`]), answered once per short name
+    /// and currency the walk meets while the instruments stand still
+    /// (`memo`). The one lock is held across the learn and the fill, and the
+    /// warning a full registry owes is raised once it is let go of: the
+    /// host a warning reaches may be waiting on that very lock.
     fn learn_and_fill(&mut self, message: &mut FixMsg, memo: &mut EconomicMemo) {
         let country = message.stated_country();
         let underlying = message.stated_underlying_isin();
         let product = message.stated_eusipa();
         let origccy = message.stated_origccy();
-        let full = match self {
-            Self::Walk(registry) => {
-                let learned = yggdryl_market::implementer::isin_registry_learn_stating(
-                    registry,
-                    message,
-                    origccy.as_ref(),
-                    country.as_ref(),
-                    underlying.as_ref(),
-                    product,
-                );
-                message.fill_instrument(
-                    yggdryl_market::implementer::isin_registry_as_table(registry),
-                    memo,
-                );
-                learned.full
+        let mut body = message.stated_body();
+        let legs = message.stated_legs();
+        let mut run = |registry: &mut Instruments| -> Option<usize> {
+            if let Some(body) = body.as_mut()
+                && !legs.is_empty()
+            {
+                // In code order and once each, as the key spells them: a
+                // spread and its reverse are one instrument.
+                body.legs = legs
+                    .iter()
+                    .filter_map(|(isin, ratio)| {
+                        let code = registry
+                            .get(isin.as_str())
+                            .map_or(isin.as_str(), Element::get_crosscode);
+                        Leg::new(code, *ratio).ok()
+                    })
+                    .collect();
+                body.legs.sort();
+                body.legs.dedup();
             }
+            let stated = Stated {
+                origccy: origccy.as_ref(),
+                country: country.as_ref(),
+                underlying: underlying.as_ref(),
+                product,
+                body: body.as_ref(),
+                metadata: &[],
+            };
+            let learned = {
+                // The instrument's description, borrowed off the message
+                // for the learn alone: a fill reads none of it.
+                let metadata = message.stated_metadata();
+                let pairs: SmallVec<[(&str, &str); 11]> = metadata
+                    .iter()
+                    .map(|(name, text)| (*name, text.as_ref()))
+                    .collect();
+                let learning = Stated {
+                    metadata: &pairs,
+                    ..stated
+                };
+                yggdryl_market::implementer::instruments_learn_stating(
+                    registry, &*message, &learning,
+                )
+            };
+            message.fill_instrument(
+                yggdryl_market::implementer::instruments_as_table(registry),
+                &stated,
+                memo,
+            );
+            learned.full
+        };
+        let full = match self {
+            Self::Walk(registry) => run(registry),
             Self::Shared(registry) => {
                 let mut registry = registry.lock().unwrap_or_else(PoisonError::into_inner);
-                let learned = yggdryl_market::implementer::isin_registry_learn_stating(
-                    &mut registry,
-                    message,
-                    origccy.as_ref(),
-                    country.as_ref(),
-                    underlying.as_ref(),
-                    product,
-                );
-                message.fill_instrument(
-                    yggdryl_market::implementer::isin_registry_as_table(&registry),
-                    memo,
-                );
-                learned.full
+                run(&mut registry)
             }
         };
         if let Some(max) = full {
@@ -786,13 +815,13 @@ struct Prepared<I> {
 }
 
 impl<I> Prepared<I> {
-    fn new(source: Intake<I>, registry: Option<Arc<Mutex<IsinRegistry>>>) -> Self {
+    fn new(source: Intake<I>, registry: Option<Arc<Mutex<Instruments>>>) -> Self {
         // Reserve a small capture once, without reserving a giant repeated
         // capture's upper bound. Growth beyond this hint follows unique keys.
         let capacity = source.len_hint().min(4_096);
         Self {
             source,
-            codes: registry.map_or_else(|| Codes::Walk(IsinRegistry::new()), Codes::Shared),
+            codes: registry.map_or_else(|| Codes::Walk(Instruments::new()), Codes::Shared),
             memo: EconomicMemo::default(),
             seen: HashSet::with_capacity(capacity),
         }
@@ -1065,7 +1094,7 @@ impl<I: Iterator<Item = Result<FixMsg>>> Walked<I> {
         snapshot_ns: i64,
         sorted: bool,
         window_ns: i64,
-        registry: Option<Arc<Mutex<IsinRegistry>>>,
+        registry: Option<Arc<Mutex<Instruments>>>,
     ) -> Self {
         let mut failure = None;
         let mut reading = None;

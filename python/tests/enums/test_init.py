@@ -99,6 +99,7 @@ def test_the_graph_enum_listings_mirror_the_native_vocabulary() -> None:
         "unit",
         "side",
         "securityids",
+        "instcode",
         "isincode",
         "cficode",
         "miccode",

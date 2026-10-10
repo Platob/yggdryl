@@ -2055,10 +2055,10 @@ fn lifecycle_learns_figi_by_isin_and_the_latest_statement_updates_it() {
 }
 
 #[test]
-fn a_shared_isin_registry_carries_what_one_walk_learned_into_the_next() {
+fn shared_instruments_carry_what_one_walk_learned_into_the_next() {
     crate::install::installed();
     use std::sync::Mutex;
-    use yggdryl_market::IsinRegistry;
+    use yggdryl_market::Instruments;
 
     let line = |seq: i32, body: &str| {
         format!(
@@ -2075,8 +2075,8 @@ fn a_shared_isin_registry_carries_what_one_walk_learned_into_the_next() {
             .get(&IdType::Figi)
             .map(ToOwned::to_owned)
     };
-    let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
-    let shared = codec().with_isin_registry(Arc::clone(&instruments));
+    let instruments = Arc::new(Mutex::new(Instruments::new()));
+    let shared = codec().with_instruments(Arc::clone(&instruments));
     assert_eq!(
         walk(&shared, 1, "figicode=BBG000BLNQ16").as_deref(),
         Some("BBG000BLNQ16")
@@ -2104,12 +2104,14 @@ fn a_shared_isin_registry_carries_what_one_walk_learned_into_the_next() {
 }
 
 #[test]
-fn lifecycle_learns_no_listing_a_bridge_names_its_instrument_by() {
+fn lifecycle_fills_a_listings_code_only_onto_a_message_of_that_listing() {
     crate::install::installed();
     // `OMSINSTRUMENTID` states a listing - the ISIN, its market and its
-    // currency - and one ISIN has as many listings as markets: what one
-    // message names it by is no association to fill onto another. The
-    // Bloomberg code beside it is the instrument's and is learned.
+    // currency - and one ISIN has as many listings as markets: the code is
+    // held on the listing it names (D42), filled onto a later message of
+    // the same market, or of no market while the instrument has that one
+    // listing, and never onto a message of another market. The Bloomberg
+    // code beside it is the instrument's and is learned.
     let codec = codec();
     let line = |seq: i32, body: &str| {
         format!(
@@ -2118,6 +2120,7 @@ fn lifecycle_learns_no_listing_a_bridge_names_its_instrument_by() {
     };
     let walked: Vec<_> = codec
         .lifecycle([
+            codec.parse_fix_line(line(3, "207=XLON").as_bytes()),
             codec.parse_fix_line(line(2, "").as_bytes()),
             codec.parse_fix_line(
                 line(
@@ -2137,11 +2140,35 @@ fn lifecycle_learns_no_listing_a_bridge_names_its_instrument_by() {
         Some("dbi;CH0012214059_XSWX_CHF"),
         "the message stating it keeps it"
     );
+    assert_eq!(walked[0].get_instcode(), Some("CH0012214059"));
     assert_eq!(
         walked[1].get_securityids().get(&IdType::Bloomberg),
         Some("HOLN SW")
     );
-    assert_eq!(walked[1].get_securityids().get(&IdType::InstrumentId), None);
+    assert_eq!(
+        walked[1].get_securityids().get(&IdType::InstrumentId),
+        Some("dbi;CH0012214059_XSWX_CHF"),
+        "a message naming no market takes the one listing's code, derived"
+    );
+    assert!(
+        walked[1]
+            .get_securityids()
+            .is_derived(&IdType::InstrumentId)
+    );
+    assert_eq!(walked[1].get_instcode(), Some("CH0012214059"));
+    for kind in [IdType::Bloomberg, IdType::InstrumentId] {
+        assert_eq!(
+            walked[2].get_securityids().get(&kind),
+            None,
+            "another market takes no listing's code: {kind}"
+        );
+    }
+    assert_eq!(
+        walked[2].get_securityids().get(&IdType::Valor),
+        Some("1221405"),
+        "the instrument's own codes reach every market"
+    );
+    assert_eq!(walked[2].get_instcode(), Some("CH0012214059"));
 }
 
 #[test]

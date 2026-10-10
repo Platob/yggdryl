@@ -421,10 +421,10 @@ assert_eq!(
 `Eusipa` is a value, not a datatype: EUSIPA's four-digit product category,
 which the SSPA's Swiss map numbers the same way, held by its shape alone -
 `1` an investment product, `2` a leverage product - and named by each map
-where it lists the code. An `IsinEntry` holds one as its `eusipacode`.
+where it lists the code. An `Instrument` holds one as its `eusipacode`.
 
 ```rust
-use yggdryl_market::{Eusipa, IsinEntry};
+use yggdryl_market::{Eusipa, Instrument};
 use yggdryl::Isin;
 yggdryl_market::install()?;
 
@@ -444,8 +444,8 @@ assert_eq!(
 );
 assert!(Eusipa::from_text("23x0").is_err());
 
-let entry = IsinEntry::new(Isin::new("CH0123456789")?).with_eusipacode(Some(constant));
-assert_eq!(entry.eusipacode(), Some(constant));
+let product = Instrument::for_security(Isin::new("CH0012214059")?)?.with_eusipacode(Some(constant));
+assert_eq!(product.eusipacode(), Some(constant));
 ```
 
 ## Enums: side, marketdatakind, state, timeinforce

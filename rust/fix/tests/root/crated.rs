@@ -719,7 +719,8 @@ mod inferred {
 fn the_currency_pair_is_an_instrument_field_after_the_isin() {
     crate::install::installed();
     let held = yggdryl_fix::fix_crate_fields().expect("the crate's own fields");
-    assert_eq!(held.len(), 52);
+    // Fifty-three since `instcode` (65054) joined the market band, D42.
+    assert_eq!(held.len(), 53);
     let at = |name: &str| {
         held.iter()
             .position(|field| field.name() == name)
@@ -1012,8 +1013,13 @@ fn the_plugin_side_is_a_required_crate_field_after_the_plugin_id_reading_the_int
         "every later crate tag moved up by one"
     );
     assert_eq!(yggdryl_fix::FIXMSG_TAG_NAME, (65_053, "fixmsg"));
+    assert_eq!(
+        yggdryl_fix::INSTCODE_TAG_NAME,
+        (65_054, "instcode"),
+        "the one tag past fixmsg, D42"
+    );
     let held = yggdryl_fix::fix_crate_fields().expect("the crate's own fields");
-    assert_eq!(held.len(), 52);
+    assert_eq!(held.len(), 53);
     let at = held
         .iter()
         .position(|field| field.name() == "msgpluginside")

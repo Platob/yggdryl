@@ -199,7 +199,7 @@ macro_rules! market_getters {
 
             /// The currency the instrument originates in - the one it was
             /// issued in - as the `ccy` code it is, where the element states
-            /// it or a registry filled it; `None` where neither did, never
+            /// it or the instruments filled it; `None` where neither did, never
             /// the currency.
             #[getter]
             fn origccy(&self) -> Option<$crate::scalar::PyScalar> {
@@ -278,6 +278,15 @@ macro_rules! market_getters {
             #[getter]
             fn isincode(&self) -> Option<&str> {
                 ::yggdryl_market::graph::Market::get_isincode(&self.inner)
+            }
+
+            /// The cross code of the instrument this element is about - its
+            /// real ISIN, or the `class:body` an FX pair or a derivative is
+            /// keyed by (`IF:EUR/USD`) - what the instruments table's
+            /// `crosscode` joins on; `None` where nothing resolved it.
+            #[getter]
+            fn instcode(&self) -> Option<&str> {
+                ::yggdryl_market::graph::Market::get_instcode(&self.inner)
             }
 
             /// The rates an amount in `currency` is divided by to state it in

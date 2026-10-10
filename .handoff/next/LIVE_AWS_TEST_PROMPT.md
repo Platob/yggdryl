@@ -52,7 +52,9 @@ Profile: <PROFILE>   Region: <REGION>   (ask me if I did not fill these in)
       `log_messages` (the keyed append skips every line), and the instruments
       table and every market table's `instcode` column must be present and
       filled where the local run fills them. Record each stage's seconds and its
-      request counts from both runs.
+      request counts from both runs. An `instruments` table a lake kept from
+      before the instrument row (no `crosscode` column) is dropped and created
+      afresh by the pipeline; fresh buckets never hold one.
 
 4. Optional, when PyIceberg installs (`pip install "pyiceberg[pyarrow]==0.11.1"
    "boto3>=1.34"`): `YGGDRYL_S3TABLES_ARN=<SILVER ARN> AWS_PROFILE=<PROFILE>

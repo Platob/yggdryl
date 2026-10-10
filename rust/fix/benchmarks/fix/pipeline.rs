@@ -291,8 +291,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
                     decoded.clone(),
                     composed
                         .clone()
-                        .with_isin_registry(Arc::new(std::sync::Mutex::new(
-                            yggdryl_market::IsinRegistry::new(),
+                        .with_instruments(Arc::new(std::sync::Mutex::new(
+                            yggdryl_market::Instruments::new(),
                         ))),
                 )
             },
@@ -1152,7 +1152,7 @@ pub fn line_benchmarks(criterion: &mut Criterion) {
 /// every instrument in that currency where it is on.
 fn fill_benchmarks(criterion: &mut Criterion) {
     use yggdryl::Ccy;
-    use yggdryl_market::{IdType, IsinRegistry};
+    use yggdryl_market::{IdType, Instruments};
     let identified = |kind: IdType, value: &str| {
         let mut element = OrderEvent::at(1);
         element
@@ -1163,8 +1163,8 @@ fn fill_benchmarks(criterion: &mut Criterion) {
     let by_isin = identified(IdType::Isin, "US0378331005");
     let mut by_name = identified(IdType::Fisn, "APPLE INC./SH SH");
     by_name.set_currency(Ccy::new("USD").expect("a currency"), true);
-    let exact = IsinRegistry::seeded();
-    let economic = IsinRegistry::seeded().with_economic_match(true);
+    let exact = Instruments::seeded();
+    let economic = Instruments::seeded().with_economic_match(true);
     assert!(exact.fill(&mut by_isin.clone()), "Apple by its ISIN");
     assert!(!exact.fill(&mut by_name.clone()), "no exact key");
     assert!(

@@ -464,5 +464,18 @@
       "description": "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
       "display": "Source URL"
     }
+  },
+  {
+    "name": "instcode",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:datatype": "String",
+      "FIX:tag": "65054",
+      "description": "The cross code of the instrument the message is about, the instrument table's own key: the real ISIN of a security an agency numbered, class:body - the two CFI class letters, then the body the characteristics spell, IF:EUR/USD for a spot pair - for everything no agency numbers. Written at the parse where the code is a function of the message alone - a stated real ISIN, a detected currency pair - filled by the lifecycle from the instrument the message resolves to otherwise, followed along a chain, fed to no digest; a row stating one is the row's word.",
+      "display": "Instrument Code"
+    }
   }
 ]

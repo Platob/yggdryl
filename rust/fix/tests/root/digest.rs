@@ -283,13 +283,16 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     crate::install::installed();
     let held = yggdryl_fix::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
-    // Fifty-two definitions, in the fixed row's order: the element's and
+    // Fifty-three definitions, in tag order - the fixed row's band order,
+    // then the one numbered past `fixmsg`: the element's and
     // the event's facts, the market's and the operation's the crate tags -
     // the category, the origin currency, the normalized ISIN and MIC, the
     // execution clock, the metadata and the columns the row derives from FIX fields stated under
     // other names - then the message's own: the session event a bridge
     // delivered it as, where a bridge says it came from, three normalized
-    // identifiers - forex, Bloomberg, FIGI - and the capture's source. A
+    // identifiers - forex, Bloomberg, FIGI - the capture's source, and the
+    // instrument's cross code (`instcode`, 65054, D42), numbered after the
+    // fixed row's own `fixmsg` so every earlier tag stood. A
     // market column FIX already names alike - price, side, CFICode - has no
     // crate definition, and a bridge's own identifiers are read off its
     // keys, so they have none either.
@@ -348,6 +351,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "bloombergcode",
             "figicode",
             "sourceurl",
+            "instcode",
         ]
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -406,6 +410,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("Bloomberg Code"),
             Some("FIGI Code"),
             Some("Source URL"),
+            Some("Instrument Code"),
         ],
     );
     // The columns a message answers from what it said are typed as the thing
@@ -505,13 +510,17 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     // Every definition has a tag from 65001 up: one block, in the one namespace
     // every dictionary resolves through, so a bridge row spelling `MSGPLUGINID`
     // reaches it by name; its identity is its tag and its name, and a
-    // dictionary member it is not. Contiguous, in the fixed row's band order:
-    // a retired definition leaves no hole.
+    // dictionary member it is not. Contiguous, in the fixed row's band order,
+    // the fixed row's own `fixmsg` (65053) standing between the capture's
+    // source and `instcode` (65054): a retired definition leaves no hole.
     let mut last = yggdryl_fix::CRATE_TAG_MIN;
     for field in held {
         let view = FixField::new(field);
         let tag = view.tag().unwrap().expect("a tag");
         let id = view.id().unwrap().expect("an identity");
+        if last + 1 == yggdryl_fix::FIXMSG_TAG_NAME.0 {
+            last += 1;
+        }
         assert_eq!(tag, last + 1, "{} follows {last}", field.name());
         assert!(tag < yggdryl_fix::CRATE_TAG_MAX, "{tag} is in the block");
         last = tag;
@@ -582,9 +591,11 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         ]
     );
     // The fixed row's own name is a tag of the block and not a field of it:
-    // a store dumps the row under it, and nothing reads it back. It closes
-    // the block, one past the last field.
-    assert_eq!(yggdryl_fix::FIXMSG_TAG_NAME.0, last + 1);
+    // a store dumps the row under it, and nothing reads it back. It closed
+    // the block, one past the last field, until `instcode` (65054) was
+    // numbered past it, D42: the one definition after the row's own tag.
+    assert_eq!(yggdryl_fix::INSTCODE_TAG_NAME.0, last);
+    assert_eq!(yggdryl_fix::FIXMSG_TAG_NAME.0, last - 1);
     assert!(!yggdryl_fix::is_crate_tag(yggdryl_fix::CRATE_TAG_MIN - 1));
     assert!(!yggdryl_fix::is_crate_tag(yggdryl_fix::CRATE_TAG_MAX));
 

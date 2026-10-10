@@ -96,7 +96,7 @@
     ]
   },
   "kpi": {
-    "fields": 6273,
+    "fields": 6274,
     "groups": 581,
     "enumFields": 2030,
     "codesets": 739,
@@ -105,7 +105,7 @@
     "alternates": 0,
     "messages": 181,
     "components": 928,
-    "columns": 153,
+    "columns": 154,
     "memberships": 0,
     "dialects": 0,
     "datatypes": 28,
@@ -116,7 +116,7 @@
       ],
       [
         "utf8",
-        1929
+        1930
       ],
       [
         "decimal128(38,18)",
@@ -85712,6 +85712,19 @@
           "display": "Source URL"
         },
         "name": "sourceurl",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:datatype": "String",
+          "FIX:tag": "65054",
+          "description": "The cross code of the instrument the message is about, the instrument table's own key: the real ISIN of a security an agency numbered, class:body - the two CFI class letters, then the body the characteristics spell, IF:EUR/USD for a spot pair - for everything no agency numbers. Written at the parse where the code is a function of the message alone - a stated real ISIN, a detected currency pair - filled by the lifecycle from the instrument the message resolves to otherwise, followed along a chain, fed to no digest; a row stating one is the row's word.",
+          "display": "Instrument Code"
+        },
+        "name": "instcode",
         "nullable": true
       }
     ],
@@ -285089,6 +285102,13 @@
         "x": "The security identifiers the message names, each a type, a source and a code: SecurityID under SecurityIDSource, the SecurityAltID group, a bridge's instrument key, the keyed aliases a bridge states - ISINCODE, OMS_RICCODE, SEDOL_CODE - and the codes an ISIN embeds. SecurityID, SecurityIDSource and the group stay in fixentries as sent, and a keyed alias under 0:key. Derived from the message's fields; a row stating one is the row's word."
       },
       {
+        "c": "instcode",
+        "t": 65054,
+        "n": "Instrument Code",
+        "y": "utf8",
+        "x": "The cross code of the instrument the message is about, the instrument table's own key: the real ISIN of a security an agency numbered, class:body - the two CFI class letters, then the body the characteristics spell, IF:EUR/USD for a spot pair - for everything no agency numbers. Written at the parse where the code is a function of the message alone - a stated real ISIN, a detected currency pair - filled by the lifecycle from the instrument the message resolves to otherwise, followed along a chain, fed to no digest; a row stating one is the row's word."
+      },
+      {
         "c": "isincode",
         "t": 65022,
         "n": "ISIN Code",
@@ -286182,6 +286202,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": "XNAS",
@@ -286521,6 +286542,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -286946,6 +286968,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -290046,6 +290069,7 @@
         "unit": "",
         "side": "UKNW",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -290358,6 +290382,7 @@
         "unit": "",
         "side": "BOTH",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -290602,6 +290627,7 @@
         "unit": "",
         "side": "UKNW",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -290775,6 +290801,7 @@
         "unit": "",
         "side": "UKNW",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -290982,6 +291009,7 @@
         "unit": "",
         "side": "UKNW",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -291254,6 +291282,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -291570,6 +291599,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": "US0378331005",
         "isincode": "US0378331005",
         "cficode": null,
         "miccode": "XNAS",
@@ -291870,6 +291900,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -292271,6 +292302,7 @@
         "unit": "",
         "side": "UKNW",
         "securityids": {},
+        "instcode": "GB00BN7SWP63",
         "isincode": "GB00BN7SWP63",
         "cficode": null,
         "miccode": "XLON",
@@ -292591,6 +292623,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -292822,6 +292855,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -293042,6 +293076,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -293253,6 +293288,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -293475,6 +293511,7 @@
         "unit": "",
         "side": "UKNW",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,
@@ -293712,6 +293749,7 @@
         "unit": "",
         "side": "BUYS",
         "securityids": {},
+        "instcode": null,
         "isincode": null,
         "cficode": null,
         "miccode": null,

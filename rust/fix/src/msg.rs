@@ -17,13 +17,16 @@ use super::memo::{PartySlot, PartyWord};
 use super::registry::FixMap;
 use super::{FixField, FixId, FixIdMapKind, FixKey, FixRegistry};
 use yggdryl::graph::{Element, Event};
-use yggdryl::{Ccy, Cfi, Country, Decimal, Forex, Mic, State, StructType, Unit, Uuid};
+use yggdryl::{Ccy, Cfi, Country, Decimal, Forex, Isin, Mic, State, Str, StructType, Unit, Uuid};
 use yggdryl::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Serie};
 use yggdryl_market::graph::{FxRates, Market, Metadata, Operation};
 use yggdryl_market::implementer::OperationEventFacts;
-use yggdryl_market::implementer::{EconomicMemo, IsinTable};
+use yggdryl_market::implementer::{
+    Body, EconomicMemo, InstrumentTable, Production, Stated, instrument_spell_code,
+};
 use yggdryl_market::{
-    IdKey, IdSource, IdType, Identifier, Identifiers, MarketDataKind, Side, TimeInForce,
+    Characteristics, Exercise, Expiry, IdKey, IdSource, IdType, Identifier, Identifiers,
+    Instrument, MAX_CODE_WIDTH, MarketDataKind, Settle, Side, TimeInForce,
 };
 
 /// The nanoseconds in one day: what a transaction time at midnight to the
@@ -241,9 +244,73 @@ fn stated_text(value: Option<Scalar>) -> Option<SmolStr> {
     value.as_ref().and_then(scalar_text)
 }
 
+/// The Instrument component's fields that describe the instrument and that
+/// no typed fact holds, each with the name the dictionary gives it: what a
+/// message states into its instrument's metadata
+/// ([`FixMsg::stated_metadata`]). The component's identifiers, its market,
+/// its class, its currency, its country of issue and the characteristics
+/// a cross code is written from are typed facts and are not here.
+const INSTRUMENT_METADATA_TAGS: [(i32, &str); 11] = [
+    (106, "issuer"),
+    (107, "securitydesc"),
+    (167, "securitytype"),
+    (762, "securitysubtype"),
+    (460, "product"),
+    (1227, "productcomplex"),
+    (1151, "securitygroup"),
+    (965, "securitystatus"),
+    (996, "unitofmeasure"),
+    (471, "stateorprovinceofissue"),
+    (472, "localeofissue"),
+];
+
+/// What [`FixMsg::stated_metadata`] answers: each field's name beside its
+/// text, inline for every field of [`INSTRUMENT_METADATA_TAGS`].
+pub(super) type StatedMetadata<'m> =
+    SmallVec<[(&'static str, StatedText<'m>); INSTRUMENT_METADATA_TAGS.len()]>;
+
+/// One field's text as a message states it: borrowed off the row where the
+/// field is text, else spelled - an integer's digits - inline.
+pub(super) enum StatedText<'m> {
+    Borrowed(&'m str),
+    Spelled(SmolStr),
+}
+
+impl AsRef<str> for StatedText<'_> {
+    fn as_ref(&self) -> &str {
+        match self {
+            Self::Borrowed(text) => text,
+            Self::Spelled(text) => text.as_str(),
+        }
+    }
+}
+
 /// FIX's own `StrikePrice(202)`: what [`FixMsg::state_market`] reads the
 /// message's `strikepx` off.
 const STRIKEPRICE_TAG: i32 = 202;
+
+/// `SettlDate(64)`, `SettlDate2(193)` and `SettlType(63)`: when a pair
+/// settles, as its instrument's body spells it.
+const SETTL_DATE_TAG: i32 = 64;
+const SETTL_DATE2_TAG: i32 = 193;
+const SETTL_TYPE_TAG: i32 = 63;
+
+/// `MaturityDate(541)` and `MaturityMonthYear(200)`: when a derivative
+/// expires, as its instrument's body spells it.
+const MATURITY_DATE_TAG: i32 = 541;
+const MATURITY_MONTH_YEAR_TAG: i32 = 200;
+
+/// `ContractMultiplier(231)` and `ExerciseStyle(1194)`: facts of an option
+/// no key byte spells.
+const CONTRACT_MULTIPLIER_TAG: i32 = 231;
+const EXERCISE_STYLE_TAG: i32 = 1194;
+
+/// `NoLegs(555)` and the three members a strategy's leg is read from:
+/// `LegSecurityID(602)`, `LegSecurityIDSource(603)`, `LegRatioQty(623)`.
+const NO_LEGS_TAG: i32 = 555;
+const LEG_ID_TAG: i32 = 602;
+const LEG_ID_SOURCE_TAG: i32 = 603;
+const LEG_RATIO_TAG: i32 = 623;
 
 /// The group an identifier map reads its role sources out of, and the two
 /// members of each occurrence it reads: the `PartyID(448)` stated under the
@@ -1047,6 +1114,11 @@ pub struct FixMsg {
     /// a later detection may rewrite or take back those and no other. A
     /// row read back, and a write of the cell, make it the row's word.
     detected_fx: u8,
+    /// Whether the `instcode` the event holds was written from the
+    /// message's own facts ([`Self::derive_instcode`]) - so the next settle
+    /// states it again from them - rather than by a row, a caller or a
+    /// lifecycle fill, whose word stands.
+    derived_instcode: bool,
     /// What the message states that its reading could not take as it
     /// stands: the parse's refusals first - a value that would not type, an
     /// alias stating another value than the field it lost to - then what a
@@ -1677,6 +1749,7 @@ impl FixMsg {
             carried: Vec::new(),
             derived: SmallVec::new(),
             detected_fx: 0,
+            derived_instcode: false,
             anomalies: Vec::new(),
             arrival_anomalies: 0,
             idmap_anomalies: 0,
@@ -2064,6 +2137,7 @@ impl FixMsg {
         let stale = std::mem::take(&mut self.stale);
         self.state_market(stale);
         self.rebuild_idmaps();
+        self.derive_instcode();
         self.event.fill_market();
         self.fill_parents();
         self.event.sync_cross();
@@ -2777,7 +2851,11 @@ impl FixMsg {
         let reading = self.stated_securityids().0;
         let mut statements = Identifiers::new();
         let mut moved = false;
-        for (((_, column), kind), value) in SECURITY_VIEWS.iter().zip(&viewed) {
+        // The pair's view first: a number this crate minted for the pair's
+        // key reads as its derivation only once the pair stands.
+        for at in [3, 0, 1, 2] {
+            let ((_, column), kind) = &SECURITY_VIEWS[at];
+            let value = &viewed[at];
             let Some(view) = value
                 .as_ref()
                 .and_then(|value| identity::view_code(kind, value))
@@ -2798,6 +2876,9 @@ impl FixMsg {
             if let Some(derived) = self.viewed_derivation(&view, &reading) {
                 if derived.kind() == &IdType::Forex {
                     moved |= self.derive_securityid(derived.kind(), derived.value());
+                } else if derived.kind() == &IdType::Isin {
+                    // The mint follows the pair: the settle below re-mints it.
+                    moved = true;
                 }
                 continue;
             }
@@ -2826,6 +2907,11 @@ impl FixMsg {
         if moved || !statements.is_empty() {
             let facts = facts_of_tag(&self.registry, 48) & !fact::SECURITYIDS;
             self.state_market(facts);
+        }
+        if moved {
+            // The pair a view derived keys the instrument: its code and its
+            // minted number, as the parse's settle wrote them.
+            self.derive_instcode();
         }
         if statements.is_empty() {
             return;
@@ -2911,6 +2997,17 @@ impl FixMsg {
         let kind = view.kind();
         let code = if *kind == IdType::Forex {
             SmolStr::new(self.detected_pair(self.registry.forex_memo())?.as_str())
+        } else if *kind == IdType::Isin && view.value().starts_with(Isin::MINTED_PREFIX) {
+            // A number this crate minted for the pair's key is the pair's
+            // derivation, re-minted at the settle ([`Self::derive_instcode`]).
+            let body = self.stated_body();
+            let mut slot = [0_u8; MAX_CODE_WIDTH];
+            match instrument_spell_code(self, body.as_ref(), None, &mut slot) {
+                Ok(Some((code, Production::Body))) => {
+                    SmolStr::new(Instrument::minted_number(code).as_str())
+                }
+                _ => return None,
+            }
         } else {
             let ticker = if self.stated & fact::TICKER != 0 {
                 self.event.get_ticker().map(SmolStr::new)
@@ -3881,14 +3978,14 @@ impl FixMsg {
     }
 
     /// The security identifiers `table` holds for this message's instrument
-    /// that it leaves unsaid, derived ([`IsinTable::fill_identifiers`]) -
+    /// that it leaves unsaid, derived ([`InstrumentTable::fill_identifiers`]) -
     /// what a parse takes from the table its door fixed - and, where any
     /// landed, the market facts they imply ([`Market::fill_market`]): the
     /// national number the derived ISIN embeds, the unit a pair deals in.
     /// Nothing here reaches a field, the wire, the row's word or the
     /// identity, so the caller stamps once after it. Whether anything
     /// moved.
-    pub(super) fn fill_instrument_ids(&mut self, table: &IsinTable) -> bool {
+    pub(super) fn fill_instrument_ids(&mut self, table: &InstrumentTable) -> bool {
         let moved = table.fill_identifiers(self);
         if moved {
             self.event.fill_market();
@@ -3897,20 +3994,210 @@ impl FixMsg {
     }
 
     /// What the lifecycle fills from `table`
-    /// ([`IsinTable::fill_unsettled`]): the identifiers
+    /// ([`InstrumentTable::fill_unsettled`]): the identifiers
     /// [`Self::fill_instrument_ids`] derives, the ticker on the same market,
-    /// the CFI code where the row's refines it and the currency on the same
-    /// stated market under the row's ticker - from the exact match, else,
-    /// where the table states the economic match, the economic one, `memo`
-    /// keeping the walk's answers - then the market facts they imply, and
-    /// nothing more: a parsed message is settled already, and a fill moves
-    /// nothing its identity reads. Whether anything moved.
-    pub(super) fn fill_instrument(&mut self, table: &IsinTable, memo: &mut EconomicMemo) -> bool {
-        let moved = table.fill_unsettled(self, Some(memo));
+    /// the CFI code where the instrument's refines it, the currency on the
+    /// same stated market under the instrument's ticker and the instrument's
+    /// cross code as `instcode` where the message holds none - from the
+    /// exact match, else, where the table states the economic match, the
+    /// economic one, `memo` keeping the walk's answers; `stated` what only
+    /// the message spells of its instrument ([`Self::stated_body`], its
+    /// underlying, its country, its origin currency) - then the market
+    /// facts they imply, and nothing more: a parsed message is settled
+    /// already, and a fill moves nothing its identity reads. Whether
+    /// anything moved.
+    pub(super) fn fill_instrument(
+        &mut self,
+        table: &InstrumentTable,
+        stated: &Stated<'_>,
+        memo: &mut EconomicMemo,
+    ) -> bool {
+        let moved = table.fill_unsettled(self, stated, Some(memo));
         if moved {
             self.event.fill_market();
         }
         moved
+    }
+
+    /// The cross code the message's own facts spell, written as its
+    /// `instcode` where the code is a function of the message alone, and
+    /// the number this crate mints for a pair it keys: a stated real ISIN
+    /// under a class that keys by no body - a cash security - is the code;
+    /// a pair under an FX class (`I*`, `J*`, `S*`) with the settles its body
+    /// takes ([`Self::stated_body`]) is `class:body` - `IF:EUR/USD`,
+    /// `JF:EUR/USD:M3` - and its minted number
+    /// ([`Instrument::minted_number`]) enters the derived overlay under
+    /// `isin`, beside the pair, so a stated ISIN always wins; a derivative,
+    /// a placeholder's real ISIN, a ticker-only security: none, the body
+    /// needing the underlying's code only the lifecycle's table resolves. A
+    /// code this settle wrote before is stated again from the facts as they
+    /// stand - replaced, or cleared where they spell none - while one a row,
+    /// a caller or a fill set stands ([`Market::set_instcode`]); a minted
+    /// number the facts no longer spell leaves the overlay. Fed to no
+    /// digest, as `crossuuid` is not; the overlay's number is.
+    fn derive_instcode(&mut self) {
+        let body = self.stated_body();
+        let mut slot = [0_u8; MAX_CODE_WIDTH];
+        let spelled = instrument_spell_code(self, body.as_ref(), None, &mut slot).unwrap_or(None);
+        let own = match spelled {
+            Some((code, Production::Body)) => {
+                let number = Instrument::minted_number(code);
+                if self.derived_code(&IdType::Isin) != Some(number.as_str()) {
+                    self.derive_securityid(&IdType::Isin, number.as_str());
+                }
+                Some(code)
+            }
+            Some((code, Production::Isin))
+                if !self.event.get_securityids().is_derived(&IdType::Isin) =>
+            {
+                self.drop_minted_isin();
+                Some(code)
+            }
+            _ => {
+                self.drop_minted_isin();
+                None
+            }
+        };
+        match (self.event.get_instcode(), self.derived_instcode) {
+            (Some(_), false) => {}
+            (held, _) if held == own => {}
+            (_, _) => {
+                self.event.set_instcode(own.map(Str::new), true);
+                self.derived_instcode = own.is_some();
+            }
+        }
+    }
+
+    /// Takes a number this crate minted off the derived overlay and the
+    /// event: a `QY` number is never a feed's, so one derived is a mint's.
+    fn drop_minted_isin(&mut self) {
+        if !self
+            .derived_code(&IdType::Isin)
+            .is_some_and(|code| code.starts_with(Isin::MINTED_PREFIX))
+        {
+            return;
+        }
+        self.derived.retain(|(kind, _)| *kind != IdType::Isin);
+        let _ = self
+            .event
+            .remove_securityid(&IdKey::new(IdSource::Derived, IdType::Isin));
+    }
+
+    /// What the message spells of its instrument's body beside its market
+    /// facts, where it states a class: the class as settled
+    /// ([`Market::get_cficode`], `PutOrCall(201)` folded into `OM`), the
+    /// pair its security identifiers hold and the characteristics - the
+    /// settle of `SettlDate(64)`, a date, else the `SettlType(63)` tenor
+    /// text; the far settle of `SettlDate2(193)`; the expiry of
+    /// `MaturityDate(541)`, `MaturityDay` folded into it, else
+    /// `MaturityMonthYear(200)` as a month or a week; `StrikePrice(202)`;
+    /// `ContractMultiplier(231)`; `ExerciseStyle(1194)` - every value read
+    /// by its field's type. None where the message states no class.
+    #[must_use]
+    pub fn stated_characteristics(&self) -> Option<(Cfi, Option<Forex>, Characteristics)> {
+        let class = self.get_cficode()?.clone();
+        let forex = self
+            .get_securityids()
+            .get(&IdType::Forex)
+            .and_then(|pair| Forex::new(pair).ok());
+        let day = |tag: i32| -> Option<yggdryl::Date32> {
+            match Scalar::date32(
+                i32::try_from(
+                    self.stated_by_tag(tag)?
+                        .temporal_count_at(yggdryl::TimeUnit::Day)?,
+                )
+                .ok()?,
+            ) {
+                Scalar::Date32(day) => Some(day),
+                _ => None,
+            }
+        };
+        let tenor = |tag: i32| -> Option<Settle> {
+            let text = self.stated_word(tag)?;
+            let bytes = text.as_bytes();
+            if bytes.is_empty() || bytes.len() > 3 || !bytes.iter().all(u8::is_ascii_alphanumeric) {
+                return None;
+            }
+            let mut upper = [0_u8; 3];
+            for (slot, byte) in upper.iter_mut().zip(bytes) {
+                *slot = byte.to_ascii_uppercase();
+            }
+            std::str::from_utf8(&upper[..bytes.len()])
+                .ok()
+                .map(|text| Settle::Tenor(SmolStr::new(text)))
+        };
+        let expiry = day(MATURITY_DATE_TAG).map(Expiry::Day).or_else(|| {
+            self.stated_word(MATURITY_MONTH_YEAR_TAG)
+                .and_then(|text| Expiry::from_text(&text).ok())
+        });
+        let characteristics = Characteristics::default()
+            .with_settle(
+                day(SETTL_DATE_TAG)
+                    .map(Settle::Date)
+                    .or_else(|| tenor(SETTL_TYPE_TAG)),
+            )
+            .with_settle2(day(SETTL_DATE2_TAG).map(Settle::Date))
+            .with_expiry(expiry)
+            .with_strikepx(self.get_strikepx())
+            .with_multiplier(
+                self.stated_by_tag(CONTRACT_MULTIPLIER_TAG)
+                    .and_then(|held| Decimal::from_scalar(&held)),
+            )
+            .with_exercise(
+                self.stated_word(EXERCISE_STYLE_TAG)
+                    .and_then(|code| Exercise::from_fix(&code)),
+            );
+        Some((class, forex, characteristics))
+    }
+
+    /// [`Self::stated_characteristics`] as the body intake the lifecycle
+    /// learns from, its legs left to the caller ([`Self::stated_legs`]),
+    /// which resolves them through the collection.
+    pub(super) fn stated_body(&self) -> Option<Body> {
+        let (_, forex, characteristics) = self.stated_characteristics()?;
+        Some(Body {
+            forex,
+            characteristics,
+            legs: Vec::new(),
+        })
+    }
+
+    /// The legs a strategy message states, each a real ISIN and its ratio:
+    /// every `NoLegs(555)` occurrence whose `LegSecurityID(602)` is a real
+    /// ISIN under an ISIN `LegSecurityIDSource(603)` or under none, its
+    /// `LegRatioQty(623)` a whole number, one where unstated. A leg stating
+    /// anything else names none, and a strategy any leg of which does is
+    /// no body ([`Self::stated_body`]): empty.
+    pub(super) fn stated_legs(&self) -> Vec<(Isin, u32)> {
+        let mut legs = Vec::new();
+        for [code, source, ratio] in
+            self.tagged_occurrences(NO_LEGS_TAG, [LEG_ID_TAG, LEG_ID_SOURCE_TAG, LEG_RATIO_TAG])
+        {
+            let isin = code
+                .as_deref()
+                .filter(|_| {
+                    source.as_deref().is_none_or(|held| {
+                        IdType::from_security_source(held).is_ok_and(|kind| kind == IdType::Isin)
+                    })
+                })
+                .and_then(|code| Isin::new(code).ok())
+                .filter(yggdryl::CodeValue::is_real);
+            let ratio = match ratio.as_deref() {
+                None => Some(1),
+                Some(text) => text
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|held| {
+                        held.fract() == 0.0 && *held >= 1.0 && *held <= f64::from(u32::MAX)
+                    })
+                    .map(|held| held as u32),
+            };
+            match (isin, ratio) {
+                (Some(isin), Some(ratio)) => legs.push((isin, ratio)),
+                _ => return Vec::new(),
+            }
+        }
+        legs
     }
 
     /// The country of issue the message states that its ISIN does not
@@ -3920,7 +4207,7 @@ impl FixMsg {
     /// and a landed value is indistinguishable from a stated one, so a
     /// `470` equal to the prefix states nothing a walk may learn: a
     /// country held beside the ISIN stands until a message states another,
-    /// and an explicit [`IsinRegistry::merge`] stating the prefix is what
+    /// and an explicit [`Instruments::merge`] stating the prefix is what
     /// takes a wrong one back.
     pub(super) fn stated_country(&self) -> Option<Country> {
         let stated = self.get_by_tag(COUNTRYOFISSUE_TAG)?;
@@ -4061,13 +4348,51 @@ impl FixMsg {
         found.filter(|_| !disagree)
     }
 
+    /// The complementary facts this message states of its instrument that
+    /// no typed fact holds ([`INSTRUMENT_METADATA_TAGS`]): the Instrument
+    /// component's descriptive words - its issuer, its security
+    /// description, its security type, sub-type, product, product complex,
+    /// group and status, its unit of measure, the state and locale of its
+    /// issue - each under the dictionary's name for the field, its text
+    /// trimmed, a null or empty field unstated. What the lifecycle learns
+    /// into the instrument's metadata ([`Instrument::metadata`]) beside its
+    /// typed facts; the message's own metadata - a bridge's unmapped keys,
+    /// which describe the order - is never the instrument's. Borrowed off
+    /// the row where the field is text, so a message states them at no
+    /// allocation.
+    pub(super) fn stated_metadata(&self) -> StatedMetadata<'_> {
+        INSTRUMENT_METADATA_TAGS
+            .iter()
+            .filter_map(|(tag, name)| Some((*name, self.stated_text_by_tag(*tag)?)))
+            .collect()
+    }
+
+    /// One field's text, trimmed, borrowed off the row where it lies there
+    /// as text; an integer as its digits; `None` where it is null or empty.
+    /// Read through the message's own tag index alone - never the fallback
+    /// by name, whose table a message builds once on first use - so a field
+    /// the message does not carry costs nothing to ask for.
+    fn stated_text_by_tag(&self, tag: i32) -> Option<StatedText<'_>> {
+        let spelled = |held: &Scalar| scalar_text(held).map(StatedText::Spelled);
+        match self.value.get(self.index_of_tag(tag)?)? {
+            Cow::Borrowed(held) => match held.as_str() {
+                Some(text) => {
+                    let text = text.trim();
+                    (!text.is_empty()).then_some(StatedText::Borrowed(text))
+                }
+                None => spelled(held),
+            },
+            Cow::Owned(held) => spelled(&held),
+        }
+    }
+
     /// The security identifiers derived of another instrument taken back
     /// and what `table` holds of this one derived: what a batch entry does
     /// once it has restated its own instrument over the batch's, whose
     /// overlay it was cloned with. The pair FX detection derived stands,
     /// since the entry's own symbol detected its own. Settled facts are
     /// left as they are; the caller stamps the identity after.
-    pub(super) fn refill_instrument_ids(&mut self, table: Option<&IsinTable>) {
+    pub(super) fn refill_instrument_ids(&mut self, table: Option<&InstrumentTable>) {
         let stale: Vec<IdType> = self
             .derived
             .iter()
@@ -4080,6 +4405,8 @@ impl FixMsg {
                 .event
                 .remove_securityid(&IdKey::new(IdSource::Derived, kind.clone()));
         }
+        // The entry's own code and minted number, over the batch's.
+        self.derive_instcode();
         if let Some(table) = table {
             self.fill_instrument_ids(table);
         }
@@ -5479,7 +5806,13 @@ struct InstrumentKey {
 /// first of them where nothing else stated it: the source that named the
 /// instrument is the one its ISIN is filed under.
 fn instrument_key(ids: &Identifiers) -> Option<InstrumentKey> {
-    let keys = ids.of_kind(&IdType::InstrumentId);
+    // A key the message stated, never one a table derived - nor the base
+    // key a derivation filled: a derivation reaches no field and fills no
+    // market fact of its own.
+    let derived = ids.is_derived(&IdType::InstrumentId);
+    let keys = ids
+        .of_kind(&IdType::InstrumentId)
+        .filter(|id| id.src() != &IdSource::Derived && !(derived && id.key().is_base()));
     let (named, base): (SmallVec<[&Identifier; 2]>, SmallVec<[&Identifier; 2]>) =
         keys.partition(|id| !id.key().is_base());
     named.into_iter().chain(base).find_map(|id| {
@@ -6287,6 +6620,7 @@ impl Clone for FixMsg {
             carried: self.carried.clone(),
             derived: self.derived.clone(),
             detected_fx: self.detected_fx,
+            derived_instcode: self.derived_instcode,
             anomalies: self.anomalies.clone(),
             arrival_anomalies: self.arrival_anomalies,
             idmap_anomalies: self.idmap_anomalies,
@@ -6559,6 +6893,22 @@ impl Market for FixMsg {
         self.event.set_origccy(ccy, overwrite);
     }
 
+    fn get_instcode(&self) -> Option<&str> {
+        self.event.get_instcode()
+    }
+
+    /// No FIX field states it: the settle writes it from the message's own
+    /// facts where they spell the code - a stated real ISIN under no body
+    /// class, a detected pair's `IF:EUR/USD` - and a code set here that
+    /// lands - a row's, a caller's, a lifecycle fill's - is that writer's
+    /// word, which the settle leaves alone.
+    fn set_instcode(&mut self, code: Option<Str>, overwrite: bool) {
+        if overwrite || self.event.get_instcode().is_none() {
+            self.derived_instcode = false;
+        }
+        self.event.set_instcode(code, overwrite);
+    }
+
     fn get_quantity(&self) -> Option<Decimal> {
         self.event.get_quantity()
     }
@@ -6667,6 +7017,16 @@ impl Market for FixMsg {
         if key.is_base() || key.src() == &IdSource::Derived {
             self.derived.retain(|(kind, _)| kind != key.kind());
         }
+        // The pair hangs on the symbol, never on the ISIN: one a row's set
+        // holds as derived, with no overlay behind it, goes back too.
+        let pair = (*key.kind() != IdType::Forex)
+            .then(|| {
+                self.event
+                    .get_securityids()
+                    .get_from(&IdKey::new(IdSource::Derived, IdType::Forex))
+                    .map(SmolStr::new)
+            })
+            .flatten();
         let removed = self.event.remove_securityid(key)?;
         if self.event.get_securityids().get(&IdType::Isin).is_none() {
             // Every derived identifier hangs on the ISIN but the pair, which
@@ -6674,9 +7034,12 @@ impl Market for FixMsg {
             self.derived.retain(|(kind, _)| *kind == IdType::Forex);
         }
         // The event takes back every derived identifier with the ISIN; what
-        // the overlay still holds goes back as derived.
+        // the overlay still holds goes back as derived, and so does the pair.
         for (kind, code) in &self.derived {
             self.event.derive_securityid(kind, code);
+        }
+        if let Some(pair) = pair {
+            self.event.derive_securityid(&IdType::Forex, &pair);
         }
         Ok(removed)
     }
@@ -7093,6 +7456,9 @@ impl FixMsg {
         let _ = self
             .event
             .remove_securityid(&IdKey::new(IdSource::Derived, IdType::Forex));
+        // The number minted for the pair's key rides the pair: the settle
+        // mints the new pair's.
+        self.drop_minted_isin();
         if let Some(pair) = pair {
             self.derive_securityid(&IdType::Forex, pair);
         }

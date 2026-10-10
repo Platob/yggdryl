@@ -1,6 +1,6 @@
 //! Security identifiers: the national number an ISIN embeds and the shape a
 //! symbol reads as. What a lifecycle learns between an instrument's
-//! identifiers is an [`IsinRegistry`](crate::IsinRegistry)'s.
+//! identifiers is an [`Instruments`](crate::Instruments)'s.
 
 use crate::{IdKey, IdSource, IdType, Identifier};
 use yggdryl::{Cfi, Cusip, Figi, Isin, Ric, Sedol};

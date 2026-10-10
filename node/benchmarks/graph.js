@@ -8,12 +8,12 @@
 // operations, its limits, one side's live entries and two-sided readings,
 // the lazy book and event walks - one under a filter - the lifted Arrow
 // doors and the named views over them, the identifier maps crossing as a
-// plain object and the instrument registry's reads. Run against the release
+// plain object and the instruments' reads. Run against the release
 // addon with `npm run --prefix node bench:graph`.
 
 const { performance } = require('node:perf_hooks')
 
-const { Identifiers, IsinRegistry, graph } = require('yggdryl')
+const { Identifiers, Instruments, graph } = require('yggdryl')
 
 const iterations = Number.parseInt(process.env.YGGDRYL_BENCH_ITERATIONS ?? '5000', 10)
 if (!Number.isSafeInteger(iterations) || iterations <= 0) {
@@ -119,19 +119,28 @@ const IDENTIFIERS_OBJECT = Object.fromEntries([
   ['ullink:isin', 'US0378331005'],
 ])
 const IDENTIFIERS = Identifiers.fromObject(IDENTIFIERS_OBJECT)
-const REGISTRY = new IsinRegistry()
-REGISTRY.merge({
+const ZERO = '00000000-0000-0000-0000-000000000000'
+const INSTRUMENTS = new Instruments()
+INSTRUMENTS.merge({
+  uuid: ZERO,
+  crossuuid: ZERO,
+  crosscode: '',
+  hashcode: 0n,
+  crosshashcode: 0n,
+  placeholder: false,
   isin: 'CH0012214059',
-  ric: 'HOLN.S',
-  bloomberg: 'HOLN SW Equity',
   cficode: 'ESVUFR',
-  ticker: 'HOLN',
-  miccode: 'XSWX',
+  listings: [{
+    miccode: 'XSWX',
+    ticker: 'HOLN',
+    currency: null,
+    codes: new Map([['bloomberg', 'HOLN SW Equity'], ['ric', 'HOLN.S']]),
+  }],
 })
 benchmark(`identifiers fromObject/${IDENTIFIERS.length}`, () => Identifiers.fromObject(IDENTIFIERS_OBJECT))
 benchmark(`identifiers intoObject/${IDENTIFIERS.length}`, () => IDENTIFIERS.intoObject())
-benchmark('isin registry get', () => REGISTRY.get('CH0012214059'))
-benchmark('isin registry getByTicker', () => REGISTRY.getByTicker('HOLN', 'XSWX'))
+benchmark('instruments get', () => INSTRUMENTS.get('CH0012214059'))
+benchmark('instruments getByTicker', () => INSTRUMENTS.getByTicker('HOLN', 'XSWX'))
 benchmark('market view plan', () => graph.MarketData.plan('orders', ["securityids['isin'] as isin"]))
 benchmarkStreams(`market view orders/${FOLD_OPERATION_COUNT}`, () =>
   graph.MarketData.applyView('orders', graph.MarketData.arrowReader(FOLD_OPERATIONS)).intoIpc())

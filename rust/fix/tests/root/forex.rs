@@ -132,6 +132,23 @@ fn a_spot_pair_states_its_class_its_currencies_and_no_market() {
     );
     // A spot symbol states no settlement type of its own.
     assert_eq!(cell(&message, 63), None);
+    // The pair keys the instrument `IF:EUR/USD`, whose number the parse
+    // mints into the derived overlay beside the pair (D42): the row's
+    // `isincode` and the book's key, under a stated ISIN whatever its rank.
+    assert_eq!(message.get_instcode(), Some("IF:EUR/USD"));
+    assert_eq!(message.get_isincode(), Some("QYLTVIRYHNX5"));
+    assert!(message.get_securityids().is_derived(&IdType::Isin));
+    assert_eq!(message.book_crosscode(), "QYLTVIRYHNX5");
+    let numbered = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=EUR/USD|22=4|48=EZ0000000003|54=1|38=1000000|10=0|")
+        .expect("an order");
+    assert_eq!(numbered.get_instcode(), Some("IF:EUR/USD"));
+    assert_eq!(
+        numbered.get_isincode(),
+        Some("EZ0000000003"),
+        "a stated ISIN wins over the mint, rank two over one"
+    );
+    assert!(!numbered.get_securityids().is_derived(&IdType::Isin));
     // Every spelling of the pair is the one pair.
     for symbol in [
         "EURUSD",
@@ -158,11 +175,29 @@ fn a_forward_pair_is_an_fx_forward_settling_on_its_tenor() {
     assert_eq!(cell(&message, 167).as_deref(), Some("FXFWD"));
     assert_eq!(cell(&message, 461).as_deref(), Some("JFTXFP"));
     assert_eq!(cell(&message, 63).as_deref(), Some("M1"));
-    // A stated settlement date leaves the type to the message.
+    // The forward is keyed by its pair and its tenor, and minted its own
+    // number (D42); a stated settlement date keys it by the date instead,
+    // and leaves the type to the message.
+    assert_eq!(message.get_instcode(), Some("JF:EUR/USD:M1"));
+    assert_eq!(
+        message.get_isincode(),
+        Some(yggdryl_market::Instrument::minted_number("JF:EUR/USD:M1").as_str())
+    );
     let dated = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A|55=EUR/USD 1M|64=20240202|10=0|")
         .expect("an order");
     assert_eq!(cell(&dated, 63), None);
+    assert_eq!(dated.get_instcode(), Some("JF:EUR/USD:2024-02-02"));
+    let (class, pair, characteristics) = dated.stated_characteristics().expect("a class");
+    assert_eq!(class.as_str(), "JFTXFP");
+    assert_eq!(
+        pair.map(|pair| pair.to_string()),
+        Some("EUR/USD".to_owned())
+    );
+    assert_eq!(
+        characteristics.settle().map(ToString::to_string),
+        Some("2024-02-02".to_owned())
+    );
 }
 
 #[test]

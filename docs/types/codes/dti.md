@@ -223,7 +223,7 @@ for refused in ["A9J9K872S", "Y9J9K872S", "09J9K872S", "X9J9K872"] {
 - Serde reads a DTI through the same door: a document holding a spelling that is not the shape is refused rather than deserialized, and lower case is folded.
 - No default value: the empty text names no token, so an empty text cell entering the column is null ([Cast](../cast.md#empty-text)).
 - [`merge_with`](index.md#the-code-family-value) takes an identifier that closes over one that does not, whichever leads; two of one rank keep this one.
-- An [`IsinRegistry`](../../graph/isin-registry.md) column of type `dti` declares this datatype; a store whose column is `utf8` reads each cell through this code's rule.
+- An [`Instrument`](../../graph/instrument.md) holds a DTI among its `securityids` under `dti`, read through this code's rule, and `dti` is the last of `Instruments::LOOKUP_CODES`, so a DTI alone leads back to the instrument holding it.
 
 ## Commands
 

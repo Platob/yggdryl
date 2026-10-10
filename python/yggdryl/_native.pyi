@@ -7204,36 +7204,32 @@ class Identifiers:
     def __deepcopy__(self, memo: Any) -> Identifiers: ...
     def __reduce__(self) -> tuple[object, tuple[dict[str, str]]]: ...
 
-class IsinRegistry:
-    """A table of instruments keyed by ISIN, one row per listing - per ISIN
-    and market - shared behind one lock.
+class Instruments:
+    """The instruments a process knows, one row per instrument keyed by its
+    ``crosscode``, shared behind one lock.
 
-    Each row holds the instrument's ``isin``, ``updunix`` (when the statement
-    that last moved a fact of it happened, a stamp), ``firstunix`` (the
-    earliest instant an event the registry learned from stated the ISIN, moved
-    only by an earlier one), ``lastunix`` (the latest, moved by every learn),
-    detailed ``cficode``, its ``countrycode`` of issue, its
-    ``forexcode`` pair, the ``underlyingisin`` it is written on, its
-    ``eusipacode`` - the four-digit EUSIPA product category ``Eusipa`` reads,
-    an ``int`` - the ``miccode`` of the listing, its ``ticker``, its ``fisn``
-    (the ISO 18774 short name), trading ``currency``, ``origccy`` (the
-    currency it was issued in, where stated, never derived) and one code per
-    ``SecurityIDSource(22)`` type but the ISIN. The instrument facts are the
-    ISIN's and every listing row of it carries them; the market, the ticker,
-    the currency and the listing codes are each row's own, a statement naming
-    a new market a new row, one naming none landing on the ISIN's single row
-    or, where it has several, warned off every row. ``len`` counts
-    instruments, ``rows`` listing rows. A row carries the CUSIP, SEDOL, WKN or
-    Valor its ISIN embeds and the currency of its listing market's country
-    alone - a row with no market keeps none, where it states none. ``seeded`` holds the embedded common instruments. A lifecycle learns
-    into it - keyed by a stated real ISIN - and fills from it what a message
-    leaves unsaid, naming the row by ``resolve``'s waterfall - its ISIN, a code
-    of ``LOOKUP_CODES``, its ticker on its market, and, where
-    ``is_economic_match``, its short name in its currency - a parse fills derived identifiers from it, and a valid
-    stated value fills and replaces whatever the time. Bound to the store it
-    was loaded from (``from_url``, ``from_env``) and committed back only
-    where it moved (``commit``). Equal only to itself; never hashed or
-    pickled: its rows cross out as an Arrow stream.
+    A security is keyed by its bare real ISIN (``US0378331005``); an FX pair
+    or a derivative by the ``class:body`` its CFI class and characteristics
+    spell (``IF:EUR/USD``, ``OC:US0378331005:2026-12-18:200``), which mints
+    the instrument a ``QY`` number (``mint``) held under ``yggdryl:isin``.
+    ``uuid`` is ``crossuuid``, the code's digest. Each row - a ``dict`` of the
+    25 columns of ``field()`` - holds ``aliascodes`` (the codes it had before a
+    re-key), ``placeholder`` (keyed by its ISIN while its body is unknown),
+    ``isin``, ``cficode``, ``forexcode``, ``fisn``, ``countrycode``,
+    ``currency``, ``origccy``, ``securityids`` (every non-listing code under
+    its ``src:type`` key, each source's statement kept), ``underlying`` and
+    ``legs`` (codes), ``eusipacode``, ``characteristics``, ``listings`` (one
+    ``dict`` per market: ``miccode``, ``ticker``, ``currency``, ``codes`` - the
+    listing codes), ``metadata`` (complementary facts by key) and the stamps
+    ``updunix``, ``firstunix``, ``lastunix``. ``seeded`` holds the embedded
+    common instruments. A lifecycle learns into it and fills from it what a
+    message leaves unsaid - its ``instcode`` among it - naming the instrument
+    by ``resolve``'s waterfall; a parse fills derived identifiers from it.
+    Bound to the store it was loaded from (``from_url``, ``from_env``) and
+    committed back only where its content differs from the store's
+    (``commit``, ``is_dirty``). Equal only to itself;
+    never hashed or pickled: its rows cross out as ``dict``s and as an Arrow
+    stream.
     """
 
     __hash__: ClassVar[None]  # type: ignore[assignment]
@@ -7241,82 +7237,88 @@ class IsinRegistry:
     def __init__(self, max_instruments: int = 16384) -> None: ...
     @staticmethod
     def field() -> Field:
-        """The registry's row: the required struct ``isinregistry`` of
-        forty-six columns every listing row is laid out as, ``firstunix`` then
-        ``lastunix`` right after ``updunix`` and ``origccy`` after
-        ``currency``, what a table holding the registry is created from;
-        its root declares ``PARTITION:by`` ``["truncate(isin, 2)"]`` - the
-        ISIN's country prefix, storing no column - and ``SORT:by``
-        ``["isin", "miccode"]``."""
+        """The instrument row: the required struct ``instrument`` of
+        twenty-five columns, what a table holding the instruments is created
+        from; its root declares ``PARTITION:by``
+        ``["truncate(crosscode, 2)"]`` - storing no column - and ``SORT:by``
+        ``["crosscode"]``."""
     @staticmethod
-    def seeded() -> IsinRegistry:
-        """A registry holding the seed - the common instruments ``config/isin/instruments.json`` states, embedded at build time - clean and bound to no store; each seed row an ordinary statement, its derived facts filled."""
+    def seeded() -> Instruments:
+        """A collection holding the seed - the common instruments ``config/instruments/instruments.json`` states, embedded at build time - clean and bound to no store; each seed object an ordinary statement, its derived facts filled."""
         ...
     @staticmethod
-    def from_url(location: object, max_instruments: int = 16384, **properties: str) -> IsinRegistry:
-        """A registry bound to the store a URL or path names and loaded from it: an Arrow IPC leaf, Parquet, a folder of parts, an Iceberg table, an object store; a store holding nothing yet an empty first run. Unseeded: ``seeded_from_url`` lays the store over the seed."""
+    def mint(crosscode: str) -> str:
+        """The ``QY`` number this crate mints for an instrument no agency numbers, computed from its cross code alone."""
         ...
     @staticmethod
-    def seeded_from_url(location: object, max_instruments: int = 16384, **properties: str) -> IsinRegistry:
-        """``from_url`` laid over the seed (``seeded``): the store's rows fold over the seed's - a value the store states wins, a seed row it has none of stands - and a store holding nothing yet loads as the seed bound to it; clean after the load, so the first ``commit`` after something moved writes the seed's rows with the store's."""
+    def from_url(location: object, max_instruments: int = 16384, **properties: str) -> Instruments:
+        """A collection bound to the store a URL or path names and loaded from it: an Arrow IPC leaf, Parquet, a folder of parts, an Iceberg table, an object store; a store holding nothing yet an empty first run, a table lacking ``crosscode`` refused by name. Unseeded: ``seeded_from_url`` lays the store over the seed."""
         ...
     @staticmethod
-    def from_env() -> IsinRegistry:
-        """The process's own registry, resolved once from ``YGGDRYL_ISIN_REGISTRY_URI``, else ``~/.config/yggdryl/isin/``, laid over the seed (``seeded``) - the store's rows win - and shared with ``FixCodec.from_env``."""
+    def seeded_from_url(location: object, max_instruments: int = 16384, **properties: str) -> Instruments:
+        """``from_url`` laid over the seed (``seeded``): the store's rows fold over the seed's - a value the store states wins, a seed instrument it has none of stands - and a store holding nothing yet loads as the seed bound to it; clean after the load, so the first ``commit`` after something moved writes the seed's rows with the store's."""
         ...
     @staticmethod
-    def install_env(registry: IsinRegistry) -> None:
-        """Installs the registry every later ``from_env`` answers, before anything resolves one."""
+    def from_env() -> Instruments:
+        """The process's own instruments, resolved once from ``YGGDRYL_INSTRUMENTS_URI``, else ``~/.config/yggdryl/instruments/``, laid over the seed (``seeded``) - the store's rows win - and shared with ``FixCodec.from_env``."""
         ...
     @staticmethod
-    def from_arrow_reader(reader: object, max_instruments: int = 16384) -> IsinRegistry:
-        """A registry read from any Arrow stream, bound to no store; several rows of one ISIN on several markets load as its listings."""
+    def install_env(instruments: Instruments) -> None:
+        """Installs the collection every later ``from_env`` answers, before anything resolves one."""
+        ...
+    @staticmethod
+    def from_arrow_reader(reader: object, max_instruments: int = 16384) -> Instruments:
+        """A collection read from any Arrow stream laid out as ``field()``, bound to no store; a column no field reads lands in each row's ``metadata`` under its name."""
         ...
     def extend_from_handle(self, location: object) -> int: ...
     def extend_from_arrow_reader(self, reader: object) -> int: ...
     def into_arrow_reader(self) -> pyarrow.RecordBatchReader:
-        """The listing rows as a snapshot stream in ISIN then MIC order, under the registry's row field."""
+        """The instrument rows as a snapshot stream in cross code order, under ``field()``."""
         ...
     def commit(self) -> IOResult:
-        """Writes the table to the store it is bound to, only where it moved: one overwrite of the snapshot; a clean registry costs no call."""
+        """Writes the table to the store it is bound to, only where its content differs from what the store holds (``is_dirty``): one overwrite of the snapshot; a clean collection costs no call."""
         ...
     @property
-    def is_dirty(self) -> bool: ...
-    def get(self, isin: str) -> dict[str, Any] | None:
-        """The first listing row of ``isin`` in MIC order, or ``None``."""
+    def is_dirty(self) -> bool:
+        """Whether the table's content differs from what the store holds - as it was loaded or last committed: an instrument added or removed, or one whose content code or ``firstunix``/``lastunix`` window moved. A fact that moved and moved back since the load is no change, so a run replayed over the same input leaves a clean collection."""
+    def get(self, key: str) -> dict[str, Any] | None:
+        """The instrument ``key`` names - its cross code, a former code, or an ISIN it holds, real or minted - or ``None``."""
         ...
-    def listings(self, isin: str) -> list[dict[str, Any]]:
-        """Every listing row of ``isin`` in MIC order; empty where it is unknown."""
+    def get_by_uuid(self, uuid: object) -> dict[str, Any] | None:
+        """The instrument whose identity - or a former identity - is ``uuid`` (a ``uuid.UUID``, its text or its bytes), or ``None``."""
         ...
-    def get_listing(self, isin: str, market: str) -> dict[str, Any] | None:
-        """The listing row of ``isin`` on ``market``, or ``None``."""
+    def listings(self, key: str) -> list[dict[str, Any]]:
+        """The listings of the instrument ``key`` names, in MIC order; empty where it is unknown."""
+        ...
+    def get_listing(self, key: str, market: str) -> dict[str, Any] | None:
+        """The listing of the instrument ``key`` names on ``market``, or ``None``."""
         ...
     def get_by_ticker(self, ticker: str, market: str | None = None) -> dict[str, Any] | None:
-        """The listing row the ticker names on ``market``: the one row listing
+        """The instrument the ticker names on ``market``: the one listing
         it there, else the one listing it on no market; with ``market``
-        unstated, the one row listing it on any. Two rows answering is
-        ambiguous, and answers ``None``."""
+        unstated, the one listing it on any. Two answering is ambiguous, and
+        answers ``None``."""
         ...
     LOOKUP_CODES: ClassVar[tuple[str, ...]]
     """The codes a lookup reads, in cascade order, each its type's word."""
     DEFAULT_ECONOMIC_THRESHOLD: ClassVar[float]
     """How similar two short names must be by default for an economic match: ``0.85``."""
-    def get_by_code(self, kind: str, value: str, market: str | None = None) -> dict[str, Any] | None:
-        """The listing row the code ``value`` of type ``kind`` - one of
-        ``LOOKUP_CODES`` - names: the one instrument holding it, its row on
-        ``market``, else the one row holding the code, else its single row,
-        else its first. Two instruments holding it, a type that is no lookup
-        code or a value its type refuses answer ``None``."""
+    def get_by_code(self, kind: str, value: str) -> dict[str, Any] | None:
+        """The instrument the code ``value`` of type ``kind`` - one of
+        ``LOOKUP_CODES`` - names. Two instruments holding it, a type that is
+        no lookup code or a value its type refuses answer ``None``."""
         ...
     def resolve(self, element: object) -> Resolution:
-        """The listing row ``element`` - a market leaf, a ``MarketData`` or a
-        ``FixMsg`` - names, and how: its real ISIN alone, one the registry
-        lacks ending the cascade (``UnknownIsin``); else each code of
-        ``LOOKUP_CODES`` it states, then its ticker on its market, the first
-        naming two instruments ending it (``Ambiguous``); else the instrument
-        listed in its stated currency whose short name is the most similar, at
-        least ``economic_threshold``, another stated origin currency or CFI
-        category dropped and named. Fills nothing."""
+        """The instrument ``element`` - a market leaf, a ``MarketData`` or a
+        ``FixMsg`` - names, and how: its real ISIN alone, one the collection
+        lacks ending the cascade (``UnknownIsin``); else the cross code its
+        facts spell, one it lacks ending it too (``UnknownCode``); else a
+        minted number; else each code of ``LOOKUP_CODES`` it states, then its
+        ticker on its market, the first naming two instruments ending it
+        (``Ambiguous``); else the instrument listed in its stated currency
+        whose short name is the most similar, at least ``economic_threshold``,
+        another stated origin currency or CFI category dropped and named.
+        Fills nothing."""
         ...
     @property
     def economic_threshold(self) -> float:
@@ -7328,17 +7330,19 @@ class IsinRegistry:
     def is_economic_match(self) -> bool:
         """Whether ``fill`` takes an economic match where nothing exact names the element; ``False`` unless set."""
     def set_economic_match(self, enabled: bool) -> None: ...
-    def merge(self, entry: Mapping[str, object]) -> bool: ...
-    def remove(self, isin: str) -> list[dict[str, Any]]:
-        """Removes every listing row of ``isin``, answering them in MIC order."""
+    def merge(self, entry: Mapping[str, object]) -> bool:
+        """Folds one row - a mapping of ``field()``'s columns, a nested listing a ``dict`` of its own - into the instrument of its code by the update rule; a key naming no column raises ``ValueError``."""
         ...
-    def remove_listing(self, isin: str, market: str) -> dict[str, Any] | None:
-        """Removes the listing row of ``isin`` on ``market``; the instrument goes with its last listing."""
+    def remove(self, key: str) -> dict[str, Any] | None:
+        """Removes the instrument ``key`` names, answering it."""
+        ...
+    def remove_listing(self, key: str, market: str) -> dict[str, Any] | None:
+        """Removes the listing of the instrument ``key`` names on ``market``, answering it; the instrument stays."""
         ...
     def clear(self) -> None: ...
     @property
     def rows(self) -> int:
-        """How many listing rows it holds - what a commit writes; ``len`` counts instruments."""
+        """How many rows a commit writes: one per instrument, its listings nested - what ``len`` counts."""
     @property
     def max_instruments(self) -> int: ...
     def learn(self, message: FixMsg) -> bool: ...
@@ -7350,18 +7354,19 @@ class IsinRegistry:
     def __repr__(self) -> str: ...
 
 class Resolution:
-    """What ``IsinRegistry.resolve`` answered for one element: the row it
-    names and how, or why none, every field of the core answer an attribute.
+    """What ``Instruments.resolve`` answered for one element: the instrument
+    it names and how, or why none, every field of the core answer an
+    attribute.
 
     A match (``matched``, and truth) states ``entry``, ``tier`` - ``"isin"``,
-    ``"code"``, ``"symbology"`` or ``"economic"`` - ``kind`` (a ``"code"``
-    tier's type), ``similarity`` (an ``"economic"`` tier's), ``derived`` and
-    ``listing``. A miss states ``unmatched`` - ``"NoKey"``, ``"UnknownIsin"``,
-    ``"NoCandidate"``, ``"Ambiguous"``, ``"CfiConflict"``,
-    ``"CurrencyConflict"`` or ``"BelowThreshold"`` - and its variant's fields:
-    ``isins`` and ``tier`` of an ``Ambiguous``, ``stated``, ``held``, ``best``,
-    ``isin``. Every other attribute is ``None``. Immutable, equal by value,
-    never hashed.
+    ``"crosscode"``, ``"code"``, ``"symbology"`` or ``"economic"`` - ``kind``
+    (a ``"code"`` tier's type), ``similarity`` (an ``"economic"`` tier's),
+    ``derived`` and ``listing``. A miss states ``unmatched`` - ``"NoKey"``,
+    ``"UnknownIsin"``, ``"UnknownCode"``, ``"NoCandidate"``, ``"Ambiguous"``,
+    ``"CfiConflict"``, ``"CurrencyConflict"`` or ``"BelowThreshold"`` - and its
+    variant's fields: ``codes`` and ``tier`` of an ``Ambiguous``, ``stated``,
+    ``held``, ``best``, ``code``. Every other attribute is ``None``.
+    Immutable, equal by value, never hashed.
     """
 
     __hash__: ClassVar[None]  # type: ignore[assignment]
@@ -7371,7 +7376,7 @@ class Resolution:
     @property
     def entry(self) -> dict[str, Any] | None: ...
     @property
-    def tier(self) -> Literal["isin", "code", "symbology", "economic"] | None: ...
+    def tier(self) -> Literal["isin", "crosscode", "code", "symbology", "economic"] | None: ...
     @property
     def kind(self) -> str | None: ...
     @property
@@ -7387,6 +7392,7 @@ class Resolution:
         Literal[
             "NoKey",
             "UnknownIsin",
+            "UnknownCode",
             "NoCandidate",
             "Ambiguous",
             "CfiConflict",
@@ -7396,7 +7402,7 @@ class Resolution:
         | None
     ): ...
     @property
-    def isins(self) -> list[str] | None: ...
+    def codes(self) -> list[str] | None: ...
     @property
     def stated(self) -> str | None: ...
     @property
@@ -7404,7 +7410,7 @@ class Resolution:
     @property
     def best(self) -> float | None: ...
     @property
-    def isin(self) -> str | None: ...
+    def code(self) -> str | None: ...
     def __bool__(self) -> bool: ...
     def __eq__(self, other: object, /) -> bool: ...
     def __repr__(self) -> str: ...
@@ -7887,7 +7893,7 @@ class FixMsg:
     def currency(self) -> Scalar: ...
     @property
     def origccy(self) -> Scalar | None:
-        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+        """The currency the instrument was issued in, where stated or filled from the instruments; ``None`` otherwise, never the currency."""
     @property
     def origin_currency(self) -> Scalar:
         """``origccy`` where held, else ``currency``: the currency an amount converts from."""
@@ -7903,6 +7909,9 @@ class FixMsg:
     def securityids(self) -> Identifiers: ...
     @property
     def isincode(self) -> str | None: ...
+    @property
+    def instcode(self) -> str | None:
+        """The cross code of the instrument this is about - a real ISIN, or the ``class:body`` of an FX pair or a derivative - what the instruments table's ``crosscode`` joins on; ``None`` where nothing resolved it."""
     @property
     def fxrates(self) -> dict[str, Scalar]: ...
     @property
@@ -8108,7 +8117,7 @@ class FixCodec:
         sorted_lifecycle: bool = False,
         official_time_delay_ms: int | None = None,
         dedup_window_ms: int | None | EllipsisType = ...,
-        isin_registry: IsinRegistry | None = None,
+        instruments: Instruments | None = None,
         market_metadata: bool = True,
     ) -> None: ...
     @property
@@ -8143,7 +8152,7 @@ class FixCodec:
     def dedup_window_ms(self) -> int | None: ...
     def with_dedup_window_ms(self, dedup_window_ms: int | None) -> FixCodec: ...
     @property
-    def isin_registry(self) -> IsinRegistry | None:
+    def instruments(self) -> Instruments | None:
         """The registry every ``lifecycle`` shares, the caller's own table, or ``None``."""
         ...
     @property
@@ -8172,7 +8181,7 @@ class FixCodec:
         sorted_lifecycle: bool = False,
         official_time_delay_ms: int | None = None,
         dedup_window_ms: int | None | EllipsisType = ...,
-        isin_registry: IsinRegistry | None = None,
+        instruments: Instruments | None = None,
         market_metadata: bool = True,
     ) -> FixCodec: ...
     @staticmethod
@@ -8426,7 +8435,7 @@ class Order:
     def currency(self) -> Scalar: ...
     @property
     def origccy(self) -> Scalar | None:
-        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+        """The currency the instrument was issued in, where stated or filled from the instruments; ``None`` otherwise, never the currency."""
     @property
     def origin_currency(self) -> Scalar:
         """``origccy`` where held, else ``currency``: the currency an amount converts from."""
@@ -8442,6 +8451,9 @@ class Order:
     def securityids(self) -> Identifiers: ...
     @property
     def isincode(self) -> str | None: ...
+    @property
+    def instcode(self) -> str | None:
+        """The cross code of the instrument this is about - a real ISIN, or the ``class:body`` of an FX pair or a derivative - what the instruments table's ``crosscode`` joins on; ``None`` where nothing resolved it."""
     @property
     def fxrates(self) -> dict[str, Scalar]: ...
     @property
@@ -8554,7 +8566,7 @@ class Quote:
     def currency(self) -> Scalar: ...
     @property
     def origccy(self) -> Scalar | None:
-        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+        """The currency the instrument was issued in, where stated or filled from the instruments; ``None`` otherwise, never the currency."""
     @property
     def origin_currency(self) -> Scalar:
         """``origccy`` where held, else ``currency``: the currency an amount converts from."""
@@ -8570,6 +8582,9 @@ class Quote:
     def securityids(self) -> Identifiers: ...
     @property
     def isincode(self) -> str | None: ...
+    @property
+    def instcode(self) -> str | None:
+        """The cross code of the instrument this is about - a real ISIN, or the ``class:body`` of an FX pair or a derivative - what the instruments table's ``crosscode`` joins on; ``None`` where nothing resolved it."""
     @property
     def fxrates(self) -> dict[str, Scalar]: ...
     @property
@@ -8682,7 +8697,7 @@ class Execution:
     def currency(self) -> Scalar: ...
     @property
     def origccy(self) -> Scalar | None:
-        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+        """The currency the instrument was issued in, where stated or filled from the instruments; ``None`` otherwise, never the currency."""
     @property
     def origin_currency(self) -> Scalar:
         """``origccy`` where held, else ``currency``: the currency an amount converts from."""
@@ -8698,6 +8713,9 @@ class Execution:
     def securityids(self) -> Identifiers: ...
     @property
     def isincode(self) -> str | None: ...
+    @property
+    def instcode(self) -> str | None:
+        """The cross code of the instrument this is about - a real ISIN, or the ``class:body`` of an FX pair or a derivative - what the instruments table's ``crosscode`` joins on; ``None`` where nothing resolved it."""
     @property
     def fxrates(self) -> dict[str, Scalar]: ...
     @property
@@ -8834,7 +8852,7 @@ class OrderEvent:
     def currency(self) -> Scalar: ...
     @property
     def origccy(self) -> Scalar | None:
-        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+        """The currency the instrument was issued in, where stated or filled from the instruments; ``None`` otherwise, never the currency."""
     @property
     def origin_currency(self) -> Scalar:
         """``origccy`` where held, else ``currency``: the currency an amount converts from."""
@@ -8850,6 +8868,9 @@ class OrderEvent:
     def securityids(self) -> Identifiers: ...
     @property
     def isincode(self) -> str | None: ...
+    @property
+    def instcode(self) -> str | None:
+        """The cross code of the instrument this is about - a real ISIN, or the ``class:body`` of an FX pair or a derivative - what the instruments table's ``crosscode`` joins on; ``None`` where nothing resolved it."""
     @property
     def fxrates(self) -> dict[str, Scalar]: ...
     @property
@@ -8996,7 +9017,7 @@ class QuoteEvent:
     def currency(self) -> Scalar: ...
     @property
     def origccy(self) -> Scalar | None:
-        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+        """The currency the instrument was issued in, where stated or filled from the instruments; ``None`` otherwise, never the currency."""
     @property
     def origin_currency(self) -> Scalar:
         """``origccy`` where held, else ``currency``: the currency an amount converts from."""
@@ -9012,6 +9033,9 @@ class QuoteEvent:
     def securityids(self) -> Identifiers: ...
     @property
     def isincode(self) -> str | None: ...
+    @property
+    def instcode(self) -> str | None:
+        """The cross code of the instrument this is about - a real ISIN, or the ``class:body`` of an FX pair or a derivative - what the instruments table's ``crosscode`` joins on; ``None`` where nothing resolved it."""
     @property
     def fxrates(self) -> dict[str, Scalar]: ...
     @property
@@ -9158,7 +9182,7 @@ class ExecutionEvent:
     def currency(self) -> Scalar: ...
     @property
     def origccy(self) -> Scalar | None:
-        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+        """The currency the instrument was issued in, where stated or filled from the instruments; ``None`` otherwise, never the currency."""
     @property
     def origin_currency(self) -> Scalar:
         """``origccy`` where held, else ``currency``: the currency an amount converts from."""
@@ -9174,6 +9198,9 @@ class ExecutionEvent:
     def securityids(self) -> Identifiers: ...
     @property
     def isincode(self) -> str | None: ...
+    @property
+    def instcode(self) -> str | None:
+        """The cross code of the instrument this is about - a real ISIN, or the ``class:body`` of an FX pair or a derivative - what the instruments table's ``crosscode`` joins on; ``None`` where nothing resolved it."""
     @property
     def fxrates(self) -> dict[str, Scalar]: ...
     @property
@@ -9314,7 +9341,7 @@ class TradeEvent:
     def currency(self) -> Scalar: ...
     @property
     def origccy(self) -> Scalar | None:
-        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+        """The currency the instrument was issued in, where stated or filled from the instruments; ``None`` otherwise, never the currency."""
     @property
     def origin_currency(self) -> Scalar:
         """``origccy`` where held, else ``currency``: the currency an amount converts from."""
@@ -9330,6 +9357,9 @@ class TradeEvent:
     def securityids(self) -> Identifiers: ...
     @property
     def isincode(self) -> str | None: ...
+    @property
+    def instcode(self) -> str | None:
+        """The cross code of the instrument this is about - a real ISIN, or the ``class:body`` of an FX pair or a derivative - what the instruments table's ``crosscode`` joins on; ``None`` where nothing resolved it."""
     @property
     def fxrates(self) -> dict[str, Scalar]: ...
     @property
@@ -9472,7 +9502,7 @@ class BookEvent:
     def currency(self) -> Scalar: ...
     @property
     def origccy(self) -> Scalar | None:
-        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+        """The currency the instrument was issued in, where stated or filled from the instruments; ``None`` otherwise, never the currency."""
     @property
     def origin_currency(self) -> Scalar:
         """``origccy`` where held, else ``currency``: the currency an amount converts from."""
@@ -9488,6 +9518,9 @@ class BookEvent:
     def securityids(self) -> Identifiers: ...
     @property
     def isincode(self) -> str | None: ...
+    @property
+    def instcode(self) -> str | None:
+        """The cross code of the instrument this is about - a real ISIN, or the ``class:body`` of an FX pair or a derivative - what the instruments table's ``crosscode`` joins on; ``None`` where nothing resolved it."""
     @property
     def fxrates(self) -> dict[str, Scalar]: ...
     @property
@@ -9699,7 +9732,7 @@ class SnapshotEvent:
     def currency(self) -> Scalar: ...
     @property
     def origccy(self) -> Scalar | None:
-        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+        """The currency the instrument was issued in, where stated or filled from the instruments; ``None`` otherwise, never the currency."""
     @property
     def origin_currency(self) -> Scalar:
         """``origccy`` where held, else ``currency``: the currency an amount converts from."""
@@ -9715,6 +9748,9 @@ class SnapshotEvent:
     def securityids(self) -> Identifiers: ...
     @property
     def isincode(self) -> str | None: ...
+    @property
+    def instcode(self) -> str | None:
+        """The cross code of the instrument this is about - a real ISIN, or the ``class:body`` of an FX pair or a derivative - what the instruments table's ``crosscode`` joins on; ``None`` where nothing resolved it."""
     @property
     def fxrates(self) -> dict[str, Scalar]: ...
     @property
@@ -9818,7 +9854,7 @@ class MarketData:
     def currency(self) -> Scalar: ...
     @property
     def origccy(self) -> Scalar | None:
-        """The currency the instrument was issued in, where stated or filled by a registry; ``None`` otherwise, never the currency."""
+        """The currency the instrument was issued in, where stated or filled from the instruments; ``None`` otherwise, never the currency."""
     @property
     def origin_currency(self) -> Scalar:
         """``origccy`` where held, else ``currency``: the currency an amount converts from."""
@@ -9834,6 +9870,9 @@ class MarketData:
     def securityids(self) -> Identifiers: ...
     @property
     def isincode(self) -> str | None: ...
+    @property
+    def instcode(self) -> str | None:
+        """The cross code of the instrument this is about - a real ISIN, or the ``class:body`` of an FX pair or a derivative - what the instruments table's ``crosscode`` joins on; ``None`` where nothing resolved it."""
     @property
     def fxrates(self) -> dict[str, Scalar]: ...
     @property

@@ -173,7 +173,7 @@ impl FixMessages {
                     // The entries a batch splits into fill from the table
                     // the door fixed, as the batch did.
                     let instruments = match &self.source {
-                        Source::Frames { codec, .. } => codec.instruments(),
+                        Source::Frames { codec, .. } => codec.instrument_table(),
                         _ => None,
                     };
                     let (message, split) = message.split(instruments.as_deref());

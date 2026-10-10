@@ -842,7 +842,7 @@ pub struct FixCodec
   pub const DEFAULT_OFFICIAL_TIME_DELAY_MS: i64 = 1_000;  (how far from SendingTime(52) an official transaction clock may stand and still date the message, when the caller states none)
   pub const DEFAULT_DEDUP_WINDOW_MS: i64 = 60_000;  (how long, in milliseconds of event time, the lifecycle remembers an identity it yielded, when the caller states none: one minute)
   pub fn new(registry: Arc<FixRegistry>) -> Self
-  pub fn from_env() -> Result<Self>  (a codec over `FixRegistry::from_env()` sharing the process instrument registry `IsinRegistry::from_env()` names - the one constructor that attaches it; the caller commits it)
+  pub fn from_env() -> Result<Self>  (a codec over `FixRegistry::from_env()` sharing the process instrument registry `Instruments::from_env()` names - the one constructor that attaches it; the caller commits it)
   pub const fn registry(&self) -> &Arc<FixRegistry>
   pub const fn default_sending_time(&self) -> Option<&Scalar>  (the sending clock of a message stating no SendingTime(52) whose carrier states none either - a row cell reaching tag 52, else the `transunix` of the text line it was read out of; None reads UTC now once; the raw-byte doors have no carrier)
   pub fn set_default_sending_time(&mut self, value: Option<Scalar>) -> Result<()>
@@ -866,8 +866,8 @@ pub struct FixCodec
   pub const fn set_threads(&mut self, threads: usize)
   pub const fn threads(&self) -> usize
   pub const fn with_snapshot_ns(mut self, snapshot_ns: i64) -> Self  (the epoch-aligned lifecycle snapshot grid, each view the live message as of its tick, dated at it with the identity that instant derives; zero or less disables it)
-  pub fn with_isin_registry(self, registry: Arc<Mutex<IsinRegistry>>) -> Self  (the instrument registry every lifecycle this codec runs shares and every parse fills from: each lifecycle learns what its messages state into it (`IsinRegistry::learn`) and fills what they leave unstated from it (`IsinRegistry::fill`), one lock per message across the two, so a walk run after another starts from what the first learned; each parse door fixes the registry's table once as it opens, under one lock on the calling thread, and every message it reads - a batch's entries included - takes from that table the security identifiers it leaves unsaid as derived identifiers, which reach no field, no wire and no part of its identity; a parse learns nothing; without one each walk learns into its own and a parse fills nothing)
-  pub fn isin_registry(&self) -> Option<&Arc<Mutex<IsinRegistry>>>
+  pub fn with_instruments(self, registry: Arc<Mutex<Instruments>>) -> Self  (the instrument registry every lifecycle this codec runs shares and every parse fills from: each lifecycle learns what its messages state into it (`Instruments::learn`) and fills what they leave unstated from it (`Instruments::fill`), one lock per message across the two, so a walk run after another starts from what the first learned; each parse door fixes the registry's table once as it opens, under one lock on the calling thread, and every message it reads - a batch's entries included - takes from that table the security identifiers it leaves unsaid as derived identifiers, which reach no field, no wire and no part of its identity; a parse learns nothing; without one each walk learns into its own and a parse fills nothing)
+  pub fn instruments(&self) -> Option<&Arc<Mutex<Instruments>>>
   pub const fn snapshot_ns(&self) -> Option<i64>  (the positive grid width, where enabled)
   pub const fn with_sorted_lifecycle(mut self, sorted: bool) -> Self  (states that the messages `lifecycle` is handed arrive in instant order - a table read hour partition by hour partition, sorted by `transunix`: the walk then reads them as they come and holds one epoch hour at a time, a delivery's observations grouped across the hours still held, each hour folded and sorted exactly as a whole capture is and walked once the stream has read a message two hours past it - the hour of grace a transaction-dated message and a delivery's hops across an hour's end need; a message dated before an hour already walked is walked where it arrives, and a source failure is yielded once every hour still held is walked. Off by default: the capture is collected and sorted whole. On a sorted source both answer the same walk)
   pub const fn sorted_lifecycle(&self) -> bool  (whether the lifecycle reads its messages as they come, in instant order, one hour at a time)
@@ -968,6 +968,7 @@ pub const ORIGCCY_TAG_NAME: (i32, &str) = (65_018, "origccy");  (display `Origin
 pub const HIDDENQTY_TAG_NAME: (i32, &str) = (65_019, "hiddenqty");  (display `Hidden Quantity`, nullable decimal: the part of the quantity an iceberg keeps from the market, past `DisplayQty(1138)`, else past `MaxFloor(111)`; derived)
 pub const UNIT_TAG_NAME: (i32, &str) = (65_020, "unit");  (display `Unit`, nullable `unit`: the unit the quantity is counted in, from `UnitOfMeasure(996)`; derived)
 pub const SECURITYIDS_TAG_NAME: (i32, &str) = (65_021, "securityids");  (display `Security IDs`, nullable sorted `map<utf8, securityid>` keyed `src:type`: the security identifiers the message names, each a source, a type and a code, from `SecurityID(48)` under `SecurityIDSource(22)`, the `SecurityAltID` group, an unmapped entry whose key names a security type - a bridge's keyed alias, `ISINCODE`, `OMS_RICCODE`, `SEDOL_CODE`, which rides `fixentries` under `0:<key>` - and the codes a closing ISIN embeds - the wire fields kept in `fixentries` as sent; derived)
+pub const INSTCODE_TAG_NAME: (i32, &str) = (65_054, "instcode");  (nullable `utf8`, `MarketColumn::InstCode`: the cross code of the instrument the message is about - the instrument table's own key, a real ISIN for a security an agency numbered, `class:body` for everything no agency numbers - written at the parse where the code is a function of the message alone, a stated real ISIN under no body class or a detected currency pair's `IF:EUR/USD`, filled by the lifecycle from the resolved instrument otherwise, followed along a chain, fed to no digest; a row stating one is the row's word; the one tag numbered past `fixmsg`, D42)
 pub const PREVPX_TAG_NAME: (i32, &str) = (65_025, "prevpx");  (display `Previous Price`, nullable decimal: the price the step before settled on, from `PrevClosePx(140)`; derived)
 pub const PREVQTY_TAG_NAME: (i32, &str) = (65_026, "prevqty");  (display `Previous Quantity`, nullable decimal: the quantity the step before settled on, which only a lifecycle states; derived)
 pub const SPOTRATE_TAG_NAME: (i32, &str) = (65_027, "spotrate");  (display `Spot Rate`, nullable decimal: the spot part of an FX forward price, from `LastSpotRate(194)` - a quote's `BidSpotRate(188)` and `OfferSpotRate(190)` are its legs' and stay its own fields; derived)
@@ -1061,6 +1062,7 @@ pub struct FixMsg  (a market operation event with a FIX body around it: the crat
   pub fn get_by_id(&self, id: FixId) -> Option<Scalar>  (owned; a typed field's identity answers its holder, any other the child the identified field's name reaches)
   pub fn by_id(&self, id: FixId) -> Result<Scalar>
   pub fn get_by_tag(&self, tag: i32) -> Option<Scalar>  (a typed tag answers the holder's fact - `by_tag(35)` the type as text, `by_tag(52)` the sending clock as `datetime64(ns, UTC)`, `by_tag(54)` the side as `BUY`/`SELL`, a crate tag its column's type - but 65051, the capture's own column, which no message holds and which therefore answers nothing - `HASHCODE_TAG_NAME` a UInt64, `UUID_TAG_NAME` a Uuid - or nothing where the holder states none; any other tag the child carrying it, else the child named as the dictionary names the tag, else the child named by the tag's decimal)
+  pub fn stated_characteristics(&self) -> Option<(Cfi, Option<Forex>, Characteristics)>  (what the message spells of its instrument's body beside its market facts, where it states a class: the class as settled, the pair its security identifiers hold, and the characteristics - the settle of `SettlDate(64)` else the `SettlType(63)` tenor, the far settle of `SettlDate2(193)`, the expiry of `MaturityDate(541)` else `MaturityMonthYear(200)`, `StrikePrice(202)`, `ContractMultiplier(231)`, `ExerciseStyle(1194)` - each read by its field's type; what the lifecycle learns a forward, a swap, an option or a future from)
   pub fn by_tag(&self, tag: i32) -> Result<Scalar>
   pub fn get_by_name(&self, name: &str) -> Option<Scalar>  (folds through the registry to the canonical spelling - a typed field answers its holder - then an exact root-child match)
   pub fn by_name(&self, name: &str) -> Result<Scalar>
@@ -1543,7 +1545,7 @@ pub trait Market  (an element that stands in a market, no supertrait: every fact
   fn set_strikepx(&mut self, px: Option<Decimal>, overwrite: bool)
   fn get_currency(&self) -> &Ccy  (`Ccy::none()` where unstated)
   fn set_currency(&mut self, currency: Ccy, overwrite: bool)
-  fn get_origccy(&self) -> &Ccy  (the currency the instrument was issued in, where stated or filled by a registry; `Ccy::none()` otherwise - never defaulted, so a fill lands wherever nothing is held)
+  fn get_origccy(&self) -> &Ccy  (the currency the instrument was issued in, where stated or filled by an instruments fill; `Ccy::none()` otherwise - never defaulted, so a fill lands wherever nothing is held)
   fn set_origccy(&mut self, ccy: Ccy, overwrite: bool)  (moves nothing else: the currency is never filled from it, nor it from the currency)
   fn origin_currency(&self) -> &Ccy  (provided: `get_origccy` where held, else `get_currency` - the currency an amount converts from, read and never stored)
   fn get_quantity(&self) -> Option<Decimal>  (`None` where none)
@@ -1577,6 +1579,8 @@ pub trait Market  (an element that stands in a market, no supertrait: every fact
   fn get_spotrate(&self) -> Option<Decimal>  (with `get_forwardpoints`: the two FX parts of a price, `None` unless set until FIX lifts them; each with its `set_`)
   fn get_ticker(&self) -> Option<&str>  (the name a person knows the instrument by, beside the codes rather than among them)
   fn set_ticker(&mut self, ticker: Option<SmolStr>, overwrite: bool)
+  fn get_instcode(&self) -> Option<&str>  (the cross code of the instrument the element is about - a real ISIN, or `class:body` - the instruments table's key; held as the crate's `Str`, written by a parse where the message alone spells it and filled by `Instruments::fill` as a clone of the instrument's own code; followed along a chain, fed to no digest; the `instcode` column)
+  fn set_instcode(&mut self, code: Option<Str>, overwrite: bool)
   fn get_metadata(&self) -> &Metadata  (a shared empty map where the element carries none)
   fn set_metadata(&mut self, metadata: Option<Metadata>, overwrite: bool)  (`None` and an empty map are the same)
   fn get_fxrates(&self) -> &FxRates  (target currency to the rate to divide by; a shared empty map where none is stated; nothing fills it)
@@ -1658,7 +1662,7 @@ pub enum EventColumn { TransUnix, CreaUnix, SendUnix, ExprUnix, PrevUnix, SnapUn
   pub fn record<E: Event + ?Sized>(self, event: &mut E, value: &Scalar)  (states a cell back through the traits; a null clears the fact, a value the fact's type refuses is silence)
 
 ### yggdryl_market::graph::market_column  [rust/market/src/graph/market_column.rs]
-pub enum MarketColumn { MarketDataKind, MarketDataType, Price, StopPx, Currency, Quantity, DisplayQty, HiddenQty, Unit, Side, SecurityIds, IsinCode, CfiCode, MicCode, ExecUnix, LastPx, LastQty, AvgPx, CumQty, LeavesQty, CxlQty, PrevPx, PrevQty, SpotRate, ForwardPoints, BidPx, BidQty, BidCcy, AskPx, AskQty, AskCcy, FxRates, Ticker, StrikePx, Metadata }  (the thirty-five canonical columns every `Market` answers, one per fact under the trait's own name: `marketdatakind` and `marketdatatype` first, then `price` .. `metadata`, `execunix` after `miccode`)
+pub enum MarketColumn { MarketDataKind, MarketDataType, Price, StopPx, Currency, OrigCcy, Quantity, DisplayQty, HiddenQty, Unit, Side, SecurityIds, InstCode, IsinCode, CfiCode, MicCode, ExecUnix, LastPx, LastQty, AvgPx, CumQty, LeavesQty, CxlQty, PrevPx, PrevQty, SpotRate, ForwardPoints, BidPx, BidQty, BidCcy, AskPx, AskQty, AskCcy, FxRates, Ticker, StrikePx, Metadata }  (the thirty-seven canonical columns every `Market` answers, one per fact under the trait's own name: `marketdatakind` and `marketdatatype` first, then `price` .. `metadata`, `origccy` after `currency`, `instcode` after `securityids`, `execunix` after `miccode`)
   impl Clone, Copy, Debug, Eq, Hash, PartialEq for MarketColumn
   pub const ALL: [Self; 35]
   pub const fn name(self) -> &'static str
@@ -1792,7 +1796,7 @@ pub struct CandleIterator<I>  (the fold: books already sorted by `get_transunix(
 
 ### yggdryl_market::graph::arrow  [rust/market/src/graph/arrow.rs]
 impl MarketData
-  pub fn field() -> Result<Field>  (the required `marketdata` struct: `ElementColumn::ALL` and `EventColumn::ALL` - every one nullable because an undated leaf states no clock - then `MarketColumn::ALL`, opening with `marketdatakind` and `marketdatatype`, `OperationColumn::ALL`, the book controls a market-data entry states - `bookscope`, `bookaction` (utf8: its `MDUpdateAction(279)` code, or `snapshot`) and `bookposition` (uint32: its `MDEntryPositionNo(290)`), which a book's delta replays by - then the nullable nested `alive` and `delta` (a book's orders and quotes, alive on either side and applied by its instant, in the order applied), `events` (the executions and snapshot controls its instant recorded, in the order applied), `executions` (a trade's: a book holds none), and `bidlimits` and `asklimits` - a complete book's price levels, `serie<limit>` best first and the unpriced one last, an empty side an empty list; a delta book states `delta` and `events` and leaves `alive` and the limits null; null on every other leaf; 64 columns, 6 + 9 + 35 + 5 + 3 + 6; an operation row, the item of the four nested event lists, is the first 58 and nests nothing; every fact its own typed column, every decimal the registered `decimal`)
+  pub fn field() -> Result<Field>  (the required `marketdata` struct: `ElementColumn::ALL` and `EventColumn::ALL` - every one nullable because an undated leaf states no clock - then `MarketColumn::ALL`, opening with `marketdatakind` and `marketdatatype`, `OperationColumn::ALL`, the book controls a market-data entry states - `bookscope`, `bookaction` (utf8: its `MDUpdateAction(279)` code, or `snapshot`) and `bookposition` (uint32: its `MDEntryPositionNo(290)`), which a book's delta replays by - then the nullable nested `alive` and `delta` (a book's orders and quotes, alive on either side and applied by its instant, in the order applied), `events` (the executions and snapshot controls its instant recorded, in the order applied), `executions` (a trade's: a book holds none), and `bidlimits` and `asklimits` - a complete book's price levels, `serie<limit>` best first and the unpriced one last, an empty side an empty list; a delta book states `delta` and `events` and leaves `alive` and the limits null; null on every other leaf; 66 columns, 6 + 9 + 37 + 5 + 3 + 6; an operation row, the item of the four nested event lists, is the first 60 and nests nothing; every fact its own typed column, every decimal the registered `decimal`)
   pub fn arrow_reader<I>(elements: I, batch_row_size: Option<usize>, batch_byte_size: Option<u64>) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<MarketData>>, I::IntoIter: Send + 'static  (lazy: the source is not pulled until the reader is; laid out column by column from the typed leaves with no per-row `Scalar`; a `None` row size uses the crate default and zero normalizes to one; a byte bound closes a nonempty batch once the rows held reach it; a value is written only as its canonical self - a stale identity or fact is refused on its row; a source or refusal error follows the completed prefix and fuses)
   pub fn delta_serie(source: impl Into<Serie>, kind: Option<MarketDataKind>) -> Result<StreamChunkedSerie>  (the delta of the books `source` holds laid out as `marketdata` rows in book order, as a stream pulled with the rows under one plan compiled once: every order and quote each book's instant applied, in the order applied, of `kind` (`ORDR`, `QUOT`) where one is stated, both otherwise; a row that is no book refused by its kind as an item of the stream; what a stage reads a window's orders or quotes out of a table of books with)
   pub fn events_serie(source: impl Into<Serie>, kind: Option<MarketDataKind>) -> Result<StreamChunkedSerie>  (the events of the books `source` holds, as `delta_serie` lays out the delta: every execution and snapshot control each book's instant recorded, in the order applied, of `kind` (`EXEC`, or `BOOK` for the controls) where one is stated, both otherwise; `delta_serie`'s refusals; what a stage reads a window's executions out of a table of books with)
@@ -7154,6 +7158,9 @@ impl Scalar
   pub fn is_closed(text: &str) -> bool  (whether `text`, upper case, is a number its check digit closes - the Luhn digit of the eleven leading characters is the twelfth; lower case closes nothing; what every derivation off a number asks first, since a typo typed as a security joins the wrong one)
   pub fn is_listed_prefix(text: &str) -> bool  (whether `text` opens with a prefix an agency numbers under: an ISO 3166 country `StringEnum::COUNTRIES` lists, or `EU`, `EZ` and `XA` to `XS`; `ZZ` and the user-assigned `XX` none)
   pub fn rank_of(text: &str) -> u8  (zero where `text` is not the upper-case shape, else one each for `is_closed` and `is_listed_prefix`: two a real number, one a typo under a listed prefix or a closing `ZZ` number, zero a masked one; `CodeValue::rank` read off the text alone)
+  pub const MINTED_PREFIX: &str = "QY"  (the prefix of a number this crate mints: inside ISO 3166's user-assigned `QM`-`QZ`, which no national agency numbers under, and none of the agency prefixes, so a number under it in any table is this crate's)
+  pub fn minted(digest: u128) -> Self  (the number this crate mints for an instrument no agency numbers: `QY`, nine base-36 digits of the low 46 bits of `digest` - the XXH3-128 of the instrument's cross code - and the Luhn digit closing them; rank one, so a real number replaces it whatever the order)
+  pub fn is_minted(text: &str, digest: u128) -> bool  (whether `text` is the number `minted` mints from `digest`, byte for byte; a `QY` number of another national number is another system's statement)
   pub fn closing_digit(body: &str) -> Option<u8>
   pub const fn isin() -> Self
   pub type IsinField = FieldOf<IsinType>;
@@ -7354,7 +7361,7 @@ pub enum IdType  (ninety members the crate names, each a static folded word, and
   pub fn is_security(&self) -> bool  (a type FIX's `SecurityIDSource(22)` names, `Forex`, `Cfi`, `Fisn` or `InstrumentId`: what a market's `securityids` hold)
   pub const fn is_chain_identity(&self) -> bool  (whether the type names one lifecycle chain by a value the chain states as its own: `OrderId`, `ClOrdId`, `SecondaryOrderId`, `SecondaryClOrdId`, `QuoteId`, `SecondaryQuoteId`, `TradeId`, `SecondaryTradeId`, `SecondaryFirmTradeId`, `TradeReportId`, and nothing else - never a per-report reference, a request many chains answer, a security, a party, a parent type or an `Other` word; the types that have parents, and what a lifecycle walk names live chains by; Rust-only)
   pub const fn is_party(&self) -> bool  (`Account`, `Party`, `UserId` or a `PartyRole(452)` role the crate names: what an operation's `partyids` hold)
-  pub const fn is_listing(&self) -> bool  (a code naming one venue's listing rather than the instrument - `Ric`, `Bloomberg`, `ExchSymb`, `Cta`, `Sedol`, `Figi`, `MktAssigned`, `Fim`, `Umtf`, `InstrumentId` - which an `IsinRegistry` fills only on its own market)
+  pub const fn is_listing(&self) -> bool  (a code naming one venue's listing rather than the instrument - `Ric`, `Bloomberg`, `ExchSymb`, `Cta`, `Sedol`, `Figi`, `MktAssigned`, `Fim`, `Umtf`, `InstrumentId` - which an `Instruments` fills only on its own market)
   pub const fn value_dtype(&self) -> DataType  (the datatype a column of this type's values declares: `isin`, `cusip`, `sedol`, `figi`, `ric`, `bbg`, `ccy`, `country`, `cfi`, `forex`, `lei`, `dti`, `fisn`, `elf`, else `utf8`)
   pub fn max_value_width(&self) -> usize  (ISIN 12, CUSIP 9, SEDOL 7, FOREX 7, FIGI 12, WKN 6, CFI 6, VALOR 9, ISOCCY 3, ISOCTRY 2, BLOOMBERG `BBG_WIDTH` 32, RIC `RIC_WIDTH` 32, LEI `LEI_WIDTH` 20, DTI `DTI_WIDTH` 9, FISN `FISN_WIDTH` 35, ELF `ELF_WIDTH` 4, `IDENTIFIER_VALUE_WIDTH` 64 for every other type, FIX-named or not)
   pub fn rank(&self, value: &str) -> u8  (how real `value` is as a value of this type, from zero to `max_rank`: a registered code's `CodeValue::rank` - an ISIN, a CUSIP, a SEDOL, a FIGI, an LEI, a DTI, a CFI, an ISO currency or country code - read at the case the type stores it in, one for every other type, zero for a value the type refuses; what `Identifiers` decides a restated key by; allocation-free)
@@ -7368,106 +7375,186 @@ pub enum IdSource  (eighteen members the crate names and `Other(IdWord)` for any
   pub const fn is_known(&self) -> bool
   impl FromStr for IdSource  (folds as `IdType` does and reads the member the word or an alias names - `fix` is `Base`, `generallyacceptedmarketparticipantidentifier` is `GeneralIdentifier`, `proprietarycustomcode` is `Proprietary`; any other word is an `Other`; Err = Error)
 
-### yggdryl_market::securityid  [rust/market/src/securityid.rs]  (security identifiers: the national number an ISIN embeds and the shape a symbol reads as; the security types and their value rules are `IdType`'s, what a lifecycle learns `IsinRegistry`'s)
+### yggdryl_market::securityid  [rust/market/src/securityid.rs]  (security identifiers: the national number an ISIN embeds and the shape a symbol reads as; the security types and their value rules are `IdType`'s, what a lifecycle learns `Instruments`'s)
   pub fn embedded(isin: &Isin) -> impl Iterator<Item = Identifier>  (from `derived`: the national number an ISIN its check digit closes (`Isin::is_closed`) carries: US and CA a `cusip` in positions 2 to 11, GB, IE, GG, JE and IM behind `00` a `sedol` in positions 4 to 11, DE behind `000` a `wkn` in positions 5 to 11, CH and LI a `valor` in positions 2 to 11 with its leading zeros dropped; at most one, and only where it closes on its own check)
   pub enum SymbolCode { Instrument { isin: Option<Isin>, mic: Option<Mic>, ccy: Option<Ccy> }, Isin(Isin), Figi(Figi), Cusip(Cusip), Sedol(Sedol), Cfi(Cfi), Ric(Ric), Bloomberg(Bbg) }  (what a symbol is, read off its shape: its length first - 21 `{ISIN}_{MIC}_{CCY}`, 12 a FIGI behind `BBG` else an ISIN, 9 a CUSIP, 7 a SEDOL, 6 upper-case letters a detailed CFI - then a RIC `AAPL.OQ` or a Bloomberg identifier ending in its yellow key; every candidate closing on its own type's check)
   pub fn SymbolCode::from_symbol(symbol: &str) -> Option<SymbolCode>  (the identifier a symbol's shape is, or none; what `Market::fill_market` derives off a ticker, never over a stated identifier)
   pub fn SymbolCode::instrument(text: &str) -> Option<SymbolCode>  (an instrument key shaped twelve, four and three ASCII letters and digits, each part read by its own type and none where it refuses it; what an `*INSTRUMENTID` security identifier's tail is read by)
 
-### yggdryl_market::isin_registry  [rust/market/src/isin_registry.rs]  (the instrument registry: one row per ISIN and market of every security fact it is known by - the instrument's facts on every listing row, a listing's on its own - learned from and filled into market elements by the ordered lifecycle, filled from by every parse door off the snapshot it fixes as it opens, bound to a store it is loaded from and committed back to as one snapshot; a folded row derives, once its statement has landed, what its own facts imply where the statement left it empty - the national number its ISIN embeds, the currency of its market's country - and the seed, `config/isin/instruments.json` embedded through the crate's copy `isin_registry/seed.json` by the crate-private `isin_registry/seed.rs`, is the common instruments every process default starts from)
-pub struct IsinEntry  (one listing of one instrument: `isin`, `updunix` (ns UTC of the statement that last moved a fact of the instrument, a stamp and never a gate), `firstunix` (ns UTC of the earliest event the registry learned the instrument from, moved back by an earlier learn; a stamp), `lastunix` (ns UTC of the latest event the registry learned the instrument from, moved by every learn; a stamp), the detailed `cficode`, the `countrycode` of issue stated beside the ISIN, the `forexcode` pair, the `underlyingisin` it is written on (a real ISIN other than its own), the `eusipacode` (its EUSIPA product category, an `Eusipa`), the `miccode` the row is the listing of (never `XXXX`; none for the unlisted row an ISIN holds alone while no market is known), the `ticker` (1 to 64 bytes, trimmed), the `fisn` (its ISO 18774 short name, a `Fisn`), the listing's `currency` (never `XXX`), the `origccy` the instrument was issued in (held only where stated, never derived), and one code per `SecurityIDSource(22)` type but the ISIN, at most `IsinRegistry::MAX_EQUIVALENTS`; the stamps, the CFI code, the country, the pair, the underlying, the product category, the short name, the origin currency and every code `IdType::is_listing` does not name are the instrument's - every listing row of an ISIN holds the same - and the market, the ticker, the currency and the listing codes the row's own; a row the registry folds fills, once the statement has landed, where the statement left it empty the code its ISIN embeds (`securityid::embedded`: `cusip`, `sedol`, `wkn`, `valor`; a type with no room passed over) and the currency of the country its market is in (`Mic::country`, `Country::currency`; a row of no market, or of a market of no single country, none) - a default never displaces a statement, a later statement replaces it, and an entry built and never folded derives nothing; Clone, Debug, Eq, PartialEq; re-exported at the crate root)
-  pub fn new(isin: Isin) -> Self
-  pub fn dtype() -> DataType
-  pub fn field() -> Field  (the non-null struct `isinregistry`: `isin`, `updunix` `datetime64(ns,"UTC")`, `firstunix` `datetime64(ns,"UTC")`, `lastunix` `datetime64(ns,"UTC")`, `cficode` `cfi`, `countrycode` `country`, `forexcode` `forex`, `underlyingisin` `isin`, `eusipacode` `int32`, `miccode` `mic`, `ticker` `utf8`, `fisn` `fisn`, `currency` `ccy`, `origccy` `ccy`, then one column per `SecurityIDSource(22)` type but the ISIN in code-set order, each `IdType::value_dtype`; 46 columns; the root declares `PARTITION:by` `["truncate(isin, 2)"]` - the ISIN's country prefix, Iceberg's native truncation of the key, storing no column, so a table created from the field (`PartitionSpec::from_schema`) holds one spec field `isin_truncate` `truncate[2]` and every listing of one ISIN in one partition, while a leaf stays flat and a plain folder, partitioning by marked columns alone, is written under the row declaring nothing - and `SORT:by` `["isin","miccode"]`, the snapshot's order)
-  pub fn isin(&self) -> &Isin
-  pub fn updunix(&self) -> Option<i64>  (moved with a fact of the instrument, never by `lastunix` alone)
-  pub fn firstunix(&self) -> Option<i64>  (the earliest `transunix` of an event the registry learned the instrument from; earlier-wins, an instrument fact; a stamp)
-  pub fn lastunix(&self) -> Option<i64>  (the latest `transunix` of an event the registry learned the instrument from; later-wins, an instrument fact)
-  pub fn cficode(&self) -> Option<&Cfi>
-  pub fn countrycode(&self) -> Option<&Country>  (the country stated beside the ISIN; none in a folded row where it is the ISIN's own prefix)
-  pub fn country(&self) -> Option<Country>  (the stated one, else the ISIN's prefix where ISO 3166 lists it; an agency prefix - `XS`, `EU`, `XT` - none)
-  pub fn forexcode(&self) -> Option<&Forex>
-  pub fn underlyingisin(&self) -> Option<&Isin>  (the instrument it is written on - FIX's underlying; real, never the row's own ISIN; an instrument fact every listing holds)
-  pub fn eusipacode(&self) -> Option<Eusipa>  (the EUSIPA product category of the structured product, held by its shape whatever either map lists; an instrument fact every listing holds)
-  pub fn miccode(&self) -> Option<&Mic>  (the market the row is the listing of; none for the unlisted row)
+### yggdryl_market::characteristics  [rust/market/src/characteristics.rs]  (the typed body facts a `class:body` cross code is written from - a settle as a date or a tenor, an expiry as a day, a month or a week, an exercise style - each spelled as the key spells it; the multiplier and the exercise style are facts of the instrument and no key byte)
+pub enum Settle { Date(Date32), Tenor(SmolStr) }  (a settle date, or a FIX `SettlType(63)` tenor word - `0` to `9`, `B`, `C`, `Dn`, `Mn`, `Wn`, `Yn` - spelled upper case; Display and FromStr the key's spelling)
+  pub fn from_text(text: &str) -> Result<Self>  (an ISO 8601 date or `yyyymmdd`, else a tenor; refused at `$.settle`)
+pub enum Expiry { Day(Date32), Month { year, month, week } }  (an expiry day, a contract month `yyyy-mm` or a week of one `yyyy-mmwN`; Display and FromStr the key's spelling)
+  pub fn from_text(text: &str) -> Result<Self>  (a date, `yyyymmdd`, `yyyy-mm`, `yyyymm`, either month form with `wN`; refused at `$.expiry`)
+  pub fn month(self) -> Self  (the contract month a day falls in - a future's key production; a month its own)
+pub enum Exercise { European, American, Bermuda }  (FIX `ExerciseStyle(1194)`; FromStr the code or the name in any case)
+  pub const ALL: [Self; 3]
+  pub fn from_fix(code: &str) -> Option<Self>  (`0`, `1`, `2`)
+  pub const fn as_str(self) -> &'static str
+  pub const fn fix_code(self) -> &'static str
+pub struct Characteristics  (`settle`, `settle2`, `expiry`, `strikepx`, `multiplier`, `exercise`, each optional; Default states none; Clone, Debug, Eq, PartialEq)
+  pub fn dtype() -> DataType  (`struct<settle: utf8, settle2: utf8, expiry: utf8, strikepx: decimal, multiplier: decimal, exercise: utf8>`, each nullable)
+  pub fn field() -> Field  (the nullable `characteristics` struct)
+  pub fn settle(&self) -> Option<&Settle>
+  pub fn settle2(&self) -> Option<&Settle>
+  pub fn expiry(&self) -> Option<Expiry>
+  pub fn strikepx(&self) -> Option<Decimal>
+  pub fn multiplier(&self) -> Option<Decimal>
+  pub fn exercise(&self) -> Option<Exercise>
+  pub fn is_default(&self) -> bool
+  pub fn with_settle(self, settle: Option<Settle>) -> Self
+  pub fn with_settle2(self, settle: Option<Settle>) -> Self
+  pub fn with_expiry(self, expiry: Option<Expiry>) -> Self
+  pub fn with_strikepx(self, strikepx: Option<Decimal>) -> Self
+  pub fn with_multiplier(self, multiplier: Option<Decimal>) -> Self
+  pub fn with_exercise(self, exercise: Option<Exercise>) -> Self
+  pub fn into_scalar(&self) -> Scalar  (the named struct, an unstated fact a null)
+  pub fn from_scalar(value: &Scalar) -> Result<Self>  (the named struct - a name it lacks a null - or the ordered row; a null whole the default; a text that spells no settle, expiry or style refused)
+
+### yggdryl_market::listing  [rust/market/src/listing.rs]  (one listing of an instrument: its market, its ticker, its trading currency and its listing codes - the codes `IdType::is_listing` names, a RIC, a Bloomberg symbol, an exchange symbol - held on the listing alone, at most `Instrument::MAX_LISTING_CODES`)
+pub struct Listing  (`miccode` (none for the unlisted listing an index or a pair holds), `ticker`, `currency`, `codes`; Clone, Debug, Eq, PartialEq, Hash)
+  pub const MAX_TICKER_WIDTH: usize = 64
+  pub fn new(market: Option<Mic>) -> Self  (`XXXX` is no market)
+  pub fn dtype() -> DataType  (`struct<miccode: mic, ticker: utf8, currency: ccy, codes: map<utf8, utf8>>`, each nullable)
+  pub fn field() -> Field  (the required `listing` struct)
+  pub fn miccode(&self) -> Option<&Mic>
   pub fn ticker(&self) -> Option<&str>
-  pub fn fisn(&self) -> Option<&Fisn>  (the ISO 18774 short name the instrument states - FIX's `FinancialInstrumentShortName(2737)`; an instrument fact every listing holds)
-  pub fn currency(&self) -> Option<&Ccy>  (the stated one, else on a folded row the legal tender of its market's country; none for a row of no market)
-  pub fn origccy(&self) -> Option<&Ccy>  (the currency the instrument was issued in, held only where stated - a golden file, the seed, a merge, a learn; an instrument fact every listing holds, never derived)
+  pub fn currency(&self) -> Option<&Ccy>
+  pub fn codes(&self) -> &Identifiers
   pub fn get(&self, kind: &IdType) -> Option<&str>
-  pub fn iter(&self) -> impl Iterator<Item = (&IdType, &str)>  (the codes in code-set order)
+  pub fn with_ticker(self, ticker: Option<SmolStr>) -> Self  (trimmed, 1 to 64 bytes, else none)
+  pub fn with_currency(self, currency: Option<Ccy>) -> Self  (`XXX` is stored as none)
+  pub fn set_code(&mut self, kind: IdType, value: &str) -> Result<()>  (a listing type alone, the type's value rule, a new type past `Instrument::MAX_LISTING_CODES` refused)
+  pub fn try_with_code(self, kind: IdType, value: &str) -> Result<Self>
+  pub fn into_scalar(&self) -> Scalar  (the named struct of four cells, no codes a null)
+  pub fn from_scalar(value: &Scalar) -> Result<Self>  (the named struct - a name it lacks a null - or the ordered row; a code that is no listing code refused)
+
+### yggdryl_market::instrument  [rust/market/src/instrument.rs]  (one element per instrument keyed by its cross code - a real ISIN for a security an agency numbered, `class:body` for everything no agency numbers, minted its `QY` number under `yggdryl:isin` - its listings nested, every fact learned from the statements that name it and filled into the elements that leave it unsaid, a placeholder keyed by its ISIN re-keyed once its body arrives with the old code among its `aliascodes`, the collection bound to a store it is loaded from and committed back to as one snapshot, and the seed, `config/instruments/instruments.json` embedded through the crate's copy `instrument/seed.json` by the crate-private `instrument/seed.rs`, the common instruments every process default starts from)
+pub const MAX_CODE_WIDTH: usize = 128  (the bytes a cross code holds at most; a longer one refused by name)
+pub struct Leg  (one leg of a strategy: the leg instrument's cross code and its ratio; Clone, Debug, Eq, PartialEq, Hash)
+  pub fn new(code: &str, ratio: u32) -> Result<Self>  (an empty, lower-case, over-long or strategy code and a ratio of zero refused at `$.legs`)
+  pub fn code(&self) -> &str
+  pub fn ratio(&self) -> u32
+  pub fn into_scalar(&self) -> Scalar  (the named struct `{code, ratio}`)
+pub struct Instrument  (an `Element`: `uuid = crossuuid`, the key's identity under the rule of the day; `hashcode` the digest of every fact through its typed accessors, the stamps and the sources never fed; Clone, Debug, Eq, PartialEq)
+  pub const MAX_LISTINGS: usize = 6
+  pub const MAX_LISTING_CODES: usize = 2
+  pub const MAX_ALIASES: usize = 4
+  pub const MAX_LEGS: usize  (`(MAX_CODE_WIDTH - 3) / 11`)
+  pub const MAX_SECURITYIDS: usize  (`2 * (Instruments::MAX_EQUIVALENTS + 4)`: every entry of `securityids` in all, each type's base key beside one named source; a new named key past it passed over by name)
+  pub const MAX_METADATA: usize = 16  (metadata entries; a new key past it passed over by name)
+  pub const MAX_METADATA_WIDTH: usize = 128  (the bytes a metadata key or value holds at most)
+  pub fn for_security(isin: Isin) -> Result<Self>  (keyed by the real ISIN alone; a number that is not real refused at `$.isin`)
+  pub fn for_body(class: Cfi, forex: Option<&Forex>, characteristics: &Characteristics, underlying: Option<&str>, legs: &[Leg]) -> Result<Self>  (keyed `class:body` - `I*` the pair, `J*` the pair and the settle, `S*` the pair and both settles, `O*`/`H*` the underlying's code, the expiry and the strike, `F*` the underlying's code and the contract month, `K*` the legs joined `+` in code order with an `n*` ratio prefix - minted its number; a class keying by no body, a body the facts do not spell whole, a code past `MAX_CODE_WIDTH` refused naming the class)
+  pub fn dtype() -> DataType
+  pub fn field() -> Field  (the non-null struct `instrument` of twenty-five columns: the six element columns, `aliascodes`, `placeholder`, `isin`, `cficode`, `forexcode`, `fisn`, `countrycode`, `currency`, `origccy`, `securityids`, `underlying`, `legs`, `eusipacode`, `characteristics`, `listings`, `metadata` (a sorted `map<utf8, utf8>`), `updunix`, `firstunix`, `lastunix`; `PARTITION:by truncate(crosscode, 2)`, `SORT:by crosscode`)
+  pub fn minted_number(crosscode: &str) -> Isin  (`Isin::minted` over the XXH3-128 of the code)
+  pub fn aliascodes(&self) -> &[Str]  (the codes it had before its re-keys, sorted)
+  pub fn is_placeholder(&self) -> bool  (a derivative keyed by its real ISIN while its body is unspelled)
+  pub fn securityids(&self) -> &Identifiers  (the non-listing identifiers: the ISIN, the CFI, the pair, the short name, the equivalents, the minted number under `yggdryl:isin`, and every named source's statement under its own `src:type` key - `ullink:isin`, `bloomberg:figi` - carried by the learn path and the store)
+  pub fn isin(&self) -> Option<&str>  (the base ISIN: a real one, else the minted number)
+  pub fn minted_isin(&self) -> Option<&str>  (the number minted under `yggdryl:isin`)
+  pub fn is_own_mint(&self, number: &Isin) -> bool  (whether `number` is the one this instrument's code mints)
+  pub fn cficode(&self) -> Option<Cfi>
+  pub fn class(&self) -> Option<&str>  (the two letters of the CFI the key is written from)
+  pub fn forexcode(&self) -> Option<Forex>
+  pub fn fisn(&self) -> Option<Fisn>
+  pub fn countrycode(&self) -> Option<&Country>  (the country stated; none in a folded instrument where it is the ISIN's own prefix)
+  pub fn country(&self) -> Option<Country>  (the stated one, else the ISIN's prefix where ISO 3166 lists it; an agency prefix, a minted number, a pair none)
+  pub fn currency(&self) -> Option<&Ccy>  (a body's own currency - a pair's quote leg, derived in a fold; a security's is its listings')
+  pub fn origccy(&self) -> Option<&Ccy>  (held only where stated, never derived)
+  pub fn underlying(&self) -> Option<&str>  (the cross code of the instrument it is written on)
+  pub fn underlying_uuid(&self) -> Option<Uuid>
+  pub fn legs(&self) -> &[Leg]
+  pub fn leg_uuids(&self) -> impl Iterator<Item = Uuid> + '_
+  pub fn eusipacode(&self) -> Option<Eusipa>
+  pub fn characteristics(&self) -> &Characteristics
+  pub fn listings(&self) -> &[Listing]  (one per market in MIC order, the unlisted one first)
+  pub fn listing(&self, market: Option<&Mic>) -> Option<&Listing>  (the listing on `market`; the single one where none is named)
+  pub fn ticker(&self, market: Option<&Mic>) -> Option<&str>
+  pub fn get(&self, kind: &IdType) -> Option<&str>  (the security identifiers first, then the listings in MIC order)
+  pub fn metadata(&self) -> &Metadata  (the complementary facts no typed field holds, by key - the market crate's `Metadata`; a stated value fills an empty key and replaces a differing one; fed to the content code, never the key)
+  pub fn set_metadata(&mut self, key: &str, value: &str) -> Result<()>  (an empty key or value, one past `MAX_METADATA_WIDTH`, a new key past `MAX_METADATA` refused at `$.metadata`)
+  pub fn try_with_metadata(self, key: &str, value: &str) -> Result<Self>
+  pub fn remove_metadata(&mut self, key: &str) -> Option<SmolStr>
+  pub fn updunix(&self) -> Option<i64>  (moved with a fact, never by `lastunix` alone)
+  pub fn firstunix(&self) -> Option<i64>
+  pub fn lastunix(&self) -> Option<i64>
   pub fn with_updunix(self, unix: Option<i64>) -> Self
   pub fn with_firstunix(self, unix: Option<i64>) -> Self
   pub fn with_lastunix(self, unix: Option<i64>) -> Self
-  pub fn with_cficode(self, code: Option<Cfi>) -> Self  (a coarse code is stored as none)
-  pub fn with_countrycode(self, code: Option<Country>) -> Self  (a code ISO 3166 does not list is stored as none)
-  pub fn with_forexcode(self, code: Option<Forex>) -> Self
-  pub fn with_underlyingisin(self, isin: Option<Isin>) -> Self  (the row's own ISIN is stored as none)
-  pub fn with_eusipacode(self, code: Option<Eusipa>) -> Self
-  pub fn with_miccode(self, code: Option<Mic>) -> Self  (`XXXX` is stored as none)
-  pub fn with_ticker(self, ticker: Option<SmolStr>) -> Self  (trimmed, 1 to 64 bytes, else none)
-  pub fn with_fisn(self, name: Option<Fisn>) -> Self
+  pub fn try_with_cficode(self, code: Option<Cfi>) -> Result<Self>  (the key follows where the class keys it)
+  pub fn with_countrycode(self, code: Option<Country>) -> Self  (a code ISO 3166 does not list is stored as none; the ISIN's own prefix is dropped by the fold)
   pub fn with_currency(self, code: Option<Ccy>) -> Self  (`XXX` is stored as none)
   pub fn with_origccy(self, code: Option<Ccy>) -> Self  (`XXX` is stored as none)
-  pub fn set_code(&mut self, kind: IdType, value: &str) -> Result<()>  (the type's value rule; refused for `isin`, `forex` (a column of its own), a type that is no FIX security source, and past `MAX_EQUIVALENTS`)
+  pub fn with_fisn(self, name: Option<Fisn>) -> Self
+  pub fn with_eusipacode(self, code: Option<Eusipa>) -> Self
+  pub fn try_with_underlying(self, code: Option<&str>) -> Result<Self>  (the key follows where the class keys it by its underlying)
+  pub fn try_with_legs(self, legs: &[Leg]) -> Result<Self>
+  pub fn try_with_characteristics(self, characteristics: Characteristics) -> Result<Self>  (the key follows where the class keys it by them)
+  pub fn set_code(&mut self, kind: IdType, value: &str) -> Result<()>  (a security type into the identifiers, a listing type onto the one listing; a key type - `isin`, `cfi`, `forex`, `fisn` - refused as having its own door, a listing type on several listings refused, a new type past `Instruments::MAX_EQUIVALENTS` or `MAX_LISTING_CODES` refused)
   pub fn try_with_code(self, kind: IdType, value: &str) -> Result<Self>
-  pub fn into_scalar(&self) -> Scalar  (the named struct of the row's cells, a fact it does not state a null)
-  pub fn from_scalar(value: &Scalar) -> Result<Self>  (the named struct - a name it lacks a null - or the ordered row, through `field()`'s value door; refused as that door refuses, and past `MAX_EQUIVALENTS`)
-pub enum MatchTier { Isin, Code(IdType), Symbology, Economic { similarity } }  (the tier `resolve` matched by; Clone, Debug, PartialEq)
-pub enum Resolution<'a> { Matched { entry, tier, derived, listing }, Unmatched(Unmatched) }  (what `resolve` answers: the row, its tier, whether the ISIN was derived, whether the row's listing facts are the element's)
-pub enum Unmatched { NoKey, UnknownIsin { stated }, NoCandidate, Ambiguous { tier, isins }, CfiConflict { stated, held, isin }, CurrencyConflict { stated, held, isin }, BelowThreshold { best, isin } }  (why `resolve` matched no row; Ambiguous lists its ISINs in ISIN order)
-pub struct IsinRegistry  (one listing row per real ISIN - closing under a listed prefix (`CodeValue::is_real`) - and market, keyed by the ISIN's text, its listings in MIC order (one inline, so an instrument of one market costs its row alone) or the unlisted row alone while no market is known, beside the exact inverse index of the rows' tickers by ISIN and market, a ticker gated by the market its listing was stated on, and of every `LOOKUP_CODES` code, one slot per ISIN; the table is held shared behind two counted pointers - the crate-private `IsinTable` a parse door fixes once as it opens - so a write while a door holds it copies the table once; a value with no Clone: shared behind the caller's own lock (`FixCodec::with_isin_registry`, `from_env`); Debug, Default; re-exported at the crate root)
-  pub const DEFAULT_MAX_INSTRUMENTS: usize = 16_384  (ISINs; each listing row at 8 KiB at most, 128 MiB for one listing each)
+  pub fn with_listing(self, listing: Listing) -> Result<Self>  (a listed market replaced, the unlisted listing taken over by the first market, the listing codes among the identifiers moved onto it; past `MAX_LISTINGS` refused)
+  pub fn into_scalar(&self) -> Scalar  (the named struct of the row's cells, a fact it does not state a null, each nested listing, leg and the characteristics the named struct of its own cells - what a caller reads by name in every language; the snapshot streams the ordered runs)
+  pub fn from_scalar(value: &Scalar) -> Result<Self>  (the named struct or the ordered row, through `field()`'s value door; a column it lacks or states null unstated - a nullable one null, an element column or `placeholder` derived, since a statement is derived - so a row stating only its facts reads as the instrument they spell; the key written again from the typed columns, a stored `crosscode` they do not spell refused at `$.crosscode` naming both, a name no column has refused by name)
+pub enum MatchTier { Isin, CrossCode, Code(IdType), Symbology, Economic { similarity } }  (the tier `resolve` matched by; Clone, Debug, PartialEq)
+pub enum Resolution<'a> { Matched { entry, tier, derived, listing }, Unmatched(Unmatched) }  (what `resolve` answers: the instrument, its tier, whether the ISIN was derived, whether the instrument's listing on the element's market is the element's)
+pub enum Unmatched { NoKey, UnknownIsin { stated }, UnknownCode { stated }, NoCandidate, Ambiguous { tier, codes }, CfiConflict { stated, held, code }, CurrencyConflict { stated, held, code }, BelowThreshold { best, code } }  (why `resolve` matched no instrument; `Ambiguous` names the cross codes in code order)
+pub struct Stated<'s>  (crate-private at the root, exported through `implementer`: what only a FIX message spells of its instrument - `origccy`, `country`, `underlying`, `product`, `body`, `metadata` as `&[(&str, &str)]` - laid over the element's facts by the lifecycle)
+pub struct Body  (crate-private at the root, exported through `implementer`: the body facts a message spells - `forex`, `characteristics`, `legs`)
+pub struct Instruments  (one instrument per cross code, in code order, indexed by every ISIN it holds, every alias, every ticker on its market and every code of `LOOKUP_CODES`; the table shared with every parse door that fixed it until a write moves it)
+  pub const DEFAULT_MAX_INSTRUMENTS: usize = 16_384  (instruments; each at 32 KiB at most, 512 MiB in all)
   pub const MAX_EQUIVALENTS: usize = 12
-  pub const LOOKUP_CODES: [IdType; 20]  (the codes a lookup reads, in cascade order: cusip, sedol, wkn, valor, figi, bloomberg, ric, quik, exchsymb, cta, dutch, sicovam, belgian, common, opra, mktassigned, redpair, fim, umtf, dti - each indexed with one slot per ISIN; a currency, a country, an index, a synthetic code, an issuer's or a shared reference's none)
+  pub const LOOKUP_CODES: [IdType; 20]  (the codes a lookup reads, in cascade order: cusip, sedol, wkn, valor, figi, bloomberg, ric, quik, exchsymb, cta, dutch, sicovam, belgian, common, opra, mktassigned, redpair, fim, umtf, dti)
   pub const DEFAULT_ECONOMIC_THRESHOLD: f64 = 0.85
   pub fn new() -> Self  (empty, bound to no store)
-  pub fn seeded() -> Self  (the seed: the common instruments `config/isin/instruments.json` states - stocks, funds and indexes by ISIN, ticker, market but an index's, currency, country, ISO 10962:2021 CFI and, where known, short name - embedded at build time, read once per process from the crate's copy `rust/market/src/isin_registry/seed.json` (`scripts/check_isin_seed.py --sync` writes it) through `extend_from_arrow_reader`'s column rule and folded by `merge`, so its derived facts are any row's; clean, bound to no store, sharing the one table until a write moves it; what `from_env` lays its store over)
+  pub fn seeded() -> Self  (the seed: the common instruments `config/instruments/instruments.json` states - stocks, funds and indexes by ISIN, CFI, country, short name and their listings - embedded at build time, read once per process from the crate's copy `rust/market/src/instrument/seed.json` (`scripts/check_instruments_seed.py --sync` writes it) and folded by `merge`; clean, bound to no store, sharing the one table until a write moves it; what `from_env` lays its store over)
   pub fn with_max_instruments(self, max: usize) -> Self
   pub fn max_instruments(&self) -> usize
-  pub fn len(&self) -> usize  (the instruments: its ISINs)
-  pub fn rows(&self) -> usize  (the listing rows: what `iter` walks and a commit writes)
+  pub fn len(&self) -> usize  (the instruments)
+  pub fn rows(&self) -> usize  (the rows a commit writes: one per instrument)
   pub fn is_empty(&self) -> bool
-  pub fn is_dirty(&self) -> bool  (whether the table moved since it was loaded or committed: a learn, a merge, a removal or a clear that moved something sets it - a learn moving `lastunix` alone included; a load or a `commit` clears it)
-  pub fn get(&self, isin: &str) -> Option<&IsinEntry>  (the first listing in MIC order - the unlisted row where that is all - borrowed, allocation-free)
-  pub fn listings(&self, isin: &str) -> &[IsinEntry]  (every listing row in MIC order; empty where unknown)
-  pub fn get_listing(&self, isin: &str, market: &Mic) -> Option<&IsinEntry>  (the listing row on `market`)
-  pub fn get_by_ticker(&self, ticker: &str, market: Option<&Mic>) -> Option<&IsinEntry>  (the ticker trimmed, through the ticker index: the one listing row stating the ticker on `market`, else - none there - the one stating it on no market; `market` unstated - none and `XXXX` - the one stating it on any; two rows answering is ambiguous and answers none)
-  pub fn get_by_code(&self, kind: &IdType, code: &str, market: Option<&Mic>) -> Option<&IsinEntry>  (one of `LOOKUP_CODES`, read as its type stores it: the one ISIN holding it, then its row on `market`, else the one row holding the code, else its single row, else its first; two ISINs, a type no lookup reads or a value its type refuses answer none)
-  pub fn resolve<E: Market + ?Sized>(&self, element: &E) -> Resolution<'_>  (the one waterfall a fill reads: a real stated ISIN decides alone and one the registry lacks ends the cascade; else each `LOOKUP_CODES` code in order, then the ticker on its market, the first naming two ISINs ending it; else, scored, the short name in the element's stated currency, at least `economic_threshold`, another origin currency or CFI category dropped)
-  pub fn economic_threshold(&self) -> f64  (`DEFAULT_ECONOMIC_THRESHOLD` unless set)
+  pub fn is_dirty(&self) -> bool  (whether the table's content differs from what the store holds - as it was loaded or last committed, the seed's for a seeded collection, nothing for a new one: an instrument added or removed, or one whose content code or `firstunix`/`lastunix` window moved; a fact that moves and moves back since the load is no change and `updunix` alone none, so a run replayed over the same input leaves a clean collection)
+  pub fn get(&self, key: &str) -> Option<&Instrument>  (by its cross code, an alias or an ISIN it holds; borrowed, allocation-free)
+  pub fn get_by_uuid(&self, uuid: Uuid) -> Option<&Instrument>
+  pub fn listings(&self, key: &str) -> &[Listing]  (the instrument's listings in MIC order; empty where unknown)
+  pub fn get_listing(&self, key: &str, market: &Mic) -> Option<&Listing>
+  pub fn get_by_ticker(&self, ticker: &str, market: Option<&Mic>) -> Option<&Instrument>  (the ticker trimmed: the one instrument listing it on `market`, on any market where none is named; two none)
+  pub fn get_by_code(&self, kind: &IdType, code: &str) -> Option<&Instrument>  (one of `LOOKUP_CODES`, read as its type stores it: the one instrument holding it; two none)
+  pub fn resolve<E: Market + ?Sized>(&self, element: &E) -> Resolution<'_>  (the one waterfall a fill reads: a stated real ISIN decides alone and one the collection lacks ends the cascade; else the code the element's own facts spell, a miss ending it; else a minted number it holds; else each `LOOKUP_CODES` code in order, then the ticker on its market, the first naming one instrument matching and the first naming two ending it; else, scored, the short name in the element's currency)
+  pub fn economic_threshold(&self) -> f64
   pub fn set_economic_threshold(&mut self, threshold: f64) -> Result<()>  (NaN and anything outside (0, 1] refused at `$.economic_threshold`)
   pub fn try_with_economic_threshold(self, threshold: f64) -> Result<Self>
   pub fn is_economic_match(&self) -> bool  (whether a fill takes an economic match; false unless set, and a parse never does)
   pub fn set_economic_match(&mut self, enabled: bool)
   pub fn with_economic_match(self, enabled: bool) -> Self
-  pub fn iter(&self) -> impl Iterator<Item = &IsinEntry>  (every listing row, ISIN then MIC order)
-  pub fn merge(&mut self, entry: IsinEntry) -> Result<bool>  (the update rule, no clock gate: a stated valid value fills a column the row lacks and replaces one it holds that differs; a code that is no real value of its type (`IdType::is_real`) is dropped with one warning per column; a CFI code compatible with the held one refines it and a contradicting one replaces it; a stated country that is the ISIN's own prefix takes a differing held one back; a stated underlying fills or replaces as an instrument fact, one that is no real ISIN dropped with one warning; a stated product category fills or replaces as an instrument fact, a number of no category's shape read as none with one warning; a stated short name fills or replaces as an instrument fact; the instrument facts fold into every listing row of the ISIN, the listing facts - ticker, currency, listing codes - into the row of the market the entry names, created where the ISIN has none there (the unlisted row taken over where that is all it holds), and where it names no market into the ISIN's single row, or none - one warning per column - of several; a new code type past `MAX_EQUIVALENTS` is passed over and moves nothing; `updunix` the later on every row, only where a fact moved; `lastunix` the later on every row, whatever moved; a row created or moved then derives its defaults where the statement left it empty (`IsinEntry`); a statement that moves nothing allocates nothing; refuses an ISIN that is not real - a `ZZ` number, a masked one, a typo - and a new ISIN past `max_instruments`)
-  pub fn remove(&mut self, isin: &str) -> Vec<IsinEntry>  (every listing row of the ISIN, in MIC order; empty where unknown)
-  pub fn remove_listing(&mut self, isin: &str, market: &Mic) -> Option<IsinEntry>  (the listing row on `market`; the instrument goes with its last listing)
+  pub fn iter(&self) -> impl Iterator<Item = &Instrument>  (every instrument, in code order)
+  pub fn merge(&mut self, entry: Instrument) -> Result<bool>  (the update rule, no clock gate: a stated valid value fills a fact the instrument lacks and replaces one that differs, a CFI refined or replaced, a real ISIN replacing a minted one and never the reverse, the listing facts on the listing of each market the entry lists, a placeholder re-keyed by an entry spelling its body; a new instrument past `max_instruments` refused)
+  pub fn remove(&mut self, key: &str) -> Option<Instrument>  (by its cross code, an alias or an ISIN)
+  pub fn remove_listing(&mut self, key: &str, market: &Mic) -> Option<Listing>  (the instrument stays)
   pub fn clear(&mut self)
-  pub fn learn<E: Market + Event + ?Sized>(&mut self, event: &E) -> bool  (keyed by the stated ISIN alone - a real one, closing under a listed prefix, never a derivation - its market naming the listing row, at its `transunix`, which every learn states as `lastunix`, so an event stating the ISIN alone is learned - a new instrument's row made; reads the detailed CFI, the market but `XXXX`, the ticker, the currency but `XXX` unless the event holds a `forex` identifier (the dealt currency, not the listing's), the pair it states as a `forex` identifier, the short name it states as a `fisn` identifier, and each equivalent type's base key it states with a real value (`IdType::is_real`) - never one it only derived, a masked number or a typo, and never an underlying or a product category, which the FIX lifecycle learns beside a message (`FixMsg::stated_underlying_isin`, `FixMsg::stated_eusipa`, crate-private); a new ISIN past the bound skipped with one warning per registry)
-  pub fn fill<E: Market + Element + ?Sized>(&self, element: &mut E) -> bool  (from the listing row its real ISIN - stated or derived - names, a miss ending the fill - the row of its market, else the single row, else the first for the instrument's facts alone - else its ticker's on its market (`get_by_ticker`), the ISIN derived first - over none, or over a number ranking below it, a masked one or a typo: each equivalent of a type it holds nothing of through `derive_securityid`, the listing codes only where its market - none and `XXXX` unstated - is the row's or either is unstated, the pair, the short name, the ticker on the same market, its CFI code where it states none or the row's refines it, the currency only where both markets are stated and equal, the ticker is the row's and it states none; finalized where anything moved; never a FIX field or the wire)
+  pub fn learn<E: Market + Event + ?Sized>(&mut self, event: &E) -> bool  (keyed by the code the event's facts spell - a stated real ISIN, never a derivation, a `forex` identifier beside an `I*` class minting its number, a derivative stating a real ISIN and no body as a placeholder; a `J*` or `S*` element states no settle and learns nothing - its market naming the listing, at its `transunix`; a new instrument past `max_instruments` passed over with one warning)
+  pub fn fill<E: Market + Element + ?Sized>(&self, element: &mut E) -> bool  (from the instrument `resolve` names: each identifier of a type it holds none of, derived - the minted number of a pair among them - the listing codes and the ticker where its market is listed or it states none and the instrument has one listing, the CFI where it states none or the instrument's refines it, the currency only on the same market with the same ticker, the origin currency, and the cross code as `instcode` where it holds none; finalized where anything moved)
   pub fn enrich<E: Market + Event + ?Sized>(&mut self, event: &mut E) -> bool  (learn, then fill)
   pub fn from_arrow_reader(reader: BatchReader) -> crate::arrow::Result<Self>  (unbound and clean after the load)
-  pub fn extend_from_arrow_reader(&mut self, reader: BatchReader) -> crate::arrow::Result<usize>  (each column resolved once from the schema - the registry's own name, any spelling of an identifier type (`RIC`, `BloombergSymbol`, `ISINCode`), a field name a type is spelled by, the market spellings `cfi`/`mic`/`symbol`/`tickersymbol`/`country`/`countryofissue`/`ccy`/`currencycode`/`forex`/`ccypair`, `underlyingisin` or any key naming an underlying's ISIN (`UnderlyingISIN`), `eusipa`/`eusipacode`/`eusipacategory`/`sspa`/`sspacode`/`sspacategory` for the product category (Euronext's `EUSIPA_Code`; numbers or text of one), `fisn`/`fisncode`/`shortname`/`financialinstrumentshortname` for the short name, `lastunix`/`lastseen`/`lastseenunix` for the instant last met - an unknown one ignored, two naming one fact refused naming both, no `isin` refused unless the stream has no column at all, the empty stream a missing store reads as; one cast plan, a code column's cells adopted as the landing proved them, a `utf8` one's through its type's rule, each row folded through `merge` as a statement - rows of one ISIN on several markets loading as several listings -, a refusal located `$[row].column`, a load past `max_instruments` refused; how many rows it read)
-  pub fn extend_from_handle(&mut self, handle: &dyn IOBase) -> Result<usize>  (the handle's own record stream - an Arrow IPC file, Parquet, a folder of either, an object store - through `extend_from_arrow_reader`, binding nothing)
-  pub fn into_arrow_reader(&self) -> crate::arrow::Result<BatchReader>  (a snapshot stream of every listing row under `IsinEntry::field()` in ISIN then MIC order, one bounded batch at a time, which a learn while it streams does not move; written by `IOBase::write_arrow_reader`, a merge by `isin` upserting)
+  pub fn extend_from_arrow_reader(&mut self, reader: BatchReader) -> crate::arrow::Result<usize>  (the stream cast once into `Instrument::field`, a nullable column it lacks null; a row whose `crosscode` and `hashcode` are a held instrument's moves its stamps alone, read off the landed leaves and never built; any other row's key written again from its typed columns and folded by `merge`; a column no field reads landing in each row's `metadata` under its name; a stream of any column lacking `crosscode` - a table laid out before the instrument row - refused at `$.crosscode`, a row a column refuses located `$[row].column`)
+  pub fn extend_from_handle(&mut self, handle: &dyn IOBase) -> Result<usize>  (the handle's own record stream through `extend_from_arrow_reader`, binding nothing)
+  pub fn into_arrow_reader(&self) -> crate::arrow::Result<BatchReader>  (a snapshot stream of every instrument under `Instrument::field()` in code order, one bounded batch at a time)
 
-### yggdryl_market::isin_registry::store  [rust/market/src/isin_registry/store.rs]  (the store a registry is bound to: the holder its table was loaded from and is committed back to as one snapshot, under the holder's own record options resolved once at the binding - its encoding, or its record leaves', an Iceberg table's its data files', a folder listing no record leaf or plain text alone laid out as Arrow IPC by the first commit; a leaf of an encoding this build has no record medium for, and a location inside an Iceberg table, refused at the binding)
-  pub fn IsinRegistry::from_holder(holder: impl Into<Holder>) -> Result<Self>  (bound and loaded through `extend_from_arrow_reader` under the holder's own options - the same spellings `extend_from_handle` reads - a store holding nothing yet an empty first run; clean after; unseeded, the store's rows alone)
-  pub fn IsinRegistry::from_url<K: AsRef<str>, V: AsRef<str>>(url: &Url, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self>  (`from_holder` over `Holder::from_url`: any scheme this build holds, a `with (...)` clause's pairs beside it; unseeded)
-  pub fn IsinRegistry::seeded_from_holder(holder: impl Into<Holder>) -> Result<Self>  (the seed (`seeded`) with the holder's rows laid over it by the update rule, bound to the holder - a value the store states wins, a fact only the seed states stands beside it, a seed row the store has none of stands, a store holding nothing the seed bound to it - the store read once as `from_holder` reads it, the seed costing it no call; clean after, so the first commit after something moved writes the seed's rows with the store's; what `from_env` binds)
-  pub fn IsinRegistry::seeded_from_url<K: AsRef<str>, V: AsRef<str>>(url: &Url, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self>  (`seeded_from_holder` over `Holder::from_url`)
-  pub fn IsinRegistry::set_holder(&mut self, holder: impl Into<Holder>) -> Result<usize>  (the holder's rows loaded, the rows the registry held folded over them by the update rule, dirty exactly where a held row moved something; how many rows the holder held; a refusal leaves the registry as it was, bound to the store it was)
-  pub fn IsinRegistry::try_with_holder(self, holder: impl Into<Holder>) -> Result<Self>
-  pub fn IsinRegistry::holder(&self) -> Option<&Holder>
-  pub fn IsinRegistry::commit(&mut self) -> Result<IOResult>  (only where dirty, so the store holds exactly the snapshot - every listing row - whatever its layout: a leaf one overwrite, an emptied registry truncating it; an Iceberg table one atomic snapshot replacing every row of every partition, an emptied registry one empty snapshot that keeps the table a table; a plain folder its record parts of the store's encoding removed - a leaf of another encoding or a file that is no record part never touched - then the snapshot laid out as one part under the layout the folder spells, none where empty; a clean registry no call and no rows; clean after; refused unbound, and a refused write leaves it dirty)
+### yggdryl_market::instrument::store  [rust/market/src/instrument/store.rs]  (the store a collection is bound to: the holder its table was loaded from and is committed back to as one snapshot, under the holder's own record options resolved once at the binding - its encoding, or its record leaves', an Iceberg table's its data files', a folder listing no record leaf or plain text alone laid out as Arrow IPC by the first commit; a leaf of an encoding this build has no record medium for, and a location inside an Iceberg table, refused at the binding)
+  pub fn Instruments::from_holder(holder: impl Into<Holder>) -> Result<Self>  (bound and loaded through `extend_from_arrow_reader` under the holder's own options; a store holding nothing yet reads as the empty collection)
+  pub fn Instruments::from_url<K: AsRef<str>, V: AsRef<str>>(url: &Url, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self>  (`from_holder` over `Holder::from_url`)
+  pub fn Instruments::seeded_from_holder(holder: impl Into<Holder>) -> Result<Self>  (the seed with the holder's rows laid over it by the update rule, bound to the holder, clean after)
+  pub fn Instruments::seeded_from_url<K: AsRef<str>, V: AsRef<str>>(url: &Url, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self>  (`seeded_from_holder` over `Holder::from_url`)
+  pub fn Instruments::set_holder(&mut self, holder: impl Into<Holder>) -> Result<usize>  (the holder's rows loaded, the rows the collection held folded over them by the update rule, dirty exactly where a held row left the table differing from the store's rows; how many rows the store held)
+  pub fn Instruments::try_with_holder(self, holder: impl Into<Holder>) -> Result<Self>
+  pub fn Instruments::holder(&self) -> Option<&Holder>
+  pub fn Instruments::commit(&mut self) -> Result<IOResult>  (only where dirty - the content compared with what the store holds, a fact moved and moved back no change - so the store holds exactly the snapshot whatever its layout: a leaf one overwrite, an emptied collection truncating it; an Iceberg table one snapshot replacing every partition; a plain folder its record parts removed and one part laid out; a column the store keeps no column for warned once per commit)
 
-### yggdryl_market::isin_registry::env  [rust/market/src/isin_registry/env.rs]  (the process default: the seeded registry with the store the environment names laid over it, resolved once on first use and shared behind one lock, what `FixCodec::from_env` attaches and the caller commits)
-  pub fn IsinRegistry::from_env() -> Result<&'static Arc<Mutex<Self>>>  (first match wins: a registry installed by `install_env`, as given; the location `YGGDRYL_ISIN_REGISTRY_URI` names, trimmed - a URL of any scheme this build holds, or a bare path, a leading `~/` the home directory, which itself is refused - an empty value unset; `~/.config/yggdryl/isin/`, a folder of Arrow IPC parts the first commit lays out; with no home directory the seeded registry bound to no store. A store is bound over `IsinRegistry::seeded()`: its rows fold over the seed's by the update rule - a value the store states wins, a seed row it has none of stands - and the registry is clean after the load, a store holding nothing the seed bound to it; a store that cannot be read, a scheme this build has no backend for or a row the registry refuses an error, never the seed alone, and a failed load left unresolved so the next call retries it)
-  pub fn IsinRegistry::install_env(registry: Self) -> Result<()>  (the registry every later `from_env` answers; a typed conflict once the default is resolved or installed)
-  pub fn IsinRegistry::install_env_shared(registry: Arc<Mutex<Self>>) -> Result<()>  (`install_env` of a registry already shared behind its lock: the very `Arc` every later `from_env` answers)
+### yggdryl_market::instrument::env  [rust/market/src/instrument/env.rs]  (the process default: the seeded collection with the store the environment names laid over it, resolved once on first use and shared behind one lock, what `FixCodec::from_env` attaches and the caller commits)
+  pub fn Instruments::from_env() -> Result<&'static Arc<Mutex<Self>>>  (first match wins: a collection installed by `install_env`, as given; the location `YGGDRYL_INSTRUMENTS_URI` names, trimmed - a URL of any scheme this build holds, or a bare path, `~/` read under the home, the home itself refused; else `~/.config/yggdryl/instruments/`; else unbound - each laid over the seed, the store's rows winning)
+  pub fn Instruments::install_env(instruments: Self) -> Result<()>  (the collection every later `from_env` answers; a typed conflict once the default is resolved or installed)
+  pub fn Instruments::install_env_shared(instruments: Arc<Mutex<Self>>) -> Result<()>  (`install_env` of a collection already shared behind its lock: the very `Arc` every later `from_env` answers)
 
 ### yggdryl_market::eusipa  [rust/market/src/eusipa.rs]  (the product category of a structured product: EUSIPA's four-digit code, which the SSPA's Swiss map numbers the same way; a root value type, not a DataType variant)
 pub struct Eusipa(u16)  (four digits, 1000 to 2999 - the level, the group, the member - held by its shape whatever either map lists; Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Display the four digits, FromStr through `from_text`, serde the number, `TryFrom<u16>`, `From<Eusipa> for u16`; re-exported at the crate root)
@@ -7674,7 +7761,7 @@ impl ExtensionType for MarketDataKindType, MarketDataTypeType, SideType, TimeInF
 
 ### yggdryl_market::implementer  [rust/market/src/implementer.rs]  (the one door `yggdryl-fix` reaches this crate's crate-private items through, `#[doc(hidden)] pub mod` at the crate root; no API. Each item takes one route: a `pub use` of an item raised to `pub` inside a module the crate root does not publish; an `#[inline]` forwarder for an item of a published module, a crate-private associated item a free function taking its receiver first named `<type>_<item>`; an exported `#[doc(hidden)]` macro)
 pub use delegate_market, delegate_operation  (the exported macros yggdryl-fix writes its forwarding of the market traits through)
-pub use OperationEventFacts, Learned, EconomicMemo, IsinTable, names_another_instrument, warn_full  (raised in the crate-private graph::facts, isin_registry and idtype)
+pub use OperationEventFacts, Learned, EconomicMemo, InstrumentTable, names_another_instrument, warn_full  (raised in the crate-private graph::facts, instrument and idtype)
 pub const WORD_PAIR_WIDTH: usize
 pub fn fold_into<'buffer>(word: &str, buffer: &'buffer mut [u8]) -> std::result::Result<&'buffer str, &'static str>
 pub fn is_word(word: &str) -> bool
@@ -7688,8 +7775,9 @@ pub fn id_type_identifier_names<'name>() -> impl Iterator<Item = &'name str> + C
 pub fn id_type_underlying_security(folded: &str) -> Option<IdType>
 pub fn symbol_code_identifier(symbol: &SymbolCode) -> Option<(IdType, &str)>
 pub const fn market_data_kind_stored_side(kind: MarketDataKind, side: Side) -> Side
-pub fn isin_registry_as_table(registry: &IsinRegistry) -> &IsinTable
-pub fn isin_registry_learn_stating<E: Market + Event + ?Sized>(registry: &mut IsinRegistry, event: &E, origccy: Option<&Ccy>, country: Option<&Country>, underlying: Option<&Isin>, product: Option<Eusipa>) -> Learned
+pub fn instruments_as_table(registry: &Instruments) -> &InstrumentTable
+pub fn instruments_learn_stating<E: Market + Event + ?Sized>(instruments: &mut Instruments, event: &E, stated: &Stated<'_>) -> Learned
+pub fn instrument_spell_code<'s, E: Market + ?Sized>(element: &E, body: Option<&Body>, underlying: Option<&str>, slot: &'s mut [u8; MAX_CODE_WIDTH]) -> Result<Option<(&'s str, Production)>>  (`instrument::spell_code`: the cross code an element's own facts spell, with what its message spells beside them and the underlying's code where one is known, and how it was produced - what a FIX parse writes as `instcode` where the code is a function of the message alone and mints a pair's number from)
 pub fn order<E: Element>(left: &E, right: &E) -> Ordering
 pub fn event_iterator_with_placing<E: Walked, I: Iterator<Item = E>>(walk: EventIterator<E, I>, placing: bool) -> EventIterator<E, I>
 pub fn base_crosscode(code: &str) -> &str

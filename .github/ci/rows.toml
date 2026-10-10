@@ -44,7 +44,7 @@ inert = [
   # AGENTS.md section 2, "What CI never runs".
   "scripts/generate_*.py",
   "scripts/check_charset_interop.py",
-  "scripts/check_isin_seed.py",
+  "scripts/check_instruments_seed.py",
   "scripts/bench_avro_baseline.py",
   "scripts/docs_core_remaining.js",
   "scripts/tests/**",

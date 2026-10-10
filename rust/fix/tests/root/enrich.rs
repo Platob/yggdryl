@@ -582,11 +582,14 @@ fn a_symbol_a_rule_fills_names_its_currency_pair_as_a_stated_one_does() {
                 .as_bytes(),
         );
         assert_eq!(text(&filled, 55).as_deref(), Some("EUR/USD"), "{currency}");
+        // The FX pair derived its minted ISIN, D42: the number of its key
+        // `IF:EUR/USD`, beside the pair.
         assert_eq!(
             filled.get_securityids().to_string(),
-            "[derived:forex=EUR/USD, exchsymb=EUR/USD, forex=EUR/USD]",
+            "[derived:forex=EUR/USD, derived:isin=QYLTVIRYHNX5, exchsymb=EUR/USD, forex=EUR/USD, isin=QYLTVIRYHNX5]",
             "{currency}"
         );
+        assert_eq!(filled.get_instcode(), Some("IF:EUR/USD"), "{currency}");
         assert_eq!(filled.get_securityids(), stated.get_securityids());
         for tag in [15, 120, 167, 460, 461, 2897] {
             assert_eq!(
@@ -2617,17 +2620,19 @@ fn a_resend_flag_a_dictionary_left_as_text_marks_a_replay_as_a_boolean_does() {
 
 /// A walk learns the instrument a message's own is written on - its
 /// underlying - off the wire's `UnderlyingInstrument`, a related `Underlier`
-/// or a bridge's key, and lifts it nowhere: the message's security
-/// identifiers stay its own, and the wire is the parse's.
+/// or a bridge's key, held as the cross code of the instrument the
+/// collection keys by that ISIN - one it keys none by names no underlying -
+/// and lifts it nowhere: the message's security identifiers stay its own,
+/// and the wire is the parse's.
 #[test]
 fn a_walk_learns_the_underlying_a_message_names_and_lifts_it_nowhere() {
     crate::install::installed();
     use std::sync::{Arc, Mutex};
-    use yggdryl_market::IsinRegistry;
+    use yggdryl_market::Instruments;
 
-    let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
-    let codec = super::fixed_codec(super::committed_registry())
-        .with_isin_registry(Arc::clone(&instruments));
+    let instruments = Arc::new(Mutex::new(Instruments::new()));
+    let codec =
+        super::fixed_codec(super::committed_registry()).with_instruments(Arc::clone(&instruments));
     let line = |seq: i32, body: &str| {
         format!(
             "8=FIX.4.4|35=D|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|{body}|10=0|"
@@ -2652,8 +2657,22 @@ fn a_walk_learns_the_underlying_a_message_names_and_lifts_it_nowhere() {
             .lock()
             .expect("the registry")
             .get(&warrant)
-            .and_then(|row| row.underlyingisin().map(|code| code.as_str().to_owned()))
+            .and_then(|row| row.underlying().map(str::to_owned))
     };
+    // An underlying no instrument keys names none.
+    walk(
+        &format!("22=4|48={warrant}|711=1|311=HOLN|309=CH0012214059|305=4"),
+        20,
+    );
+    assert_eq!(underlying(), None);
+    // The securities the underlyings below name, learned first.
+    for (seq, isin) in [
+        (21, "CH0012214059"),
+        (22, "US0378331005"),
+        (23, "CH0012005267"),
+    ] {
+        walk(&format!("22=4|48={isin}"), seq);
+    }
     // The wire's `UnderlyingInstrument` in a `NoUnderlyings(711)` occurrence
     // is learned and lifted nowhere.
     let walked = walk(
@@ -2711,7 +2730,7 @@ fn a_walk_learns_the_underlying_a_message_names_and_lifts_it_nowhere() {
     }
     // A message stating no real ISIN of its own learns nothing.
     walk("55=HOLN|711=1|311=HOLN|309=CH0012214059|305=4", 11);
-    assert_eq!(instruments.lock().expect("the registry").len(), 1);
+    assert_eq!(instruments.lock().expect("the registry").len(), 4);
 }
 
 /// A walk learns the EUSIPA product category a bridge's key states beside
@@ -2728,12 +2747,12 @@ fn a_walk_learns_the_underlying_a_message_names_and_lifts_it_nowhere() {
 fn a_walk_learns_the_product_category_a_bridge_key_states_and_lifts_it_nowhere() {
     crate::install::installed();
     use std::sync::{Arc, Mutex};
-    use yggdryl_market::IsinRegistry;
+    use yggdryl_market::Instruments;
     use yggdryl_market::graph::{Market, Operation};
 
-    let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
-    let codec = super::fixed_codec(super::committed_registry())
-        .with_isin_registry(Arc::clone(&instruments));
+    let instruments = Arc::new(Mutex::new(Instruments::new()));
+    let codec =
+        super::fixed_codec(super::committed_registry()).with_instruments(Arc::clone(&instruments));
     let line = |seq: i32, body: &str| {
         format!(
             "8=FIX.4.4|35=D|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|{body}|10=0|"
@@ -2825,7 +2844,7 @@ fn a_walk_learns_the_product_category_a_bridge_key_states_and_lifts_it_nowhere()
     walk("55=HOLN|EUSIPACode=2300", 10);
     assert_eq!(instruments.lock().expect("the registry").len(), 1);
     // `learn` alone states none: the reading is the lifecycle's.
-    let mut fresh = IsinRegistry::new();
+    let mut fresh = Instruments::new();
     let parsed: Vec<FixMsg> = codec
         .parse_lines([line(
             11,
@@ -2852,20 +2871,22 @@ fn a_walk_takes_the_economic_match_only_where_the_registry_states_it() {
     crate::install::installed();
     use std::sync::{Arc, Mutex};
     use yggdryl::Mic;
-    use yggdryl_market::{IsinEntry, IsinRegistry};
+    use yggdryl_market::{Instrument, Instruments, Listing};
 
     const APPLE: &str = "US0378331005";
-    let mut registry = IsinRegistry::new();
+    let mut registry = Instruments::new();
     registry
         .merge(
-            IsinEntry::new(Isin::new(APPLE).unwrap())
-                .with_miccode(Some(Mic::new("XNAS").unwrap()))
+            Instrument::for_security(Isin::new(APPLE).unwrap())
+                .unwrap()
+                .with_listing(Listing::new(Some(Mic::new("XNAS").unwrap())))
+                .unwrap()
                 .with_fisn(Some(yggdryl::Fisn::new("APPLE INC./SH").unwrap())),
         )
         .unwrap();
     let instruments = Arc::new(Mutex::new(registry));
-    let codec = super::fixed_codec(super::committed_registry())
-        .with_isin_registry(Arc::clone(&instruments));
+    let codec =
+        super::fixed_codec(super::committed_registry()).with_instruments(Arc::clone(&instruments));
     let lines = |first: i32| {
         (first..first + 2).map(|seq| {
             format!(
@@ -2918,11 +2939,11 @@ fn a_walk_learns_the_country_and_the_currency_and_fills_them_unsettled() {
     use std::sync::{Arc, Mutex};
     use yggdryl::Country;
     use yggdryl::graph::Element;
-    use yggdryl_market::IsinRegistry;
+    use yggdryl_market::Instruments;
 
-    let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
-    let codec = super::fixed_codec(super::committed_registry())
-        .with_isin_registry(Arc::clone(&instruments));
+    let instruments = Arc::new(Mutex::new(Instruments::new()));
+    let codec =
+        super::fixed_codec(super::committed_registry()).with_instruments(Arc::clone(&instruments));
     let line = |seq: i32, body: &str| {
         format!(
             "8=FIX.4.4|35=D|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|{body}|10=0|"
@@ -2944,11 +2965,24 @@ fn a_walk_learns_the_country_and_the_currency_and_fills_them_unsettled() {
     {
         let held = instruments.lock().expect("the registry");
         let row = held.get("CH0012214059").expect("learned");
+        let xswx = yggdryl::Mic::new("XSWX").unwrap();
         assert_eq!(row.countrycode(), None);
         assert_eq!(row.country(), Some(Country::new("CH").unwrap()));
-        assert_eq!(row.currency().map(|code| code.as_str()), Some("CHF"));
-        assert_eq!(row.ticker(), Some("HOLN"));
-        assert_eq!(row.miccode().map(|code| code.as_str()), Some("XSWX"));
+        assert_eq!(
+            row.listing(Some(&xswx))
+                .and_then(yggdryl_market::Listing::currency)
+                .map(|code| code.as_str()),
+            Some("CHF"),
+            "the trading currency is the listing's"
+        );
+        assert_eq!(row.ticker(Some(&xswx)), Some("HOLN"));
+        assert_eq!(
+            row.listings()
+                .iter()
+                .map(|listing| listing.miccode().map(|code| code.as_str()))
+                .collect::<Vec<_>>(),
+            [Some("XSWX")]
+        );
     }
     let countrycode = || {
         instruments
@@ -2971,7 +3005,8 @@ fn a_walk_learns_the_country_and_the_currency_and_fills_them_unsettled() {
         .lock()
         .expect("the registry")
         .merge(
-            yggdryl_market::IsinEntry::new(yggdryl::Isin::new("CH0012214059").unwrap())
+            yggdryl_market::Instrument::for_security(yggdryl::Isin::new("CH0012214059").unwrap())
+                .unwrap()
                 .with_countrycode(Some(Country::new("CH").unwrap())),
         )
         .unwrap();
@@ -3000,24 +3035,363 @@ fn a_walk_learns_the_country_and_the_currency_and_fills_them_unsettled() {
     assert!(!filled.into_bytes(b'|').windows(3).any(|w| w == b"15="));
     assert_eq!(filled.get_by_tag(15), None, "no field was written");
 
-    // A pair the parse detected off the symbol is derived, never learned;
-    // one the message states is, and the dealt currency is no listing's.
+    // A pair the parse detected off the symbol keys the FX instrument -
+    // `IF:EUR/USD`, its class detected too - and the real ISIN stated beside
+    // it is a fact of that instrument, found by it; the dealt currency is no
+    // listing's, and the instrument's currency is the pair's quote leg.
     let fx = {
         let body = "EZ000000000";
         format!("{body}{}", yggdryl::Isin::closing_digit(body).unwrap())
     };
-    walk(&format!("22=4|48={fx}|55=EUR/USD|15=EUR"), 4);
+    let walked = walk(&format!("22=4|48={fx}|55=EUR/USD|15=EUR"), 4);
     {
         let held = instruments.lock().expect("the registry");
         let row = held.get(&fx).expect("learned");
-        assert_eq!(row.forexcode(), None);
-        assert_eq!(row.currency(), None);
+        assert_eq!(row.get_crosscode(), "IF:EUR/USD");
+        assert_eq!(row.get(&IdType::Forex), Some("EUR/USD"));
+        assert_eq!(row.isin(), Some(fx.as_str()), "the real number, rank two");
+        assert_eq!(row.minted_isin(), None, "a numbered instrument mints none");
+        assert_eq!(row.currency().map(|code| code.as_str()), Some("USD"));
+        assert_eq!(
+            row.listings()
+                .iter()
+                .map(|listing| (
+                    listing.miccode().map(|code| code.as_str()),
+                    listing.ticker()
+                ))
+                .collect::<Vec<_>>(),
+            [(None, Some("EUR/USD"))],
+            "the symbol is the ticker of the pair's one unlisted listing"
+        );
+        assert_eq!(walked[0].get_instcode(), Some("IF:EUR/USD"));
+        assert_eq!(walked[0].get_isincode(), Some(fx.as_str()));
     }
+    // A pair stated as the `forex` identifier alone keys the same.
     walk(&format!("22=4|48={fx}|forexcode=EUR/USD|15=EUR"), 5);
     let held = instruments.lock().expect("the registry");
-    let row = held.get(&fx).expect("learned");
-    assert_eq!(row.forexcode().map(|pair| pair.as_str()), Some("EUR/USD"));
-    assert_eq!(row.currency(), None);
+    assert_eq!(held.len(), 2, "the share and the pair");
+    let row = held.get("IF:EUR/USD").expect("learned");
+    assert_eq!(row.get(&IdType::Forex), Some("EUR/USD"));
+}
+
+/// A walk creates the instrument of a pair a message's symbol names -
+/// `IF:EUR/USD`, keyed by the class the detection settled and the pair,
+/// minted its number - and every row of it carries the code the parse
+/// wrote and the number as its ISIN (D42); a message stating no class the
+/// pair spells, a ticker-only security, has no instrument and a null code.
+#[test]
+fn a_walk_creates_the_pairs_instrument_and_every_row_carries_its_code() {
+    crate::install::installed();
+    use std::sync::{Arc, Mutex};
+    use yggdryl::graph::Element;
+    use yggdryl_market::Instruments;
+
+    let instruments = Arc::new(Mutex::new(Instruments::new()));
+    let codec =
+        super::fixed_codec(super::committed_registry()).with_instruments(Arc::clone(&instruments));
+    let line = |seq: i32, body: &str| {
+        format!(
+            "8=FIX.4.4|35=D|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|{body}|10=0|"
+        )
+    };
+    let walk = |body: &str, seq: i32| -> Vec<FixMsg> {
+        let parsed: Vec<FixMsg> = codec
+            .parse_lines([line(seq, body)])
+            .collect::<yggdryl::Result<_>>()
+            .expect("a message");
+        assert_eq!(
+            parsed[0].get_instcode(),
+            parsed[0]
+                .get_securityids()
+                .get(&IdType::Forex)
+                .map(|_| "IF:EUR/USD"),
+            "the parse writes the pair's code from the message alone: {body}"
+        );
+        codec
+            .lifecycle(parsed)
+            .collect::<yggdryl::Result<_>>()
+            .expect("a walk")
+    };
+    let walked = walk("55=EUR/USD|54=1|38=1000000|44=1.0850", 1);
+    assert_eq!(walked[0].get_instcode(), Some("IF:EUR/USD"));
+    assert_eq!(walked[0].get_isincode(), Some("QYLTVIRYHNX5"));
+    {
+        let held = instruments.lock().expect("the registry");
+        assert_eq!(held.len(), 1);
+        let pair = held.get("IF:EUR/USD").expect("the pair's instrument");
+        assert_eq!(pair.get_crosscode(), "IF:EUR/USD");
+        assert_eq!(pair.minted_isin(), Some("QYLTVIRYHNX5"));
+        assert_eq!(pair.isin(), Some("QYLTVIRYHNX5"));
+        assert_eq!(pair.class(), Some("IF"));
+        assert_eq!(pair.currency().map(|code| code.as_str()), Some("USD"));
+        assert_eq!(pair.countrycode(), None);
+        assert_eq!(
+            held.get("QYLTVIRYHNX5"),
+            Some(pair),
+            "the number leads to it"
+        );
+    }
+    // Another spelling of the pair is the same instrument.
+    walk("55=EURUSD CURNCY|54=2|38=500000", 2);
+    assert_eq!(instruments.lock().expect("the registry").len(), 1);
+    // A ticker-only security has no instrument and no code.
+    let walked = walk("55=AAPL|54=1|38=100", 3);
+    assert_eq!(walked[0].get_instcode(), None);
+    assert_eq!(instruments.lock().expect("the registry").len(), 1);
+}
+
+/// Decision 10: a walk learns a message's instrument description into the
+/// instrument's metadata - the Instrument component's descriptive fields no
+/// typed fact holds, under the dictionary's names, trimmed - and keeps a
+/// bridge's own identifier of it under its `src:type` key beside the base
+/// key it fills; the message's own metadata, a bridge's unmapped keys about
+/// the order, never reaches the instrument.
+#[test]
+fn a_walk_learns_the_instruments_description_and_its_sourced_identifiers() {
+    crate::install::installed();
+    use smol_str::SmolStr;
+    use std::sync::{Arc, Mutex};
+    use yggdryl_market::{IdSource, Instruments};
+    let instruments = Arc::new(Mutex::new(Instruments::new()));
+    let codec =
+        super::fixed_codec(super::committed_registry()).with_instruments(Arc::clone(&instruments));
+    let line = "8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:01|11=1|48=US0378331005|22=4|55=AAPL|207=XNAS|15=USD|54=1|38=100|106= Apple Inc. |107=APPLE INC COMMON STOCK|167=CS|Bloomberg_FIGI=BBG000B9XRY4|OMS_UserID=u7|10=0|";
+    let parsed: Vec<FixMsg> = codec
+        .parse_lines([line.to_owned()])
+        .collect::<yggdryl::Result<_>>()
+        .expect("a message");
+    let walked: Vec<FixMsg> = codec
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<_>>()
+        .expect("a walk");
+    assert_eq!(walked[0].get_instcode(), Some("US0378331005"));
+    let held = instruments.lock().expect("the collection");
+    let apple = held.get("US0378331005").expect("the security");
+    let meta = |key: &str| apple.metadata().get(key).map(SmolStr::as_str);
+    assert_eq!(meta("issuer"), Some("Apple Inc."), "trimmed");
+    assert_eq!(meta("securitydesc"), Some("APPLE INC COMMON STOCK"));
+    assert_eq!(meta("securitytype"), Some("CS"));
+    assert_eq!(
+        meta("product"),
+        Some("5"),
+        "the product the native plan implies off the security type, as its digits"
+    );
+    assert_eq!(
+        apple.metadata().len(),
+        4,
+        "the order's own keys stay on the order"
+    );
+    let bloomberg = IdKey::new("bloomberg".parse::<IdSource>().unwrap(), IdType::Figi);
+    let xnas = yggdryl::Mic::new("XNAS").unwrap();
+    assert_eq!(
+        apple
+            .listing(Some(&xnas))
+            .and_then(|listing| listing.codes().get_from(&bloomberg)),
+        Some("BBG000B9XRY4"),
+        "the source's own key, on the listing"
+    );
+    assert_eq!(apple.get(&IdType::Figi), Some("BBG000B9XRY4"));
+}
+
+/// A walk learns a derivative from what only its message spells
+/// (`FixMsg::stated_characteristics`): an option by its underlying's code,
+/// its expiry day and its strike, a future by its underlying and its
+/// contract month, a strategy by its legs - each keyed `class:body` once the
+/// underlying or the legs resolve to instruments the collection keys, its
+/// real ISIN a fact beside the key - and fills the code onto the row, where
+/// the parse wrote none: a derivative's code is no function of its message
+/// alone (D42).
+#[test]
+fn a_walk_learns_a_derivative_from_what_its_message_spells() {
+    crate::install::installed();
+    use std::sync::{Arc, Mutex};
+    use yggdryl::Decimal;
+    use yggdryl::graph::Element;
+    use yggdryl_market::{Exercise, Instruments};
+
+    let instruments = Arc::new(Mutex::new(Instruments::new()));
+    let codec =
+        super::fixed_codec(super::committed_registry()).with_instruments(Arc::clone(&instruments));
+    let line = |seq: i32, body: &str| {
+        format!(
+            "8=FIX.4.4|35=D|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|{body}|10=0|"
+        )
+    };
+    let walk = |body: &str, seq: i32| -> Vec<FixMsg> {
+        let parsed: Vec<FixMsg> = codec
+            .parse_lines([line(seq, body)])
+            .collect::<yggdryl::Result<_>>()
+            .expect("a message");
+        codec
+            .lifecycle(parsed)
+            .collect::<yggdryl::Result<_>>()
+            .expect("a walk")
+    };
+    let code = |key: &str| {
+        instruments
+            .lock()
+            .expect("the registry")
+            .get(key)
+            .map(|row| row.get_crosscode().to_owned())
+    };
+    // The underlyings: Apple and the EURO STOXX 50 index.
+    walk("22=4|48=US0378331005|461=ESVUFR", 1);
+    walk("22=4|48=EU0009658145|461=TIXXXX", 2);
+    // The call on Apple, Eurex-numbered, American, multiplier 100.
+    let call = "DE000C000000";
+    let parsed = codec
+        .parse_fix_line(
+            line(
+                3,
+                &format!(
+                    "22=4|48={call}|461=OCASPS|201=1|202=200|541=20261218|1194=1|231=100|711=1|309=US0378331005|305=4"
+                ),
+            )
+            .as_bytes(),
+        )
+        .expect("a message");
+    assert_eq!(
+        parsed.get_instcode(),
+        None,
+        "a derivative's code needs the table"
+    );
+    let (class, pair, characteristics) = parsed.stated_characteristics().expect("a class");
+    assert_eq!(class.as_str(), "OCASPS");
+    assert_eq!(pair, None);
+    assert_eq!(
+        characteristics.expiry().map(|expiry| expiry.to_string()),
+        Some("2026-12-18".to_owned())
+    );
+    assert_eq!(
+        characteristics.strikepx(),
+        Some(Decimal::parse("200").unwrap())
+    );
+    assert_eq!(
+        characteristics.multiplier(),
+        Some(Decimal::parse("100").unwrap())
+    );
+    assert_eq!(characteristics.exercise(), Some(Exercise::American));
+    assert_eq!(characteristics.settle(), None);
+    let walked = codec
+        .lifecycle([Ok(parsed)])
+        .collect::<yggdryl::Result<Vec<FixMsg>>>()
+        .expect("a walk");
+    assert_eq!(
+        walked[0].get_instcode(),
+        Some("OC:US0378331005:2026-12-18:200"),
+        "filled by the lifecycle"
+    );
+    assert_eq!(
+        walked[0].get_isincode(),
+        Some(call),
+        "the real number stays the row's"
+    );
+    assert_eq!(
+        code(call).as_deref(),
+        Some("OC:US0378331005:2026-12-18:200"),
+        "the number leads to the option"
+    );
+    {
+        let held = instruments.lock().expect("the registry");
+        let option = held.get(call).expect("the option");
+        assert_eq!(option.isin(), Some(call));
+        assert_eq!(
+            option.minted_isin(),
+            None,
+            "a numbered instrument mints none"
+        );
+        assert_eq!(option.underlying(), Some("US0378331005"));
+        assert_eq!(
+            option.characteristics().exercise(),
+            Some(Exercise::American)
+        );
+        assert_eq!(
+            option.characteristics().multiplier(),
+            Some(Decimal::parse("100").unwrap())
+        );
+        assert!(!option.is_placeholder());
+    }
+    // The December 2026 FESX future, by its contract month.
+    let future = "DE000F000007";
+    let walked = walk(
+        &format!("22=4|48={future}|461=FFICSX|200=202612|711=1|309=EU0009658145|305=4"),
+        4,
+    );
+    assert_eq!(walked[0].get_instcode(), Some("FF:EU0009658145:2026-12"));
+    assert_eq!(code(future).as_deref(), Some("FF:EU0009658145:2026-12"));
+    // The future stated with its last trading day keys by its month alone.
+    let same = walk(
+        &format!("22=4|48={future}|461=FFICSX|541=20261218|711=1|309=EU0009658145|305=4"),
+        5,
+    );
+    assert_eq!(same[0].get_instcode(), Some("FF:EU0009658145:2026-12"));
+    // A calendar spread over the future and its March 2027 sibling, stated
+    // in either leg order, is one strategy of two legs in code order.
+    let march = "DE000F000015";
+    walk(
+        &format!("22=4|48={march}|461=FFICSX|200=202703|711=1|309=EU0009658145|305=4"),
+        6,
+    );
+    // A multileg order (`AB`) is the message the dictionary structures the
+    // `NoLegs(555)` group on.
+    let spread = "KE:FF:EU0009658145:2026-12+FF:EU0009658145:2027-03";
+    for (seq, legs) in [(7, (future, march)), (8, (march, future))] {
+        let parsed: Vec<FixMsg> = codec
+            .parse_lines([format!(
+                "8=FIX.4.4|35=AB|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|55=FESX-SPREAD|461=KEXXXX|555=2|600=FESX|602={}|603=4|623=1|600=FESX|602={}|603=4|623=1|10=0|",
+                legs.0, legs.1
+            )])
+            .collect::<yggdryl::Result<_>>()
+            .expect("a multileg order");
+        let walked: Vec<FixMsg> = codec
+            .lifecycle(parsed)
+            .collect::<yggdryl::Result<_>>()
+            .expect("a walk");
+        assert_eq!(
+            walked[0].get_instcode(),
+            Some(spread),
+            "legs stated {legs:?}"
+        );
+    }
+    let held = instruments.lock().expect("the registry");
+    assert_eq!(
+        held.len(),
+        6,
+        "two underlyings, the option, two futures, one spread"
+    );
+    let strategy = held.get(spread).expect("the spread");
+    assert_eq!(
+        strategy
+            .legs()
+            .iter()
+            .map(|leg| (leg.code(), leg.ratio()))
+            .collect::<Vec<_>>(),
+        [
+            ("FF:EU0009658145:2026-12", 1),
+            ("FF:EU0009658145:2027-03", 1)
+        ]
+    );
+    assert_eq!(
+        strategy.minted_isin(),
+        Some(yggdryl_market::Instrument::minted_number(spread).as_str())
+    );
+    // A derivative whose underlying no instrument keys is a placeholder
+    // under its real ISIN, keyed again once the body can be spelled.
+    drop(held);
+    let orphan = "DE000C000018";
+    walk(
+        &format!(
+            "22=4|48={orphan}|461=OCASPS|201=1|202=50|541=20261218|711=1|309=US5949181045|305=4"
+        ),
+        9,
+    );
+    {
+        let held = instruments.lock().expect("the registry");
+        let placeholder = held.get(orphan).expect("the placeholder");
+        assert_eq!(placeholder.get_crosscode(), orphan);
+        assert!(placeholder.is_placeholder());
+        assert_eq!(placeholder.underlying(), None);
+    }
 }
 
 /// A pipeline's lake: a table laid out as `python/tests/medallion.py` lays

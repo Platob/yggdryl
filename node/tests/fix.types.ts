@@ -204,6 +204,7 @@ const seqnum: number = message.seqnum
 const prevuuid: string | null = message.prevuuid
 const srcuuids: string[] = message.srcuuids
 const messageSecurityIds: Identifiers = message.securityids
+const messageInstcode: string | null = message.instcode
 const messageIsin: string | null = message.isincode
 const messageFxRates: Record<string, string> = message.fxrates
 const messageIdentifiers: Identifiers = message.identifiers
@@ -257,6 +258,7 @@ const eventSecurityIds: Identifiers = event.securityids
 const eventSpotRate: string | null = event.spotrate
 const eventForwardPoints: string | null = event.forwardpoints
 const eventMetadata: Record<string, string> = event.metadata
+const eventInstcode: string | null = event.instcode
 const eventIsin: string | null = event.isincode
 const eventFxRates: Record<string, string> = event.fxrates
 const eventIdentifiers: Identifiers = event.identifiers
@@ -299,7 +301,7 @@ void prevuuid
 void srcuuids
 void eventSources
 void messageSecurityIds
-void messageIsin
+void [messageInstcode, messageIsin]
 void messageFxRates
 void messageIdentifiers
 void messagePartyIds
@@ -347,7 +349,7 @@ void eventSecurityIds
 void eventSpotRate
 void eventForwardPoints
 void eventMetadata
-void eventIsin
+void [eventInstcode, eventIsin]
 void eventFxRates
 void eventIdentifiers
 void eventPartyIds

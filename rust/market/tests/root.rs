@@ -10,6 +10,8 @@
 //! feature, and the file that reaches it is declared behind that feature
 //! here.
 
+#[path = "root/characteristics.rs"]
+mod characteristics;
 #[path = "root/code.rs"]
 mod code;
 #[path = "root/compatibility.rs"]
@@ -34,10 +36,12 @@ mod idtype;
 mod implementer;
 #[path = "support/install.rs"]
 mod install;
-#[path = "root/isin_registry.rs"]
-mod isin_registry;
+#[path = "root/instrument.rs"]
+mod instrument;
 #[path = "root/limit.rs"]
 mod limit;
+#[path = "root/listing.rs"]
+mod listing;
 #[path = "root/market.rs"]
 mod market;
 #[path = "root/marketdatakind.rs"]

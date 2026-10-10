@@ -22,21 +22,23 @@ use crate::graph::{
 };
 use crate::identifier::IDENTIFIER_VALUE_WIDTH;
 use crate::securityid::SymbolCode;
-use crate::{Eusipa, IdKey, IdSource, IdType, Identifiers, IsinRegistry, MarketDataKind, Side};
-use yggdryl::{Ccy, Country, Isin, Result};
+use crate::{IdKey, IdSource, IdType, Identifiers, Instruments, MarketDataKind, Side};
+use yggdryl::Result;
 
 /// `graph::facts::OperationEventFacts`, raised to `pub` in a module the root does not publish.
 pub use crate::graph::facts::OperationEventFacts;
 /// `idtype::names_another_instrument`, raised to `pub` in a module the root does not publish.
 pub use crate::idtype::names_another_instrument;
-/// `isin_registry::EconomicMemo`, raised to `pub` in a module the root does not publish.
-pub use crate::isin_registry::EconomicMemo;
-/// `isin_registry::IsinTable`, raised to `pub` in a module the root does not publish.
-pub use crate::isin_registry::IsinTable;
-/// `isin_registry::Learned`, raised to `pub` in a module the root does not publish.
-pub use crate::isin_registry::Learned;
-/// `isin_registry::warn_full`, raised to `pub` in a module the root does not publish.
-pub use crate::isin_registry::warn_full;
+/// `instrument::EconomicMemo`, raised to `pub` in a module the root does not publish.
+pub use crate::instrument::EconomicMemo;
+/// `instrument::InstrumentTable`, raised to `pub` in a module the root does not publish.
+pub use crate::instrument::InstrumentTable;
+/// `instrument::Learned`, raised to `pub` in a module the root does not publish.
+pub use crate::instrument::Learned;
+/// `instrument::warn_full`, raised to `pub` in a module the root does not publish.
+pub use crate::instrument::warn_full;
+/// `instrument::Stated`, `instrument::Body` and `instrument::Production`, raised to `pub` in a module the root does not publish.
+pub use crate::instrument::{Body, Production, Stated};
 pub use crate::{delegate_market, delegate_operation};
 
 /// `identifier::WORD_PAIR_WIDTH`: the most bytes two words spell with one
@@ -157,25 +159,50 @@ pub const fn market_data_kind_stored_side(kind: MarketDataKind, side: Side) -> S
     kind.stored_side(side)
 }
 
-/// `IsinRegistry::as_table`: the table as it stands, shared.
+/// `Instruments::as_table`: the table as it stands, shared.
 #[inline]
-pub fn isin_registry_as_table(registry: &IsinRegistry) -> &IsinTable {
+pub fn instruments_as_table(registry: &Instruments) -> &InstrumentTable {
     registry.as_table()
 }
 
-/// `IsinRegistry::learn_stating`: what the registry learns of an event
-/// stating a real ISIN, beside the facts its message states of the
-/// instrument.
+/// `Instruments::learn_stating`: what the collection learns of an event,
+/// with what only its message spells laid over its facts.
 #[inline]
-pub fn isin_registry_learn_stating<E: crate::graph::Market + Event + ?Sized>(
-    registry: &mut IsinRegistry,
+pub fn instruments_learn_stating<E: crate::graph::Market + Event + ?Sized>(
+    instruments: &mut Instruments,
     event: &E,
-    origccy: Option<&Ccy>,
-    country: Option<&Country>,
-    underlying: Option<&Isin>,
-    product: Option<Eusipa>,
+    stated: &Stated<'_>,
 ) -> Learned {
-    registry.learn_stating(event, origccy, country, underlying, product)
+    instruments.learn_stating(event, stated)
+}
+
+/// `instrument::spell_code`: the cross code an element's own facts spell,
+/// with what its message spells beside them and the underlying's code where
+/// one is known - what a FIX parse writes as `instcode` where the code is a
+/// function of the message alone, and the key it mints a pair's number from.
+///
+/// # Errors
+///
+/// A code past [`MAX_CODE_WIDTH`](crate::MAX_CODE_WIDTH), named.
+#[inline]
+pub fn instrument_spell_code<'s, E: crate::graph::Market + ?Sized>(
+    element: &E,
+    body: Option<&Body>,
+    underlying: Option<&str>,
+    slot: &'s mut [u8; crate::MAX_CODE_WIDTH],
+) -> Result<Option<(&'s str, Production)>> {
+    crate::instrument::spell_code(element, body, underlying, slot)
+}
+
+/// `Instruments::fill_stating`: the collection's fill with what only the
+/// element's message spells laid over its facts.
+#[inline]
+pub fn instruments_fill_stating<E: crate::graph::Market + Element + ?Sized>(
+    instruments: &Instruments,
+    element: &mut E,
+    stated: &Stated<'_>,
+) -> bool {
+    instruments.fill_stating(element, stated)
 }
 
 /// `graph::iterator::order`: the elements' own order as a sort reads it.

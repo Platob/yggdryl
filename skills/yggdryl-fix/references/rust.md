@@ -514,35 +514,37 @@ assert_eq!(chained, 4);
 
 ## Share what lifecycles learn about instruments
 
-A lifecycle learns each message's ISIN - the one key - its CFI code, country,
-market, ticker, currency, pair and security codes into an `IsinRegistry`, and
-fills what later messages of that instrument leave unsaid, as `derived`
-identifiers and the ticker, CFI and currency facts, never the wire; a parse
-through the same codec fills derived identifiers from the table its door
-fixed. A codec without one learns into a registry of each walk's own;
-`with_isin_registry` shares one across walks run one after another, bound to
-a store with `from_url` and written back with `commit` only where it moved;
-`IsinRegistry::from_env` lays its store over the embedded common instruments
-`IsinRegistry::seeded()` holds. A row carries the national number its ISIN
-embeds - Holcim's Valor below - and its market's country's currency where it
-states none.
-A structured product's EUSIPA category is learned off a bridge's own key
-(`EUSIPACode`, `OMS_SSPACategory`, ...) as the row's `eusipacode`, an
-`Eusipa`; the key is lifted into no identifier map.
+A lifecycle learns each message's instrument into an `Instruments`, keyed by
+its cross code - a real ISIN for a security, `class:body` for an FX pair or a
+derivative, its `QY` number minted - with its CFI code, country, market,
+ticker, currency, pair and security codes, and fills what later messages of
+that instrument leave unsaid, as `derived` identifiers, the ticker, CFI and
+currency facts and the instrument's cross code as `instcode`, never the wire;
+a parse through the same codec fills derived identifiers from the table its
+door fixed. A codec without one learns into a collection of each walk's own;
+`with_instruments` shares one across walks run one after another, bound to a
+store with `from_url` and written back with `commit` only where it moved;
+`Instruments::from_env` lays its store over the embedded common instruments
+`Instruments::seeded()` holds. An instrument carries the national number its
+ISIN embeds - Holcim's Valor below - and each listing its market's country's
+currency where it states none. A structured product's EUSIPA category is
+learned off a bridge's own key (`EUSIPACode`, `OMS_SSPACategory`, ...) as the
+instrument's `eusipacode`, an `Eusipa`; the key is lifted into no identifier
+map. A row's `instcode` joins the instruments table on `crosscode`.
 
 ```rust
 use std::sync::{Arc, Mutex};
 
 use yggdryl_market::graph::Market;
 use yggdryl::local::LocalFolder;
-use yggdryl_market::{Eusipa, IsinEntry, IsinRegistry};
+use yggdryl_market::{Eusipa, Instrument, Instruments};
 use yggdryl_fix::{FixCodec, FixMsg, FixRegistry};
 yggdryl_fix::install()?;
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
-let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
-let codec = FixCodec::new(registry).with_isin_registry(Arc::clone(&instruments));
+let instruments = Arc::new(Mutex::new(Instruments::new()));
+let codec = FixCodec::new(registry).with_instruments(Arc::clone(&instruments));
 
 // The first walk states Holcim's ISIN, RIC, CFI code, ticker and market.
 let stated = ["8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|207=XSWX|10=0|"];
@@ -555,7 +557,7 @@ assert_eq!(instruments.lock().unwrap().get("CH0012214059").and_then(|row| row.ge
 let product = ["8=FIX.4.4|35=D|11=C|22=4|48=CH0123456789|55=ACMEL|207=XSWX|OMS_SSPACategory=2300|10=0|"];
 let parsed: Vec<FixMsg> = codec.parse_lines(product).collect::<yggdryl::Result<_>>()?;
 codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?;
-let category = instruments.lock().unwrap().get("CH0123456789").and_then(IsinEntry::eusipacode);
+let category = instruments.lock().unwrap().get("CH0123456789").and_then(Instrument::eusipacode);
 assert_eq!(category, Some(Eusipa::new(2300)?));
 assert_eq!(category.and_then(|code| code.name()), Some("Constant Leverage Certificate"));
 
@@ -566,7 +568,16 @@ let parsed: Vec<FixMsg> = codec.parse_lines(later).collect::<yggdryl::Result<_>>
 assert_eq!(parsed[0].get_isincode(), Some("CH0012214059"));
 let walked = codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?;
 assert_eq!(walked[0].get_cficode().map(|code| code.as_str()), Some("ESVUFR"));
-assert_eq!(walked[0].get_cficode().map(|code| code.as_str()), Some("ESVUFR"));
+assert_eq!(walked[0].get_instcode(), Some("CH0012214059"), "the instrument's cross code");
+
+// An FX pair no agency numbers: its code and its minted number are spelled
+// from the message alone, and the walk learns its instrument.
+let pair = ["8=FIX.4.4|35=D|11=F|55=EUR/USD|54=1|38=1000000|10=0|"];
+let parsed: Vec<FixMsg> = codec.parse_lines(pair).collect::<yggdryl::Result<_>>()?;
+assert_eq!((parsed[0].get_instcode(), parsed[0].get_isincode()), (Some("IF:EUR/USD"), Some("QYLTVIRYHNX5")));
+codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?;
+assert_eq!(Instrument::minted_number("IF:EUR/USD").as_str(), "QYLTVIRYHNX5");
+assert!(instruments.lock().unwrap().get("IF:EUR/USD").is_some());
 ```
 
 ## Follow a replace chain's parents

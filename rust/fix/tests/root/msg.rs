@@ -258,9 +258,15 @@ fn removing_the_isin_keeps_the_pair_the_symbol_names() {
     message.finalize();
     assert_eq!(
         shown(message.get_securityids()),
-        ["derived:forex=EUR/USD", "forex=EUR/USD"],
-        "and a settle restates neither"
+        [
+            "derived:forex=EUR/USD",
+            "derived:isin=QYLTVIRYHNX5",
+            "forex=EUR/USD",
+            "isin=QYLTVIRYHNX5"
+        ],
+        "a settle restates neither, and mints the pair's number the stated ISIN kept out, D42"
     );
+    assert_eq!(message.get_instcode(), Some("IF:EUR/USD"));
 }
 
 #[test]

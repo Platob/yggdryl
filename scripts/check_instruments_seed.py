@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
-"""Check the instrument registry's seed, `config/isin/instruments.json`.
+"""Check the instruments' seed, `config/instruments/instruments.json`.
 
-The seed is one JSON array of listings sorted by ISIN then market, each an
-object keyed as the registry's columns are: an instrument listed on several
-markets is one row per market, as the registry holds it. It is the one file maintained by hand;
-the crate embeds a copy of it inside its own package,
-`rust/market/src/isin_registry/seed.json` (`rust/market/src/isin_registry/seed.rs`), so a
-published crate and a source distribution carry it too, and
-`rust/market/tests/isin_registry/seed.rs` pins what that copy holds. This script is
-the check run in the change that edits the file, and reports every failure
-before it exits 1; `--sync` first writes the copy from the file, byte for
-byte.
+The seed is one JSON array of instruments sorted by ISIN, one object per
+instrument with its listings nested, each keyed as the instrument's
+columns are. It is the one file maintained by hand; the crate embeds a copy
+of it inside its own package, `rust/market/src/instrument/seed.json`
+(`rust/market/src/instrument/seed.rs`), so a published crate and a source
+distribution carry it too, and `rust/market/tests/instrument/seed.rs` pins
+what that copy holds. This script is the check run in the change that edits
+the file, and reports every failure before it exits 1; `--sync` first writes
+the copy from the file, byte for byte.
 
 - the crate's copy is the file's bytes exactly;
-
-- the document is a JSON array of objects holding only the keys `isin`,
-  `ticker`, `miccode`, `currency`, `origccy`, `countrycode`, `cficode` and
-  `fisn`, `isin`, `ticker`, `currency` and `cficode` required;
+- the document is a JSON array of objects holding the keys `isin`,
+  `cficode`, `countrycode`, `fisn`, `origccy` and `listings` - `isin`,
+  `cficode` and `listings` required, `listings` a non-empty array of
+  objects holding only `miccode`, `ticker` and `currency`, `ticker` and
+  `currency` required - and any other key as a metadata entry of the
+  instrument: a non-empty string of at most 128 bytes under a key of at most
+  128 bytes, at most 16 such keys;
 - an ISIN is twelve upper-case ASCII letters and digits closing on its
-  ISO 6166 check digit; a row is unique on its ISIN and its `miccode`, and
-  the array is sorted by the ISIN, then the `miccode`;
-- a row of no `miccode` - an index, which trades on no market - is its
-  ISIN's only row, since the registry holds an unlisted row alone;
-- the rows of one ISIN agree on the instrument's facts - `countrycode`,
-  `cficode`, `fisn` and `origccy` - which the registry holds on every
-  listing;
+  ISO 6166 check digit; an instrument is unique on its ISIN, and the array
+  is sorted by it;
+- a listing is unique on its `miccode`, the listings sorted by it; a listing
+  of no `miccode` - an index, which trades on no market - is its
+  instrument's only one;
 - `countrycode` is two upper-case letters, the ISIN's own prefix unless that
   prefix is an agency's (`EU EZ XA XB XC XD XF XK XS XT`), where it may name
   another country or be absent - an index of no one country;
@@ -32,20 +32,17 @@ byte.
 - `origccy`, the currency the instrument was issued in, is three upper-case
   letters, stated only where the research names it - a share class's
   currency its fund's name and short name spell - and never derived from the
-  ISIN's prefix, which names a domicile: an Irish USD share class is not
-  EUR, a Cayman holding not KYD;
-- `miccode` is four upper-case letters or digits that ISO 10383 assigned:
-  a row of `rust/src/mic/tables.rs`;
+  ISIN's prefix, which names a domicile;
+- `miccode` is four upper-case letters or digits that ISO 10383 assigned: a
+  row of `rust/src/mic/tables.rs`;
 - `cficode` is six upper-case letters in ISO 10962:2021, the edition the
   crate's CFI table reads: an index is referential (`T`), indices (`I`) -
-  `TIEXXX` an equity index. The research candidates may spell an index in
-  2015's `MRIXXX`, which the 2021 table reads as no classification at all,
-  so the seed states the 2021 code and this check refuses `MRIXXX`;
+  `TIEXXX` an equity index; 2015's `MRIXXX` is refused;
 - `fisn` is at most thirty-five printable ASCII characters, upper case, one
   `/` between a non-empty issuer and a non-empty description;
 - `ticker` is one to sixty-four characters with no blank at either end.
 
-Usage: python scripts/check_isin_seed.py [--sync] [--seed PATH] [--copy PATH] [--mics PATH]
+Usage: python scripts/check_instruments_seed.py [--sync] [--seed PATH] [--copy PATH] [--mics PATH]
 """
 
 from __future__ import annotations
@@ -57,12 +54,17 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SEED = ROOT / "config" / "isin" / "instruments.json"
-COPY = ROOT / "rust" / "market" / "src" / "isin_registry" / "seed.json"
+SEED = ROOT / "config" / "instruments" / "instruments.json"
+COPY = ROOT / "rust" / "market" / "src" / "instrument" / "seed.json"
 MICS = ROOT / "rust" / "src" / "mic" / "tables.rs"
 
-KEYS = ("isin", "ticker", "miccode", "currency", "origccy", "countrycode", "cficode", "fisn")
-REQUIRED = ("isin", "ticker", "currency", "cficode")
+KEYS = ("isin", "cficode", "countrycode", "fisn", "origccy", "listings")
+REQUIRED = ("isin", "cficode", "listings")
+LISTING_KEYS = ("miccode", "ticker", "currency")
+# `Instrument::MAX_METADATA` and `MAX_METADATA_WIDTH`, the bounds the crate holds a row's metadata under.
+MAX_METADATA = 16
+MAX_METADATA_WIDTH = 128
+LISTING_REQUIRED = ("ticker", "currency")
 AGENCY_PREFIXES = frozenset(("EU", "EZ", "XA", "XB", "XC", "XD", "XF", "XK", "XS", "XT"))
 
 ISIN_SHAPE = re.compile(r"[A-Z]{2}[A-Z0-9]{9}[0-9]")
@@ -73,7 +75,7 @@ CFI_SHAPE = re.compile(r"[A-Z]{6}")
 MIC_ROW = re.compile(r'\("([A-Z0-9]{4})", "')
 
 # ISO 10962:2015 spellings the 2021 table reads as no classification, and the
-# 2021 code a seed row states instead.
+# 2021 code a seed instrument states instead.
 RETIRED_CFI = {"MRIXXX": "TIEXXX"}
 
 MAX_TICKER_WIDTH = 64
@@ -124,28 +126,59 @@ def check_fisn(fisn: object) -> str | None:
     return None
 
 
+def check_listing(where: str, listing: object, mics: set[str]) -> list[str]:
+    """Every failure of one listing, each naming its place and key."""
+    if not isinstance(listing, dict):
+        return [f"{where}: expected an object, got {type(listing).__name__}"]
+    failures = []
+    for key in listing:
+        if key not in LISTING_KEYS:
+            failures.append(f"{where}.{key}: expected one of {', '.join(LISTING_KEYS)}")
+    for key in LISTING_REQUIRED:
+        if key not in listing:
+            failures.append(f"{where}.{key}: required")
+    ticker = listing.get("ticker")
+    if "ticker" in listing and (
+        not isinstance(ticker, str)
+        or not 1 <= len(ticker) <= MAX_TICKER_WIDTH
+        or ticker != ticker.strip()
+    ):
+        failures.append(f"{where}.ticker: expected 1 to {MAX_TICKER_WIDTH} characters, trimmed, got {ticker!r}")
+    currency = listing.get("currency")
+    if "currency" in listing and (not isinstance(currency, str) or not CURRENCY_SHAPE.fullmatch(currency)):
+        failures.append(f"{where}.currency: expected three upper-case letters, got {currency!r}")
+    mic = listing.get("miccode")
+    if "miccode" in listing:
+        if not isinstance(mic, str) or not MIC_SHAPE.fullmatch(mic):
+            failures.append(f"{where}.miccode: expected four upper-case letters or digits, got {mic!r}")
+        elif mic not in mics:
+            failures.append(f"{where}.miccode: expected a MIC ISO 10383 assigned, got {mic!r}")
+    return failures
+
+
 def check_row(at: int, row: object, mics: set[str]) -> list[str]:
-    """Every failure of the row at `at`, each naming the row and the key."""
+    """Every failure of the instrument at `at`, each naming it and the key."""
     if not isinstance(row, dict):
         return [f"$[{at}]: expected an object, got {type(row).__name__}"]
     where = f"$[{at}]"
     failures = []
-    for key in row:
-        if key not in KEYS:
-            failures.append(f"{where}.{key}: expected one of {', '.join(KEYS)}")
+    extras = [key for key in row if key not in KEYS]
+    if len(extras) > MAX_METADATA:
+        failures.append(f"{where}: expected at most {MAX_METADATA} metadata keys, got {len(extras)}")
+    for key in extras:
+        value = row[key]
+        if not key or len(key.encode()) > MAX_METADATA_WIDTH:
+            failures.append(f"{where}.{key}: expected a metadata key of 1 to {MAX_METADATA_WIDTH} bytes")
+        if not isinstance(value, str) or not value or len(value.encode()) > MAX_METADATA_WIDTH:
+            failures.append(
+                f"{where}.{key}: expected a metadata value, a string of 1 to {MAX_METADATA_WIDTH} bytes, got {value!r}"
+            )
     for key in REQUIRED:
         if key not in row:
             failures.append(f"{where}.{key}: required")
     isin = row.get("isin")
     if "isin" in row and (failure := check_isin(isin)):
         failures.append(f"{where}.isin: {failure}")
-    ticker = row.get("ticker")
-    if "ticker" in row and (
-        not isinstance(ticker, str)
-        or not 1 <= len(ticker) <= MAX_TICKER_WIDTH
-        or ticker != ticker.strip()
-    ):
-        failures.append(f"{where}.ticker: expected 1 to {MAX_TICKER_WIDTH} characters, trimmed, got {ticker!r}")
     country = row.get("countrycode")
     agency = isinstance(isin, str) and isin[:2] in AGENCY_PREFIXES
     if "countrycode" not in row:
@@ -160,16 +193,9 @@ def check_row(at: int, row: object, mics: set[str]) -> list[str]:
             failures.append(
                 f"{where}.countrycode: expected the ISIN's prefix {isin[:2]!r}, got {country!r}"
             )
-    for key in ("currency", "origccy"):
-        currency = row.get(key)
-        if key in row and (not isinstance(currency, str) or not CURRENCY_SHAPE.fullmatch(currency)):
-            failures.append(f"{where}.{key}: expected three upper-case letters, got {currency!r}")
-    mic = row.get("miccode")
-    if "miccode" in row:
-        if not isinstance(mic, str) or not MIC_SHAPE.fullmatch(mic):
-            failures.append(f"{where}.miccode: expected four upper-case letters or digits, got {mic!r}")
-        elif mic not in mics:
-            failures.append(f"{where}.miccode: expected a MIC ISO 10383 assigned, got {mic!r}")
+    origccy = row.get("origccy")
+    if "origccy" in row and (not isinstance(origccy, str) or not CURRENCY_SHAPE.fullmatch(origccy)):
+        failures.append(f"{where}.origccy: expected three upper-case letters, got {origccy!r}")
     cfi = row.get("cficode")
     if "cficode" in row:
         if not isinstance(cfi, str) or not CFI_SHAPE.fullmatch(cfi):
@@ -181,11 +207,30 @@ def check_row(at: int, row: object, mics: set[str]) -> list[str]:
             )
     if "fisn" in row and (failure := check_fisn(row["fisn"])):
         failures.append(f"{where}.fisn: {failure}")
+    listings = row.get("listings")
+    if "listings" in row:
+        if not isinstance(listings, list) or not listings:
+            failures.append(f"{where}.listings: expected a non-empty array, got {listings!r}")
+        else:
+            previous = None
+            seen: set[str] = set()
+            for index, listing in enumerate(listings):
+                failures.extend(check_listing(f"{where}.listings[{index}]", listing, mics))
+                mic = listing.get("miccode") if isinstance(listing, dict) else None
+                key = mic if isinstance(mic, str) else ""
+                if not key and len(listings) > 1:
+                    failures.append(
+                        f"{where}.listings[{index}].miccode: a listing of no market is its instrument's only one"
+                    )
+                if key in seen:
+                    failures.append(f"{where}.listings[{index}].miccode: {mic!r} is listed twice")
+                seen.add(key)
+                if previous is not None and key < previous:
+                    failures.append(
+                        f"{where}.listings[{index}]: expected the listings sorted by market, got {key} after {previous}"
+                    )
+                previous = key
     return failures
-
-
-# The facts of an instrument the registry holds on every listing of it.
-INSTRUMENT_KEYS = ("countrycode", "cficode", "fisn", "origccy")
 
 
 def check(seed: Path, mics_path: Path) -> list[str]:
@@ -198,44 +243,20 @@ def check(seed: Path, mics_path: Path) -> list[str]:
         return [f"$: expected a JSON array, got {type(document).__name__}"]
     mics = assigned_mics(mics_path)
     failures = []
-    # The first row of each ISIN, and of each ISIN and market.
-    first: dict[str, int] = {}
-    seen: dict[tuple[str, str], int] = {}
+    seen: dict[str, int] = {}
     previous = None
     for at, row in enumerate(document):
         failures.extend(check_row(at, row, mics))
         isin = row.get("isin") if isinstance(row, dict) else None
         if not isinstance(isin, str):
             continue
-        mic = row.get("miccode")
-        key = (isin, mic if isinstance(mic, str) else "")
-        if key in seen:
-            failures.append(
-                f"$[{at}]: {isin} on {mic or 'no market'} is the listing of $[{seen[key]}] too"
-            )
+        if isin in seen:
+            failures.append(f"$[{at}]: {isin} is the instrument of $[{seen[isin]}] too")
         else:
-            seen[key] = at
-        if isin in first:
-            held = document[first[isin]]
-            if "miccode" not in row or "miccode" not in held:
-                failures.append(
-                    f"$[{at}].miccode: {isin} of no market is the ISIN of $[{first[isin]}] too; "
-                    "a row of no market is its ISIN's only row"
-                )
-            for name in INSTRUMENT_KEYS:
-                if row.get(name) != held.get(name):
-                    failures.append(
-                        f"$[{at}].{name}: expected the instrument's {held.get(name)!r} of "
-                        f"$[{first[isin]}], got {row.get(name)!r}"
-                    )
-        else:
-            first[isin] = at
-        if previous is not None and key < previous:
-            failures.append(
-                f"$[{at}]: expected the rows sorted by ISIN then market, got "
-                f"{isin} {mic or ''} after {previous[0]} {previous[1]}"
-            )
-        previous = key
+            seen[isin] = at
+        if previous is not None and isin < previous:
+            failures.append(f"$[{at}]: expected the instruments sorted by ISIN, got {isin} after {previous}")
+        previous = isin
     return failures
 
 
@@ -248,7 +269,7 @@ def check_copy(seed: Path, copy: Path) -> list[str]:
     if not same:
         return [
             f"{copy}: expected the bytes of {seed}, got others; "
-            "run python scripts/check_isin_seed.py --sync"
+            "run python scripts/check_instruments_seed.py --sync"
         ]
     return []
 
@@ -274,8 +295,8 @@ def main() -> int:
         print(f"{len(failures)} failure(s) in {arguments.seed}", file=sys.stderr)
         return 1
     rows = json.loads(arguments.seed.read_text(encoding="utf-8"))
-    instruments = len({row["isin"] for row in rows})
-    print(f"{arguments.seed}: {instruments} instruments, {len(rows)} listings")
+    listings = sum(len(row["listings"]) for row in rows)
+    print(f"{arguments.seed}: {len(rows)} instruments, {listings} listings")
     return 0
 
 

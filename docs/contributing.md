@@ -41,7 +41,7 @@ CI runs the rest on the pushed branch: on a change to the core and on every push
 
 The workspace holds three Rust crates: `yggdryl` in `rust/`, the core;
 `yggdryl-market` in `rust/market/` over it - the four market kinds, the
-identifiers, the ISIN registry and the market graph; and `yggdryl-fix` in
+identifiers, the instruments and the market graph; and `yggdryl-fix` in
 `rust/fix/` over both - the FIX dictionary, codec, messages and lifecycle. The
 bindings and the `yggdryl` command link all three.
 
@@ -74,7 +74,7 @@ the `yggdryl` command install both when they load.
 | `rust/src/uri/` | [URI](uri/index.md) |
 | `rust/src/arrow/` | [Arrow](arrow/index.md) |
 | `rust/src/expression/` | [Expression](expression/index.md) |
-| `rust/src/graph/`, the event vocabulary, and `rust/market/src/`: `graph/`, `limit.rs`, `identifier.rs`, `idkey.rs`, `idtype.rs`, `idsource.rs`, `securityid.rs`, `isin_registry.rs`, `eusipa.rs` | [Graph](graph/index.md) |
+| `rust/src/graph/`, the event vocabulary, and `rust/market/src/`: `graph/`, `limit.rs`, `identifier.rs`, `idkey.rs`, `idtype.rs`, `idsource.rs`, `securityid.rs`, `instrument.rs`, `characteristics.rs`, `listing.rs`, `eusipa.rs` | [Graph](graph/index.md) |
 | `rust/src/digest.rs`, `rust/src/hashing/`, `rust/src/xxhash/`, `rust/src/txhash/` | [Hashing](hashing.md) |
 | `rust/src/logging/` | [Logging](logging.md) |
 | `rust/fix/src/` | [FIX](fix/index.md) |

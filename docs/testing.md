@@ -100,14 +100,14 @@ crate can pin.
     cargo test -p yggdryl-market --all-features --test expression
     cargo test -p yggdryl-market --all-features --test graph
     cargo test -p yggdryl-market --all-features --test iceberg
-    cargo test -p yggdryl-market --all-features --test isin_registry
+    cargo test -p yggdryl-market --all-features --test instrument
     cargo test -p yggdryl-market --all-features --test market_register
     cargo test -p yggdryl-market --all-features --test xxhash
     cargo test -p yggdryl-market --all-features --test allocations
     cargo test -p yggdryl-market --all-features --test iobase_calls
     cargo test -p yggdryl-fix --all-features --test root
     cargo test -p yggdryl-fix --all-features --test graph
-    cargo test -p yggdryl-fix --all-features --test isin_registry
+    cargo test -p yggdryl-fix --all-features --test instrument
     cargo test -p yggdryl-fix --all-features --test allocations
     cargo test -p yggdryl-fix --all-features --test iobase_calls
     cargo test -p yggdryl-fix --all-features --test scale_ulbridge  # the capture pipeline on series, table to table, three copies of the capture

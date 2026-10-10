@@ -364,8 +364,8 @@ from .identifier import (
     Identifier as Identifier,
     Identifiers as Identifiers,
 )
-from .isin_registry import (
-    IsinRegistry as IsinRegistry,
+from .instrument import (
+    Instruments as Instruments,
     Resolution as Resolution,
 )
 from .eusipa import (

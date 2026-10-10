@@ -889,6 +889,48 @@ fn a_capture_records_each_execution_in_its_book_and_folds_none() {
     assert_eq!(held, expected, "each execution once");
 }
 
+/// An FX pair's book is keyed by the number this crate mints for its
+/// instrument `IF:EUR/USD`, which the parse derives as the row's ISIN:
+/// every spelling of the pair, and a ticker-only FX symbol, join the one
+/// book (the FX book took its minted number, D42).
+#[test]
+fn an_fx_pairs_book_is_keyed_by_its_minted_number() {
+    crate::install::installed();
+    let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
+    let lines: [&[u8]; 2] = [
+        b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=F1|55=EUR/USD|54=1|38=1000000|44=1.0850|10=0|",
+        b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=F2|55=EURUSD CURNCY|54=2|38=500000|44=1.0860|10=0|",
+    ];
+    let messages: Vec<FixMsg> = lines
+        .iter()
+        .flat_map(|line| codec.parse_line(line).unwrap())
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    for message in &messages {
+        assert_eq!(message.get_instcode(), Some("IF:EUR/USD"));
+        assert_eq!(message.get_isincode(), Some("QYLTVIRYHNX5"));
+    }
+    let books = books_of(
+        codec
+            .book_arrow_reader(codec.lifecycle(messages), 0, None)
+            .expect("a book stream"),
+    );
+    let keyed: Vec<(&str, usize, usize)> = books
+        .iter()
+        .map(|book| {
+            (
+                book.get_crosscode(),
+                alive(book, true).len(),
+                alive(book, false).len(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        keyed,
+        [("3:0:QYLTVIRYHNX5", 1, 0), ("3:0:QYLTVIRYHNX5", 1, 1)]
+    );
+}
+
 /// A chain stated first by its ticker and then under its instrument's ISIN,
 /// the ordinary FIX shape (`Symbol(55)` on the order and `SecurityID(48)`
 /// on a later statement), rests in one book: the restatement withdraws the

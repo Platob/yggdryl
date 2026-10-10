@@ -1,6 +1,8 @@
-//! The store a registry is bound to: the holder its table was loaded from
+//! The store a collection is bound to: the holder its table was loaded from
 //! and is committed back to as one snapshot, under the holder's own record
 //! options resolved once at the binding.
+
+use std::sync::Arc;
 
 use smol_str::format_smolstr;
 
@@ -9,11 +11,11 @@ use yggdryl::implementer::warned;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{Error, IOBase, IOMedia, IOMode, IOResult, MimeType, Result, Url};
 
-use super::{IsinEntry, IsinRegistry, IsinTable};
+use super::{Instrument, InstrumentTable, Instruments};
 
-/// Where a registry's rows are kept: the holder, and the holder's own record
-/// options, resolved once when the registry was bound - what the rows are
-/// read under; a write declares the registry's row over them.
+/// Where a collection's rows are kept: the holder, and the holder's own record
+/// options, resolved once when the collection was bound - what the rows are
+/// read under; a write declares the collection's row over them.
 #[derive(Debug)]
 pub(crate) struct Store {
     holder: Holder,
@@ -27,9 +29,9 @@ pub(crate) struct Store {
     /// store out afresh as a plain folder's parts are; read once at the
     /// binding.
     keeps_row: bool,
-    /// The registry columns, by their place in [`IsinEntry::field`], the
+    /// The collection columns, by their place in [`Instrument::field`], the
     /// row a store that keeps its row was laid out with has none of - a
-    /// store written before the column was the registry's - read off the
+    /// store written before the column was the collection's - read off the
     /// load at the binding; emptied where a commit lays the store out
     /// afresh.
     lacking: Vec<usize>,
@@ -43,7 +45,7 @@ impl Store {
     /// A leaf names its encoding by its name, so one this build has no
     /// record encoding for is refused by it; a location inside a table a
     /// format lays out - one partition of an Iceberg table - is refused by
-    /// name, since a registry is replaced whole.
+    /// name, since a collection is replaced whole.
     fn bind(holder: Holder) -> Result<Self> {
         let native_table = matches!(&holder, Holder::Table(_));
         let container = holder.is_container();
@@ -56,7 +58,7 @@ impl Store {
                 return Err(Error::InvalidRecord {
                     path: smol_str::SmolStr::new_static("$.holder"),
                     reason: format_smolstr!(
-                        "expected a table whole for the instrument registry, got a partition \
+                        "expected a table whole for the instrument collection, got a partition \
                          of one at {}",
                         location(&holder)
                     ),
@@ -81,7 +83,7 @@ impl Store {
     }
 
     /// The options a commit writes under: the holder's own, declaring the
-    /// registry's row - its country partition and its order where the store
+    /// collection's row - its country partition and its order where the store
     /// keeps its row, a leaf or an Iceberg table; a plain folder is laid out
     /// by the layout it spells, partitioning by columns alone, so it takes
     /// the row declaring nothing, which no `column=value` layout contradicts.
@@ -89,12 +91,12 @@ impl Store {
         let field = if self.container && !self.keeps_row {
             super::ROW.clone()
         } else {
-            IsinEntry::field()
+            Instrument::field()
         };
         self.options.clone().with_field(field)
     }
 
-    /// Reads off the row `stored` - what the load read - the registry
+    /// Reads off the row `stored` - what the load read - the collection
     /// columns it has none of, where the store keeps its row: a column it
     /// names under any spelling the load reads is one it has. A store
     /// holding no row yet is laid out by the first commit and lacks none.
@@ -106,19 +108,19 @@ impl Store {
         let held: Vec<usize> = stored
             .fields()
             .iter()
-            .filter_map(|column| super::registry_column(column.name()))
+            .filter_map(|column| super::column_at(column.name()))
             .collect();
-        let columns = IsinEntry::field().fields().len();
+        let columns = Instrument::field().fields().len();
         self.lacking
             .extend((0..columns).filter(|at| !held.contains(at)));
     }
 
     /// Warns, once per commit and column, where `table` holds a value in a
     /// column the store's row has none of: a commit replaces the rows under
-    /// the row the store holds, so the value stays the registry's and not
+    /// the row the store holds, so the value stays the collection's and not
     /// the store's - no migration rewrites the store - until the store is
     /// laid out afresh. The column and the store are the warning's key.
-    fn warn_lacking(&self, table: &IsinTable) {
+    fn warn_lacking(&self, table: &InstrumentTable) {
         for &at in &self.lacking {
             let held = table.iter().filter(|row| row.states_column(at)).count();
             if held == 0 {
@@ -127,10 +129,10 @@ impl Store {
             let column = super::column_name(at);
             let store = location(&self.holder);
             warned!(
-                "instrument registry column not stored: the store's row lacks it",
+                "instrument column not stored: the store's row lacks it",
                 &format!("{column} at {store}"),
-                "the {column} of {held} of the registry's rows is not stored: the store, laid \
-                 out before the column, has its rows replaced under its own row, so the registry \
+                "the {column} of {held} of the collection's rows is not stored: the store, laid \
+                 out before the column, has its rows replaced under its own row, so the collection \
                  alone holds the value until the store is laid out afresh"
             );
         }
@@ -144,15 +146,15 @@ fn location(holder: &Holder) -> String {
         .map_or_else(|| "an unlocated handle".to_owned(), |url| url.to_string())
 }
 
-impl IsinRegistry {
-    /// A registry bound to `holder` and loaded from it: the holder's own
+impl Instruments {
+    /// A collection bound to `holder` and loaded from it: the holder's own
     /// record stream - an Arrow IPC leaf, a Parquet one, a folder of parts,
     /// an Iceberg table, an object store - read once through
     /// [`Self::extend_from_arrow_reader`] under options resolved once
     /// ([`Self::set_holder`]); a store holding nothing yet is an empty first
     /// run, laid out by the first [`Self::commit`]. Clean after the load.
     ///
-    /// Unseeded: the registry holds the store's rows and nothing else.
+    /// Unseeded: the collection holds the store's rows and nothing else.
     /// [`Self::seeded_from_holder`] lays them over the seed instead.
     ///
     /// # Errors
@@ -198,9 +200,9 @@ impl IsinRegistry {
     ///
     /// What the holder's read or [`Self::extend_from_arrow_reader`] refuses.
     pub fn seeded_from_holder(holder: impl Into<Holder>) -> Result<Self> {
-        let mut registry = Self::seeded();
-        registry.set_holder_over(holder.into())?;
-        Ok(registry)
+        let mut instruments = Self::seeded();
+        instruments.set_holder_over(holder.into())?;
+        Ok(instruments)
     }
 
     /// [`Self::seeded_from_holder`] over the holder `url` names under
@@ -210,39 +212,46 @@ impl IsinRegistry {
     /// ```
     /// use yggdryl::local::LocalFolder;
     /// use yggdryl::{Ccy, Isin, Mic, Url};
-    /// use yggdryl_market::{IdType, IsinEntry, IsinRegistry};
+    /// use yggdryl_market::{IdType, Instrument, Instruments, Listing};
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// #     yggdryl_market::install().unwrap();
     /// let root = LocalFolder::temporary()?
     ///     .path()?
-    ///     .join(format!("yggdryl-isin-seeded-doc-{}", std::process::id()));
+    ///     .join(format!("yggdryl-instruments-seeded-doc-{}", std::process::id()));
     /// let url = Url::from_path(root.join("instruments.arrows"))?;
     /// let none: [(&str, &str); 0] = [];
     /// // A store stating Apple, a seed instrument, under another currency, and
     /// // one instrument the seed has no row of.
-    /// let mut store = IsinRegistry::from_url(&url, none)?;
-    /// store.merge(
-    ///     IsinEntry::new(Isin::new("US0378331005")?)
-    ///         .with_miccode(Some(Mic::new("XNAS")?))
+    /// let mut store = Instruments::from_url(&url, none)?;
+    /// store.merge(Instrument::for_security(Isin::new("US0378331005")?)?.with_listing(
+    ///     Listing::new(Some(Mic::new("XNAS")?))
     ///         .with_ticker(Some("AAPL".into()))
     ///         .with_currency(Some(Ccy::new("CHF")?)),
+    /// )?)?;
+    /// store.merge(
+    ///     Instrument::for_security(Isin::new("GB0002634946")?)?
+    ///         .with_listing(Listing::new(Some(Mic::new("XLON")?)))?,
     /// )?;
-    /// store.merge(IsinEntry::new(Isin::new("GB0002634946")?).with_miccode(Some(Mic::new("XLON")?)))?;
     /// store.commit()?;
     ///
-    /// let seed = IsinRegistry::seeded();
-    /// let mut registry = IsinRegistry::seeded_from_url(&url, none)?;
-    /// assert_eq!(registry.len(), seed.len() + 1, "the seed, and the store's other row");
-    /// assert!(!registry.is_dirty());
-    /// let apple = registry.get("US0378331005").expect("the seed's and the store's");
-    /// assert_eq!(apple.currency().map(Ccy::as_str), Some("CHF"), "the store's value wins");
-    /// assert_eq!(apple.fisn(), seed.get("US0378331005").and_then(IsinEntry::fisn), "the seed's stands");
+    /// let seed = Instruments::seeded();
+    /// let mut collection = Instruments::seeded_from_url(&url, none)?;
+    /// assert_eq!(collection.len(), seed.len() + 1, "the seed, and the store's other row");
+    /// assert!(!collection.is_dirty());
+    /// let apple = collection.get("US0378331005").expect("the seed's and the store's");
+    /// let nasdaq = Mic::new("XNAS")?;
+    /// assert_eq!(
+    ///     apple.listing(Some(&nasdaq)).and_then(Listing::currency).map(Ccy::as_str),
+    ///     Some("CHF"),
+    ///     "the store's value wins"
+    /// );
+    /// assert_eq!(apple.fisn(), seed.get("US0378331005").and_then(Instrument::fisn), "the seed's stands");
     ///
     /// // The first commit that moves anything writes every row.
-    /// registry.merge(IsinEntry::new(Isin::new("CH0012214059")?).try_with_code(IdType::Ric, "HOLN.S")?)?;
-    /// assert_eq!(registry.commit()?.written_rows, registry.rows() as u64);
-    /// assert!(IsinRegistry::from_url(&url, none)?.iter().eq(registry.iter()));
+    /// collection.merge(Instrument::for_security(Isin::new("CH0012214059")?)?.try_with_code(IdType::Ric, "HOLN.S")?)?;
+    /// assert_eq!(collection.commit()?.written_rows, collection.rows() as u64);
+    /// assert!(Instruments::from_url(&url, none)?.iter().eq(collection.iter()));
     /// std::fs::remove_dir_all(&root)?;
     /// # Ok(())
     /// # }
@@ -262,28 +271,30 @@ impl IsinRegistry {
         Self::seeded_from_holder(Holder::from_url(url, properties)?)
     }
 
-    /// Binds the registry to `holder`: the holder's rows are loaded, the
-    /// rows the registry held fold over them by the update rule
-    /// ([`Self::merge`]), and the registry is dirty exactly where a held
-    /// row moved something. The options the rows cross under are resolved
-    /// here, once. Answers how many rows the holder held.
+    /// Binds the collection to `holder`: the holder's rows are loaded, the
+    /// rows the collection held fold over them by the update rule
+    /// ([`Self::merge`]), and the collection is dirty exactly where a held
+    /// row left the table differing from the store's rows. The options the
+    /// rows cross under are resolved here, once. Answers how many rows the
+    /// holder held.
     ///
     /// # Errors
     ///
     /// What the holder's read, [`Self::extend_from_arrow_reader`] or a
-    /// fold of a held row refuses; the registry then stands as it was,
+    /// fold of a held row refuses; the collection then stands as it was,
     /// bound to the store it was.
     pub fn set_holder(&mut self, holder: impl Into<Holder>) -> Result<usize> {
         let mut store = Store::bind(holder.into())?;
-        // The economic settings are the registry's, never the store's.
+        // The economic settings are the collection's, never the store's.
         let emptied = self.table.emptied();
         let held = std::mem::replace(&mut self.table, emptied);
-        let was_dirty = self.dirty;
+        let was_moved = self.moved;
+        let was_stored = Arc::clone(&self.stored);
         let loaded = (|| -> Result<usize> {
             let reader = store.holder.read_arrow_reader(&store.options)?;
             store.read_lacking(&reader.schema());
             let read = self.extend_from_arrow_reader(reader)?;
-            self.dirty = false;
+            self.record_stored();
             for row in held.iter() {
                 self.merge(row.clone())?;
             }
@@ -296,28 +307,28 @@ impl IsinRegistry {
             }
             Err(error) => {
                 self.table = held;
-                self.dirty = was_dirty;
+                self.moved = was_moved;
+                self.stored = was_stored;
                 Err(error)
             }
         }
     }
 
-    /// Binds the registry to `holder` with the precedence of
+    /// Binds the collection to `holder` with the precedence of
     /// [`Self::set_holder`] turned over: the holder's rows fold over the
-    /// rows the registry holds by the update rule, so a value the store
-    /// states wins, and the registry is clean after - the seed beneath a
+    /// rows the collection holds by the update rule, so a value the store
+    /// states wins, and the collection is clean after - the seed beneath a
     /// store ([`Self::seeded_from_holder`], what [`Self::from_env`] loads).
     /// Answers how many rows the holder held.
     ///
     /// # Errors
     ///
     /// What the holder's read or [`Self::extend_from_arrow_reader`]
-    /// refuses; the registry then stands as it was, bound to the store it
+    /// refuses; the collection then stands as it was, bound to the store it
     /// was.
     pub(crate) fn set_holder_over(&mut self, holder: Holder) -> Result<usize> {
         let mut store = Store::bind(holder)?;
         let held = self.table.clone();
-        let was_dirty = self.dirty;
         let loaded = (|| -> Result<usize> {
             let reader = store.holder.read_arrow_reader(&store.options)?;
             store.read_lacking(&reader.schema());
@@ -325,13 +336,12 @@ impl IsinRegistry {
         })();
         match loaded {
             Ok(read) => {
-                self.dirty = false;
+                self.record_stored();
                 self.store = Some(Box::new(store));
                 Ok(read)
             }
             Err(error) => {
                 self.table = held;
-                self.dirty = was_dirty;
                 Err(error)
             }
         }
@@ -347,44 +357,63 @@ impl IsinRegistry {
         Ok(self)
     }
 
-    /// The holder the registry is bound to, where it is.
+    /// The holder the collection is bound to, where it is.
     #[must_use]
     pub fn holder(&self) -> Option<&Holder> {
         self.store.as_ref().map(|store| &store.holder)
     }
 
-    /// Writes the table to the holder it is bound to, only where it moved
-    /// since it was loaded or last committed, so the store holds exactly
-    /// the snapshot ([`Self::into_arrow_reader`]) whatever its layout: a
+    /// Writes the table to the holder it is bound to, only where its
+    /// content differs from what the store holds ([`Self::is_dirty`]: a
+    /// fact that moved and moved back since the load is no change), so the
+    /// store holds exactly the snapshot ([`Self::into_arrow_reader`])
+    /// whatever its layout: a
     /// leaf rewritten whole in one overwrite, every listing row of every
-    /// instrument, an emptied registry truncating it; an Iceberg table
+    /// instrument, an emptied collection truncating it; an Iceberg table
     /// replaced in one atomic snapshot, every row of every partition - the
-    /// listings of one ISIN in one - an emptied registry one empty
+    /// listings of one ISIN in one - an emptied collection one empty
     /// snapshot that keeps the table a table; a plain folder's record parts
     /// of the store's encoding removed - a leaf of another encoding or a
     /// file that is no record part never touched - then the snapshot laid
     /// out as one part under the layout the folder spells, none where the
-    /// registry is empty. A clean registry touches the store with no call
+    /// collection is empty. A clean collection touches the store with no call
     /// and answers no rows. Clean after.
     ///
     /// A leaf or an Iceberg table keeps the row it was laid out with, so a
-    /// store written before a column the registry now has - `eusipacode`,
+    /// store written before a column the collection now has - `eusipacode`,
     /// `fisn`, `lastunix` - is written without it, and the commit warns, naming the column and
-    /// the store, wherever the registry holds a value there; the store is
+    /// the store, wherever the collection holds a value there; the store is
     /// never migrated - an emptied leaf, or a new store, is laid out with
     /// the row as it is now.
     ///
     /// # Errors
     ///
-    /// A registry bound to no holder, and what the holder's write refuses,
-    /// which leaves the registry dirty.
+    /// A collection bound to no holder, and what the holder's write refuses,
+    /// which leaves the collection dirty.
     pub fn commit(&mut self) -> Result<IOResult> {
-        let Some(store) = &mut self.store else {
-            return Err(Error::absent("isin registry holder", "an unbound registry"));
-        };
-        if !self.dirty {
+        if self.store.is_none() {
+            return Err(Error::absent(
+                "instruments holder",
+                "an unbound instruments",
+            ));
+        }
+        if !self.is_dirty() {
+            // Moved and moved back: the store holds the table as it stands.
+            self.moved = false;
             return Ok(IOResult::default());
         }
+        let written = self.write_snapshot()?;
+        self.record_stored();
+        Ok(written)
+    }
+
+    /// Writes the snapshot to the store, whatever its layout
+    /// ([`Self::commit`]).
+    fn write_snapshot(&mut self) -> Result<IOResult> {
+        let store = self
+            .store
+            .as_deref_mut()
+            .expect("the commit checked the collection is bound");
         let container = store.container;
         if store.native_table {
             let snapshot = Self::snapshot_reader(&self.table)?;
@@ -394,7 +423,6 @@ impl IsinRegistry {
                 Some(&store.write_options()),
             )?;
             store.warn_lacking(&self.table);
-            self.dirty = false;
             return Ok(written);
         }
         if container && let Some(mut located) = yggdryl::implementer::locate(&store.holder)? {
@@ -404,8 +432,7 @@ impl IsinRegistry {
                 located.overwrite_whole(Self::snapshot_reader(&self.table)?)?;
                 store.warn_lacking(&self.table);
             }
-            self.dirty = false;
-            let rows = self.table.rows() as u64;
+            let rows = self.table.len() as u64;
             return Ok(IOResult::new(rows, rows));
         }
         if container {
@@ -430,12 +457,11 @@ impl IsinRegistry {
             store.warn_lacking(&self.table);
             written
         };
-        self.dirty = false;
         Ok(result)
     }
 
     /// The rows of `table` as the stream [`Self::into_arrow_reader`] answers.
-    fn snapshot_reader(table: &IsinTable) -> Result<yggdryl::arrow::BatchReader> {
+    fn snapshot_reader(table: &InstrumentTable) -> Result<yggdryl::arrow::BatchReader> {
         Ok(yggdryl::implementer::reader(
             &super::FIELD,
             super::Snapshot::of(table),

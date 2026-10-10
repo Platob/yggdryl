@@ -1537,6 +1537,411 @@ struct StageCosts {
 /// three lines are terminal, so the walk retires each and files no name,
 /// and 12, 12 and 11 stand. No other stage moved.
 ///
+/// The row then gained `instcode` (65_054, D42), the resolved instrument's
+/// cross code as a nullable `utf8` right after `securityids`: the sixty-sixth
+/// market column lays out its own three arrays in the landing - offsets,
+/// values and validity - nine more at every line, 1524 to 1533, 1503 to
+/// 1512, 1541 to 1550, and each batch gathers the one array more, 213 to
+/// 214: the column's structural cost, as `OrigClOrdID(41)`'s validity was.
+/// The parse, the row and the digest moved by nothing, since the code is
+/// written from facts the row already feeds and fed to no digest. The
+/// lifecycle's walk learns the line's instrument into a fresh collection,
+/// and that instrument's own storage - its identifiers' one vector, a
+/// metadata entry where the line describes it (`SecurityType(167)`, the
+/// `Product(460)` the native plan implies), its listing's codes where it
+/// states some - is what the walk now costs past the collection's first
+/// use: the lifecycle pins moved once with D42, 12 to 22, 12 to 16 and 11
+/// to 16, the instrument's storage its sources and its description state
+/// (decision 10) and nothing per line beyond it.
+///
+/// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]
+/// in `rust/tests/root/field.rs` pins. A bridge row's plan is found again
+/// by its shape once the alias children it makes share their metadata, so
+/// its parse is as linear as a frame's. Each landing fell by four when the
+/// `state` column became the `int32` code of its member: one primitive
+/// buffer where a text column built its offsets and its bytes; and by four
+/// again when the `side` column did the same. Every parse fell when the
+/// derivations and the retired fields' restatements became native code, no
+/// rule compiled or bound per registry (718 to 559, 254 to 206, 1471 to
+/// 1005, and a bridge row's walk 38 to 36, which enriches again). The
+/// residual record became one `map<utf8, utf8>` and its counter column
+/// went: the landing fell by about seventy and the batch by thirteen, fewer
+/// arrays than three levels of entry structs; `into_row` now renders a
+/// group's JSON, which allocates by contract - the packed frame's nested
+/// groups 174 to 244 - while a flat row's map is about what its list cost
+/// (83 to 78 with the unresolved keys moved into `metadata`, 55 to 58). The
+/// split at the parse, the six bid and ask facts and the token aliases
+/// (A12-A22) moved every parse up (559 to 653, 206 to 254, 1005 to 1036),
+/// each landing by seven and each batch by one with the six new market
+/// columns, and a bridge row's walk to 43. Reading the four word aliases on
+/// the stack, where the token lookup cut a name into a `Vec` of words and
+/// spelled each alternative as a `String`, took 24, 24 and 8 back off the
+/// parse (629, 230, 1028) and 8 off the bridge row's walk (35); and a key no
+/// dictionary resolves that a row states empty is kept in `metadata` as
+/// `{}` rather than dropped, the bridge row's `into_row` 78 to 79. A
+/// message's table of names came to be shared by its clones through one
+/// `Arc`: a parse building one pays that `Arc` (1028 to 1029), a clone read
+/// or walked no longer builds its own (`into_row` 79 to 77, 58 to 57 and
+/// 244 to 243), and a bridge row's parse, whose split execution shares its
+/// report's table, fell by one net (629 to 628). Each walk pays one table
+/// for the identities its deduplication window keeps and, walking a clone,
+/// no longer pays a table of names: a frame's walk stands at 7; and a bridge
+/// row's fell from 35 to 8 when redating a message a parse built settled
+/// what its clock moved alone. A trade side stating no `Side(54)` came to
+/// split off an execution of side `UKNW` where it noted an anomaly: the
+/// packed frame's parse 1029 to 1132, that execution's 106 less the
+/// anomaly's 3. Reading the accounts off the parties at every settle took
+/// the bridge row to 641 and the packed frame to 1145, thirteen each for
+/// six and seven parties per message; the frame's regulatory `TVTIC`, a
+/// fifth alternate identifier growing its map at each of three settles,
+/// took it to 233. Reading the accounts level by level - a trade side's
+/// parties, then the message's - rather than gathered into one list that
+/// spilled past its eight inline occurrences took two back off the packed
+/// frame at its two settles (1143); its `Account(1)` costs these lines
+/// nothing. An execution split off a report came to be chained under its
+/// `ExecID(17)` as given rather than `ExecID=` before it: the code is the
+/// identifier copied once where `format!` reserved twice its seven-byte
+/// literal and grew once for the sixteen-byte identifier, so the bridge
+/// row's parse fell to 640 and the frame's to 232.
+///
+/// The row gained twenty-five columns when every generated schema came to
+/// open with the element, event, market and operation facts - the market
+/// data type, the stop price, the displayed, hidden and cancelled
+/// quantities, the ordered quantity and the rest - 133 columns to 158: each
+/// landing rose by about eleven a column (1381 to 1663, 1362 to 1642, 1398
+/// to 1682), what a nullable leaf column costs a one-row landing, and each
+/// batch by forty-five (190 to 235). The parse and the row moved with the
+/// facts a message now settles and states: the type its typing field reads
+/// as, the quantities its state implies and the boxed record of rarely
+/// stated quantities, against a time in force held as a one-byte member
+/// rather than text - the bridge row's parse 640 to 629 and its row 77 to
+/// 82, a frame's 232 to 239 and 57 to 60, the packed frame's 1143 to 1148
+/// and 243 to 246.
+///
+/// The bridge row's parse fell to 623 when the instrument key a bridge's
+/// `*INSTRUMENTID` names came to be read into its three typed parts - inline
+/// codes - where it copied each part into a `String` at each of the three
+/// facts that read it, less what a ticker of an identifier's own shape
+/// derives; a frame's parse rose to 241 and its walk to 8 with the RIC its
+/// ticker is, derived and carried along its chain.
+///
+/// The identifier maps became one sorted vector of identifiers each -
+/// `secaltids`, `altids`, `parties` - typed, sourced and valued apart.
+/// Each parse fell where an entry held its key and its value packed in one
+/// buffer past `SmolStr`'s inline width (24 for the bridge row's alternate
+/// identifiers and 6 for its accounts), a type and a source being static
+/// words and most values inline; it rose by one per settle for a set of one
+/// or two identifiers, which takes its one backing where two inline slots
+/// held it, and by the parties now kept apart under their role and source:
+/// the bridge row's two parties sourced by a description the code set does
+/// not resolve - typed by that spelling - stand beside the proprietary ones
+/// of their role, where a map keyed by role kept the first. The bridge
+/// row's parse is 602, a frame's 237, the packed frame's 1150. The row moved by what `SecurityID(48)`,
+/// `SecurityIDSource(22)` and `Parties(453)` cost once they left its
+/// columns for `fixentries` - a group's JSON allocating by contract, about
+/// seventy for the bridge row's eight parties and thirty-five for a frame's
+/// three - and by one record per identifier where a map held two texts
+/// (twenty-six for the bridge row, eleven for a frame): `into_row` 82 to
+/// 175, 60 to 106, 246 to 273. With four columns fewer and the identifier
+/// sets laid out as a list of five-text records rather than maps, each
+/// landing fell by about seventy-three (1590, 1571, 1608) and each batch by
+/// seventeen (218). A walk no longer copies the instrument's identifiers to
+/// learn and fill them, which took each walk to 7. The sets then became
+/// `securityids`, `identifiers` and `partyids`, each identifier a `src`,
+/// `type` and `value` of lower-case words - the members of two enums where
+/// they are named, an inline word where they are not - and moved none of
+/// these counts.
+///
+/// An identifier then lost its `parent` and `orig`, each set came to be laid
+/// out as a map from the key `src:type` to the identifier, and the stored
+/// cross code took its `{kind}:{side}:{base}` prefix. Each batch rose by six
+/// to 224: an identifier column is a map node and its entries struct (four)
+/// over the key text (one) and the identifier struct (two) of three texts
+/// (three), ten arrays where a list node (one) over a struct (two) of five
+/// texts (five) was eight. A frame's parse rose to 241 by the six times its
+/// two messages spell the stored code - as it is set, then as the side and
+/// the category it is stored under land - each one allocation at its exact
+/// length, less the two the sided code cost before; the packed frame's to
+/// 1153 by its three spellings. A frame's row rose to 109 by its three keys
+/// past `SmolStr`'s inline width, one allocation each, the map's entries
+/// costing a set what the list did; the packed frame's to 279 by its five
+/// such keys and the party `client:clientid` its unmapped `client.clientid`
+/// entry now states. The bridge row's nine crate fields went (65051 to
+/// 65060), taking 34 off its parse: the restatement of those fields (27),
+/// the entries its digest rendered for them (6), two typed translations and
+/// two where its identifiers are read from the unmapped entries rather than
+/// built from those fields, less the three a key resolved through a field
+/// path costs; it gained four for its six spellings of the stored code over
+/// the two before and nine for the parents filled at each of its three
+/// settles - the set copied, the fills gathered, one insert grown. Its row
+/// lost the `SecAltIDGrp(454)` entry the two instrument keys among those
+/// fields made and their own nine entries, Username(553)'s taking one back
+/// (34), and gained five identifier rows - nine read from unmapped entries
+/// for the four those fields held - and six keys past the inline width: 175
+/// to 152. An alias stating another
+/// value than the field it lost to came to be kept in the message's
+/// metadata beside an anomaly, and the bridge row's `OMSDealerAccount`,
+/// `ULTraderClOrdID`, `MarketOrderID` and `OMSDealerOrderID` do: fourteen
+/// to its parse - each anomaly's reason formatted and copied into its
+/// string (eight), the alias that had agreed before both lost (one), the
+/// anomaly list past eight (one), and the metadata past eleven keys, two
+/// more B-tree nodes where the parse builds it and two where the split
+/// execution clones it - so the parse stands at 595. `ParentClOrdID` came to
+/// reach `OrigClOrdID(41)` as its other spelling, so the bridge row lands
+/// that column's sixteen bytes where it landed a validity bitmap and its
+/// buffer: 1589. Splitting a trade into its sides cuts each side out of
+/// the sides group, and the whole serie is the serie: the packed frame's
+/// one side is that group itself, where the cut copied it, so its parse
+/// fell by that copy to 1152.
+///
+/// A decimal came to read and to write its text with no heap string built on
+/// the way - the coefficient's spelling joined on the stack, the pointed text
+/// written straight to its sink - and nothing else moved: each parse fell by
+/// the allocations the decimals it reads used to cost, ten for the bridge row
+/// (585), seven for a frame (234) and nineteen for the packed frame (1134),
+/// and each digest, which renders the decimals it holds, by eight (16), eight
+/// (16) and six (10).
+///
+/// Every decimal then came to write one text, the shortest that states it,
+/// built on the stack whichever leaf holds it - the fixed leaves' text had
+/// built a heap string and trimmed it, and the wire and the digest spelled
+/// each `decimal128(38, 18)` field through it - and a float came to be read
+/// off a spelling on the stack: each digest renders its decimals with no
+/// allocation and stands at one, and each parse fell by the allocations its
+/// decimal spellings used to cost, four for the bridge row (581), two for a
+/// frame (232) and twenty for the packed frame (1114).
+///
+/// Each identifier set then became one sorted `map<utf8, utf8>` from the key
+/// (a base key spelled as its type alone, a key of two words the crate
+/// names one static string) to the value, and every type a named source
+/// states came to hold its base key too. The bridge row measured a parse of
+/// 596 and a row of 151 before it, where this pin stated 595 and 152. Each
+/// batch fell by twelve to 212: an identifier column is a map node and its
+/// entries struct (four) over two texts (two), six arrays where ten were.
+/// Each landing fell by sixty-nine with the layout - twenty-three a column,
+/// the identifier struct and its three texts gone - and by two more for
+/// each set it lands, its entries three allocations where they were five:
+/// 1515, 1496 and 1533, the bridge row's eighteen party keys growing their
+/// text once more. `into_row` lost the record each identifier was and every
+/// key spelled past `SmolStr`'s inline width, a key of two words the crate
+/// names being a static string and only a key naming a source it does not -
+/// `omsdealer:account` among them - spelled: 151 to 116 for the bridge row's
+/// thirty identifiers, thirty records and eight texts past the inline width
+/// where its thirty-seven entries now spell three, 109 to 95 for a frame's
+/// eleven (eleven and three, none now) and 279 to 262 for the packed
+/// frame's thirteen (thirteen and five, one now). The parses moved by the
+/// sets the rule
+/// keeps: a frame's rose to 245, three for the base keys its three sourced
+/// parties fill growing its party map at its three settles and one for the
+/// base keys its two derivations fill growing its security identifiers;
+/// the bridge row's fell to 592, nine for the parent fills its
+/// `ParentOrderID` keys no longer make at its three settles - the base
+/// `orderid` is the wire's `OrderID(37)` - against three for its sourced
+/// parties' base keys, one for its security identifiers' and one for the
+/// `DETAILEDCFICODE` it states, now a name of `CFICode(461)` folded where
+/// the message is built; the packed frame's did not move. Each walk rose to
+/// 8: its instrument registry takes its own table on its first learn, the
+/// empty registry sharing one static table until then.
+///
+/// A fill's report and the execution split off it then came to settle by
+/// what the split recorded alone - the category, the state, the chain, the
+/// sources - which moves no field, so neither rebuilds the identifier maps
+/// a whole settle rebuilt off the fields its parse had already read. The
+/// bridge row's parse fell by eighteen to 574, the nine that rebuild cost
+/// at each of its two settles after the first: its identifier set grown
+/// twice (to four, then eight) by what its fields state and once past
+/// eight by the keys its unmapped entries name; its party set grown three
+/// times (to four, eight and sixteen) by the fifteen its group and its
+/// `Account(1)` state and once past sixteen by its unmapped entries; and
+/// the two occurrences stating the source
+/// `generallyacceptedmarketparticipantidentifier`, a text past `SmolStr`'s
+/// inline width, read again. A frame's fell by eight to 237, the four at
+/// each: its five identifiers grown twice, the fifth a regulatory trade
+/// identifier, and its five parties twice. The packed frame is a trade,
+/// whose sides settle whole, and did not move.
+///
+/// A map whose keys stand in strictly ascending order then came to prove
+/// them distinct in the one pass that proves them sorted, and a map past
+/// sixteen entries no longer builds the set its duplicate search held. A
+/// map is checked where its entries are gathered and again where its row is
+/// canonicalized, a map built in the metadata or residual's own order at
+/// both and a party map at the second alone, and a landing checks each once
+/// more. The bridge row's `into_row` fell by five to 111, its metadata's
+/// thirty-three keys and its residual's eighteen twice each and its eighteen
+/// parties once, and its landing by three to 1512; a frame's fell by four
+/// to 91, its metadata's seventeen keys and its residual's twenty-two twice
+/// each, and by two to 1494; the packed frame's by two to 260, its
+/// metadata's eighteen keys twice, and by one to 1532.
+///
+/// A boolean's text then came to be read as a column cast reads it, so the
+/// packed frame's `ManualOrderIndicator(1028)=no` types as false where it
+/// was refused: its parse fell by sixteen to 1137, the located error, the
+/// anomaly and the warning the refusal built, and its `into_row` rose by
+/// three to 263, the entry the typed flag now adds to the row's
+/// `fixentries`.
+///
+/// A row then came to hold each arrival once: a key no dictionary resolved
+/// that an identifier map holds with its value rides the residual record
+/// under `0:key` and leaves the `metadata` cell, which is built sorted in
+/// one pass rather than by cloning the message's map and inserting each
+/// unresolved name into the clone. A frame's `into_row` fell by two to 89 -
+/// the three nodes its seventeen names split the cloned map into and the
+/// one its cell collected from them, against the one vector the cell now
+/// fills and the one its map keeps - and captured nothing; the packed
+/// frame's fell by one to 262, the same two saved against the one vector
+/// its one captured key adds to the residual's keyed tree; the bridge
+/// row's rose by nine to 120: ten vectors for the ten keys captured out of
+/// its metadata's thirty-three into its residual's eighteen and two for the
+/// one key past the inline width - `0:omsdealerparentorderid` - against
+/// three fewer between the residual's tree growing a node for them and the
+/// metadata's clone and its splits going: ten and two, less three. Each walk
+/// rose by two to 10 when the instrument registry gained its ticker index:
+/// the index shares one static empty table until a walk's first learn
+/// lists a ticker, which takes the index's own Arc and its own table beside
+/// the rows'.
+///
+/// A decimal's text then came to be read with no string of its own: the
+/// strict reader's `format!` of the sign, the whole and the fraction into
+/// one digit string went with its fold into the one decimal reader, so each
+/// parse fell by one for every decimal text it reads - eight for the bridge
+/// row, six for a frame, nine for the packed frame - and no other stage
+/// moved.
+///
+/// The two lines of history then met: the decimal reading above was the
+/// one this file's earlier paragraph already counted from the other side,
+/// so the merged parse is each side's fall summed less that one saving -
+/// 595 less fourteen and twenty-nine plus eight is the bridge row's 560,
+/// 241 less nine and ten plus six a frame's 228, 1153 less forty and
+/// twenty-five plus nine the packed frame's 1097 - and every digest stands
+/// at the one its stack-built decimal text leaves, every other stage as
+/// this line left it.
+///
+/// A key stated once then came to be filed in the residual record as the
+/// one entry it is, the keys sorted on the stack rather than grouped in a
+/// tree of vectors: each `into_row` fell by its record's keys and the
+/// tree's nodes, and no other stage moved - the bridge row's twenty-eight
+/// keys and four nodes to 88, a frame's twenty-two and three to 64, the
+/// packed frame's eleven and one to 250.
+///
+/// A group then became its list alone, no counter beside it at any level.
+/// Each parse fell by the list of every child's tag and counter the
+/// builder's finish collected to restate a counter: one each, and three
+/// more for the bridge row, whose `NoPartyIDs` stated two beside the eight
+/// occurrences the group held, for the anomaly that disagreement built.
+/// Each fell by the list of counters every entries walk collected at
+/// a level holding groups to leave a counter's child out: one for the bridge
+/// row, four for a frame and eleven for the packed frame. The packed frame
+/// fell by sixty-two more, the one write per split side restating
+/// `NoSides(552)=1` beside the side's group, and by one where its root's six
+/// groups no longer spilled the four-wide list of counters the member walk
+/// kept; the bridge row rose by one, the builder holding three slots fewer
+/// and crossing one growth boundary the other way - what the former reading
+/// paid for this line with any one of its three named counters dropped. So
+/// the bridge row's parse fell by four to 556, a frame's by five to 223,
+/// the packed frame's by seventy-five to 1022. Each landing fell by what the
+/// fixed row's two counter columns, `notrdregtimestamps` and
+/// `noregulatorytradeids`, cost to lay out - ten for the bridge row, twelve
+/// for each frame - and each batch by the two arrays it no longer gathers,
+/// to 210; no `into_row` moved.
+///
+/// A place then came to be never absent: each of these messages is the
+/// first at its instant, and its `seqnum` cell states zero where it was a
+/// null. A column holding no null lands with no validity beside its values,
+/// so each landing fell by the two that validity cost -
+/// [`a_null_cell_costs_the_validity_a_stated_one_does_not`] pins the pair on
+/// its own - the bridge row's to 1500, a frame's to 1480, the packed
+/// frame's to 1518, and no other stage moved.
+///
+/// A datetime then came to be read by the datetime's own reader, and no
+/// text is rendered for it: the ISO spelling the codec restated each wire
+/// timestamp as - built in a string builder, finished as a shared string
+/// and copied into the value the contract then read - went with the
+/// rewrite, so each parse fell by what each of its datetime fields paid for
+/// a rendering past the twenty-three bytes a string holds inline: three for
+/// a reading of milliseconds under a UTC column - the builder's one spill
+/// to the heap, the string it finished as and the value's own - and four
+/// for one of microseconds, whose builder grew once more to take the `Z`.
+/// The bridge row states three digit runs of milliseconds and one of
+/// microseconds, thirteen, to 543; a frame a `SendingTime(52)` of
+/// milliseconds and a `TransactTime(60)` and an `ExpireTime(126)` of
+/// microseconds, eleven, to 212; the packed frame two digit runs of
+/// milliseconds, six, to 1016, its two readings of whole seconds having
+/// rendered inline. A reading builds no refusal either - a digit run is
+/// read before the general reader is asked, where asking first cost two
+/// for the refusal it then dropped - so a datetime field costs a parse
+/// nothing, and no other stage moved.
+///
+/// The strike then came to be a market fact, `strikepx`, a column of the
+/// fixed row's shared prefix none of these messages states: each landing
+/// rose by the seven a nullable decimal column holding a null costs to lay
+/// out - its values, its validity and the array around them - to 1507, 1487
+/// and 1525, and each batch by the one array it gathers more, to 211; no
+/// other stage moved.
+/// Main also adds the required `msgpluginside` column (65043), whose
+/// five landing allocations combine with strike's seven: 1512, 1492 and
+/// 1530. Both added arrays make each batch 212; no per-row stage moved.
+///
+/// The origin currency then came to be a market fact, `origccy` (65018), a
+/// column of the fixed row's shared prefix none of these messages states:
+/// each landing rose by the eleven a nullable `ccy` column holding a null
+/// costs to lay out - eleven over a lone column's landing, where a
+/// nullable decimal holding a null costs the seven above - to 1523, 1503
+/// and 1541, and each batch by the one array it gathers more, to 213. And
+/// the instrument registry gained its lookup-code index beside its ticker
+/// index: each walk's first learn takes the index's own `Arc` off the
+/// static empty one every registry shares - one more on every walk - and
+/// its own table where the row it learns holds a code a lookup reads. The
+/// bridge row's and a frame's Swiss ISINs embed a Valor, so their walks
+/// rose by two to 12; the packed frame's `EZ` ISIN embeds none, and its
+/// walk rose by one to 11. No other stage moved.
+///
+/// Every FIX value then came to be read by its type's own door - a
+/// `TZTimeOnly` stating no zone as the wall clock in its column's zone, a
+/// bridge's `Aggressor` as the flag `Y` is, a word no code of its set spells
+/// refused naming the set rather than the integer it is not - and only the
+/// parse and the packed frame's row moved, each value measured against the
+/// same line with that one value spelled as both readings type it. The
+/// packed frame's two `AGGRESSORINDICATOR=Aggressor` and its
+/// `LEGMATURITYTIME=093000` type now, and the refusals they cost went -
+/// fifteen, sixteen and eighteen - and what the line's refusals cost
+/// together past their sum fell by one, four to three; its four words
+/// still refused (`TraderName`,
+/// `publishername`, `UniqueTransactionIDLeg`, `UniqueTransactionIDHedge`)
+/// cost one more each, the refusal naming the set where it named the
+/// integer, but the last, whose cost stands: 1016 less fifty plus three is
+/// 969. The bridge row's four words still refused cost the same one more
+/// each, two for `orderoriginatorsystem`, as each measures on a line of
+/// that one pair: 543 to 548. The packed frame's row rose by the one its
+/// side's typed `AggressorIndicator(1057)` costs - the former reading's row
+/// of the same line with that value spelled `Y` stood at 251 too - to 251.
+/// A frame's line states none of these values, and no other stage moved.
+///
+/// The `parentclordid` spelling of `OrigClOrdID(41)` then retired, a
+/// bridge's `PARENTCLORDID` a word naming no field: the bridge row's
+/// `OrigClOrdID(41)` column holds a null where it held that key's value, so
+/// its landing lays out the validity a null cell costs and a stated one
+/// does not ([`a_null_cell_costs_the_validity_a_stated_one_does_not`]), one
+/// more, to 1524 - the same line with the key spelled `ORIGCLORDID` lands at
+/// 1523. The walk filing the chain identities alone moved no lifecycle: the
+/// three lines are terminal, so the walk retires each and files no name,
+/// and 12, 12 and 11 stand. No other stage moved.
+///
+/// The row then gained `instcode` (65_054, D42), the resolved instrument's
+/// cross code as a nullable `utf8` right after `securityids`: the sixty-sixth
+/// market column lays out its own three arrays in the landing - offsets,
+/// values and validity - nine more at every line, 1524 to 1533, 1503 to
+/// 1512, 1541 to 1550, and each batch gathers the one array more, 213 to
+/// 214: the column's structural cost, as `OrigClOrdID(41)`'s validity was.
+/// The parse, the row and the digest moved by nothing, since the code is
+/// written from facts the row already feeds and fed to no digest. The
+/// lifecycle's walk learns the line's instrument into a fresh collection,
+/// and that instrument's own storage - its identifiers' one vector, a
+/// metadata entry where the line describes it (`SecurityType(167)`, the
+/// `Product(460)` the native plan implies), its listing's codes where it
+/// states some - is what the walk now costs past the collection's first
+/// use; the pins 12, 12 and 11 stand for the collection and the walk alone
+/// and are not re-pinned here (the market crate's `learn new inline` row).
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
@@ -1545,10 +1950,10 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 548,
             into_row: 88,
-            landing: 1524,
-            batch: 213,
+            landing: 1533,
+            batch: 214,
             digest: 1,
-            lifecycle: 12,
+            lifecycle: 22,
         },
     ),
     (
@@ -1557,10 +1962,10 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 212,
             into_row: 64,
-            landing: 1503,
-            batch: 213,
+            landing: 1512,
+            batch: 214,
             digest: 1,
-            lifecycle: 12,
+            lifecycle: 16,
         },
     ),
     (
@@ -1569,10 +1974,10 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 969,
             into_row: 251,
-            landing: 1541,
-            batch: 213,
+            landing: 1550,
+            batch: 214,
             digest: 1,
-            lifecycle: 11,
+            lifecycle: 16,
         },
     ),
 ];

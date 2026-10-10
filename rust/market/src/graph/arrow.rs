@@ -137,8 +137,9 @@ impl MarketData {
     /// assert!(field.fields()[6].is_nullable());
     /// assert_eq!(field.fields()[15].name(), "marketdatakind");
     /// assert!(!field.fields()[15].is_nullable());
-    /// assert_eq!(field.field_len(), 6 + 9 + 36 + 5 + 3 + 6);
-    /// let nested: Vec<&str> = field.fields()[59..].iter().map(|field| field.name()).collect();
+    /// // `instcode` joined the market band, D42: sixty-six columns.
+    /// assert_eq!(field.field_len(), 6 + 9 + 37 + 5 + 3 + 6);
+    /// let nested: Vec<&str> = field.fields()[60..].iter().map(|field| field.name()).collect();
     /// assert_eq!(nested, ["alive", "delta", "events", "executions", "bidlimits", "asklimits"]);
     /// # Ok(())
     /// # }
@@ -587,7 +588,7 @@ impl Column {
                 | MarketColumn::BidQty
                 | MarketColumn::AskPx
                 | MarketColumn::AskQty => Storage::Decimal,
-                MarketColumn::Ticker => Storage::Text,
+                MarketColumn::Ticker | MarketColumn::InstCode => Storage::Text,
                 MarketColumn::ExecUnix => Storage::Clock,
                 MarketColumn::SecurityIds | MarketColumn::Metadata => Storage::Pairs,
                 MarketColumn::Currency
@@ -1001,6 +1002,7 @@ impl<'a> Row<'a> {
             Column::Market(MarketColumn::CfiCode) => market.get_cficode().map(Cfi::as_str),
             Column::Market(MarketColumn::MicCode) => market.get_miccode().map(Mic::as_str),
             Column::Market(MarketColumn::Ticker) => market.get_ticker(),
+            Column::Market(MarketColumn::InstCode) => market.get_instcode(),
             Column::BookScope => self.control?.scope.as_deref(),
             Column::BookAction => self.control?.action.map(super::MdUpdateAction::as_str),
             _ => None,
@@ -3163,6 +3165,8 @@ impl Landed {
                 set_market_decimal(column, target, leaf.decimal(row));
             } else if column == MarketColumn::Ticker {
                 target.set_ticker(leaf.text(row).map(SmolStr::new), true);
+            } else if column == MarketColumn::InstCode {
+                target.set_instcode(leaf.text(row).map(yggdryl::Str::new), true);
             } else if column == MarketColumn::ExecUnix {
                 target.set_execunix(leaf.clock(row), true);
             } else if column == MarketColumn::SecurityIds {
@@ -3441,6 +3445,18 @@ impl Landed {
                             path,
                             column.name(),
                             &canonical.get_execunix(),
+                            &stated,
+                        ));
+                    }
+                    _ => {}
+                }
+            } else if column == MarketColumn::InstCode {
+                match leaf.text(row) {
+                    Some(stated) if Some(stated) != canonical.get_instcode() => {
+                        return Err(differs(
+                            path,
+                            column.name(),
+                            &canonical.get_instcode(),
                             &stated,
                         ));
                     }

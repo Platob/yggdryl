@@ -1743,28 +1743,29 @@ fn identifier_reads_and_inline_inserts_allocate_nothing() {
     );
 }
 
-/// An ISIN registry learns a statement of a known instrument that says
+/// The instruments learn a statement of a known instrument that says
 /// nothing new but the instant it was met - its `lastunix`, moved in place
 /// on the row it holds - then the same statement again, which moves
 /// nothing, fills an element that leaves nothing unsaid and looks a row up
 /// by its ISIN without allocating, whatever its size.
 #[test]
-fn an_isin_registry_reads_and_learns_a_known_instrument_without_allocating() {
+fn instruments_read_and_learn_a_known_instrument_without_allocating() {
     crate::install::installed();
     use yggdryl::Isin;
     use yggdryl_market::graph::{Market, OrderEvent};
-    use yggdryl_market::{IsinEntry, IsinRegistry};
+    use yggdryl_market::{Instrument, Instruments};
     let numbered = |number: usize| {
         let body = format!("FR{number:09}");
         let digit = Isin::closing_digit(&body).unwrap();
         format!("{body}{digit}")
     };
     for size in [64, 4_096] {
-        let mut registry = IsinRegistry::new();
+        let mut registry = Instruments::new();
         for number in 0..size {
             registry
                 .merge(
-                    IsinEntry::new(Isin::new(numbered(number)).unwrap())
+                    Instrument::for_security(Isin::new(numbered(number)).unwrap())
+                        .unwrap()
                         .with_updunix(Some(1))
                         .try_with_code(IdType::Common, &format!("C-{number}"))
                         .unwrap()
@@ -1796,6 +1797,10 @@ fn an_isin_registry_reads_and_learns_a_known_instrument_without_allocating() {
                 assert!(!registry.learn(black_box(&stated)));
             },
         );
+        // The one fact the fill writes: the cross code as `instcode` (D42.10);
+        // written once, nothing is left.
+        assert!(registry.fill(&mut stated));
+        assert_eq!(stated.get_instcode(), Some(isin.as_str()));
         free(&format!("filling nothing at {size} instruments"), || {
             assert!(!registry.fill(black_box(&mut stated)));
         });
@@ -1807,21 +1812,26 @@ fn an_isin_registry_reads_and_learns_a_known_instrument_without_allocating() {
 
 /// `size` instruments numbered from zero, each with a CFI code, a market,
 /// a ticker of its own - `T` and its number - a common code and a RIC.
-fn isin_registry_of(size: usize) -> yggdryl_market::IsinRegistry {
+fn instruments_of(size: usize) -> yggdryl_market::Instruments {
     use yggdryl::{Cfi, Isin, Mic};
-    use yggdryl_market::{IsinEntry, IsinRegistry};
-    let mut registry = IsinRegistry::new();
+    use yggdryl_market::{Instrument, Instruments};
+    let mut registry = Instruments::new();
     for number in 0..size {
         registry
             .merge(
-                IsinEntry::new(Isin::new(numbered_isin("FR", number)).unwrap())
-                    .with_updunix(Some(1))
-                    .with_cficode(Some(Cfi::new("ESVUFR").unwrap()))
-                    .with_miccode(Some(Mic::new("XPAR").unwrap()))
-                    .with_ticker(Some(smol_str::SmolStr::new(format!("T{number}"))))
-                    .try_with_code(IdType::Common, &format!("C-{number}"))
+                Instrument::for_security(Isin::new(numbered_isin("FR", number)).unwrap())
                     .unwrap()
-                    .try_with_code(IdType::Ric, &format!("R{number}.PA"))
+                    .with_updunix(Some(1))
+                    .try_with_cficode(Some(Cfi::new("ESVUFR").unwrap()))
+                    .unwrap()
+                    .with_listing(
+                        yggdryl_market::Listing::new(Some(Mic::new("XPAR").unwrap()))
+                            .with_ticker(Some(smol_str::SmolStr::new(format!("T{number}"))))
+                            .try_with_code(IdType::Ric, &format!("R{number}.PA"))
+                            .unwrap(),
+                    )
+                    .unwrap()
+                    .try_with_code(IdType::Common, &format!("C-{number}"))
                     .unwrap(),
             )
             .unwrap();
@@ -1842,7 +1852,7 @@ fn numbered_isin(prefix: &str, number: usize) -> String {
 /// derived first, costs the same at 64 instruments as at 4,096: nothing it
 /// builds is per instrument the registry holds.
 #[test]
-fn an_isin_registry_reads_and_fills_by_ticker_alike_at_every_size() {
+fn instruments_read_and_fill_by_ticker_alike_at_every_size() {
     crate::install::installed();
     use yggdryl::Mic;
     use yggdryl_market::graph::{Market, OrderEvent};
@@ -1850,12 +1860,12 @@ fn an_isin_registry_reads_and_fills_by_ticker_alike_at_every_size() {
     let london = Mic::new("XLON").unwrap();
     let mut fills = Vec::with_capacity(2);
     for size in [64, 4_096] {
-        let registry = isin_registry_of(size);
+        let registry = instruments_of(size);
         let isin = numbered_isin("FR", 7);
         assert_eq!(
             registry
                 .get_by_ticker("T7", Some(&paris))
-                .map(|row| row.isin().as_str()),
+                .and_then(|row| row.isin()),
             Some(isin.as_str()),
             "the ticker T7 names one row at {size} instruments"
         );
@@ -1918,12 +1928,12 @@ fn an_isin_registry_reads_and_fills_by_ticker_alike_at_every_size() {
 /// A listing's slot is inline, so nothing else the index holds is per
 /// instrument.
 #[test]
-fn an_isin_registry_ticker_index_doubles_once_as_its_listings_double() {
+fn the_instruments_ticker_index_doubles_once_as_their_listings_double() {
     crate::install::installed();
     use yggdryl::Mic;
     use yggdryl_market::graph::{Market, OrderEvent};
     let learning = |size: usize, ticker: bool| {
-        let mut registry = isin_registry_of(size);
+        let mut registry = instruments_of(size);
         let statements: Vec<OrderEvent> = (0..size)
             .map(|number| {
                 let mut stated = OrderEvent::at(2);
@@ -1960,20 +1970,23 @@ fn an_isin_registry_ticker_index_doubles_once_as_its_listings_double() {
     }
 }
 
-/// Learning a new instrument builds its row in place - the ISIN, the CFI
-/// code, the market, the ticker and up to four codes inline - so the
-/// table's own slot is all it can cost: an ISIN sorting before every other
-/// lands in a leaf ascending inserts left with room, and the ticker
-/// index's slot is inline, its table of 64 or 4,096 distinct tickers having
-/// room for one more, so learning it allocates nothing, whatever the
-/// registry holds.
+/// Learning a new instrument builds its row in place - the CFI code, the
+/// market, the ticker, its one listing inline - so the instrument's own
+/// identifiers vector, reserved once at the statement's count, is all it
+/// costs: an ISIN sorting before every other lands in a leaf ascending
+/// inserts left with room, the key is a clone of the instrument's one code,
+/// and the ticker index's slot is inline, its table of 64 or 4,096 distinct
+/// tickers having room for one more, whatever the table holds. The pin
+/// moved from 0 to 1 with D42: an instrument owns its `securityids` -
+/// every source's keys (decision 10) - where the registry's row held four
+/// codes in fixed columns.
 #[test]
-fn an_isin_registry_learns_a_new_instrument_into_its_row_inline() {
+fn instruments_learn_a_new_instrument_into_its_row_inline() {
     crate::install::installed();
     use yggdryl::{Cfi, Mic};
     use yggdryl_market::graph::{Market, OrderEvent};
     for size in [64, 4_096] {
-        let mut registry = isin_registry_of(size);
+        let mut registry = instruments_of(size);
         let mut stated = OrderEvent::at(2);
         for (kind, value) in [
             (IdType::Isin, numbered_isin("BE", 1).as_str()),
@@ -1991,8 +2004,8 @@ fn an_isin_registry_learns_a_new_instrument_into_its_row_inline() {
         let (learning, learned) = counted(|| registry.learn(black_box(&stated)));
         assert!(learned);
         assert_eq!(
-            learning, 0,
-            "learning a new instrument at {size} instruments"
+            learning, 1,
+            "learning a new instrument at {size} instruments: its identifiers vector alone"
         );
     }
 }
@@ -2002,13 +2015,13 @@ fn an_isin_registry_learns_a_new_instrument_into_its_row_inline() {
 /// registry holds: the code index is keyed by the type and the code, read
 /// through a borrowed key.
 #[test]
-fn an_isin_registry_resolves_by_isin_code_and_ticker_without_allocating() {
+fn instruments_resolve_by_isin_code_and_ticker_without_allocating() {
     crate::install::installed();
     use yggdryl::Mic;
     use yggdryl_market::Resolution;
     use yggdryl_market::graph::{Market, OrderEvent};
     for size in [64, 4_096] {
-        let registry = isin_registry_of(size);
+        let registry = instruments_of(size);
         let isin = numbered_isin("FR", 7);
         let by_isin = {
             let mut element = OrderEvent::at(2);
@@ -2037,7 +2050,7 @@ fn an_isin_registry_resolves_by_isin_code_and_ticker_without_allocating() {
         ] {
             assert!(matches!(
                 registry.resolve(element),
-                Resolution::Matched { entry, .. } if entry.isin().as_str() == isin
+                Resolution::Matched { entry, .. } if entry.isin() == Some(isin.as_str())
             ));
             free(&format!("resolving by {how} at {size} instruments"), || {
                 assert!(matches!(
@@ -2054,18 +2067,22 @@ fn an_isin_registry_resolves_by_isin_code_and_ticker_without_allocating() {
 /// instruments as at 4,096; two equal bests allocate the one `Vec` of
 /// their ISINs the answer holds, and nothing per instrument.
 #[test]
-fn an_isin_registry_economic_scan_allocates_nothing_per_instrument() {
+fn the_instruments_economic_scan_allocates_nothing_per_instrument() {
     crate::install::installed();
     use yggdryl::{Ccy, Fisn, Isin, Mic};
     use yggdryl_market::graph::{Market, OrderEvent};
-    use yggdryl_market::{IsinEntry, IsinRegistry, Resolution, Unmatched};
+    use yggdryl_market::{Instrument, Instruments, Resolution, Unmatched};
     for size in [64, 4_096] {
-        let mut registry = IsinRegistry::new();
+        let mut registry = Instruments::new();
         for number in 0..size {
             registry
                 .merge(
-                    IsinEntry::new(Isin::new(numbered_isin("FR", number)).unwrap())
-                        .with_miccode(Some(Mic::new("XPAR").unwrap()))
+                    Instrument::for_security(Isin::new(numbered_isin("FR", number)).unwrap())
+                        .unwrap()
+                        .with_listing(yggdryl_market::Listing::new(Some(
+                            Mic::new("XPAR").unwrap(),
+                        )))
+                        .unwrap()
                         .with_fisn(Some(Fisn::new(format!("ISSUER {number}/SH")).unwrap())),
                 )
                 .unwrap();
@@ -2087,8 +2104,12 @@ fn an_isin_registry_economic_scan_allocates_nothing_per_instrument() {
         });
         registry
             .merge(
-                IsinEntry::new(Isin::new(numbered_isin("BE", 1)).unwrap())
-                    .with_miccode(Some(Mic::new("XPAR").unwrap()))
+                Instrument::for_security(Isin::new(numbered_isin("BE", 1)).unwrap())
+                    .unwrap()
+                    .with_listing(yggdryl_market::Listing::new(Some(
+                        Mic::new("XPAR").unwrap(),
+                    )))
+                    .unwrap()
                     .with_fisn(Some(Fisn::new("ISSUER 7/SH").unwrap())),
             )
             .unwrap();
@@ -2109,37 +2130,32 @@ fn an_isin_registry_economic_scan_allocates_nothing_per_instrument() {
 /// A snapshot stream shares the table rather than copying it: opening one
 /// costs the same eleven allocations at 64 instruments as at 4,096 - the
 /// reader, its schema and its field, and the two root declarations the
-/// schema carries, `PARTITION:by` and `SORT:by` - its two keys, `isin` and
-/// `miccode`, one text as its one key was - six more than the five before
-/// the row declared them - and draining it lays each row out once, one
-/// allocation a row - the row's run, its forty-six cells written where the
-/// run keeps them in column order, each code typed as its column holds it
-/// so the canonicalization answers the run untouched, and the short texts
-/// and codes held inline - plus one doubling of the batch's row vector each
-/// time the rows double. It was eight a row while the snapshot built the
-/// named row - a B-tree of the cells behind one `Arc` that canonicalized
-/// into the run per row - and nine from the forty-fifth column, `origccy`,
-/// on; the snapshot now yields the ordered row, which is what a row
-/// is, so the column count moves no allocation. The cursor that walks one
-/// instrument's listings holds its ISIN inline, so it allocates nothing a
-/// row.
+/// schema carries, `PARTITION:by` and `SORT:by` - and draining it lays each
+/// instrument's row out once as ordered runs, five allocations a row - the
+/// row's run and one `Arc` per collection the row states: `securityids`,
+/// the `listings` serie, its one listing's run and that listing's codes -
+/// plus three each time the rows double (the batch's row vectors). The pin
+/// moved from one a row with D42: the registry's row was flat, forty-six
+/// cells in one run; an instrument nests its listings, its identifiers and
+/// its characteristics (decision 10), and those runs are the nested row's
+/// structural minimum under the row-to-batch reader.
 #[test]
-fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
+fn the_instruments_snapshot_stream_is_constant_to_open_and_reads_by_row() {
     crate::install::installed();
     // The row's Arrow projection is built once per process, on first use.
     drop(
-        yggdryl_market::IsinRegistry::new()
+        yggdryl_market::Instruments::new()
             .into_arrow_reader()
             .unwrap(),
     );
     for size in [64, 4_096] {
-        let registry = isin_registry_of(size);
+        let registry = instruments_of(size);
         let (opening, reader) = counted(|| registry.into_arrow_reader().unwrap());
         drop(reader);
         assert_eq!(opening, 11, "opening a snapshot of {size} instruments");
     }
     let drain = |size: usize| {
-        let reader = isin_registry_of(size).into_arrow_reader().unwrap();
+        let reader = instruments_of(size).into_arrow_reader().unwrap();
         let (draining, rows) =
             counted(move || reader.map(|batch| batch.unwrap().num_rows()).sum::<usize>());
         assert_eq!(rows, size);
@@ -2148,34 +2164,28 @@ fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
     for size in [64, 256] {
         assert_eq!(
             drain(2 * size) - drain(size),
-            size + 1,
-            "{size} more rows cost other than one a row"
+            5 * size + 3,
+            "{size} more rows cost other than five a row"
         );
     }
 }
 
-/// Reloading rows the registry already holds - a golden file read again -
+/// Reloading rows the table already holds - a golden file read again -
 /// costs each batch the same whatever its rows: one cast plan for the
-/// stream, the landing per batch - one narrowing per column of the
-/// forty-six, one more than the forty-five before `firstunix` was added,
-/// two more than the forty-four before `origccy` was,
-/// two more than the forty-three before `lastunix` was, three more than the
-/// forty-two before `fisn` was, four more than the forty-one before
-/// `eusipacode` was and five more than the forty before `underlyingisin`
-/// was, seven more than the thirty-seven before `countrycode`, `forexcode`
-/// and `currency` were - and a code cell adopted as the landing proved it,
-/// so a row that moves nothing allocates nothing. The 43rd column, `fisn`,
-/// landed one more buffer per batch, the 44th, `lastunix`, one more again,
-/// the 45th, `origccy`, one more again, and the 46th, `firstunix`, one
-/// more again: one column, one allocation, at both corpus sizes - a row
-/// that states no `lastunix` or `firstunix` folds no instant, and one that
-/// states no origin currency folds none.
+/// stream, the landing per batch, and a known row read off the landed
+/// leaves by its content code, so a row that moves nothing allocates
+/// nothing. The landing of the twenty-five-column instrument row is
+/// ninety-four allocations a batch - the cast with no row work measures the
+/// same - where the registry's flat forty-six-column row landed in fifty-six:
+/// the pin moved with D42, the nested `listings`, `securityids`, `legs`,
+/// `characteristics` and `metadata` columns (decision 10) landing their own
+/// offsets, children and validity, at both corpus sizes.
 #[test]
-fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
+fn instruments_reload_known_rows_at_a_cost_per_batch() {
     crate::install::installed();
     let mut each_at = Vec::new();
     for size in [64, 512] {
-        let mut registry = isin_registry_of(size);
+        let mut registry = instruments_of(size);
         let batch = registry
             .into_arrow_reader()
             .unwrap()
@@ -2201,7 +2211,7 @@ fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     }
     assert_eq!(
         each_at,
-        [56, 56],
+        [94, 94],
         "a batch of 64 and of 512 known rows: a cost per row"
     );
 }
@@ -2262,4 +2272,76 @@ fn security_identifier_construction_is_inline_for_every_checked_code() {
         );
         assert_eq!(ids.get(&read(black_box("sedol"))), None);
     });
+}
+
+/// Decision 11: a market row's `instcode` is a clone of the instrument's one
+/// `Str` - a byte copy under the inline capacity, one refcount beyond it -
+/// so a thousand rows resolving one option whose code is longer than the
+/// inline capacity, each filled with that code, allocate nothing once the
+/// instrument exists, at 64 instruments as at 4,096. The fill writes the
+/// code, finalizes the row and derives nothing else: the row states the
+/// option's minted number, which is its one identifier.
+#[test]
+fn filling_a_long_instcode_shares_the_instruments_allocation() {
+    crate::install::installed();
+    use yggdryl::graph::Element;
+    use yggdryl::{Cfi, INLINE_CAPACITY};
+    use yggdryl_market::graph::{Market, OrderEvent};
+    use yggdryl_market::{Characteristics, Instrument};
+    let code = "OC:US0378331005:2026-12-18:200";
+    assert!(
+        code.len() > INLINE_CAPACITY,
+        "a code the inline capacity does not hold"
+    );
+    for size in [64, 4_096] {
+        let mut registry = instruments_of(size);
+        let characteristics = Characteristics::default()
+            .with_expiry(Some("2026-12-18".parse().unwrap()))
+            .with_strikepx(Some(yggdryl::Decimal::parse("200").unwrap()));
+        registry
+            .merge(
+                Instrument::for_body(
+                    Cfi::new("OCXXXX").unwrap(),
+                    None,
+                    &characteristics,
+                    Some("US0378331005"),
+                    &[],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let option = registry.get(code).unwrap();
+        assert_eq!(option.get_crosscode(), code);
+        let number = option.isin().unwrap().to_owned();
+        let mut rows: Vec<OrderEvent> = (0..1_000)
+            .map(|at| {
+                let mut row = OrderEvent::at(at);
+                row.insert_securityid(Identifier::new(IdKey::base(IdType::Isin), &number).unwrap())
+                    .unwrap();
+                row
+            })
+            .collect();
+        let (filling, filled) = counted(|| {
+            rows.iter_mut()
+                .map(|row| registry.fill(black_box(row)))
+                .filter(|moved| *moved)
+                .count()
+        });
+        assert_eq!(filled, 1_000);
+        assert_eq!(
+            filling,
+            0,
+            "filling a thousand rows with a {}-byte code at {size} instruments",
+            code.len()
+        );
+        for row in &rows {
+            let filled = row.get_instcode().unwrap();
+            assert_eq!(filled, code);
+            assert_eq!(
+                filled.as_ptr(),
+                option.get_crosscode().as_ptr(),
+                "one shared allocation of the code"
+            );
+        }
+    }
 }

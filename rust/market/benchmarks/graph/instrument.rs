@@ -1,4 +1,4 @@
-//! The ISIN registry: learning and filling a market element - by its ISIN,
+//! The instruments: learning and filling a market element - by its ISIN,
 //! by its ticker on its market - and its table streamed out, loaded back
 //! and round-tripped through an Arrow IPC holder.
 
@@ -11,7 +11,7 @@ use yggdryl::holder::Buffer;
 use yggdryl::media::IORecordOptions;
 use yggdryl::{Cfi, IOMedia, IOMode, Isin, Mic, MimeType};
 use yggdryl_market::graph::{Market, OrderEvent};
-use yggdryl_market::{IdKey, IdType, Identifier, IsinEntry, IsinRegistry};
+use yggdryl_market::{IdKey, IdType, Identifier, Instrument, Instruments, Listing};
 
 /// The ISIN numbered `number` under the two-letter `prefix`.
 fn isin(prefix: &str, number: usize) -> String {
@@ -22,20 +22,25 @@ fn isin(prefix: &str, number: usize) -> String {
 
 /// `size` instruments, each with a CFI code, a market, a ticker, a common
 /// code and a RIC.
-fn registry(size: usize) -> IsinRegistry {
-    let mut registry = IsinRegistry::new();
+fn registry(size: usize) -> Instruments {
+    let mut registry = Instruments::new();
     for number in 0..size {
         registry
             .merge(
-                IsinEntry::new(Isin::new(isin("FR", number)).expect("a bench ISIN"))
+                Instrument::for_security(Isin::new(isin("FR", number)).expect("a bench ISIN"))
+                    .expect("a real ISIN")
                     .with_updunix(Some(1))
-                    .with_cficode(Some(Cfi::new("ESVUFR").expect("a CFI code")))
-                    .with_miccode(Some(Mic::new("XPAR").expect("a market")))
-                    .with_ticker(Some(SmolStr::new(format!("T{number}"))))
+                    .try_with_cficode(Some(Cfi::new("ESVUFR").expect("a CFI code")))
+                    .expect("a class")
+                    .with_listing(
+                        Listing::new(Some(Mic::new("XPAR").expect("a market")))
+                            .with_ticker(Some(SmolStr::new(format!("T{number}"))))
+                            .try_with_code(IdType::Ric, &format!("R{number}.PA"))
+                            .expect("a RIC"),
+                    )
+                    .expect("a listing")
                     .try_with_code(IdType::Common, &format!("C-{number}"))
-                    .expect("a common code")
-                    .try_with_code(IdType::Ric, &format!("R{number}.PA"))
-                    .expect("a RIC"),
+                    .expect("a common code"),
             )
             .expect("a bench row");
     }
@@ -54,7 +59,7 @@ fn stating(unix: i64, codes: &[(IdType, &str)]) -> OrderEvent {
 }
 
 pub fn benchmarks(criterion: &mut Criterion) {
-    let mut group = criterion.benchmark_group("graph/isin_registry");
+    let mut group = criterion.benchmark_group("graph/instrument");
     let size = crate::bench_profile::corpus(4_096, 32);
     let mut held = registry(size);
     let known = isin("FR", size / 2);
@@ -139,7 +144,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter_batched(
             || batch_reader(schema.clone(), batches.clone()),
             |reader| {
-                IsinRegistry::from_arrow_reader(reader)
+                Instruments::from_arrow_reader(reader)
                     .expect("the rows load")
                     .len()
             },
@@ -152,7 +157,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             let options = handle
                 .record_options()
                 .expect("IPC options")
-                .with_field(IsinEntry::field());
+                .with_field(Instrument::field());
             handle
                 .write_arrow_reader(
                     held.into_arrow_reader().expect("a snapshot"),
@@ -160,7 +165,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
                     &options,
                 )
                 .expect("the snapshot writes");
-            let mut back = IsinRegistry::new();
+            let mut back = Instruments::new();
             back.extend_from_handle(&handle)
                 .expect("the snapshot reads");
             back.len()

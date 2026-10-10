@@ -418,11 +418,11 @@ def test_book_arrow_reader_streams_lifted_market_data_books(seed_batch: FixRegis
     # The one lifted `marketdata` schema every leaf is written under: the
     # kind, then every fact a column of its own, the book's entries, its
     # delta and its events, a trade's executions and price levels nested -
-    # sixty-five columns, an operation's `bookaction` and `bookposition`
-    # among them.
+    # sixty-six columns, an operation's `bookaction` and `bookposition`
+    # and the instrument's `instcode` among them.
     assert reader.schema == MarketData.field().into_arrow_schema()
     names = reader.schema.names
-    assert len(names) == 65
+    assert len(names) == 66
     assert names[0] == "uuid"
     assert names.index("marketdatakind") == 15
     assert {"bookaction", "bookposition"} <= set(names)
@@ -1789,16 +1789,17 @@ SEED = REPO / "config" / "fix"
 # conversation are columns too, while the identifiers it states under its own
 # keys are inferred from them and stay content; the option's strike price is
 # the derived column `strikepx` beside the dictionary's StrikePrice(202); CFI
-# remains FIX's standard tag 461, as do prices and quantities.
-CRATED = 52
+# remains FIX's standard tag 461, as do prices and quantities; the
+# instrument's cross code `instcode` is the crate's 65_054.
+CRATED = 53
 # What ``FixRegistry()`` holds: the crate fields a message states - a derived
 # column is the fixed row's, never filed - SendingTime (52) and TransactTime
 # (60), and the Map group. ``len`` counts groups; iteration walks the 34
 # scalars alone. The plugin-side column adds one registered scalar to the
-# branch registry, and the origin currency one more; the metadata Map
-# remains a group.
-SEEDED = 35
-SEEDED_SCALARS = 34
+# branch registry, the origin currency one more and the instrument's cross
+# code `instcode` one more; the metadata Map remains a group.
+SEEDED = 36
+SEEDED_SCALARS = 35
 
 # The one intake clock undated test bytes take, so a parse repeats; replay
 # never consults now.
@@ -2308,7 +2309,8 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # Forex, Bloomberg, FIGI and MIC are crate columns; CFI keeps FIX's
     # standard tag 461. Price and quantity remain their standard FIX fields,
     # and the option's strike price is the derived `strikepx` beside its
-    # StrikePrice(202).
+    # StrikePrice(202). The instrument's cross code `instcode` is numbered
+    # past the fixed-row document `fixmsg` (65_053), at 65_054.
     assert list(fields) == [
         "uuid",
         "crossuuid",
@@ -2362,11 +2364,12 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "bloombergcode",
         "figicode",
         "sourceurl",
+        "instcode",
     ]
     tags = [field.fix.tag for field in fields.values()]
     assert tags == sorted(tags)
-    assert tags[0] == UUID_TAG and tags[-1] == SOURCEURL_TAG
-    assert tags == list(range(65001, 65053))
+    assert tags[0] == UUID_TAG and tags[-2] == SOURCEURL_TAG
+    assert tags == [*range(65001, 65053), 65054]
     assert all(field.fix.sources == [] for field in fields.values())
     assert all(field.description is not None for field in fields.values())
 
@@ -5623,12 +5626,12 @@ def test_the_capture_pipeline_lands_table_to_table_on_series(
 
 
 def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
-    seed_batch: FixRegistry, tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture
+    seed_batch: FixRegistry, tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture, capsys: pytest.CaptureFixture[str]
 ) -> None:
     import datetime as dt
 
     from tests import medallion
-    from yggdryl import IsinRegistry
+    from yggdryl import Instruments
     from yggdryl.iceberg import IcebergCatalog
 
     # Two catalogs - two warehouse folders here, two table buckets live - and
@@ -5641,13 +5644,13 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     (logs / "bridge-0.log").write_bytes(b"".join(captured[:72]))
     (logs / "bridge-1.log").write_bytes(b"".join(captured[72:]))
     # The instruments the pipeline meets, bound to a table of the silver
-    # catalog and laid over the seed: the codec's lifecycle learns into it,
-    # and the stage right after the FIX-message parse commits it. A first run
-    # holds the seed, clean.
-    registry = medallion.instruments(silver)
-    seed = IsinRegistry.seeded()
+    # catalog and laid over the seed: the codec's lifecycle learns into
+    # them, and the stage right after the FIX-message parse commits them. A
+    # first run holds the seed, clean.
+    instruments_table, registry = medallion.instruments(silver)
+    seed = Instruments.seeded()
     assert len(registry) == len(seed) and not registry.is_dirty
-    codec = _fixed_batch(seed_batch, threads=None, isin_registry=registry)
+    codec = _fixed_batch(seed_batch, threads=None, instruments=registry)
 
     # The capture's day - lines at 03:xx, 14:xx, 16:xx and 23:xx UTC - as
     # one window opening on a quarter hour, midnight.
@@ -5660,6 +5663,7 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
         medallion.window_filter(end, start)
 
     lake = medallion.Lake(bronze, silver, codec, IOBase(logs / "*.log"))
+    lake.tables["silver", "instruments"] = instruments_table
     caplog.set_level(logging.WARNING)
     written = medallion.run(lake, start, end)
     # Every value the parse defaults to null is said once as a warning naming
@@ -5702,29 +5706,56 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
         "silver.events",
     ]
     assert written["bronze.log_messages"] == IOResult(144, 144)
-    # The lifecycle learned the capture's instruments into the registry, and
-    # the first commit wrote them with the seed as one snapshot: the table
-    # holds the registry's listing rows - one per ISIN and market - the
+    # The lifecycle learned the capture's instruments into the collection,
+    # and the first commit wrote them with the seed as one snapshot: the
+    # table holds one row per instrument, keyed by its cross code - the
     # seed's instruments and those the lifecycle learned.
     instruments = written["silver.instruments"].written_rows
-    isins = registry.into_arrow_reader().read_all().column("isin").to_pylist()
-    learned = {isin for isin in isins if seed.get(isin) is None}
+    codes = registry.into_arrow_reader().read_all().column("crosscode").to_pylist()
+    learned = {code for code in codes if seed.get(code) is None}
     assert learned, "the capture names instruments the seed does not hold"
-    assert instruments == registry.rows == len(isins)
-    assert len(registry) == len(seed) + len(learned) == len(set(isins))
+    assert instruments == registry.rows == len(registry) == len(codes)
+    assert len(registry) == len(seed) + len(learned) == len(set(codes))
     assert not registry.is_dirty
     stored = silver.table("record_keeping.instruments")
     assert stored.row_size() == instruments
-    # Created from the registry's own row, the table is partitioned by the
-    # ISIN's country prefix - Iceberg's truncation of the key, no column -
-    # one live file per prefix the rows hold.
-    assert [(spec.name, spec.transform) for spec in stored.spec.fields] == [("isin_truncate", "truncate[2]")]
-    assert sorted(file.partition for file, _ in stored.data_files()) == sorted({(isin[:2],) for isin in isins})
+    # Created from the instruments' own row, the table is partitioned by the
+    # code's first two characters - Iceberg's truncation of the key, no
+    # column - one live file per prefix the rows hold.
+    assert [(spec.name, spec.transform) for spec in stored.spec.fields] == [("crosscode_truncate", "truncate[2]")]
+    assert sorted(file.partition for file, _ in stored.data_files()) == sorted({(code[:2],) for code in codes})
     field = stored.field()
-    assert field.index_of("underlyingisin") == field.index_of("forexcode") + 1
-    reloaded = IsinRegistry.from_url(stored.url)
+    assert field.index_of("crosscode") == 2 and field.index_of("listings") == field.index_of("characteristics") + 1
+    reloaded = Instruments.from_url(stored.url)
     assert (len(reloaded), reloaded.rows) == (len(registry), instruments)
     assert reloaded.get("CH0012214059") == registry.get("CH0012214059") is not None
+
+    # Every market table carries `instcode`, and every silver row whose
+    # ISIN the seed or the walk resolves holds the cross code of one
+    # instrument row - or one of its `aliascodes`, a code it had before a
+    # re-key - which is how a market table joins the instruments table.
+    aliases = {
+        alias: row["crosscode"]
+        for row in registry.into_arrow_reader().read_all().to_pylist()
+        for alias in row["aliascodes"] or ()
+    }
+    keyed = set(codes) | set(aliases)
+    for name in ("fix_messages", "orders", "executions"):
+        rows = StreamChunkedSerie.from_serie(silver.table(f"record_keeping.{name}").read_serie()).into_arrow_reader().read_all()
+        resolved = [
+            (isin, code)
+            for isin, code in zip(rows.column("isincode").to_pylist(), rows.column("instcode").to_pylist())
+            if isin is not None and registry.get(isin) is not None
+        ]
+        assert resolved, name
+        assert all(code is not None and code in keyed for _, code in resolved), name
+        assert all(registry.get(code)["crosscode"] == registry.get(isin)["crosscode"] for isin, code in resolved), name
+    for catalog, name in ((bronze, "fix_messages"), (silver, "books"), (silver, "quotes")):
+        assert "instcode" in catalog.table(f"record_keeping.{name}").field(), name
+    # The report reads every table off the lake, the instruments too.
+    medallion.report(lake)
+    report = capsys.readouterr().out
+    assert f"  {'silver.instruments':<22} rows {instruments:>8}  snapshots 1" in report, report
     for stage, result in written.items():
         assert result.read_rows == result.written_rows, stage
         assert result.skipped_rows == 0, stage
@@ -5807,8 +5838,11 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     # snapshot, never the two runs together.
     again = medallion.run(lake, start, end)
     # The registry learned no new fact and met no instrument later than it
-    # had - the same messages at the same instants leave every `lastunix` -
-    # so its bound table commits nothing.
+    # had - the same messages at the same instants leave every `lastunix`,
+    # and a metadata key two sources disagree on (`SecurityType(167)` `CS`
+    # on the FIX lines, `equity` on the bridge lines) flips and flips back
+    # to where the store holds it, which the commit's content comparison
+    # reads as no change - so its bound table commits nothing.
     assert again.pop("silver.instruments") == IOResult(0, 0)
     assert len(silver.table("record_keeping.instruments").snapshots) == 1
     written.pop("silver.instruments")

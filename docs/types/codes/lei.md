@@ -226,7 +226,7 @@ for refused in ["HWUPKR0MPOU8FGXBT39", "HWUPKR0MPOU8FGX-T394", "HWUPKR0MPOU8FGXB
 - No default value: the empty text names no entity, so an empty text cell entering the column is null ([Cast](../cast.md#empty-text)).
 - No packed integer: twenty bytes are past the sixteen `ascii_packed` fills, so neither `ascii_packed` nor a `StringEnum` takes an `lei` column.
 - [`merge_with`](index.md#the-code-family-value) takes an identifier that closes over one that does not, whichever leads; two of one rank keep this one.
-- An [`IsinRegistry`](../../graph/isin-registry.md) column of type `lei` declares this datatype; a store whose column is `utf8` reads each cell through this code's rule.
+- An [`Instrument`](../../graph/instrument.md) holds an issuer's LEI among its `securityids` under `lei`, read through this code's rule, and never as a lookup key: an issuer numbers many instruments.
 
 ## Commands
 

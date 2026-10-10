@@ -32,26 +32,27 @@ fn costs(what: &str, calls: &Arc<Calls>, expected: &str, operation: impl FnOnce(
     assert_eq!(calls.snapshot().to_string(), expected, "{what}");
 }
 
-mod isin_registry {
+mod instrument {
     use std::sync::Arc;
 
     use yggdryl::holder::Buffer;
     use yggdryl::holder::counted::Counted;
     use yggdryl::media::IORecordOptions;
     use yggdryl::{IOBase, IOMedia, IOMode, Isin, MimeType};
-    use yggdryl_market::{IdType, IsinEntry, IsinRegistry};
+    use yggdryl_market::{IdType, Instrument, Instruments};
 
     use super::costs;
 
     /// A registry is read from a holder in exactly the calls one record read
     /// of it makes: the encoding, then the stream, and nothing of its own.
     #[test]
-    fn an_isin_registry_reads_a_holder_in_the_calls_of_one_record_read() {
+    fn instruments_read_a_holder_in_the_calls_of_one_record_read() {
         crate::install::installed();
-        let mut registry = IsinRegistry::new();
+        let mut registry = Instruments::new();
         registry
             .merge(
-                IsinEntry::new(Isin::new("CH0012214059").unwrap())
+                Instrument::for_security(Isin::new("CH0012214059").unwrap())
+                    .unwrap()
                     .try_with_code(IdType::Ric, "HOLN.S")
                     .unwrap(),
             )
@@ -60,7 +61,7 @@ mod isin_registry {
         let options = sink
             .record_options()
             .unwrap()
-            .with_field(IsinEntry::field());
+            .with_field(Instrument::field());
         sink.write_arrow_reader(
             registry.into_arrow_reader().unwrap(),
             IOMode::Overwrite,
@@ -77,8 +78,8 @@ mod isin_registry {
             batch.unwrap();
         }
         let one_read = calls.snapshot().to_string();
-        costs("an isin registry read", &calls, &one_read, || {
-            let mut registry = IsinRegistry::new();
+        costs("an instruments read", &calls, &one_read, || {
+            let mut registry = Instruments::new();
             assert_eq!(registry.extend_from_handle(&handle).unwrap(), 1);
             assert_eq!(registry.len(), 1);
         });

@@ -35,7 +35,7 @@ use crate::{
     TimeInForce,
 };
 use yggdryl::graph::{Element, Event};
-use yggdryl::{Ccy, Cfi, Decimal, Mic, Result, State, Unit, Uuid};
+use yggdryl::{Ccy, Cfi, Decimal, Mic, Result, State, Str, Unit, Uuid};
 
 /// Every fact [`Element`] and [`Market`] name, as plain fields, with no
 /// instant: what an undated entry is.
@@ -87,6 +87,10 @@ pub(crate) struct MarketFacts {
     /// pointer.
     bidask: Option<Box<BidAsk>>,
     ticker: Option<SmolStr>,
+    /// The resolved instrument's cross code: inline to twenty-three bytes,
+    /// one shared `Arc<str>` beyond, so a copy along a chain is a byte
+    /// copy or a reference count.
+    instcode: Option<Str>,
     metadata: Option<Box<Metadata>>,
 }
 
@@ -306,6 +310,7 @@ impl Default for MarketFacts {
             fxrates: None,
             bidask: None,
             ticker: None,
+            instcode: None,
             metadata: None,
         }
     }
@@ -1337,6 +1342,17 @@ impl Market for MarketFacts {
         }
     }
 
+    fn get_instcode(&self) -> Option<&str> {
+        self.instcode.as_ref().map(Str::as_str)
+    }
+
+    fn set_instcode(&mut self, code: Option<Str>, overwrite: bool) {
+        let code = code.filter(|held| !held.is_empty());
+        if lands(&self.instcode, &code, self.instcode.is_none(), overwrite) {
+            self.instcode = code;
+        }
+    }
+
     fn get_metadata(&self) -> &Metadata {
         match &self.metadata {
             Some(held) => held,
@@ -2098,6 +2114,9 @@ impl OperationEventFacts {
                             fxrates,
                             bidask,
                             ticker,
+                            // A reading of the facts compared above, as the
+                            // identities are: never a statement of its own.
+                            instcode: _,
                             metadata,
                         },
                     transunix: _,
@@ -2234,6 +2253,7 @@ fn copy_market<T: Market + ?Sized, E: Market + ?Sized>(this: &mut T, other: &E) 
     this.set_askqty(other.get_askqty(), true);
     this.set_askccy(other.get_askccy().cloned(), true);
     this.set_ticker(other.get_ticker().map(SmolStr::new), true);
+    this.set_instcode(other.get_instcode().map(Str::new), true);
     this.set_metadata(Some(other.get_metadata().clone()), true);
 }
 

@@ -375,7 +375,7 @@ assert DataType("binary(2)").scalar(b"\x01\x02").as_py() == b"\x01\x02"
 `Eusipa` is a value, not a datatype: EUSIPA's four-digit product category,
 which the SSPA's Swiss map numbers the same way, held by its shape alone -
 `1` an investment product, `2` a leverage product - and named by each map
-where it lists the code. An `IsinRegistry` row holds one as its
+where it lists the code. An instrument row of `Instruments` holds one as its
 `eusipacode`, an `int`.
 
 ```python
@@ -383,7 +383,7 @@ import pickle
 
 import pytest
 
-from yggdryl import Eusipa, IsinRegistry
+from yggdryl import Eusipa, Instruments
 
 constant = Eusipa("2300")
 assert (constant.code, constant.group, constant.level) == (2300, 23, 2)
@@ -403,9 +403,9 @@ with pytest.raises(ValueError, match="expected a four-digit EUSIPA product categ
 with pytest.raises(TypeError):
     Eusipa(True)  # type: ignore[arg-type]
 
-registry = IsinRegistry()
-assert registry.merge({"isin": "CH0123456789", "eusipacode": 2300})
-assert Eusipa(registry.get("CH0123456789")["eusipacode"]) == constant
+held = Instruments()
+assert held.merge({"isin": "CH0012214059", "eusipacode": 2300})
+assert Eusipa(held.get("CH0012214059")["eusipacode"]) == constant
 ```
 
 ## Enums: side, marketdatakind, state, timeinforce

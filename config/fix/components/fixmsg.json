@@ -336,6 +336,17 @@
         }
       },
       {
+        "name": "instcode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "instcode",
+          "FIX:tag": "65054"
+        }
+      },
+      {
         "name": "isincode",
         "dtype": {
           "type": "null"

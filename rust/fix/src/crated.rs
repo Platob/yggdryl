@@ -99,7 +99,7 @@
 //! copies over: the crate's own definition is the one that types a row.
 //! Folding another dictionary in never counts them either.
 //!
-//! Fifty-two definitions - scalar fields and Map groups, each registered by
+//! Fifty-three definitions - scalar fields and Map groups, each registered by
 //! its shape, the derived columns excepted - and every one of them a row of
 //! [`CRATED`].
 //!
@@ -111,10 +111,12 @@
 //! own: which message and session - the role of the plugin that spoke it
 //! among them - which instrument - and then the
 //! definitions no column of that row is: the capture's `sourceurl` and the
-//! `fixmsg` document.
-//! A retired definition leaves no gap, and a number never names two
-//! definitions over time: the dictionary a store holds is written by this
-//! crate and read back through it.
+//! `fixmsg` document - then `instcode` (65054), the one definition numbered
+//! past them: the resolved instrument's cross code joined the market band
+//! after every earlier tag stood, and a tag once given never moves. A
+//! retired definition leaves no gap, and a number never
+//! names two definitions over time: the dictionary a store holds is
+//! written by this crate and read back through it.
 
 use std::sync::{Arc, LazyLock};
 
@@ -491,6 +493,15 @@ pub const UNIT_TAG_NAME: (i32, &str) = (65_020, "unit");
 /// `SecurityIDSource(22)`, the `SecurityAltID` group and the crate's
 /// normalized instrument codes.
 pub const SECURITYIDS_TAG_NAME: (i32, &str) = (65_021, "securityids");
+
+/// The tag and name carrying the cross code of the instrument the message
+/// is about - the instrument table's own key: a real ISIN for a security an
+/// agency numbered, `class:body` for everything no agency numbers - written
+/// at the parse where the code is a function of the message alone (a
+/// stated real ISIN, a detected currency pair) and filled by the lifecycle
+/// from the instrument it resolves otherwise; followed along a chain, fed
+/// to no digest. The one tag past `fixmsg`, so every earlier number stands.
+pub const INSTCODE_TAG_NAME: (i32, &str) = (65_054, "instcode");
 
 /// The tag and name carrying the price the step before the message settled
 /// on, which the row derives from `PrevClosePx(140)`.
@@ -981,7 +992,7 @@ fn fix_datatype_of(dtype: &DataType) -> Option<&'static str> {
 /// and [`fix_crate_fields`] all walk them in - and the tags are numbered in
 /// the fixed row's band order, so this is that order too. A row that only names a tag
 /// and a column is a column this crate adds nothing to but the tag.
-const CRATED: [Crated; 52] = [
+const CRATED: [Crated; 53] = [
     Crated::element(UUID_TAG_NAME, ElementColumn::Uuid),
     Crated::element(CROSSUUID_TAG_NAME, ElementColumn::CrossUuid),
     Crated::element(CROSSCODE_TAG_NAME, ElementColumn::CrossCode).saying(
@@ -1308,6 +1319,21 @@ const CRATED: [Crated; 52] = [
         "Source URL",
         "The object this message's line was read from; the capture's own \
          column, carried beside the row and never one of its own.",
+    ),
+    // The one definition past `fixmsg` (65053): numbered after every earlier
+    // tag so none of them moved, placed in the row by its market column.
+    Crated::market(
+        INSTCODE_TAG_NAME,
+        MarketColumn::InstCode,
+        "The cross code of the instrument the message is about, the \
+         instrument table's own key: the real ISIN of a security an agency \
+         numbered, class:body - the two CFI class letters, then the body the \
+         characteristics spell, IF:EUR/USD for a spot pair - for everything \
+         no agency numbers. Written at the parse where the code is a function \
+         of the message alone - a stated real ISIN, a detected currency pair - \
+         filled by the lifecycle from the instrument the message resolves to \
+         otherwise, followed along a chain, fed to no digest; a row stating \
+         one is the row's word.",
     ),
 ];
 

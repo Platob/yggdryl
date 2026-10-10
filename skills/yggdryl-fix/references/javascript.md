@@ -443,32 +443,37 @@ assert.equal(new Set([...chained.getChild('crossuuid')].map(String)).size, 2)
 
 ## Share what lifecycles learn about instruments
 
-A lifecycle learns each message's ISIN - the one key - its CFI code, country,
-market, ticker, currency, pair and security codes into an `IsinRegistry`, and
-fills what later messages of that instrument leave unsaid, as `derived`
-identifiers and the ticker, CFI and currency facts, never the wire; a parse
-through the same codec fills derived identifiers from the table its door
-fixed. A codec without one learns into a registry of each walk's own;
-`isinRegistry` shares one across walks run one after another, bound to a
-store with `fromUrl` and written back with `commit()` only where it moved,
-and `FixCodec.fromEnv()` shares the process's own, `IsinRegistry.fromEnv()`,
-laid over the embedded common instruments `IsinRegistry.seeded()` holds. A
-row carries the national number its ISIN embeds - Holcim's Valor below -
-and its market's country's currency where it states none.
+A lifecycle learns each message's instrument into an `Instruments`, keyed by
+its cross code - a real ISIN for a security, `class:body` for an FX pair or a
+derivative, its `QY` number minted - with its CFI code, country, market,
+ticker, currency, pair and security codes, and fills what later messages of
+that instrument leave unsaid, as `derived` identifiers, the ticker, CFI and
+currency facts and the instrument's cross code as `instcode`, never the wire;
+a parse through the same codec fills derived identifiers from the table its
+door fixed. A codec without one learns into a collection of each walk's own;
+`instruments` shares one across walks run one after another, bound to a store
+with `fromUrl` and written back with `commit()` only where it moved, and
+`FixCodec.fromEnv()` shares the process's own, `Instruments.fromEnv()`, laid
+over the embedded common instruments `Instruments.seeded()` holds. An
+instrument - a plain object of its columns, its listings nested - carries the
+national number its ISIN embeds - Holcim's Valor below - and each listing its
+market's country's currency where it states none. A row's `instcode` joins
+the instruments table on `crosscode`.
 
 ```javascript
 const assert = require('node:assert/strict')
 const path = require('node:path')
-const { IsinRegistry, fix } = require('yggdryl')
+const { Instruments, fix } = require('yggdryl')
 
-const instruments = new IsinRegistry()
-const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')), { isinRegistry: instruments })
+const instruments = new Instruments()
+const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')), { instruments: instruments })
 
 // The first walk states Holcim's ISIN, RIC, CFI code, ticker and market.
 const stated = '8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|207=XSWX|10=0|'
 for (const _ of codec.lifecycle([...codec.parseLines([Buffer.from(stated)])])) void _
-assert.equal(instruments.get('CH0012214059').ric, 'HOLN.S')
-assert.equal(instruments.get('CH0012214059').valor, '1221405', 'the Valor a CH ISIN embeds')
+const holcim = instruments.get('CH0012214059')
+assert.equal(instruments.listings('CH0012214059')[0].codes.get('ric'), 'HOLN.S', "a listing code is its market's")
+assert.equal(holcim.securityids.get('valor'), '1221405', 'the Valor a CH ISIN embeds')
 
 // A later parse naming only the ticker on the market takes the ISIN from the
 // table, derived; the walk fills the CFI code as a market fact.
@@ -477,8 +482,15 @@ assert.equal(parsed.isincode, 'CH0012214059')
 assert.ok(parsed.securityids.isDerived('isin'))
 const [later] = [...codec.lifecycle([parsed])]
 assert.equal(later.cficode, 'ESVUFR')
+assert.equal(later.instcode, 'CH0012214059', "the instrument's cross code")
+
+// An FX pair no agency numbers: its code and its minted number are spelled
+// from the message alone, and the walk learns its instrument.
+const [pair] = [...codec.lifecycle([...codec.parseLines([Buffer.from('8=FIX.4.4|35=D|11=F|55=EUR/USD|54=1|38=1000000|10=0|')])])]
+assert.deepEqual([pair.instcode, pair.isincode], ['IF:EUR/USD', 'QYLTVIRYHNX5'])
+assert.equal(instruments.get('IF:EUR/USD').currency, 'USD', 'the quote leg')
 // The table is an Arrow stream: a golden file loads with `fromUrl`.
-assert.notEqual(IsinRegistry.fromArrowReader(instruments.intoArrowReader()).get('CH0012214059'), null)
+assert.notEqual(Instruments.fromArrowReader(instruments.intoArrowReader()).get('CH0012214059'), null)
 ```
 
 ## Follow a replace chain's parents

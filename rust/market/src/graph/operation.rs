@@ -510,6 +510,12 @@ impl<K: OperationKind> Market for OperationElement<K> {
     fn set_ticker(&mut self, ticker: Option<smol_str::SmolStr>, overwrite: bool) {
         self.data.set_ticker(ticker, overwrite);
     }
+    fn get_instcode(&self) -> Option<&str> {
+        self.data.get_instcode()
+    }
+    fn set_instcode(&mut self, code: Option<yggdryl::Str>, overwrite: bool) {
+        self.data.set_instcode(code, overwrite);
+    }
     fn get_metadata(&self) -> &super::market::Metadata {
         self.data.get_metadata()
     }
@@ -1077,6 +1083,12 @@ impl<K: OperationKind> Market for OperationEvent<K> {
     }
     fn set_ticker(&mut self, ticker: Option<smol_str::SmolStr>, overwrite: bool) {
         self.data.set_ticker(ticker, overwrite);
+    }
+    fn get_instcode(&self) -> Option<&str> {
+        self.data.get_instcode()
+    }
+    fn set_instcode(&mut self, code: Option<yggdryl::Str>, overwrite: bool) {
+        self.data.set_instcode(code, overwrite);
     }
     fn get_metadata(&self) -> &super::market::Metadata {
         self.data.get_metadata()

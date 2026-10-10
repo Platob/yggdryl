@@ -231,6 +231,23 @@ let refused = Isin::new("US037833100A").unwrap_err().to_string();
 assert!(refused.contains("expected a closing check digit"), "{refused}");
 ```
 
+## A minted number
+
+An instrument no agency numbers - an FX pair, a forward, an option, a strategy - still gets an ISIN where a reader joins on `isin`: `Isin::minted(digest)` writes the prefix `QY` - a user-assigned code ISO 3166 leaves to private use, listed nowhere - then nine base-36 digits of the digest's low 46 bits and the digit that closes them, and `Isin::is_minted(text, digest)` asks whether a number is that mint of that digest, byte for byte, computing nothing; `Isin::MINTED_PREFIX` is the prefix. A minted number closes under a prefix no agency numbers under, so it ranks one - below every agency's number, which replaces it whichever leads. The [instrument](../../graph/instrument.md#the-minted-number) mints from the XXH3-128 of its cross code, so the number is a function of the code alone. Rust only; Python reaches it as `Instruments.mint(crosscode)`.
+
+```rust
+use yggdryl::{CodeValue, Isin};
+
+let digest = yggdryl::xxhash::xxh128(b"IF:EUR/USD");
+let minted = Isin::minted(digest);
+assert_eq!(minted.as_str(), "QYLTVIRYHNX5");
+assert!(minted.as_str().starts_with(Isin::MINTED_PREFIX));
+assert!(Isin::is_minted(minted.as_str(), digest));
+assert!(!Isin::is_minted("QY0000000000", digest), "another system's number of the shape");
+assert!(Isin::is_closed(minted.as_str()) && !Isin::is_listed_prefix(minted.as_str()));
+assert_eq!(minted.rank(), 1);
+```
+
 ## A column holds the canonical spelling
 
 A scalar read folds the case; a column's bytes are what every reader digests, so an Arrow cast is held to the canonical spelling - upper case, the shape - and answers null under the default `safe` for a lower-case spelling. A typo is a spelling of the shape and lands as the value it is, as the value door answers it. Strict names the row and the column.
@@ -288,7 +305,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 - No default value: the empty text names no security, so an empty text cell entering the column is null, as it is for a UUID ([Cast](../cast.md#empty-text)).
 - No vocabulary: `StringEnum::from_logical_name("isin")` answers an enum of no members, and no Python code class declares it.
 - A `ZZ` number - ISO 6166's placeholder for a derivative no agency has numbered yet - closes but is listed nowhere: rank one, which a real number replaces on a [`merge_with`](index.md#rank) whichever leads, as a real number replaces a typo and a typo a masked number. Two numbers of one rank are two statements, and the leading one stands.
-- A lifecycle may learn a missing matching identifier or CFI attribute only under a real ISIN (`is_real`: closing under a listed prefix) in its own [graph walk](../../graph/event.md#lifecycle-walk); that association registry is not a codec parser, a global mapper, or a replacement for a stated fact.
+- A lifecycle may learn a missing matching identifier or CFI attribute only under a real ISIN (`is_real`: closing under a listed prefix) - or, for an instrument no agency numbers, its cross code - in its own [graph walk](../../graph/event.md#lifecycle-walk), into the [instruments](../../graph/instrument.md) it fills from; that association is not a codec parser, a global mapper, or a replacement for a stated fact.
 - `SecurityIDSource(22)` and the crate tag `isincode(65022)` carry the normalized column in a [FIX capture](index.md#fix-message-definitions): a view of the message's `isin` [security identifier](../../graph/identifier.md).
 - The prefix is the numbering agency's, which includes international prefixes no [country](country.md) names, so it is read as text rather than as that code.
 

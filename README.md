@@ -18,7 +18,7 @@ feature), record media (Arrow IPC, Parquet, Avro, CSV, plain text, XML for
 Analysis and Iceberg tables) and the event vocabulary are core domains over
 those same values; the expression layer is a grammar over them, never a second
 query engine. Two crates stand over the core: `yggdryl-market`, the market
-kinds, identifiers, ISIN registry and market graph - orders, quotes,
+kinds, identifiers, instruments and market graph - orders, quotes,
 executions, books and candles - and `yggdryl-fix`, the FIX protocol over both.
 A Rust caller installs what it links (`yggdryl_market::install()`,
 `yggdryl_fix::install()`); the Python and Node packages install both.

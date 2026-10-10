@@ -254,7 +254,7 @@ nav:
     - Market: graph/market.md
     - Operation: graph/operation.md
     - Identifier: graph/identifier.md
-    - IsinRegistry: graph/isin-registry.md
+    - Instrument: graph/instrument.md
     - Order: graph/order.md
     - Quote: graph/quote.md
     - Execution: graph/execution.md

@@ -303,7 +303,7 @@ from .urn import UrnField, urn
 from .url import UrlField, url
 from .version import Version, VersionField, version
 from .identifier import Identifier, Identifiers
-from .isin_registry import IsinRegistry, Resolution
+from .instrument import Instruments, Resolution
 from .eusipa import Eusipa
 
 __all__ = [
@@ -368,7 +368,7 @@ __all__ = [
     "IOBase",
     "Identifier",
     "Identifiers",
-    "IsinRegistry",
+    "Instruments",
     "IOCursor",
     "IOResult",
     "IPC_DICTIONARY_IDS_KEY",

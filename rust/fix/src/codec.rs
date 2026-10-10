@@ -75,8 +75,8 @@ use yggdryl::graph::Element as _;
 use yggdryl::implementer::warned;
 use yggdryl::text::{TextBytes, TextEntries, TextEntry, TextLine, TextOptions};
 use yggdryl::{Error, Field, Result, Scalar, Version};
-use yggdryl_market::implementer::IsinTable;
-use yggdryl_market::{IsinRegistry, Side};
+use yggdryl_market::implementer::InstrumentTable;
+use yggdryl_market::{Instruments, Side};
 
 use super::build::{BEGINSTRING_COLUMN, Builder, Fill, FixPair, RowExtras, root_name, version_of};
 use super::{FixField, FixMessages, FixMsg, FixRegistry};
@@ -524,13 +524,13 @@ pub struct FixCodec {
     market_metadata: bool,
     /// The instrument registry every lifecycle this codec runs learns into
     /// and fills from, shared; none gives each walk its own, starting empty.
-    isin_registry: Option<Arc<Mutex<IsinRegistry>>>,
+    instruments: Option<Arc<Mutex<Instruments>>>,
     /// The registry's table as the door this codec reads for fixed it, on
     /// the thread that opened the door and under one lock: what every
     /// message of that reading fills its derived identifiers from, and what
     /// no worker reaches the lock for. None on a codec no door has read
     /// through, which takes the table per message a singular door builds.
-    instruments: Option<IsinTable>,
+    instrument_table: Option<InstrumentTable>,
     /// The `BeginString` child every built message carries, resolved once:
     /// a bridge row states no version, so every one of them would otherwise
     /// look the field up per line.
@@ -721,27 +721,27 @@ impl FixCodec {
             official_time_delay_ms: Self::DEFAULT_OFFICIAL_TIME_DELAY_MS,
             dedup_window_ms: Self::DEFAULT_DEDUP_WINDOW_MS,
             market_metadata: true,
-            isin_registry: None,
             instruments: None,
+            instrument_table: None,
             beginstring,
         }
     }
 
     /// Opens a codec over the registry the process environment names,
     /// [`FixRegistry::from_env`], sharing the instrument registry it names
-    /// too, [`IsinRegistry::from_env`] - the one codec constructor that
+    /// too, [`Instruments::from_env`] - the one codec constructor that
     /// attaches the process's own; [`Self::new`] attaches none, and a
     /// commit of what the walks learned is always the caller's
-    /// ([`IsinRegistry::commit`]).
+    /// ([`Instruments::commit`]).
     ///
     /// # Errors
     ///
-    /// Returns [`FixRegistry::from_env`]'s or [`IsinRegistry::from_env`]'s
+    /// Returns [`FixRegistry::from_env`]'s or [`Instruments::from_env`]'s
     /// load failure.
     pub fn from_env() -> Result<Self> {
         let registry = Arc::clone(FixRegistry::from_env()?);
-        let instruments = Arc::clone(IsinRegistry::from_env()?);
-        Ok(Self::new(registry).with_isin_registry(instruments))
+        let instruments = Arc::clone(Instruments::from_env()?);
+        Ok(Self::new(registry).with_instruments(instruments))
     }
 
     /// The dictionary every message is read against.
@@ -1049,8 +1049,8 @@ impl FixCodec {
 
     /// Shares `registry` with every lifecycle this codec runs, and with
     /// every parse: each lifecycle learns what its messages state about
-    /// their instruments into it ([`IsinRegistry::learn`]) and fills what
-    /// they leave unstated from it ([`IsinRegistry::fill`]), so a walk run
+    /// their instruments into it ([`Instruments::learn`]) and fills what
+    /// they leave unstated from it ([`Instruments::fill`]), so a walk run
     /// after another starts from what the first learned; each parse door
     /// fixes the registry's table once, as the door opens, under one lock
     /// on the calling thread, and every message it reads takes from that
@@ -1068,39 +1068,39 @@ impl FixCodec {
     /// # use std::sync::{Arc, Mutex};
     /// # use yggdryl::local::LocalFolder;
     /// # use yggdryl_fix::{FixCodec, FixRegistry};
-    /// # use yggdryl_market::IsinRegistry;
+    /// # use yggdryl_market::Instruments;
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/fix");
     /// # let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
-    /// let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
-    /// let codec = FixCodec::new(registry).with_isin_registry(Arc::clone(&instruments));
-    /// assert!(codec.isin_registry().is_some());
+    /// let instruments = Arc::new(Mutex::new(Instruments::new()));
+    /// let codec = FixCodec::new(registry).with_instruments(Arc::clone(&instruments));
+    /// assert!(codec.instruments().is_some());
     /// # Ok(())
     /// # }
     /// ```
     #[must_use]
-    pub fn with_isin_registry(mut self, registry: Arc<Mutex<IsinRegistry>>) -> Self {
-        self.isin_registry = Some(registry);
-        self.instruments = None;
+    pub fn with_instruments(mut self, registry: Arc<Mutex<Instruments>>) -> Self {
+        self.instruments = Some(registry);
+        self.instrument_table = None;
         self
     }
 
     /// The instrument registry every lifecycle this codec runs shares,
-    /// where one was given ([`Self::with_isin_registry`]).
+    /// where one was given ([`Self::with_instruments`]).
     #[must_use]
-    pub fn isin_registry(&self) -> Option<&Arc<Mutex<IsinRegistry>>> {
-        self.isin_registry.as_ref()
+    pub fn instruments(&self) -> Option<&Arc<Mutex<Instruments>>> {
+        self.instruments.as_ref()
     }
 
     /// The instrument table this reading fills from: the one its door
     /// fixed, borrowed; else the shared registry's as it stands, taken under
     /// one uncontended lock - what a singular door costs per message; else
     /// none, which costs nothing.
-    pub(super) fn instruments(&self) -> Option<Cow<'_, IsinTable>> {
-        if let Some(table) = &self.instruments {
+    pub(super) fn instrument_table(&self) -> Option<Cow<'_, InstrumentTable>> {
+        if let Some(table) = &self.instrument_table {
             return Some(Cow::Borrowed(table));
         }
-        let registry = self.isin_registry.as_ref()?;
-        let table = yggdryl_market::implementer::isin_registry_as_table(
+        let registry = self.instruments.as_ref()?;
+        let table = yggdryl_market::implementer::instruments_as_table(
             &registry.lock().unwrap_or_else(PoisonError::into_inner),
         )
         .clone();
@@ -1114,8 +1114,8 @@ impl FixCodec {
     /// opened inside another takes no second lock.
     pub(super) fn reading(&self) -> Self {
         let mut codec = self.clone();
-        if codec.instruments.is_none() {
-            codec.instruments = self.instruments().map(Cow::into_owned);
+        if codec.instrument_table.is_none() {
+            codec.instrument_table = self.instrument_table().map(Cow::into_owned);
         }
         codec
     }
@@ -2694,11 +2694,11 @@ impl FixCodec {
     /// set is bounded by the number of distinct deliveries in the finite
     /// capture. Distinct deliveries with equal business content remain
     /// distinct. Each message, in walk order, teaches the instrument registry
-    /// what it states about its instrument ([`IsinRegistry::learn`]) and
-    /// takes what it leaves unstated from it ([`IsinRegistry::fill`]) - the
+    /// what it states about its instrument ([`Instruments::learn`]) and
+    /// takes what it leaves unstated from it ([`Instruments::fill`]) - the
     /// ticker, the CFI code and the currency as market facts, the rest as
     /// derived identifiers, its identity untouched: the walk's own, starting
-    /// empty, or the one [`Self::with_isin_registry`] shares. Finite expirations emit at their exact deadline. Where
+    /// empty, or the one [`Self::with_instruments`] shares. Finite expirations emit at their exact deadline. Where
     /// [`Self::snapshot_ns`] is set, separate owned views of every living
     /// identity are emitted on that epoch-aligned grid without advancing its
     /// chain.
@@ -2740,7 +2740,7 @@ impl FixCodec {
             self.snapshot_ns,
             self.sorted_lifecycle,
             self.dedup_window_ns(),
-            self.isin_registry.clone(),
+            self.instruments.clone(),
         )
     }
 
@@ -2958,7 +2958,7 @@ impl FixCodec {
         )?;
         Ok(super::enrich::enrich(
             &self.registry,
-            self.instruments().as_deref(),
+            self.instrument_table().as_deref(),
             message,
             viewed,
         ))

@@ -2,33 +2,39 @@
 //! declares - [`MarketDataKind`], [`MarketDataType`], [`Side`] and
 //! [`TimeInForce`] - each claimed on the core's register by [`install`]; the
 //! identifiers an element states ([`IdKey`], [`Identifier`],
-//! [`Identifiers`], [`IdType`], [`IdSource`]); the instrument registry
-//! ([`IsinRegistry`]); a book's price level ([`Limit`]); a structured
+//! [`Identifiers`], [`IdType`], [`IdSource`]); the instruments
+//! ([`Instruments`]); a book's price level ([`Limit`]); a structured
 //! product's category ([`Eusipa`]); and [`graph`], the market leaves, the
 //! walk over them, the books and their Arrow rows, beside the event
 //! vocabulary the core's `yggdryl::graph` keeps.
 
 #![deny(unsafe_code)]
 
+mod characteristics;
 mod eusipa;
 pub mod identifier;
 mod idkey;
 mod idsource;
 mod idtype;
-mod isin_registry;
+mod instrument;
 pub mod limit;
+mod listing;
 pub mod marketdatakind;
 pub mod marketdatatype;
 pub mod securityid;
 pub mod side;
 pub mod timeinforce;
+pub use characteristics::{Characteristics, Exercise, Expiry, Settle};
 pub use eusipa::Eusipa;
 pub use identifier::{IdWord, Identifier, Identifiers};
 pub use idkey::IdKey;
 pub use idsource::IdSource;
 pub use idtype::IdType;
-pub use isin_registry::{IsinEntry, IsinRegistry, MatchTier, Resolution, Unmatched};
+pub use instrument::{
+    Instrument, Instruments, Leg, MAX_CODE_WIDTH, MatchTier, Resolution, Unmatched,
+};
 pub use limit::Limit;
+pub use listing::Listing;
 pub use marketdatakind::*;
 pub use marketdatatype::*;
 pub use side::*;
@@ -109,8 +115,9 @@ pub mod internals {
     pub use crate::graph::book::internals as graph_book;
     pub use crate::graph::facts::internals as graph_facts;
     pub use crate::graph::iterator::internals as graph_iterator;
-    pub use crate::isin_registry::env::internals as isin_registry_env;
-    pub use crate::isin_registry::internals as isin_registry;
+    pub use crate::instrument::env::internals as instrument_env;
+    pub use crate::instrument::internals as instrument;
+    pub use crate::instrument::seed::internals as instrument_seed;
     pub use crate::marketdatakind::internals as marketdatakind;
 }
 // END GENERATED

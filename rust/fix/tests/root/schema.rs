@@ -91,8 +91,9 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     let tags = yggdryl_fix::fix_schema_tags();
     // The capture states the plugin role beside its plugin id, and the
     // market band the origin currency after the currency: one tagged column
-    // each over the strike-bearing row.
-    assert_eq!(tags.len(), 152);
+    // each over the strike-bearing row; then `instcode` joined the market
+    // band after `securityids`, D42.
+    assert_eq!(tags.len(), 153);
     for tag in [22, 48, 453, 454] {
         assert!(!tags.contains(&tag), "{tag} is no column");
     }
@@ -100,7 +101,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     // event's, the market's and the operation's facts, the crate's own tag
     // or - for a market or an operation column FIX already names alike -
     // that field's.
-    let shared = 6 + 9 + 36 + 5;
+    let shared = 6 + 9 + 37 + 5;
     assert_eq!(
         &tags[..15],
         [
@@ -141,7 +142,16 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "the market's category and type, prices, the currency and the origin, and quantities, FIX's own fields where FIX names them alike"
     );
     assert_eq!(
-        &tags[48..51],
+        &tags[26..29],
+        [
+            yggdryl_fix::SECURITYIDS_TAG_NAME.0,
+            yggdryl_fix::INSTCODE_TAG_NAME.0,
+            yggdryl_fix::ISINCODE_TAG_NAME.0,
+        ],
+        "instcode right after securityids, before the ISIN: the market band's order, D42"
+    );
+    assert_eq!(
+        &tags[49..52],
         [
             yggdryl_fix::TICKER_TAG_NAME.0,
             yggdryl_fix::STRIKEPX_TAG_NAME.0,
@@ -150,7 +160,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "the ticker, the strike FIX states as StrikePrice(202), then the metadata"
     );
     assert_eq!(
-        &tags[51..shared],
+        &tags[52..shared],
         [
             yggdryl_fix::ORDQTY_TAG_NAME.0,
             59,
@@ -217,8 +227,9 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     // The two identifier fields and the two groups - each its list alone,
-    // its length the count - are four columns no row holds.
-    assert_eq!(schema.fields().len(), 153);
+    // its length the count - are four columns no row holds; `instcode`
+    // joined the market band, D42.
+    assert_eq!(schema.fields().len(), 154);
     assert!(
         schema
             .fields()

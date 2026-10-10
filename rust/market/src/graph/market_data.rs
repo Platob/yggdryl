@@ -474,6 +474,12 @@ impl Market for MarketData {
     fn set_ticker(&mut self, ticker: Option<smol_str::SmolStr>, overwrite: bool) {
         delegate_by_variant!(self, set_ticker, ticker, overwrite);
     }
+    fn get_instcode(&self) -> Option<&str> {
+        delegate_by_variant!(self, get_instcode)
+    }
+    fn set_instcode(&mut self, code: Option<yggdryl::Str>, overwrite: bool) {
+        delegate_by_variant!(self, set_instcode, code, overwrite);
+    }
     fn get_metadata(&self) -> &super::market::Metadata {
         delegate_by_variant!(self, get_metadata)
     }

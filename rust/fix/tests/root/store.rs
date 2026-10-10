@@ -3543,11 +3543,18 @@ mod committed {
     /// 65001, 65004, 65007 and 65009 re-spelled with their descriptions, so
     /// the crate's field shard and the fixed row component were written
     /// again. No count of the census below moved.
+    /// It last moved when the crate's own block gained `instcode` (65054):
+    /// the resolved instrument's cross code on every row, a nullable `utf8`,
+    /// numbered past the fixed row's own `fixmsg` so every earlier tag
+    /// stood, hashing beside the fifty-two and as a member of the fixed row
+    /// right after `securityids` (D42); the crate's field shard and the
+    /// fixed row component were written again, and the census below counts
+    /// one crate field more through `crated_fields`.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         crate::install::installed();
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 12_613_356_107_921_639_431);
+        assert_eq!(registry.stable_hash(), 857_326_152_662_128_339);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| FixField::new(component).msgtype().is_some())
             .count();

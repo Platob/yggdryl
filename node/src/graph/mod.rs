@@ -298,6 +298,16 @@ macro_rules! market_getters {
                 )
             }
 
+            /// The cross code of the instrument this is about - a real
+            /// ISIN for a security an agency numbered, a `class:body` for an
+            /// FX pair or a derivative (`IF:EUR/USD`) - the instruments
+            /// table's own key, so a reader joins on `instcode = crosscode`;
+            /// `null` where none is known.
+            #[napi(getter)]
+            pub fn instcode(&self) -> Option<String> {
+                ::yggdryl_market::graph::Market::get_instcode(&self.inner).map(ToOwned::to_owned)
+            }
+
             /// The instrument's ISIN, borrowed from `securityids`; `null`
             /// where it states none.
             #[napi(getter)]

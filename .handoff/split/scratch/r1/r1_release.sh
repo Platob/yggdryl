@@ -120,8 +120,10 @@ if [ "$target" != "$current" ]; then
   cat <<EOF
 
 Bumped $current -> $target in the tree; nothing published, nothing committed. Next, the lane's:
-  1. commit this bump on the branch (one commit, ending with the attribution lines the session's
-     reminder gives);
+  1. commit this bump on the branch: one commit, ending with exactly these two lines and no other
+     Co-Authored-By (the program's standing rule, .handoff/next/MARKET_SPLIT_CONTINUE.md):
+       Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+       Claude-Session: https://claude.ai/code/session_01Gfky7FUx35U5i4UJcrQGKp
   2. run '$0 --prove' on the committed tree, then push and read CI to 'CI result'.
 EOF
   exit 0
@@ -171,7 +173,8 @@ git diff --stat
 cat <<EOF
 
 Proved $target with nothing published; listings under $OUT.
-The lane's: push the branch, read CI to 'CI result', record this log in the results commit.
+The lane's: push the branch, read CI to 'CI result', record this log in the results commit (which
+ends with the same two attribution lines every commit of the program carries).
 The user's alone:
   1. CARGO_REGISTRY_TOKEN with publish-new over every crate crates.io does not hold yet: $crates;
   2. merge the PR into main once every gate is green - the merge is the release (preflight publishes

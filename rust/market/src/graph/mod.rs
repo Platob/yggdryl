@@ -316,6 +316,12 @@ macro_rules! delegate_market {
             fn set_ticker(&mut self, ticker: Option<smol_str::SmolStr>, overwrite: bool) {
                 $crate::graph::Market::set_ticker(&mut self.$($field).+, ticker, overwrite);
             }
+            fn get_instcode(&self) -> Option<&str> {
+                $crate::graph::Market::get_instcode(&self.$($field).+)
+            }
+            fn set_instcode(&mut self, code: Option<::yggdryl::Str>, overwrite: bool) {
+                $crate::graph::Market::set_instcode(&mut self.$($field).+, code, overwrite);
+            }
             fn get_metadata(&self) -> &$crate::graph::Metadata {
                 $crate::graph::Market::get_metadata(&self.$($field).+)
             }

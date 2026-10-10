@@ -584,24 +584,29 @@ impl Cfi {
         Self::parsed(code).is_some()
     }
 
-    /// Whether `code` is classified and says something past its category
-    /// and group: at least one of positions 3 to 6 is not `X`. A code that
-    /// only classifies - `ESXXXX` - is coarse, and a market that keeps only
-    /// detailed codes answers none for it; an `X` inside a detailed code is
-    /// an attribute the standard leaves unknown and stays legal.
+    /// Whether `code` is classified and says everything its group can say:
+    /// at least one of positions 3 to 6 is not `X`, or the group defines no
+    /// attribute at all - a strategy's (`KEXXXX`), whose whole
+    /// classification is its two letters. A code that only classifies where
+    /// its group says more - `ESXXXX` - is coarse, and a market that keeps
+    /// only detailed codes answers none for it; an `X` inside a detailed
+    /// code is an attribute the standard leaves unknown and stays legal.
     ///
     /// ```
     /// # use yggdryl::Cfi;
     /// assert!(Cfi::is_detailed("ESVUFR"));
     /// assert!(Cfi::is_detailed("ESVXXX"));
+    /// assert!(Cfi::is_detailed("KEXXXX"), "a strategy's group has no attribute to state");
     /// assert!(!Cfi::is_detailed("ESXXXX"));
     /// assert!(!Cfi::is_detailed("EMXXXX"));
     /// assert!(!Cfi::is_detailed("XXXXXX"));
     /// ```
     #[must_use]
     pub fn is_detailed(code: &str) -> bool {
-        Self::parsed(code)
-            .is_some_and(|(_, _, attributes)| attributes.iter().any(|held| *held != Self::UNKNOWN))
+        Self::parsed(code).is_some_and(|(_, group, attributes)| {
+            attributes.iter().any(|held| *held != Self::UNKNOWN)
+                || (0..4).all(|at| group.attributes(at).is_empty())
+        })
     }
 
     /// The category and group a well-formed code names, with its attributes.

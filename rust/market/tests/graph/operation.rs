@@ -499,12 +499,14 @@ fn a_boxed_book_control_is_one_pointer() {
 /// its eight-byte derived mask for one set, 32 fewer after padding, and the
 /// operation facts two 56-byte `IdMap`s for two sets, exactly 64 fewer, so
 /// the undated holder is 656 + 64 = 720 and the dated one 864 + the boxed
-/// control's sixteen = 880.
+/// control's sixteen = 880. Both moved by sixteen when `instcode` joined
+/// `MarketFacts`, D42: one `Option<Str>` of twenty-four, eight of them the
+/// padding the facts carried, to 736 and 896.
 #[test]
 fn the_operation_leaves_are_the_sizes_of_the_facts_they_hold() {
     crate::install::installed();
     use std::mem::size_of;
-    assert_eq!((size_of::<Order>(), size_of::<OrderEvent>()), (720, 880));
+    assert_eq!((size_of::<Order>(), size_of::<OrderEvent>()), (736, 896));
     assert_eq!(size_of::<Quote>(), size_of::<Order>());
     assert_eq!(size_of::<ExecutionEvent>(), size_of::<OrderEvent>());
 }

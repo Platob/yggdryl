@@ -301,6 +301,81 @@ fn the_isin_wire_contracts_are_pinned() {
     assert_eq!(dtype.stable_hash(), 17548004354234589734);
 }
 
+/// The instrument keys a minted number is pinned over - D42.2's table - each
+/// with the number the 128-bit digest of the key mints.
+const MINTED: [(&str, &str); 11] = [
+    ("IF:EUR/USD", "QYLTVIRYHNX5"),
+    ("JF:EUR/USD:M3", "QYIJ9KBCDDV1"),
+    ("JF:EUR/USD:2027-01-15", "QYI2FZFJUNE8"),
+    ("SF:USD/JPY:0:M3", "QYKXOCJXPVF9"),
+    ("IT:XAU/USD", "QY900CSWCFZ9"),
+    ("OC:US0378331005:2026-12-18:200", "QYK7DLZMSYS1"),
+    ("OC:US0378331005:2026-12-18:210", "QYG1U5ULBQ73"),
+    ("OP:US0378331005:2026-12-18:200", "QY6TB00ZO934"),
+    ("FF:EU0009658145:2026-12", "QY4NFU6XFYI7"),
+    ("FF:EU0009658145:2027-03", "QY3KUS57QPX3"),
+    (
+        "KE:FF:EU0009658145:2026-12+FF:EU0009658145:2027-03",
+        "QY9THOC9IUF9",
+    ),
+];
+
+#[test]
+fn a_minted_number_is_the_closed_qy_projection_of_its_digest_ranked_one() {
+    for (code, number) in MINTED {
+        let digest = yggdryl::xxhash::xxh128(code.as_bytes());
+        let minted = Isin::minted(digest);
+        assert_eq!(minted.as_str(), number, "{code}");
+        assert_eq!(minted.prefix(), "QY", "{code}");
+        assert!(Isin::is_canonical(minted.as_str()), "{code}");
+        // Closed, under a prefix no agency numbers: rank one, below every real
+        // number and above a mask, so a real ISIN replaces it whatever the order.
+        assert!(Isin::is_closed(minted.as_str()), "{code}");
+        assert!(!Isin::is_listed_prefix(minted.as_str()), "{code}");
+        assert_eq!(minted.rank(), 1, "{code}");
+        assert!(!minted.is_real(), "{code}");
+        assert!(Isin::is_minted(minted.as_str(), digest), "{code}");
+        // Another key's digest does not mint it.
+        assert!(
+            !Isin::is_minted(minted.as_str(), digest ^ 1),
+            "{code}: the lowest bit is one the number spells"
+        );
+    }
+
+    // Only the low 46 bits are spelled: nine base-36 digits always hold them,
+    // so the bits above move nothing and the number is total over a digest.
+    let digest = yggdryl::xxhash::xxh128(b"IF:EUR/USD");
+    assert_eq!(
+        Isin::minted(digest | !((1_u128 << 46) - 1)),
+        Isin::minted(digest)
+    );
+    assert_eq!(Isin::minted(0).as_str(), "QY0000000000");
+    assert_eq!(Isin::minted(u128::MAX).as_str(), "QYOXYYDEZGF7");
+    // What a mint spells is never mistaken for another digest's: the panel's
+    // `crossuuid`-of-the-day reading is not the mint's input.
+    let widened = yggdryl::Uuid::from_v8(u128::from(yggdryl::xxhash::xxh3(b"IF:EUR/USD")));
+    assert_eq!(Isin::minted(widened.get()).as_str(), "QY2QX016JGV0");
+    assert!(!Isin::is_minted("QYLTVIRYHNX5", widened.get()));
+}
+
+#[test]
+fn a_foreign_qy_number_is_never_read_as_a_mint() {
+    let digest = yggdryl::xxhash::xxh128(b"IF:EUR/USD");
+    // A hand-written `QY` number of the right shape: another system's, kept
+    // as stated, and no mint of any key this test digests.
+    let foreign = closed("QY000000000");
+    assert!(Isin::is_closed(foreign.as_str()));
+    assert_eq!(foreign.rank(), 1);
+    assert!(!Isin::is_minted(foreign.as_str(), digest));
+    // The minted digits under another prefix, a check digit that does not
+    // close, a lower-case spelling or another width are no mint either.
+    assert!(!Isin::is_minted("ZZLTVIRYHNX5", digest));
+    assert!(!Isin::is_minted("QYLTVIRYHNX6", digest));
+    assert!(!Isin::is_minted("qyltviryhnx5", digest));
+    assert!(!Isin::is_minted("QYLTVIRYHNX", digest));
+    assert!(!Isin::is_minted("", digest));
+}
+
 #[cfg(feature = "internals")]
 mod internal {
     //! The std-hash feed of `isin`, which no caller names.

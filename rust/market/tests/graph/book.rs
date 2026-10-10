@@ -960,7 +960,7 @@ fn iterator_emits_one_book_per_symbol_and_timestamp() {
     );
 }
 
-/// An ISIN an ISIN registry filled moves the book an element without one
+/// An ISIN the instruments filled moves the book an element without one
 /// stands in: unfilled, the second quote - stating the ticker alone -
 /// stands in the ticker's book while the first stands in the instrument's;
 /// filled from the first quote's row through the ticker index, both stand
@@ -1005,7 +1005,7 @@ fn a_ticker_a_registry_filled_files_the_element_under_the_instruments_book() {
         ]
     );
 
-    let mut registry = yggdryl_market::IsinRegistry::new();
+    let mut registry = yggdryl_market::Instruments::new();
     let filled = [first, second]
         .into_iter()
         .map(|mut value| {

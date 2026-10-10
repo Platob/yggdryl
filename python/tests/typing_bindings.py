@@ -1655,6 +1655,7 @@ fix_message_unit: str = fix_message.unit
 fix_message_side: Side = fix_message.side
 fix_message_securityids: yggdryl.Identifiers = fix_message.securityids
 fix_message_isincode: str | None = fix_message.isincode
+fix_message_instcode: str | None = fix_message.instcode
 fix_message_fxrates: dict[str, Scalar] = fix_message.fxrates
 fix_message_bidpx: Scalar | None = fix_message.bidpx
 fix_message_bidqty: Scalar | None = fix_message.bidqty
@@ -1998,6 +1999,7 @@ assert fix_message_strikepx is None or isinstance(fix_message_strikepx, Scalar)
 assert isinstance(fix_message_metadata, dict) and isinstance(fix_message_identifiers, yggdryl.Identifiers)
 assert isinstance(fix_message_partyids, yggdryl.Identifiers)
 assert fix_message_isincode is None or isinstance(fix_message_isincode, str)
+assert fix_message_instcode is None or isinstance(fix_message_instcode, str)
 assert isinstance(fix_message_fxrates, dict)
 assert fix_message_bidpx is None or isinstance(fix_message_bidpx, Scalar)
 assert fix_message_bidqty is None or isinstance(fix_message_bidqty, Scalar)
@@ -2141,6 +2143,7 @@ graph_order_event_unit: str = graph_order_event.unit
 graph_order_event_side: Side = graph_order_event.side
 graph_order_event_securityids: yggdryl.Identifiers = graph_order_event.securityids
 graph_order_event_isincode: str | None = graph_order_event.isincode
+graph_order_event_instcode: str | None = graph_order_event.instcode
 graph_order_event_fxrates: dict[str, Scalar] = graph_order_event.fxrates
 graph_order_event_bidpx: Scalar | None = graph_order_event.bidpx
 graph_order_event_bidqty: Scalar | None = graph_order_event.bidqty
@@ -2346,6 +2349,7 @@ assert graph_order_event_currency and graph_order_event_side is Side.BUYS
 assert graph_order_event_unit == "" and graph_order_event_state is State.UNKNOWN
 assert not graph_order_event_securityids and graph_order_event_ticker == "IBM"
 assert graph_order_event_isincode is None and set(graph_order_event_fxrates) == {"EUR"}
+assert graph_order_event_instcode is None
 assert graph_order_event_bidpx is not None and graph_order_event_bidqty is not None
 assert graph_order_event_bidccy is None and graph_order_event_askpx is None
 assert graph_order_event_askqty is None and graph_order_event_askccy is None
@@ -2808,53 +2812,61 @@ identifiers_dict: dict[str, str] = identifiers.into_dict()
 identifiers_from_dict: yggdryl.Identifiers = yggdryl.Identifiers.from_dict({"ullink:isin": "US0378331005"})
 identifiers_derived: bool = identifiers_from_dict.is_derived("isin")
 assert identifiers_dict == {"isin": "US0378331005", "orderid": "O-1"} and not identifiers_derived
-isin_registry: yggdryl.IsinRegistry = yggdryl.IsinRegistry(max_instruments=8)
-isin_registry_merged: bool = isin_registry.merge({"isin": "CH0012214059", "ric": "HOLN.S"})
-isin_registry_row: dict[str, Any] | None = isin_registry.get("CH0012214059")
-isin_registry_dirty: bool = isin_registry.is_dirty
-isin_registry_committed: yggdryl.IOResult = yggdryl.IsinRegistry.from_url("instruments.arrows", 8).commit()
-isin_registry_default: yggdryl.IsinRegistry = yggdryl.IsinRegistry.from_env()
-isin_registry_seeded: yggdryl.IsinRegistry = yggdryl.IsinRegistry.seeded()
-isin_registry_seeded_store: yggdryl.IsinRegistry = yggdryl.IsinRegistry.seeded_from_url("instruments.arrows", 16384)
-isin_registry_short_name: object = (isin_registry_seeded.get("US0378331005") or {}).get("fisn")
-isin_registry_listed: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN")
-isin_registry_on_market: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN", "XSWX")
-isin_registry_bound: int = isin_registry.max_instruments
-isin_registry_rows: int = isin_registry.rows
-isin_registry_listings: list[dict[str, Any]] = isin_registry.listings("CH0012214059")
-isin_registry_listing: dict[str, Any] | None = isin_registry.get_listing("CH0012214059", "XSWX")
-isin_registry_removed: list[dict[str, Any]] = yggdryl.IsinRegistry().remove("CH0012214059")
-isin_registry_removed_listing: dict[str, Any] | None = yggdryl.IsinRegistry().remove_listing("CH0012214059", "XSWX")
-isin_registry_reader: pa.RecordBatchReader = isin_registry.into_arrow_reader()
-isin_registry_loaded: int = yggdryl.IsinRegistry().extend_from_arrow_reader(isin_registry.into_arrow_reader())
-isin_registry_codec: fix.FixCodec = fix.FixCodec(fix_registry_from_fields, isin_registry=isin_registry)
-isin_registry_shared: yggdryl.IsinRegistry | None = isin_registry_codec.isin_registry
-assert isin_registry_merged and isin_registry_row is not None and isin_registry_bound == 8
-assert isin_registry_loaded == 1 and isin_registry_shared == isin_registry and len(isin_registry) == 1
-assert isin_registry_rows == len(isin_registry_listings) == 1 and isin_registry_listing is None
-isin_registry_by_code: dict[str, Any] | None = isin_registry_seeded.get_by_code("cusip", "037833100", "XNAS")
-isin_registry_lookup_codes: tuple[str, ...] = yggdryl.IsinRegistry.LOOKUP_CODES
-isin_registry_threshold: float = isin_registry.economic_threshold
-isin_registry.set_economic_threshold(yggdryl.IsinRegistry.DEFAULT_ECONOMIC_THRESHOLD)
-isin_registry_economic: bool = isin_registry.is_economic_match
-isin_registry.set_economic_match(False)
-isin_registry_resolution: yggdryl.Resolution = isin_registry_seeded.resolve(
+instruments: yggdryl.Instruments = yggdryl.Instruments(max_instruments=8)
+instruments_merged: bool = instruments.merge(
+    {"isin": "CH0012214059", "listings": [{"miccode": "XSWX", "codes": {"ric": "HOLN.S"}}], "metadata": {"issuer": "Holcim"}}
+)
+instruments_row: dict[str, Any] | None = instruments.get("CH0012214059")
+instruments_dirty: bool = instruments.is_dirty
+instruments_committed: yggdryl.IOResult = yggdryl.Instruments.from_url("instruments.arrows", 8).commit()
+instruments_default: yggdryl.Instruments = yggdryl.Instruments.from_env()
+instruments_seeded: yggdryl.Instruments = yggdryl.Instruments.seeded()
+instruments_seeded_store: yggdryl.Instruments = yggdryl.Instruments.seeded_from_url("instruments.arrows", 16384)
+instruments_short_name: object = (instruments_seeded.get("US0378331005") or {}).get("fisn")
+instruments_listed: dict[str, Any] | None = instruments.get_by_ticker("HOLN")
+instruments_on_market: dict[str, Any] | None = instruments.get_by_ticker("HOLN", "XSWX")
+instruments_bound: int = instruments.max_instruments
+instruments_rows: int = instruments.rows
+instruments_listings: list[dict[str, Any]] = instruments.listings("CH0012214059")
+instruments_listing: dict[str, Any] | None = instruments.get_listing("CH0012214059", "XSWX")
+instruments_removed: dict[str, Any] | None = yggdryl.Instruments().remove("CH0012214059")
+instruments_minted: str = yggdryl.Instruments.mint("IF:EUR/USD")
+instruments_by_uuid: dict[str, Any] | None = instruments.get_by_uuid((instruments_row or {}).get("uuid"))
+instruments_removed_listing: dict[str, Any] | None = yggdryl.Instruments().remove_listing("CH0012214059", "XSWX")
+instruments_reader: pa.RecordBatchReader = instruments.into_arrow_reader()
+instruments_loaded: int = yggdryl.Instruments().extend_from_arrow_reader(instruments.into_arrow_reader())
+instruments_codec: fix.FixCodec = fix.FixCodec(fix_registry_from_fields, instruments=instruments)
+instruments_shared: yggdryl.Instruments | None = instruments_codec.instruments
+assert instruments_merged and instruments_row is not None and instruments_bound == 8
+assert instruments_loaded == 1 and instruments_shared == instruments and len(instruments) == 1
+assert instruments_rows == len(instruments_listings) == 1 and instruments_listing is not None
+assert instruments_minted == "QYLTVIRYHNX5" and instruments_by_uuid == instruments_row
+assert instruments_row is not None and instruments_row["metadata"] == {"issuer": "Holcim"}
+instruments_by_code: dict[str, Any] | None = instruments_seeded.get_by_code("cusip", "037833100")
+instruments_lookup_codes: tuple[str, ...] = yggdryl.Instruments.LOOKUP_CODES
+instruments_threshold: float = instruments.economic_threshold
+instruments.set_economic_threshold(yggdryl.Instruments.DEFAULT_ECONOMIC_THRESHOLD)
+instruments_economic: bool = instruments.is_economic_match
+instruments.set_economic_match(False)
+instruments_resolution: yggdryl.Resolution = instruments_seeded.resolve(
     yggdryl.graph.Order(securityids=[identifier_security])
 )
-isin_registry_resolved_tier: str | None = isin_registry_resolution.tier
-isin_registry_resolved_kind: str | None = isin_registry_resolution.kind
-isin_registry_resolved_entry: dict[str, Any] | None = isin_registry_resolution.entry
-isin_registry_resolved_why: str | None = isin_registry_resolution.unmatched
-isin_registry_resolved_isins: list[str] | None = isin_registry_resolution.isins
-isin_registry_resolved_best: float | None = isin_registry_resolution.best
-isin_registry_origccy: yggdryl.Scalar | None = graph_root_order.origccy
-isin_registry_origin_currency: yggdryl.Scalar = graph_root_order.origin_currency
-assert isin_registry_by_code is not None and "cusip" in isin_registry_lookup_codes and not isin_registry_economic
-assert isin_registry_resolution.matched and isin_registry_resolved_tier == "isin" and isin_registry_resolved_why is None
-assert isin_registry_resolved_entry is not None and isin_registry_resolved_isins is None and isin_registry_resolved_best is None
-assert isin_registry_resolved_kind is None and yggdryl.Resolution is yggdryl.isin_registry.Resolution
-assert isin_registry_threshold == 0.85 and isin_registry_origccy is None and isin_registry_origin_currency.as_py() == "XXX"
-assert isin_registry_removed == [] and isin_registry_removed_listing is None
+instruments_resolved_tier: str | None = instruments_resolution.tier
+instruments_resolved_kind: str | None = instruments_resolution.kind
+instruments_resolved_entry: dict[str, Any] | None = instruments_resolution.entry
+instruments_resolved_why: str | None = instruments_resolution.unmatched
+instruments_resolved_codes: list[str] | None = instruments_resolution.codes
+instruments_resolved_code: str | None = instruments_resolution.code
+instruments_resolved_best: float | None = instruments_resolution.best
+instruments_origccy: yggdryl.Scalar | None = graph_root_order.origccy
+instruments_origin_currency: yggdryl.Scalar = graph_root_order.origin_currency
+assert instruments_by_code is not None and "cusip" in instruments_lookup_codes and not instruments_economic
+assert instruments_resolution.matched and instruments_resolved_tier == "isin" and instruments_resolved_why is None
+assert instruments_resolved_entry is not None and instruments_resolved_codes is None and instruments_resolved_best is None
+assert instruments_resolved_code is None
+assert instruments_resolved_kind is None and yggdryl.Resolution is yggdryl.instrument.Resolution
+assert instruments_threshold == 0.85 and instruments_origccy is None and instruments_origin_currency.as_py() == "XXX"
+assert instruments_removed is None and instruments_removed_listing is None
 eusipa: yggdryl.Eusipa = yggdryl.Eusipa(2300)
 eusipa_text: yggdryl.Eusipa = yggdryl.Eusipa("1260")
 eusipa_code: int = eusipa.code
