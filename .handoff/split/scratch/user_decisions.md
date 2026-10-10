@@ -125,3 +125,14 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
 23. P10: "make then instrument registry unique by unix instcode and mic since its events now" - the
     registry's rows (instrument events) are unique by `(transunix, instcode, mic)`: one version per
     instant per key, sorted by the instant (decision 19), the current instrument the latest.
+24. D44's and P9b's readings (`p10/d44_design.md`, `p10/p9b_design.md` "Put to the user") are taken
+    as recommended to keep the pace the user asked for ("Compact all remaining steps ... the
+    fastest"), each overridable: P10 lands as P10a (decision 17 + the flat (instcode, mic) row)
+    then P10b (decisions 18, 19, 23); a statement naming no market lands on XXXX even where the
+    instrument lists one market; a classified CFI (two letters) is kept; coalescing is validity
+    first, then warn-and-keep for instrument facts under learn and replace under merge; the
+    registry commit is append-only; the Bloomberg exchange-code rung is left out of P10 (its
+    source table, the OpenFIGI CSV, is refused by this container's proxy) and listed for later;
+    P9b deletes `BookEvent::new` and its hand-built fixtures state `instcode` = their symbol; an
+    FX book keys `3:0:IF:EUR/USD`. Decision 22 (hourly snapshots, expiries in the instrument's
+    timezone) is designed by worker B as D44's next section before it is implemented.
