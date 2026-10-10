@@ -70,3 +70,17 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
     goes unbooked. The book iterator's generation is verified adversarially (one book stream per
     instrument, withdrawals across keys, snapshot ticks whole, the medallion's books table).
     This supersedes the cross-code decision's item 5 (books keyed by the code deferred).
+17. P10, after P9b (its own design D44, then its commit): "Make instrument registry unique by
+    intrument code and mic since an instrument can be used on other markets adding default mic.
+    Ensure it correctly updates the fix message. Ensure fix codec parsing checks correct instrument
+    informations like checking option type when strike price given, or future ... find informations
+    to make robust inference from straight isin to fallback rules from the internet and fix
+    registry, with also coalesce validated instrument informations like bloomberg, ric, mic,
+    currency, country, strikepx, etc ... and propagates in life cycles leverage instrument
+    centralization". Read as: the registry's rows unique by `(instcode, mic)`, the market `XXXX`
+    (`Mic::none()`) where none is stated; the FIX message filled from its `(instcode, mic)` row; the
+    parse infers the instrument by a ladder from a stated real ISIN down to fallback rules (CFI,
+    SecurityType(167), the fields stated - a strike makes an option, a maturity with no strike a
+    future - checked for contradictions) drawn from the FIX dictionary and public standards; the
+    validated facts (Bloomberg, RIC, MIC, currency, country, strike, ...) coalesced on the
+    instrument by rank and propagated along the lifecycle from the central registry.
