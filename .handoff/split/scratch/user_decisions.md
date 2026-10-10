@@ -158,3 +158,15 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
     leg's or an entry's remaining size), on an execution and a trade it is the quantity executed
     (`lastqty`); every door that sets or derives it (the FIX parse, the fill accounting, the book
     fold, the Arrow rows, the docs) follows that one rule.
+28. P7 (amends D40.5/D40.6, the lineage): "then ensure the uuid lineages where fix messages cross
+    code are the same as leafs market operations, srcuuids for fixmessages are the log text messages
+    uuids and the book srcuuids are the distinct srcuuids of all its inner events - thus ensuring a
+    lineage filtering on crosscode either on fix messages or market operation leaves and be able to
+    get the used books and log messages in medaillon". Read as: a FIX message's `crosscode` is the
+    same text as the cross code of the market operation leaves it splits into (one stored cross
+    code, `{kind}:{side}:{base}`, so a filter on it finds the message and its leaves alike); a FIX
+    message's `srcuuids` are the `uuid`s of the log text lines it was parsed from; a leaf carries
+    its message's `srcuuids`; a book's `srcuuids` are the distinct `srcuuids` of every event inside
+    it (its delta and its events), sorted - superseding D40.6's "the delta's and the events' uuids
+    and the previous book's uuid"; the medallion can go from a book to the log lines it used and
+    from a cross code to every FIX message and leaf of that chain.
