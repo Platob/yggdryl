@@ -142,3 +142,12 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
     value; identifiers many elements share never match - `trdmatchid`, `quotereqid`, `mdreqid` and
     the parent slots. A bid and an offer under one entry id stay two entries; entries of two
     instruments under one entry id stay apart; two orders filled in one match are no conflict.
+26. P12, the fill accounting (its own design and commit, after wave 1): "refine fixmessage
+    lifecycle to find a stable way to refine the state for partiallyfilled orders executed
+    leveraging the with_previous and compare the execid to when if different updates the real
+    consumed and update the remaining quantities, and if it hits 0 it changes the part fill like
+    states to fully filled". Read as: along an order's chain, an execution report whose `execid`
+    differs from every fill the chain already counted adds its `lastqty` to the consumed quantity
+    (`cumqty`) and recomputes the remaining one (`leavesqty` = `ordqty` - `cumqty`); a repeated
+    `execid` (a resend, a duplicate) counts nothing - stable whatever the order of arrival; where
+    `leavesqty` reaches 0 a partial-fill-like state becomes its filled state.
