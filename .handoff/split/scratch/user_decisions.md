@@ -136,3 +136,9 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
     P9b deletes `BookEvent::new` and its hand-built fixtures state `instcode` = their symbol; an
     FX book keys `3:0:IF:EUR/USD`. Decision 22 (hourly snapshots, expiries in the instrument's
     timezone) is designed by worker B as D44's next section before it is implemented.
+25. P8 tightened (answered "Scope it"): a current element matches a previous alive element of the
+    same `MarketDataKind`, the same instrument (`instcode`) where both state one, the same side
+    whenever both state one (not only for ORDR/EXEC), sharing one identifier of the same type and
+    value; identifiers many elements share never match - `trdmatchid`, `quotereqid`, `mdreqid` and
+    the parent slots. A bid and an offer under one entry id stay two entries; entries of two
+    instruments under one entry id stay apart; two orders filled in one match are no conflict.
