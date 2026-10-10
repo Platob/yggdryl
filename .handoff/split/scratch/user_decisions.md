@@ -151,3 +151,10 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
     (`cumqty`) and recomputes the remaining one (`leavesqty` = `ordqty` - `cumqty`); a repeated
     `execid` (a resend, a duplicate) counts nothing - stable whatever the order of arrival; where
     `leavesqty` reaches 0 a partial-fill-like state becomes its filled state.
+27. P12 (with decision 26): "ensure to have coherent overall definition for generic quantity
+    field which is always the remaining available quantity too or of others the executed
+    quantity". Read as: the market fact `quantity` has one definition per kind - on an order, a
+    quote and a book entry it is the quantity still available (an order's `leavesqty`, a quote
+    leg's or an entry's remaining size), on an execution and a trade it is the quantity executed
+    (`lastqty`); every door that sets or derives it (the FIX parse, the fill accounting, the book
+    fold, the Arrow rows, the docs) follows that one rule.
