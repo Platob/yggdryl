@@ -461,6 +461,15 @@ each `uuid` once within `dedup_window_ms` of event time, one minute unless
 the codec says otherwise; `with_dedup_window_ms(0)` yields every restated twin too.
 A snapshot grid's view is the live message as of its tick: dated at it, so its
 `uuid` is that instant's, with the live message's content and place.
+An order's chain counts its fills once each by `ExecID(17)` - or
+`SecondaryExecID(527)` - over its first stated `CumQty(14)`: `cumqty` and
+`leavesqty` are the count's, a fill delivered again, a status reply (`150=I`,
+`17=0`) and a leg's report (`442=2`) count nothing, a bust (`150=H` with
+`ExecRefID(19)`) takes the fill it names back, a correction (`150=G`)
+replaces it, and a partial fill whose count reaches the order quantity reads
+`FILLED`; a stated total that disagrees is warned, never adopted, and an ended
+chain's fills are remembered for the window, so a late copy starts no chain
+([lifecycle](https://platob.github.io/yggdryl/fix/lifecycle/#an-orders-fills-are-counted-once)).
 
 ```rust
 use std::sync::Arc;

@@ -7,7 +7,7 @@
 | Key | Rule |
 | --- | --- |
 | Owner | trait `yggdryl_market::graph::Market` (`graph::market`), no supertrait; Rust-only - [leaves](index.md#leaves) answer it in Python/JavaScript |
-| Price, quantity, numbers | `get_price`/`get_quantity` + `set_`: what the element states, exact as [`Decimal`](../types/numeric/decimal.md#decimal), `None` if none - never last-executed, never a default; likewise `lastpx`/`lastqty` (last executed price/quantity), `avgpx`, `cumqty`, `leavesqty`, `prevpx`/`prevqty` (prior step's settlement), `spotrate`/`forwardpoints` (FX parts), `stoppx` (the price a stop order triggers at) and `strikepx` (the strike price of the option the element is about - an instrument fact, which a follower of the same instrument [takes along its chain](#following-and-merging); a FIX message's `StrikePrice(202)`) |
+| Price, quantity, numbers | `get_price`/`get_quantity` + `set_`: what the element states, exact as [`Decimal`](../types/numeric/decimal.md#decimal), `None` if none - the price never last-executed, never a default; the quantity has [one definition per kind](#one-quantity-per-kind) - what is still available on an order, a quote and a book entry, what executed on an execution and a trade; likewise `lastpx`/`lastqty` (last executed price/quantity), `avgpx`, `cumqty`, `leavesqty`, `prevpx`/`prevqty` (prior step's settlement), `spotrate`/`forwardpoints` (FX parts), `stoppx` (the price a stop order triggers at) and `strikepx` (the strike price of the option the element is about - an instrument fact, which a follower of the same instrument [takes along its chain](#following-and-merging); a FIX message's `StrikePrice(202)`) |
 | Currency, unit | `get_currency`/`set_currency`: [`Ccy::none()`](../types/codes/ccy.md) if unstated; `get_unit`/`set_unit`: [`Unit::none()`](../types/codes/unit.md) if unstated; `get_origccy`/`set_origccy`: the currency the instrument was issued in, `Ccy::none()` where neither the element nor an [instruments fill](instrument.md#matching) stated one, and `origin_currency()` that or else the currency ([below](#origin-currency)) |
 | Side | `get_side`/`set_side`: the [side](../types/enum/side.md) by value, never absent - `Side::Unknown` (code `0`) where none is stated, which means "not stated": nothing invents a side. An order's or an execution's side is the one side it takes, and its stored cross code states its code ([below](#sides-and-cross-codes)); any other element's is a tag - a [quote](#a-quotes-two-legs) holds its bid and its ask and tags the leg it states, a two-sided one `Side::Both` (`BOTH`, code `99`), and a [book](book.md) is always `BOTH` |
 | Kind | `marketdatakind()`: required - the [category](../types/enum/marketdatakind.md) the element is filed under and a [lifecycle](event.md#lifecycle-walk) chains within (a leaf answers its own kind, a [FIX message](../fix/message.md#market-data) the category its dictionary files its type under) |
@@ -48,10 +48,12 @@ A change carries what it implies onto the facts that follow it. A source *moves*
 | a predecessor's side, followed | a sided follower stating none takes it: the side is part of its identity | |
 | a predecessor's `strikepx`, followed | a follower of the same instrument stating none takes it: the strike is the option's | |
 | a predecessor's bid or ask, followed | an unsided follower tagging no side and stating neither the price nor the quantity of that leg: the leg whole, its currency with it ([A quote's two legs](#a-quotes-two-legs)) | |
-| a predecessor's `ordqty`, `cumqty`, `avgpx`, followed | an operation's follower stating none of them: what its chain ordered, traded and at what average - never a last fill, which no rise in `cumqty` invents | |
+| a predecessor's `ordqty`, `cumqty`, `avgpx`, followed | an operation's follower stating none of them: what its chain ordered, traded and at what average - never a last fill, which no rise in `cumqty` invents; a bare follower holds no ledger: a [lifecycle walk](event.md#lifecycle-walk) counts an order chain's fills once by execution identifier and writes `cumqty` and `leavesqty` from the count ([FIX](../fix/lifecycle.md#an-orders-fills-are-counted-once)) | |
 | `lastpx`, `spotrate`, `forwardpoints` | | the third, where two are stated: `lastpx` is spot plus points |
 | an operation's `ordqty`, `cumqty`, `leavesqty`, `cxlqty` and its state | | [by the state](#order-quantities-by-state) |
-| `leavesqty` | the quantity of an order: what is still open is what it is about - never an execution's or a trade's, whose quantity is its own | |
+| `leavesqty` | the quantity of an order: what is still open is what it is about - never an execution's or a trade's, whose quantity is what executed | |
+| `lastqty` | the quantity of an execution or a trade: what executed is what it is about - never an order's, whose quantity is what it has left | |
+| the kind, stamped by its holder | the quantity, where it followed the old kind's fact, to the new kind's: a report refiled as an execution takes its `lastqty`, an execution refiled as an order its `leavesqty` | |
 | `cumqty`, `lastqty`, `lastpx` | | `avgpx`, the last price, where all that traded is the last, positive fill |
 | `cficode` | | a detailed code over another describing one instrument, what that one says where it says nothing; a coarse code states nothing |
 
@@ -70,7 +72,20 @@ FIX's `LeavesQty(151) = OrderQty(38) - CumQty(14)` while an order works, and not
 | ended by someone or by the clock - the cancellation band, `DONE_FOR_DAY`, `EXPIRED` | `leavesqty` 0, `cxlqty` the rest of what was ordered (`ordqty` less `cumqty`), and the third of `ordqty`, `cumqty`, `cxlqty` |
 | ended any other way - `CALCULATED`, `REJECTED`, a failure | `leavesqty` 0, and the third of `ordqty`, `cumqty`, `cxlqty` |
 
-An order that ended has nothing left whatever else it states; any other element only where it states what it ordered or traded. An execution or a trade reports a fill rather than an order, so it reads as working whatever its state and its quantity is its own: a fill stating only its `lastqty` states nothing left, and an execution's `leavesqty` never becomes its quantity.
+An order that ended has nothing left whatever else it states; any other element only where it states what it ordered or traded. An execution or a trade reports a fill rather than an order, so it reads as working whatever its state and its quantity is the fill: a fill stating only its `lastqty` states nothing left, and an execution's `leavesqty` never becomes its quantity.
+
+Along a [lifecycle walk](event.md#lifecycle-walk) an order's state also moves by its count: a partial-fill-like state whose fills, counted once each by execution identifier, reach the accepted order quantity reads `FILLED` ([FIX](../fix/lifecycle.md#an-orders-fills-are-counted-once)).
+
+### One quantity per kind
+
+`quantity` is what the element is about, one definition per kind ([`MarketDataKind`](../types/enum/marketdatakind.md)), and every door that sets or derives it - a setter, a FIX parse, the lifecycle walk's count, the [book fold](book.md#entries), the [Arrow rows](schemas.md#the-marketdata-row) - follows it:
+
+| Kind | `quantity` is | Follows |
+| --- | --- | --- |
+| an order, a quote, a book entry | what is still available: an order's `leavesqty`, a quote leg's or an entry's remaining size | `leavesqty` |
+| an execution, a trade and their batches | what executed | `lastqty` |
+
+A quantity stated stands over either reading. A sided execution quotes what executed on its side - a buy's `bidqty`, a sell's `askqty` - as every sided element quotes its quantity, and a book recording an execution among its `events` digests that quantity.
 
 Every fill is part of the element, so it is a column of the [`marketdata` row](schemas.md#the-marketdata-row) and of the [FIX row](schemas.md#the-fix-row): a row read back through an Arrow reader answers the same facts without filling them again.
 

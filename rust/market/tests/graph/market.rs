@@ -562,7 +562,8 @@ fn dec(text: &str) -> Decimal {
 
 /// An execution's price stays the one it states - none - through any
 /// number of finalizes: what it last executed is its `lastpx`, never its
-/// price.
+/// price. Its quantity is another matter: what executed is what an
+/// execution is about, so its `lastqty` is its quantity (decision 27).
 #[test]
 fn an_execution_price_is_never_what_it_last_executed() {
     crate::install::installed();
@@ -575,7 +576,10 @@ fn an_execution_price_is_never_what_it_last_executed() {
     let once = fill.clone();
     fill.finalize();
     assert_eq!(fill, once, "finalizing twice changes nothing");
-    assert_eq!((fill.get_price(), fill.get_quantity()), (None, None));
+    assert_eq!(
+        (fill.get_price(), fill.get_quantity()),
+        (None, Some(Decimal::from_int(5)))
+    );
     assert_eq!(fill.get_lastpx(), Some(dec("100.5")));
     assert_eq!(fill.get_lastqty(), Some(Decimal::from_int(5)));
 }
@@ -2088,7 +2092,8 @@ fn a_closed_order_leaves_nothing_whatever_it_states() {
 }
 
 /// What an execution or a trade states as its quantity is its own - the
-/// fill it reports - never what the order it fills has left.
+/// fill it reports, its `lastqty` (decision 27) - never what the order it
+/// fills has left; a quantity stated stands over it.
 #[test]
 fn an_execution_quantity_is_never_its_orders_leaves() {
     crate::install::installed();
@@ -2099,10 +2104,26 @@ fn an_execution_quantity_is_never_its_orders_leaves() {
     fill.set_ordqty(Some(dec("100")), true);
     fill.set_cumqty(Some(dec("40")), true);
     assert_eq!(fill.get_leavesqty(), Some(dec("60")));
-    assert_eq!(fill.get_quantity(), None, "no quantity of its own");
-    fill.set_quantity(Some(dec("40")), true);
+    assert_eq!(fill.get_quantity(), None, "no fill reported yet");
+    fill.set_lastqty(Some(dec("40")), true);
+    assert_eq!(fill.get_quantity(), Some(dec("40")), "what executed");
+    assert_eq!(fill.get_bidqty(), None, "unsided");
+    fill.set_quantity(Some(dec("50")), true);
     fill.set_leavesqty(Some(dec("50")), true);
-    assert_eq!(fill.get_quantity(), Some(dec("40")));
+    fill.set_lastqty(Some(dec("45")), true);
+    assert_eq!(
+        fill.get_quantity(),
+        Some(dec("50")),
+        "a stated quantity stands"
+    );
+    let mut sided = ExecutionEvent::at(1);
+    sided.set_side(yggdryl_market::Side::Buy, true);
+    sided.set_lastqty(Some(dec("30")), true);
+    assert_eq!(
+        (sided.get_quantity(), sided.get_bidqty()),
+        (Some(dec("30")), Some(dec("30"))),
+        "a sided execution quotes what executed on its side"
+    );
 
     let mut ended = ExecutionEvent::at(1);
     ended.set_state(State::Filled);
@@ -2188,7 +2209,9 @@ fn an_operation_follower_takes_the_cumulative_fill_of_its_chain() {
     assert_eq!(more.get_cumqty(), Some(dec("70")));
     assert_eq!(more.get_avgpx(), None);
     // A follower reporting a fill of its own traded past the chain's
-    // cumulative fill: the chain's is not what traded now.
+    // cumulative fill: the chain's is not what traded now. A bare follower
+    // holds no ledger - the lifecycle walk counts the chain's fills and
+    // writes the total (`rust/market/tests/graph/iterator.rs`).
     let mut fill = OrderEvent::at(3);
     fill.set_crosscode("ORD-1".to_owned());
     fill.set_state(State::PartiallyFilled);

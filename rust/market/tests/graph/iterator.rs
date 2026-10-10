@@ -2413,3 +2413,794 @@ fn an_expiration_reports_no_fill() {
         (Some(decimal("0")), Some(decimal("60")))
     );
 }
+
+/// The fill accounting along an order's chain: each fill counted once by
+/// its execution identifier over the chain's first stated total, the
+/// count the order's `cumqty` and what it has left, a partial fill with
+/// nothing left `FILLED`, and the fills of an ended chain remembered for
+/// the window.
+mod fills {
+    use super::{EXEC_ID, ORDER_ID, at, identifier};
+    use yggdryl::graph::{Element, Event};
+    use yggdryl::{Decimal, State};
+    use yggdryl_market::Side;
+    use yggdryl_market::graph::{
+        EventIterator, ExecutionEvent, Fill, Market, Operation, OrderEvent, QuoteEvent,
+    };
+
+    fn dec(text: &str) -> Decimal {
+        text.parse().expect("a decimal")
+    }
+
+    /// One report of the order `A-1` at `ms`, stating `state` and, where
+    /// given, a fill of `lastqty` under `execid`.
+    fn report(ms: i64, state: State, execid: Option<&str>, lastqty: Option<&str>) -> OrderEvent {
+        let mut event = OrderEvent::at(at(ms));
+        event.set_crosscode("O-1".to_owned());
+        event.set_side(Side::Buy, true);
+        event.set_state(state);
+        event
+            .insert_identifier(identifier(&ORDER_ID, "A-1"))
+            .unwrap();
+        if let Some(execid) = execid {
+            event
+                .insert_identifier(identifier(&EXEC_ID, execid))
+                .unwrap();
+        }
+        if let Some(qty) = lastqty {
+            event.set_lastqty(Some(dec(qty)), true);
+        }
+        event.finalize();
+        event
+    }
+
+    /// The venue's acknowledgement of an order of `ordqty`, nothing traded.
+    fn opened(ordqty: &str) -> OrderEvent {
+        let mut event = report(0, State::New, None, None);
+        event.set_ordqty(Some(dec(ordqty)), true);
+        event.set_cumqty(Some(dec("0")), true);
+        event.finalize();
+        event
+    }
+
+    /// A partial fill of `lastqty` under `execid` at `ms`.
+    fn fill(ms: i64, execid: &str, lastqty: &str) -> OrderEvent {
+        report(ms, State::PartiallyFilled, Some(execid), Some(lastqty))
+    }
+
+    /// The quantities a walked report reads: traded, left, the quantity it
+    /// is about, its state.
+    fn read(event: &OrderEvent) -> (Option<Decimal>, Option<Decimal>, Option<Decimal>, State) {
+        (
+            event.get_cumqty(),
+            event.get_leavesqty(),
+            event.get_quantity(),
+            *event.get_state(),
+        )
+    }
+
+    fn walked(
+        events: Vec<OrderEvent>,
+        sorted: bool,
+    ) -> (
+        Vec<OrderEvent>,
+        EventIterator<OrderEvent, std::vec::IntoIter<OrderEvent>>,
+    ) {
+        walked_events(events, sorted)
+    }
+
+    fn walked_events(
+        events: Vec<OrderEvent>,
+        sorted: bool,
+    ) -> (
+        Vec<OrderEvent>,
+        EventIterator<OrderEvent, std::vec::IntoIter<OrderEvent>>,
+    ) {
+        let mut walk = EventIterator::new(events, sorted);
+        let walked: Vec<OrderEvent> = walk.by_ref().collect();
+        (walked, walk)
+    }
+
+    /// The generic reading of a report: a positive `lastqty` under an
+    /// `execid` is a new fill, one under none - or under FIX's `0`, a
+    /// status reply's - is unidentified, and anything else no fill.
+    #[test]
+    fn the_generic_fill_reading_answers_new_unidentified_or_none() {
+        crate::install::installed();
+        assert_eq!(
+            fill(1, "E1", "40").fill_of(),
+            Fill::New {
+                execid: "E1".into(),
+                qty: dec("40")
+            }
+        );
+        assert_eq!(
+            report(1, State::PartiallyFilled, None, Some("40")).fill_of(),
+            Fill::Unidentified { qty: dec("40") }
+        );
+        assert_eq!(
+            report(1, State::PartiallyFilled, Some("0"), Some("40")).fill_of(),
+            Fill::Unidentified { qty: dec("40") }
+        );
+        assert_eq!(
+            report(1, State::PartiallyFilled, Some("E1"), None).fill_of(),
+            Fill::NotAFill
+        );
+        assert_eq!(
+            report(1, State::PartiallyFilled, Some("E1"), Some("0")).fill_of(),
+            Fill::NotAFill
+        );
+        assert!(
+            fill(1, "E1", "40").states_end(),
+            "a plain event's state is its word"
+        );
+    }
+
+    /// Two fills adding up to the order: the first leaves the rest, the
+    /// second leaves nothing and reads `FILLED`, ending the chain.
+    #[test]
+    fn a_partial_fill_then_one_to_zero_reads_filled() {
+        crate::install::installed();
+        let (walked, walk) = walked(
+            vec![opened("100"), fill(10, "E1", "40"), fill(20, "E2", "60")],
+            true,
+        );
+        assert_eq!(
+            read(&walked[1]),
+            (
+                Some(dec("40")),
+                Some(dec("60")),
+                Some(dec("60")),
+                State::PartiallyFilled
+            )
+        );
+        assert_eq!(
+            read(&walked[2]),
+            (
+                Some(dec("100")),
+                Some(dec("0")),
+                Some(dec("0")),
+                State::Filled
+            )
+        );
+        assert_eq!(walked[2].get_prevuuid(), Some(walked[1].get_uuid()));
+        assert_eq!(walk.alive().count(), 0, "a filled order ended its chain");
+    }
+
+    /// A fill reported again under the same identifier adds nothing: the
+    /// chain's count stands, and the next fill still fills the order.
+    #[test]
+    fn a_repeated_execid_counts_nothing() {
+        crate::install::installed();
+        let (walked, walk) = walked(
+            vec![
+                opened("100"),
+                fill(10, "E1", "40"),
+                fill(20, "E1", "40"),
+                fill(30, "E2", "60"),
+            ],
+            true,
+        );
+        assert_eq!(
+            read(&walked[2]),
+            (
+                Some(dec("40")),
+                Some(dec("60")),
+                Some(dec("60")),
+                State::PartiallyFilled
+            ),
+            "the repeat"
+        );
+        assert_eq!(walked[2].get_prevuuid(), Some(walked[1].get_uuid()));
+        assert_ne!(
+            walked[2].get_uuid(),
+            walked[1].get_uuid(),
+            "an order's report of its own"
+        );
+        assert_eq!(read(&walked[3]).3, State::Filled);
+        assert_eq!(walk.alive().count(), 0);
+    }
+
+    /// The same fills in another arrival order land on the same count: an
+    /// unsorted walk sorts them first.
+    #[test]
+    fn fills_count_alike_whatever_order_they_arrive_in() {
+        crate::install::installed();
+        let in_order = walked(
+            vec![
+                opened("100"),
+                fill(10, "E1", "40"),
+                fill(15, "E1", "40"),
+                fill(20, "E2", "60"),
+            ],
+            true,
+        )
+        .0;
+        let shuffled = walked(
+            vec![
+                fill(20, "E2", "60"),
+                opened("100"),
+                fill(15, "E1", "40"),
+                fill(10, "E1", "40"),
+            ],
+            false,
+        )
+        .0;
+        assert_eq!(
+            in_order.iter().map(read).collect::<Vec<_>>(),
+            shuffled.iter().map(read).collect::<Vec<_>>()
+        );
+        assert_eq!(read(&shuffled[3]).3, State::Filled);
+    }
+
+    /// A count past the order quantity leaves nothing and promotes nothing:
+    /// the walk cannot say whether the order is done.
+    #[test]
+    fn an_overfill_floors_leaves_at_zero_and_stays_partial() {
+        crate::install::installed();
+        let (walked, walk) = walked(
+            vec![opened("100"), fill(10, "E1", "60"), fill(20, "E2", "60")],
+            true,
+        );
+        assert_eq!(
+            read(&walked[2]),
+            (
+                Some(dec("120")),
+                Some(dec("0")),
+                Some(dec("0")),
+                State::PartiallyFilled
+            )
+        );
+        assert_eq!(walk.alive().count(), 1, "never promoted from an overfill");
+    }
+
+    /// A capture opened mid-life: the chain's first stated total anchors
+    /// the count, a later one that agrees moves nothing, and one that
+    /// disagrees is not adopted - the count stands and is warned.
+    #[test]
+    fn a_stated_total_anchors_the_chain_and_the_count_carries_it() {
+        crate::install::installed();
+        let mut first = fill(10, "E1", "21");
+        first.set_ordqty(Some(dec("600")), true);
+        first.set_cumqty(Some(dec("340")), true);
+        first.finalize();
+        let mut agreeing = fill(20, "E2", "57");
+        agreeing.set_cumqty(Some(dec("397")), true);
+        agreeing.finalize();
+        let mut disagreeing = fill(30, "E3", "75");
+        disagreeing.set_cumqty(Some(dec("600")), true);
+        disagreeing.set_leavesqty(Some(dec("0")), true);
+        disagreeing.finalize();
+        let (walked, walk) = walked(vec![first, agreeing, disagreeing], true);
+        assert_eq!(
+            read(&walked[0]),
+            (
+                Some(dec("340")),
+                Some(dec("260")),
+                Some(dec("260")),
+                State::PartiallyFilled
+            )
+        );
+        assert_eq!(
+            read(&walked[1]),
+            (
+                Some(dec("397")),
+                Some(dec("203")),
+                Some(dec("203")),
+                State::PartiallyFilled
+            )
+        );
+        assert_eq!(
+            read(&walked[2]),
+            (
+                Some(dec("472")),
+                Some(dec("128")),
+                Some(dec("128")),
+                State::PartiallyFilled
+            ),
+            "the count, not the venue's 600"
+        );
+        assert_eq!(walk.alive().count(), 1);
+    }
+
+    /// A stated `FILLED` stands whatever the count says: the reverse of the
+    /// promotion never happens, and the chain ends.
+    #[test]
+    fn a_filled_order_whose_count_falls_short_stays_filled() {
+        crate::install::installed();
+        let mut filled = report(20, State::Filled, Some("E2"), Some("10"));
+        filled.set_cumqty(Some(dec("100")), true);
+        filled.finalize();
+        let (walked, walk) = walked(vec![opened("100"), fill(10, "E1", "40"), filled], true);
+        assert_eq!(
+            read(&walked[2]),
+            (
+                Some(dec("100")),
+                Some(dec("0")),
+                Some(dec("0")),
+                State::Filled
+            )
+        );
+        assert_eq!(walk.alive().count(), 0);
+    }
+
+    /// A fill stating no execution identifier is counted nowhere: it takes
+    /// the chain's count as a report of no fill does, and its predecessor's
+    /// identifier - which following carries onto it - names no fill of its
+    /// own.
+    #[test]
+    fn a_fill_stating_no_execid_counts_nothing() {
+        crate::install::installed();
+        let (walked, walk) = walked(
+            vec![
+                opened("100"),
+                fill(10, "E1", "40"),
+                report(20, State::PartiallyFilled, None, Some("30")),
+            ],
+            true,
+        );
+        assert_eq!(
+            walked[2].get_identifiers().get(&EXEC_ID),
+            Some("E1"),
+            "following carried the predecessor's execution identifier"
+        );
+        assert_eq!(
+            read(&walked[2]),
+            (
+                Some(dec("40")),
+                Some(dec("60")),
+                Some(dec("60")),
+                State::PartiallyFilled
+            )
+        );
+        assert_eq!(walk.alive().count(), 1);
+    }
+
+    /// A report reading `TRADE` - an order's report whose status could not
+    /// be read - with nothing left is filled by the count too.
+    #[test]
+    fn a_trade_state_report_with_nothing_left_reads_filled() {
+        crate::install::installed();
+        let (walked, walk) = walked(
+            vec![
+                opened("100"),
+                report(10, State::Trade, Some("E1"), Some("100")),
+            ],
+            true,
+        );
+        assert_eq!(
+            read(&walked[1]),
+            (
+                Some(dec("100")),
+                Some(dec("0")),
+                Some(dec("0")),
+                State::Filled
+            )
+        );
+        assert_eq!(walk.alive().count(), 0);
+    }
+
+    /// A stated `LeavesQty` of nothing below the order quantity is not a
+    /// fill: the venue states what the remainder became, the row is left as
+    /// stated and the chain stays alive.
+    #[test]
+    fn a_stated_leaves_of_zero_below_the_order_quantity_is_not_filled() {
+        crate::install::installed();
+        let mut stated = report(10, State::PartiallyFilled, None, None);
+        stated.set_ordqty(Some(dec("100")), true);
+        stated.set_cumqty(Some(dec("40")), true);
+        stated.set_leavesqty(Some(dec("0")), true);
+        stated.finalize();
+        let (walked, walk) = walked(vec![opened("100"), stated], true);
+        assert_eq!(
+            read(&walked[1]),
+            (
+                Some(dec("40")),
+                Some(dec("0")),
+                Some(dec("0")),
+                State::PartiallyFilled
+            )
+        );
+        assert_eq!(walk.alive().count(), 1);
+    }
+
+    /// An execution's chain counts no fill: each statement keeps its own
+    /// quantities, and a second statement of the one execution under its
+    /// identifier is another statement of the first.
+    #[test]
+    fn an_execution_chain_counts_no_fill_and_restates_its_twin() {
+        crate::install::installed();
+        let executed = |ms: i64, lastqty: &str| {
+            let mut event = ExecutionEvent::at(at(ms));
+            event.set_crosscode("E1".to_owned());
+            event.set_side(Side::Buy, true);
+            event.set_state(State::PartiallyFilled);
+            event.insert_identifier(identifier(&EXEC_ID, "E1")).unwrap();
+            event.set_lastqty(Some(dec(lastqty)), true);
+            event.finalize();
+            event
+        };
+        let walked: Vec<ExecutionEvent> =
+            EventIterator::new(vec![executed(10, "40"), executed(20, "40")], true).collect();
+        assert_eq!(walked[0].get_cumqty(), None);
+        assert_eq!(walked[1].get_cumqty(), None);
+        assert_eq!(walked[1].get_lastqty(), Some(dec("40")));
+        assert_eq!(walked[1].get_quantity(), Some(dec("40")), "what executed");
+        assert_eq!(
+            walked[1].get_uuid(),
+            walked[0].get_uuid(),
+            "the one execution, stated twice"
+        );
+    }
+
+    /// A second statement of a live execution's identifier saying something
+    /// else of it - a correction - stays a statement of its own.
+    #[test]
+    fn an_execution_correction_under_its_identifier_stays_its_own() {
+        crate::install::installed();
+        let executed = |ms: i64, state: State, lastqty: &str| {
+            let mut event = ExecutionEvent::at(at(ms));
+            event.set_crosscode("E1".to_owned());
+            event.set_side(Side::Buy, true);
+            event.set_state(state);
+            event.insert_identifier(identifier(&EXEC_ID, "E1")).unwrap();
+            event.set_lastqty(Some(dec(lastqty)), true);
+            event.finalize();
+            event
+        };
+        let walked: Vec<ExecutionEvent> = EventIterator::new(
+            vec![
+                executed(10, State::Trade, "40"),
+                executed(20, State::TradeCorrect, "50"),
+            ],
+            true,
+        )
+        .collect();
+        assert_eq!(walked.len(), 2);
+        assert_ne!(
+            walked[1].get_uuid(),
+            walked[0].get_uuid(),
+            "a correction is no copy of the fill it corrects"
+        );
+    }
+
+    /// Two executions on the two sides of one match under one execution
+    /// identifier are two: the buy's ended chain holds no fill of the sell.
+    #[test]
+    fn the_two_sides_of_one_match_under_one_execid_are_two_executions() {
+        crate::install::installed();
+        let executed = |ms: i64, side: Side| {
+            let mut event = ExecutionEvent::at(at(ms));
+            event.set_crosscode("X1".to_owned());
+            event.set_side(side, true);
+            event.set_state(State::Filled);
+            event.insert_identifier(identifier(&EXEC_ID, "X1")).unwrap();
+            event.set_lastqty(Some(dec("40")), true);
+            event.finalize();
+            event
+        };
+        let walked: Vec<ExecutionEvent> = EventIterator::new(
+            vec![
+                executed(10, Side::Buy),
+                executed(10, Side::Sell),
+                executed(20, Side::Buy),
+            ],
+            true,
+        )
+        .collect();
+        assert_eq!(walked.len(), 3);
+        assert_ne!(walked[1].get_uuid(), walked[0].get_uuid(), "the sell's own");
+        assert_eq!(
+            walked[2].get_uuid(),
+            walked[0].get_uuid(),
+            "the buy's copy restates the buy"
+        );
+    }
+
+    /// A total stated once the chain counted fills is the count's to agree
+    /// with: adoption runs only upward from a count of nothing.
+    #[test]
+    fn a_later_disagreeing_total_is_not_adopted() {
+        crate::install::installed();
+        let mut first = report(0, State::New, None, None);
+        first.set_ordqty(Some(dec("100")), true);
+        first.finalize();
+        let mut second = fill(20, "E2", "20");
+        second.set_cumqty(Some(dec("100")), true);
+        second.finalize();
+        let (walked, walk) = walked(vec![first, fill(10, "E1", "30"), second], true);
+        assert_eq!(
+            read(&walked[2]),
+            (
+                Some(dec("50")),
+                Some(dec("50")),
+                Some(dec("50")),
+                State::PartiallyFilled
+            ),
+            "the count of 30 and 20, the stated 100 warned"
+        );
+        assert_eq!(walk.alive().count(), 1);
+    }
+
+    /// A chain's first statement reporting a fill and no total: the count
+    /// is the fill, and what is left the order quantity less it.
+    #[test]
+    fn a_fill_counted_by_the_walk_is_the_chains_first_where_it_starts_one() {
+        crate::install::installed();
+        let mut first = fill(10, "E1", "30");
+        first.set_ordqty(Some(dec("100")), true);
+        first.finalize();
+        let (walked, _) = walked(vec![first], true);
+        assert_eq!(
+            read(&walked[0]),
+            (
+                Some(dec("30")),
+                Some(dec("70")),
+                Some(dec("70")),
+                State::PartiallyFilled
+            )
+        );
+    }
+
+    /// A replay of a fill sorted after a later one adopts nothing into the
+    /// ledger: its row keeps the venue's number, and the next unstated fill
+    /// counts from where the chain stands.
+    #[test]
+    fn a_replayed_fill_sorted_late_adopts_nothing() {
+        crate::install::installed();
+        let stating = |ms: i64, execid: &str, lastqty: &str, cumqty: &str| {
+            let mut event = fill(ms, execid, lastqty);
+            event.set_cumqty(Some(dec(cumqty)), true);
+            event.finalize();
+            event
+        };
+        let (walked, walk) = walked(
+            vec![
+                opened("100"),
+                stating(10, "E1", "40", "40"),
+                stating(20, "E2", "30", "70"),
+                stating(30, "E1", "40", "40"),
+                fill(40, "E3", "30"),
+            ],
+            true,
+        );
+        assert_eq!(
+            walked[3].get_cumqty(),
+            Some(dec("40")),
+            "the replay's own word"
+        );
+        assert_eq!(
+            read(&walked[4]),
+            (
+                Some(dec("100")),
+                Some(dec("0")),
+                Some(dec("0")),
+                State::Filled
+            )
+        );
+        assert_eq!(walk.alive().count(), 0);
+    }
+
+    /// A pending replace moves no accepted quantity and blocks the
+    /// promotion; once the venue replaces, the new quantity is the one the
+    /// count fills.
+    #[test]
+    fn a_pending_replace_moves_no_accepted_quantity_and_promotes_nothing() {
+        crate::install::installed();
+        let mut pending = report(20, State::PendingReplace, None, None);
+        pending.set_ordqty(Some(dec("60")), true);
+        pending.finalize();
+        let mut replaced = report(40, State::Replaced, None, None);
+        replaced.set_ordqty(Some(dec("60")), true);
+        replaced.finalize();
+        let (walked, walk) = walked(
+            vec![
+                opened("100"),
+                fill(10, "E1", "40"),
+                pending,
+                fill(30, "E2", "10"),
+                replaced,
+                fill(50, "E3", "10"),
+            ],
+            true,
+        );
+        assert_eq!(
+            (walked[3].get_cumqty(), walked[3].get_leavesqty()),
+            (Some(dec("50")), Some(dec("50"))),
+            "the accepted quantity is still 100"
+        );
+        assert_ne!(*walked[3].get_state(), State::Filled);
+        assert_eq!(
+            (walked[4].get_cumqty(), walked[4].get_leavesqty()),
+            (Some(dec("50")), Some(dec("10"))),
+            "the replace accepted 60"
+        );
+        assert_eq!(read(&walked[5]).3, State::Filled);
+        assert_eq!(walk.alive().count(), 0);
+    }
+
+    /// A fill under two identifiers - the broker's and the exchange's - is
+    /// one fill: a report under the second counts nothing.
+    #[test]
+    fn a_fill_under_two_identifiers_counts_once() {
+        crate::install::installed();
+        let mut first = fill(10, "B1", "40");
+        first
+            .insert_identifier(identifier(&yggdryl_market::IdType::SecondaryExecId, "X1"))
+            .unwrap();
+        first.finalize();
+        let (walked, _) = walked(vec![opened("100"), first, fill(20, "X1", "40")], true);
+        assert_eq!(
+            read(&walked[2]),
+            (
+                Some(dec("40")),
+                Some(dec("60")),
+                Some(dec("60")),
+                State::PartiallyFilled
+            )
+        );
+    }
+
+    /// A copy of an ended chain's fill within the window starts no chain and
+    /// counts nothing; past the window it starts one afresh, as a fill the
+    /// walk never saw.
+    #[test]
+    fn a_late_copy_of_an_ended_chains_fill_starts_no_chain() {
+        crate::install::installed();
+        let (walked, walk) = walked(
+            vec![
+                opened("100"),
+                fill(10, "E1", "40"),
+                fill(20, "E2", "60"),
+                fill(10_020, "E1", "40"),
+            ],
+            true,
+        );
+        assert_eq!(read(&walked[2]).3, State::Filled);
+        assert_eq!(walked[3].get_prevuuid(), None, "outside every chain");
+        assert_eq!(walked[3].get_cumqty(), None, "as it came");
+        assert_eq!(walk.alive().count(), 0, "no live chain from a count");
+        let (afresh, walk) = walked_events(
+            vec![
+                opened("100"),
+                fill(10, "E1", "40"),
+                fill(20, "E2", "60"),
+                fill(81_000, "E1", "40"),
+            ],
+            true,
+        );
+        assert_eq!(
+            afresh[3].get_cumqty(),
+            Some(dec("40")),
+            "a fresh chain's first fill"
+        );
+        assert_eq!(walk.alive().count(), 1);
+        let mut remembering_none = EventIterator::new(
+            vec![
+                opened("100"),
+                fill(10, "E1", "40"),
+                fill(20, "E2", "60"),
+                fill(10_020, "E1", "40"),
+            ],
+            true,
+        )
+        .with_window_ns(0);
+        let late = remembering_none.by_ref().last().expect("the copy");
+        assert_eq!(
+            late.get_cumqty(),
+            Some(dec("40")),
+            "a window of nothing remembers none"
+        );
+        assert_eq!(remembering_none.alive().count(), 1);
+    }
+
+    /// A repeated fill takes nothing off an iceberg's hidden part twice.
+    #[test]
+    fn a_repeated_fill_leaves_the_hidden_part_where_it_was() {
+        crate::install::installed();
+        let mut iceberg = opened("120");
+        iceberg.set_hiddenqty(Some(dec("100")), true);
+        iceberg.finalize();
+        let (walked, _) = walked(
+            vec![iceberg, fill(10, "E1", "40"), fill(20, "E1", "40")],
+            true,
+        );
+        assert_eq!(walked[1].get_hiddenqty(), Some(dec("60")));
+        assert_eq!(walked[2].get_hiddenqty(), Some(dec("60")), "not 20");
+    }
+
+    /// A quote's chain holds no ledger: a hit on one leg counts nothing and
+    /// promotes nothing.
+    #[test]
+    fn a_quote_chain_counts_no_fill() {
+        crate::install::installed();
+        let quoted = |ms: i64, lastqty: Option<&str>| {
+            let mut event = QuoteEvent::at(at(ms));
+            event.set_crosscode("Q-1".to_owned());
+            event.set_state(State::Active);
+            event.set_bidqty(Some(dec("100")), true);
+            if let Some(qty) = lastqty {
+                event.insert_identifier(identifier(&EXEC_ID, "E1")).unwrap();
+                event.set_lastqty(Some(dec(qty)), true);
+                event.set_side(Side::Buy, true);
+            }
+            event.finalize();
+            event
+        };
+        let mut walk = EventIterator::new(vec![quoted(0, None), quoted(10, Some("100"))], true);
+        let walked: Vec<QuoteEvent> = walk.by_ref().collect();
+        assert_eq!(walked[1].get_cumqty(), None);
+        assert_ne!(*walked[1].get_state(), State::Filled);
+        assert_eq!(walk.alive().count(), 1);
+    }
+
+    /// The warnings the accounting raises, each once under the kind.
+    #[cfg(feature = "internals")]
+    mod warned {
+        use super::{dec, fill, opened, report, walked};
+        use yggdryl::State;
+        use yggdryl::graph::Element;
+        use yggdryl::internals::logging_warning::count;
+        use yggdryl_market::graph::Market;
+
+        fn warnings(what: &str) -> u64 {
+            count("yggdryl_market::graph::market", what, "ORDR")
+        }
+
+        #[test]
+        fn an_overfill_is_warned_under_the_kind() {
+            crate::install::installed();
+            let what = "lifecycle fills exceed the order quantity: nothing left, the state stands";
+            let before = warnings(what);
+            let (walked, _) = walked(
+                vec![opened("100"), fill(10, "E1", "60"), fill(20, "E2", "60")],
+                true,
+            );
+            assert_eq!(walked[2].get_leavesqty(), Some(dec("0")));
+            assert_eq!(warnings(what), before + 1);
+        }
+
+        #[test]
+        fn a_disagreeing_total_is_warned_and_not_adopted() {
+            crate::install::installed();
+            let what = "lifecycle fill total disagrees with the count: the count stands";
+            let before = warnings(what);
+            let mut disagreeing = fill(20, "E2", "10");
+            disagreeing.set_cumqty(Some(dec("90")), true);
+            disagreeing.finalize();
+            let (walked, _) = walked(vec![opened("100"), fill(10, "E1", "40"), disagreeing], true);
+            assert_eq!(walked[2].get_cumqty(), Some(dec("50")), "the count");
+            assert_eq!(warnings(what), before + 1);
+        }
+
+        #[test]
+        fn an_unidentified_fill_and_a_stated_leaves_are_warned() {
+            crate::install::installed();
+            let unidentified = "lifecycle fill states no execution identifier: counted nowhere";
+            let leaves = "lifecycle stated leaves disagree with the order quantity less the count: left as stated";
+            let (before_unidentified, before_leaves) = (warnings(unidentified), warnings(leaves));
+            // `39=1 38=100 14=40 151=0`: a plain event's facts derive one
+            // another, so the order quantity is stated lest the two it
+            // states derive one of 40.
+            let mut stated = report(20, State::PartiallyFilled, None, None);
+            stated.set_ordqty(Some(dec("100")), true);
+            stated.set_cumqty(Some(dec("40")), true);
+            stated.set_leavesqty(Some(dec("0")), true);
+            stated.finalize();
+            let (walked, _) = walked(
+                vec![
+                    opened("100"),
+                    fill(10, "E1", "40"),
+                    report(15, State::PartiallyFilled, None, Some("30")),
+                    stated,
+                ],
+                true,
+            );
+            assert_eq!(walked[2].get_cumqty(), Some(dec("40")));
+            assert_eq!(walked[3].get_leavesqty(), Some(dec("0")), "left as stated");
+            assert_eq!(warnings(unidentified), before_unidentified + 1);
+            assert_eq!(warnings(leaves), before_leaves + 1);
+            assert!(walked[3].get_uuid() != walked[2].get_uuid());
+        }
+    }
+}

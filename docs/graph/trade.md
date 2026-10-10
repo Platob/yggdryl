@@ -12,6 +12,7 @@
 | Canonical | children are finalized and sorted by side, cross code and identity, so input order never changes the trade; `executions()` answers that order, each child's stored cross code stating its [side](market.md#sides-and-cross-codes) |
 | Root | the highest child place, the earliest creation instant and wire clock, the latest execution instant; its digest feeds the execution count and each child's `uuid` - never a child's `hashcode` or content |
 | `is_execution` | always true |
+| Quantity | what the trade executed, its `lastqty`, as an execution's is ([one quantity per kind](market.md#one-quantity-per-kind)); a quantity it states stands over it |
 | `set_transunix` | rebases the root and every child atomically and re-finalizes them; each child keeps its `execunix` |
 | Following, merging | only under the same root cross code: children combine by execution cross code, then rebase to the resulting instant |
 | In a book | never as a trade: [`MarketDataKind::is_recorded`](../types/enum/marketdatakind.md) prunes `TRAD` before a book walk routes it, and `add_operations` drops it; the executions the parse split off a trade are recorded among the [events](book.md#entries) of their instrument's book, moving no side. A book's row's `executions` cell is null; `executions` is a trade's column of the [`marketdata` row](market-data.md#arrow) |

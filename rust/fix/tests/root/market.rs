@@ -479,11 +479,16 @@ fn a_trade_splits_off_one_sided_execution_message_per_side() {
     assert!(buy.get_side().is_bid());
     assert!(sell.get_side().is_ask());
     // A side's last executed quantity is its `SideLastQty(1009)`, beside
-    // the trade's last price; a side states no price and no quantity.
+    // the trade's last price; a side states no price, and its quantity is
+    // what executed (decision 27).
     assert_eq!(text(buy.get_lastqty()).as_deref(), Some("4"));
     assert_eq!(text(sell.get_lastqty()).as_deref(), Some("6"));
     assert_eq!(text(buy.get_lastpx()).as_deref(), Some("101.25"));
-    assert_eq!((buy.get_price(), buy.get_quantity()), (None, None));
+    assert_eq!(
+        (buy.get_price(), text(buy.get_quantity()).as_deref()),
+        (None, Some("4"))
+    );
+    assert_eq!(text(sell.get_quantity()).as_deref(), Some("6"));
     // The side's identifiers are the execution's.
     assert_eq!(buy.get_identifiers().get(&IdType::ExecId), Some("BUY-EXEC"));
     assert_eq!(

@@ -480,6 +480,135 @@ fn a_lifecycle_walk_step_allocates_alike_at_8_and_1024_live_chains() {
     );
 }
 
+/// One report of the order `O-1` at `ms` milliseconds into the walk: a
+/// partial fill of `lastqty` under `execid`, or the venue's acknowledgement
+/// of an order of a million, nothing traded, where `execid` is `None`.
+fn allocation_order_fill(ms: i64, execid: Option<&str>, lastqty: &str) -> OrderEvent {
+    let mut report = OrderEvent::at(1_700_000_000_000_000_000 + ms * 1_000_000);
+    report.set_crosscode("O-1".to_owned());
+    report.set_side(Side::Buy, true);
+    report
+        .insert_identifier(Identifier::new(IdKey::base(IdType::OrderId), "A-1").unwrap())
+        .unwrap();
+    match execid {
+        Some(execid) => {
+            report.set_state(State::PartiallyFilled);
+            report
+                .insert_identifier(Identifier::new(IdKey::base(IdType::ExecId), execid).unwrap())
+                .unwrap();
+            report.set_lastqty(Some(lastqty.parse().unwrap()), true);
+        }
+        None => {
+            report.set_state(State::New);
+            report.set_ordqty(Some(Decimal::from(1_000_000)), true);
+            report.set_cumqty(Some(Decimal::ZERO), true);
+        }
+    }
+    report.finalize();
+    report
+}
+
+/// The walk of an order whose chain has counted `fills` fills, each under
+/// an identifier sorting after the one before, as a venue's do, then
+/// `last`: what walking `last` allocated, and the walked report.
+fn allocation_fill_step(fills: usize, last: OrderEvent) -> (usize, OrderEvent) {
+    let counted_fills = (1..=fills)
+        .map(|turn| allocation_order_fill(turn as i64, Some(&format!("E-{turn:06}")), "1"));
+    let mut walk = EventIterator::new(
+        std::iter::once(allocation_order_fill(0, None, "0"))
+            .chain(counted_fills)
+            .chain([last]),
+        true,
+    );
+    for _ in 0..=fills {
+        black_box(walk.next().unwrap());
+    }
+    counted(|| walk.next().unwrap())
+}
+
+/// A new fill on an order's chain costs as many allocations with 1,024
+/// fills already counted as with 8, but for one: the ledger's sorted
+/// vector grows by doubling, so a chain of N fills allocates O(log N) times
+/// for its ledger and nothing per report - its lookup one comparison and
+/// one binary search, the new identifier appended where it sorts last.
+#[test]
+fn a_counted_fill_allocates_alike_at_8_and_1024_fills_already_counted() {
+    crate::install::installed();
+    let step = |fills: usize| {
+        let (allocations, walked) =
+            allocation_fill_step(fills, allocation_order_fill(10_000, Some("E-999999"), "1"));
+        assert_eq!(walked.get_cumqty(), Some(Decimal::from(fills as i64 + 1)));
+        allocations
+    };
+    let (shallow, deep) = (step(8), step(1_024));
+    assert!(
+        deep <= shallow + 1,
+        "a new fill allocated {deep} times over 1,024 counted fills but {shallow} times over 8"
+    );
+}
+
+/// A fill the chain already counted allocates nothing the step would not:
+/// the repeat finds its identifier, adds nothing to the ledger and moves
+/// nothing - no more than a new fill's step, which the ledger keeps.
+#[test]
+fn a_repeated_fill_allocates_nothing_beyond_the_step() {
+    crate::install::installed();
+    let (repeated, walked) =
+        allocation_fill_step(8, allocation_order_fill(10_000, Some("E-000004"), "1"));
+    assert_eq!(
+        walked.get_cumqty(),
+        Some(Decimal::from(8)),
+        "counted nothing"
+    );
+    let (new, _) = allocation_fill_step(8, allocation_order_fill(10_000, Some("E-999999"), "1"));
+    assert!(
+        repeated <= new,
+        "a repeated fill allocated {repeated} times, a new one {new}"
+    );
+}
+
+/// A copy of an ended chain's fill within the window is one probe of the
+/// remembered fills and nothing more: no chain, no ledger, no name filed,
+/// so walking it allocates nothing - where the same copy starts a chain
+/// under a walk remembering no ended fill, and files its names.
+#[test]
+fn an_ended_chains_fill_allocates_nothing_beyond_the_step() {
+    crate::install::installed();
+    let late = |window_ns: i64| {
+        let mut opened = allocation_order_fill(0, None, "0");
+        opened.set_ordqty(Some(Decimal::from(2)), true);
+        opened.finalize();
+        let mut walk = EventIterator::new(
+            vec![
+                opened,
+                allocation_order_fill(1, Some("E-000001"), "1"),
+                allocation_order_fill(2, Some("E-000002"), "1"),
+                allocation_order_fill(10_000, Some("E-000001"), "1"),
+            ],
+            true,
+        )
+        .with_window_ns(window_ns);
+        for _ in 0..3 {
+            black_box(walk.next().unwrap());
+        }
+        assert_eq!(walk.alive().count(), 0, "the order filled");
+        let (allocations, copy) = counted(|| walk.next().unwrap());
+        (allocations, copy, walk.alive().count())
+    };
+    let (remembered, copy, alive) = late(60_000_000_000);
+    assert_eq!((copy.get_cumqty(), alive), (None, 0), "restated, no chain");
+    let (forgotten, _, alive) = late(0);
+    assert_eq!(alive, 1, "a walk remembering nothing starts a chain");
+    assert_eq!(
+        remembered, 0,
+        "a copy of an ended chain's fill allocated, where a chain started from it allocated {forgotten} times"
+    );
+    assert!(
+        forgotten > 0,
+        "a chain started from the copy files its names"
+    );
+}
+
 /// Rebuilding a delta book over the complete book before it, through
 /// [`Element::with_previous`], makes as many allocations over a book 8
 /// levels a side deep as over one 1,024 deep: it replays its delta, and

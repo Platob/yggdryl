@@ -433,6 +433,12 @@ macro_rules! delegate_operation {
             fn parent_of(&self, kind: &$crate::IdType) -> Option<($crate::IdType, usize)> {
                 $crate::graph::Operation::parent_of(&self.$($field).+, kind)
             }
+            fn fill_of(&self) -> $crate::graph::Fill {
+                $crate::graph::Operation::fill_of(&self.$($field).+)
+            }
+            fn states_end(&self) -> bool {
+                $crate::graph::Operation::states_end(&self.$($field).+)
+            }
             fn note_conflict(&mut self, cited: &str) {
                 $crate::graph::Operation::note_conflict(&mut self.$($field).+, cited);
             }
@@ -457,7 +463,7 @@ pub use book::{BookEvent, BookIterator, SnapshotEvent};
 pub use candle::{Candle, CandleIterator, CandleOptions, Ohlc};
 pub use iterator::EventIterator;
 pub use kind::MarketKind;
-pub use market::{FxRates, Market, Metadata, Operation, empty_fxrates, empty_metadata};
+pub use market::{Fill, FxRates, Market, Metadata, Operation, empty_fxrates, empty_metadata};
 pub use market_column::MarketColumn;
 pub use market_data::{MarketData, MarketMessage};
 pub use operation::{

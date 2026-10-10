@@ -775,13 +775,21 @@ fn a_report_states_its_status_where_its_execution_type_or_its_quantities_do() {
 
     // A trade says what happened, and the quantities say where that leaves
     // the order: nothing left is filled, something left and something done
-    // is partially filled.
+    // is partially filled. A `FILLED` a trade's `LeavesQty(151)` of nothing
+    // reads - derived, or stated beside it - is the venue's remainder,
+    // which a lifecycle walk's count may contradict (P12), never its own
+    // word; a live status is.
+    use yggdryl::State;
+    use yggdryl::graph::Event;
+    use yggdryl_market::graph::Operation;
     let filled = settled(&reader, b"8=FIX.4.4|35=8|150=F|151=0|14=100|10=0|");
     assert_eq!(text(&filled, 39).as_deref(), Some("2"));
+    assert!(!filled.states_end(), "the remainder's reading");
     let corrected = settled(&reader, b"8=FIX.4.4|35=8|150=G|151=0|10=0|");
     assert_eq!(text(&corrected, 39).as_deref(), Some("2"));
     let partial = settled(&reader, b"8=FIX.4.4|35=8|150=F|151=60|14=40|10=0|");
     assert_eq!(text(&partial, 39).as_deref(), Some("1"));
+    assert!(partial.states_end(), "a live state is its own word");
     for line in [
         &b"8=FIX.4.4|35=8|150=F|10=0|"[..],
         b"8=FIX.4.4|35=8|150=F|151=60|10=0|",
@@ -795,7 +803,16 @@ fn a_report_states_its_status_where_its_execution_type_or_its_quantities_do() {
             "{}",
             String::from_utf8_lossy(line)
         );
+        assert_eq!(*held.get_state(), State::Trade);
     }
+    let stated_filled = settled(&reader, b"8=FIX.4.4|35=8|39=2|150=F|151=0|14=100|10=0|");
+    assert!(!stated_filled.states_end(), "the same remainder, stated");
+    let filled_left = settled(&reader, b"8=FIX.4.4|35=8|39=2|150=F|151=10|14=90|10=0|");
+    assert_eq!(*filled_left.get_state(), State::Filled);
+    assert!(
+        filled_left.states_end(),
+        "a filled status beside a remainder"
+    );
 
     // Only a report speaks for an order's status, and a stated one stands.
     let order = settled(&reader, b"8=FIX.4.4|35=D|11=A|150=0|10=0|");
@@ -2570,8 +2587,10 @@ fn a_pending_new_report_leaves_all_it_ordered() {
 
 /// A fill's report and the execution split off it each state a quantity of
 /// their own: the report its order's - what it has left open - and the
-/// execution what it states, `Quantity(53)` and none on a report, never what
-/// the order has left: the fill it reports is its `lastqty`, `LastQty(32)`.
+/// execution the fill it reports, its `lastqty`, `LastQty(32)` (decision 27:
+/// one definition of the quantity per kind, available on an order, executed
+/// on an execution), quoted on the side it took and never what the order
+/// has left.
 #[test]
 fn a_fill_split_report_keeps_its_leaves_as_its_quantity() {
     crate::install::installed();
@@ -2592,8 +2611,8 @@ fn a_fill_split_report_keeps_its_leaves_as_its_quantity() {
     assert_eq!(report.get_quantity(), Some("60".parse().unwrap()));
     assert_eq!(report.get_bidqty(), Some("60".parse().unwrap()));
     assert_eq!(execution.marketdatakind(), MarketDataKind::Execution);
-    assert_eq!(execution.get_quantity(), None);
-    assert_eq!(execution.get_bidqty(), None);
+    assert_eq!(execution.get_quantity(), Some("40".parse().unwrap()));
+    assert_eq!(execution.get_bidqty(), Some("40".parse().unwrap()));
     assert_eq!(execution.get_leavesqty(), Some("60".parse().unwrap()));
     assert_eq!(execution.get_lastqty(), Some("40".parse().unwrap()));
 
@@ -2606,7 +2625,8 @@ fn a_fill_split_report_keeps_its_leaves_as_its_quantity() {
         .collect::<yggdryl::Result<_>>()
         .expect("the report and its fill");
     assert_eq!(messages[0].get_quantity(), Some("0".parse().unwrap()));
-    assert_eq!(messages[1].get_quantity(), None);
+    assert_eq!(messages[1].get_quantity(), Some("60".parse().unwrap()));
+    assert_eq!(messages[1].get_askqty(), Some("60".parse().unwrap()));
     assert_eq!(messages[1].get_lastqty(), Some("60".parse().unwrap()));
 }
 
@@ -3922,4 +3942,241 @@ fn the_capture_read_back_from_a_lake_walks_to_the_identities_it_walks_to_in_memo
         "the walk over the stored rows answers the identities the walk in memory answers; only the lake {only_lake:#?}, only memory {only_memory:#?}"
     );
     let _ = std::fs::remove_dir_all(&path);
+}
+
+/// The lifecycle counts an order's fills once by `ExecID(17)` over the
+/// chain's first stated total (decision 26): a fill redelivered at a later
+/// instant counts nothing, a status reply repeating its quantity counts
+/// nothing, a trade cancel takes the fill it names back, a fill that leaves
+/// nothing ends the chain, and a copy of it after the chain ended starts
+/// no chain from a count; the next order under the same `ClOrdID(11)`
+/// starts afresh.
+#[test]
+fn the_lifecycle_counts_each_fill_once_and_takes_a_bust_back() {
+    crate::install::installed();
+    use yggdryl::graph::Element;
+    use yggdryl_market::MarketDataKind;
+    let codec = super::fixed_codec(super::committed_registry());
+    let dec = |text: &str| -> yggdryl::Decimal { text.parse().unwrap() };
+    let lines: [&[u8]; 9] = [
+        b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30.000|11=A1|55=AAPL|54=1|38=100|10=0|",
+        b"8=FIX.4.4|35=8|49=T|56=S|34=1|52=20260102-10:15:30.500|11=A1|37=O1|150=0|39=0|38=100|14=0|151=100|54=1|55=AAPL|10=0|",
+        b"8=FIX.4.4|35=8|49=T|56=S|34=2|52=20260102-10:15:31.000|11=A1|37=O1|17=E1|150=F|39=1|38=100|32=40|31=10|14=40|151=60|54=1|55=AAPL|10=0|",
+        // The fill delivered again at a later instant: a hop.
+        b"8=FIX.4.4|35=8|49=T|56=S|34=3|52=20260102-10:15:31.200|11=A1|37=O1|17=E1|150=F|39=1|38=100|32=40|31=10|14=40|151=60|54=1|55=AAPL|10=0|",
+        // A status reply repeating the last quantity.
+        b"8=FIX.4.4|35=8|49=T|56=S|34=4|52=20260102-10:15:32.000|11=A1|37=O1|17=0|150=I|39=1|38=100|32=40|31=10|14=40|151=60|54=1|55=AAPL|10=0|",
+        // A bust of the fill.
+        b"8=FIX.4.4|35=8|49=T|56=S|34=5|52=20260102-10:15:33.000|11=A1|37=O1|17=E3|19=E1|150=H|39=1|38=100|32=40|31=10|14=0|151=100|54=1|55=AAPL|10=0|",
+        // A fill of the whole order.
+        b"8=FIX.4.4|35=8|49=T|56=S|34=6|52=20260102-10:15:34.000|11=A1|37=O1|17=E4|150=F|39=2|38=100|32=100|31=10|14=100|151=0|54=1|55=AAPL|10=0|",
+        // Its copy five seconds later, stating no status and no total.
+        b"8=FIX.4.4|35=8|49=T|56=S|34=7|52=20260102-10:15:39.000|11=A1|37=O1|17=E4|150=F|38=100|32=100|31=10|151=0|54=1|55=AAPL|10=0|",
+        // The next order under the same identifier.
+        b"8=FIX.4.4|35=D|49=S|56=T|34=2|52=20260102-10:16:00.000|11=A1|55=AAPL|54=1|38=50|10=0|",
+    ];
+    let parsed: Vec<FixMsg> = codec
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the messages");
+    let orders: Vec<FixMsg> = codec
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("the walk")
+        .into_iter()
+        .filter(|held| held.marketdatakind() == MarketDataKind::Order)
+        .collect();
+    let read = |held: &FixMsg| {
+        (
+            held.get_cumqty(),
+            held.get_leavesqty(),
+            held.get_quantity(),
+            *held.get_state(),
+        )
+    };
+    let [order, ack, fill, again, status, bust, filled, copy, next] = orders.as_slice() else {
+        panic!("nine order messages, not {}", orders.len())
+    };
+    assert_eq!(ack.get_prevuuid(), Some(order.get_uuid()));
+    assert_eq!(
+        read(fill),
+        (
+            Some(dec("40")),
+            Some(dec("60")),
+            Some(dec("60")),
+            State::PartiallyFilled
+        )
+    );
+    assert_eq!(read(again), read(fill), "counted nothing");
+    assert_eq!(again.get_prevuuid(), Some(fill.get_uuid()));
+    assert_eq!(read(status), read(fill), "a status reply counts nothing");
+    assert_eq!(
+        (bust.get_cumqty(), bust.get_leavesqty()),
+        (Some(dec("0")), Some(dec("100"))),
+        "the fill taken back"
+    );
+    assert!(bust.get_state().is_live());
+    assert_eq!(
+        read(filled),
+        (
+            Some(dec("100")),
+            Some(dec("0")),
+            Some(dec("0")),
+            State::Filled
+        )
+    );
+    assert_eq!(filled.get_prevuuid(), Some(bust.get_uuid()));
+    assert_eq!(copy.get_prevuuid(), None, "a copy of an ended chain's fill");
+    assert_eq!(*copy.get_state(), State::Filled);
+    assert_eq!(next.get_prevuuid(), None, "afresh");
+    assert_eq!(next.get_ordqty(), Some(dec("50")));
+}
+
+/// A trade correct moves the count by the difference it states for the fill
+/// `ExecRefID(19)` names, a trade cancel naming a fill the chain never
+/// counted moves nothing, a leg's report of a multi-leg order
+/// (`MultiLegReportingType(442)` `2`) counts nothing whatever `LastQty(32)`
+/// it states, and the multi-leg report (`442=3`) bringing the count to the
+/// order quantity reads `FILLED` (decision 26).
+#[test]
+fn the_lifecycle_takes_a_correction_and_counts_no_leg_report() {
+    crate::install::installed();
+    use yggdryl_market::MarketDataKind;
+    let codec = super::fixed_codec(super::committed_registry());
+    let dec = |text: &str| -> yggdryl::Decimal { text.parse().unwrap() };
+    let lines: [&[u8]; 8] = [
+        b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30.000|11=A1|55=AAPL|54=1|38=100|10=0|",
+        b"8=FIX.4.4|35=8|49=T|56=S|34=1|52=20260102-10:15:30.500|11=A1|37=O1|150=0|39=0|38=100|14=0|151=100|54=1|55=AAPL|10=0|",
+        b"8=FIX.4.4|35=8|49=T|56=S|34=2|52=20260102-10:15:31.000|11=A1|37=O1|17=E1|150=F|39=1|38=100|32=40|31=10|14=40|151=60|54=1|55=AAPL|10=0|",
+        b"8=FIX.4.4|35=8|49=T|56=S|34=3|52=20260102-10:15:32.000|11=A1|37=O1|17=E2|150=F|39=1|38=100|32=30|31=10|14=70|151=30|54=1|55=AAPL|10=0|",
+        // The first fill corrected from 40 to 50.
+        b"8=FIX.4.4|35=8|49=T|56=S|34=4|52=20260102-10:15:33.000|11=A1|37=O1|17=E5|19=E1|150=G|39=1|38=100|32=50|31=10|14=80|151=20|54=1|55=AAPL|10=0|",
+        // A bust of a fill the chain never counted.
+        b"8=FIX.4.4|35=8|49=T|56=S|34=5|52=20260102-10:15:34.000|11=A1|37=O1|17=E8|19=EX|150=H|39=1|38=100|32=10|31=10|14=80|151=20|54=1|55=AAPL|10=0|",
+        // A leg's report: no fill of the order.
+        b"8=FIX.4.4|35=8|49=T|56=S|34=6|52=20260102-10:15:35.000|11=A1|37=O1|17=E6|150=F|39=1|442=2|38=100|32=20|31=10|14=80|151=20|54=1|55=AAPL|10=0|",
+        // The multi-leg report of the last twenty.
+        b"8=FIX.4.4|35=8|49=T|56=S|34=7|52=20260102-10:15:36.000|11=A1|37=O1|17=E7|150=F|39=1|442=3|38=100|32=20|31=10|14=100|151=0|54=1|55=AAPL|10=0|",
+    ];
+    let parsed: Vec<FixMsg> = codec
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the messages");
+    let orders: Vec<FixMsg> = codec
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("the walk")
+        .into_iter()
+        .filter(|held| held.marketdatakind() == MarketDataKind::Order)
+        .collect();
+    let read = |held: &FixMsg| (held.get_cumqty(), held.get_leavesqty(), *held.get_state());
+    let [_, _, _, second, corrected, bust, leg, multileg] = orders.as_slice() else {
+        panic!("eight order messages, not {}", orders.len())
+    };
+    assert_eq!(
+        read(second),
+        (Some(dec("70")), Some(dec("30")), State::PartiallyFilled)
+    );
+    assert_eq!(
+        read(corrected),
+        (Some(dec("80")), Some(dec("20")), State::PartiallyFilled),
+        "the first fill counted at 50"
+    );
+    assert_eq!(read(bust), read(corrected), "a bust naming nothing counted");
+    assert_eq!(read(leg), read(corrected), "a leg's report counts nothing");
+    assert_eq!(
+        read(multileg),
+        (Some(dec("100")), Some(dec("0")), State::Filled)
+    );
+}
+
+/// The reports of two orders on the two sides of one match, each stating
+/// the match's one `ExecID(17)`: two executions, the sell's no copy of the
+/// buy's ended one.
+#[test]
+fn the_two_sides_of_one_match_under_one_execid_are_two_executions() {
+    crate::install::installed();
+    use yggdryl::graph::Element;
+    use yggdryl_market::MarketDataKind;
+    let codec = super::fixed_codec(super::committed_registry());
+    let lines: [&[u8]; 2] = [
+        b"8=FIX.4.4|35=8|49=T|56=S|34=1|52=20260102-10:15:31.000|11=B1|37=OB|17=X1|150=F|39=2|38=40|32=40|31=10|14=40|151=0|54=1|55=AAPL|10=0|",
+        b"8=FIX.4.4|35=8|49=T|56=S|34=2|52=20260102-10:15:31.000|11=S1|37=OS|17=X1|150=F|39=2|38=40|32=40|31=10|14=40|151=0|54=2|55=AAPL|10=0|",
+    ];
+    let parsed: Vec<FixMsg> = codec
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the messages");
+    let executions: Vec<FixMsg> = codec
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("the walk")
+        .into_iter()
+        .filter(|held| held.marketdatakind() == MarketDataKind::Execution)
+        .collect();
+    let [buy, sell] = executions.as_slice() else {
+        panic!("two executions, not {}", executions.len())
+    };
+    assert_ne!(buy.get_uuid(), sell.get_uuid());
+    assert_ne!(buy.get_crosscode(), sell.get_crosscode());
+}
+
+/// Order `00079132557GLXC0`'s four frames as the capture states them: the
+/// first stated total anchors the count (319 traded before), the exchange-
+/// side frames of fills 467 and 468 state the child's `LeavesQty(151)` of
+/// nothing and no status, which the count contradicts - the order ends
+/// `PARTIALLY_FILLED` at 472 of 600, 128 left - and the client-side frame
+/// of fill 467 counts nothing (decisions 26 and 29).
+#[test]
+fn the_lifecycle_reads_the_captures_order_557_as_partially_filled_by_its_count() {
+    crate::install::installed();
+    use yggdryl::graph::Element;
+    use yggdryl_market::MarketDataKind;
+    let codec = super::fixed_codec(super::committed_registry());
+    let dec = |text: &str| -> yggdryl::Decimal { text.parse().unwrap() };
+    let lines: [&[u8]; 4] = [
+        b"8=FIX.4.4|35=8|49=X|56=Y|34=1|52=20260814-12:46:39.761|38=600|14=340|39=1|151=260|150=F|11=00079132557GLXC0.9|17=00064703457GBYZ0|32=21|31=83.08|37=00079132557GLXC0|54=1|55=ABBN|60=20260814-12:46:39.743|10=0|",
+        b"8=FIX.4.4|35=8|49=X|56=Y|34=2|52=20260814-12:46:39.762|38=600|151=0|150=F|17=00064703467GBYZ0|32=57|31=83.08|37=00079132557GLXC0|54=1|55=ABBN|60=20260814-12:46:39.750|10=0|",
+        b"8=FIX.4.4|35=8|49=X|56=Y|34=3|52=20260814-12:46:39.763|38=600|14=397|39=1|151=203|150=F|11=00079132557GLXC0.9|17=00064703467GBYZ0|32=57|31=83.08|37=00079132557GLXC0|54=1|55=ABBN|60=20260814-12:46:39.751|10=0|",
+        b"8=FIX.4.4|35=8|49=X|56=Y|34=4|52=20260814-12:46:39.771|38=600|151=0|150=F|17=00064703468GBYZ0|32=75|31=83.08|37=00079132557GLXC0|54=1|55=ABBN|60=20260814-12:46:39.752|10=0|",
+    ];
+    let parsed: Vec<FixMsg> = codec
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the messages");
+    assert_eq!(
+        *parsed[2].get_state(),
+        State::Filled,
+        "the frame's own reading"
+    );
+    let orders: Vec<FixMsg> = codec
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("the walk")
+        .into_iter()
+        .filter(|held| held.marketdatakind() == MarketDataKind::Order)
+        .collect();
+    let read = |held: &FixMsg| (held.get_cumqty(), held.get_leavesqty(), *held.get_state());
+    let [first, exchange, client, last] = orders.as_slice() else {
+        panic!("four reports, not {}", orders.len())
+    };
+    assert_eq!(
+        read(first),
+        (Some(dec("340")), Some(dec("260")), State::PartiallyFilled)
+    );
+    assert_eq!(
+        read(exchange),
+        (Some(dec("397")), Some(dec("203")), State::PartiallyFilled),
+        "the count, not the child's remainder"
+    );
+    assert_eq!(
+        read(client),
+        (Some(dec("397")), Some(dec("203")), State::PartiallyFilled),
+        "fill 467 counted once"
+    );
+    assert_eq!(
+        read(last),
+        (Some(dec("472")), Some(dec("128")), State::PartiallyFilled)
+    );
+    assert_eq!(last.get_prevuuid(), Some(client.get_uuid()));
 }

@@ -735,12 +735,26 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     # second from its SendingTime(52): the frame hop of order
     # 00079132558GLXC0's fill, its TransactTime(60) 743 ms off, is dated by
     # its sending clock, so it and its execution are twins of nothing.
-    assert len(walked) == 41
+    # It is 40 since P12 counted each order chain's fills once by execution
+    # identifier (decision 26) and remembered an ended chain's fills for the
+    # codec's window (D45.8): the frame hops' two executions - of order
+    # 00079132558GLXC0's fill and of order 00079132557GLXC0's fill 467 -
+    # restate the executions already walked and the window yields each once;
+    # and order 557, whose exchange-side frames state the child's
+    # LeavesQty(151) of nothing while its distinct fills count 472 of 600,
+    # stays PARTIALLY_FILLED and expires at its ExpireTime(126), one delivery
+    # the walk makes (decision 29). It was 41.
+    assert len(walked) == 40
+    # A walk remembering none also remembers no ended chain's fills (D45.8:
+    # the walk takes the window's span), so the frame hops' two executions
+    # start chains of their own, identities of their own: the window's walk
+    # is that walk less those two and the one twin. It was 42.
     every = list(codec.with_dedup_window_ms(None).lifecycle(messages))
-    assert len(every) == 42
+    assert len(every) == 43
     seen: set[object] = set()
     once = [held.uuid for held in every if not (held.uuid in seen or seen.add(held.uuid))]
-    assert once == [held.uuid for held in walked]
+    assert len(once) == len(walked) + 2
+    assert all(held.uuid in once for held in walked)
 
     # Twenty-three deliveries are market data - nine fills and eleven order
     # reports, and the NOVN order's three steps: the venue's acknowledgement -
@@ -748,10 +762,15 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     # the expiry - and none is refused: the trade whose side states no
     # Side(54) split into a fill of side UKNW. Twenty-one until decision 21,
     # which made the fill and the report the window yielded once deliveries
-    # of their own.
+    # of their own. Twenty-two since P12 (decision 26, D45.8): the frame
+    # hops' executions of fills 461 and 467 restate the executions walked
+    # before them, so the window yields each once - seven executions - and
+    # order 00079132557GLXC0 - PARTIALLY_FILLED at 472 of 600 by its distinct
+    # fills, its exchange-side frames' 151=0 the child's - expires at its
+    # ExpireTime(126), one more order event: fifteen.
     operations = list(codec.market_data(walked))
-    assert len(operations) == 23
-    assert sorted(operation.kind for operation in operations) == ["execution_event"] * 9 + ["order_event"] * 14
+    assert len(operations) == 22
+    assert sorted(operation.kind for operation in operations) == ["execution_event"] * 7 + ["order_event"] * 15
 
     # Every order folds and every execution is recorded among its book's
     # events; the unpriced sell order of 2454 is refused nowhere: its cancel
@@ -791,9 +810,12 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     # cancel request: the last book is the reject's instant alone and
     # digests its one delta. Two books more since then, thirteen: that one,
     # and the book of the instant the frame hop of order 00079132558GLXC0's
-    # fill is dated at by its sending clock.
+    # fill is dated at by its sending clock. Fourteen since P12: order
+    # 00079132557GLXC0, PARTIALLY_FILLED at 472 of 600 by its distinct fills
+    # rather than FILLED by its exchange-side frames' 151=0, expires at its
+    # ExpireTime(126), and its expiry is a book of its own instant.
     books = list(graph.BookIterator(operations))
-    assert len(books) == 13
+    assert len(books) == 14
     assert not any(book.is_complete for book in books)
     cancelled, last = books[-2], books[-1]
     assert last.ticker == "2454"
@@ -803,8 +825,9 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     assert [delta.price for delta in [*cancelled.delta, *last.delta]] == [None, None]
     assert cancelled.events == last.events == [], "no execution touched either instant"
     # Every execution of the capture is an event of exactly one book, and no
-    # book records an order or a quote among its events.
-    assert sum(len(book.executions) for book in books) == 9
+    # book records an order or a quote among its events: seven since P12,
+    # the frame hops' two restating the walked ones.
+    assert sum(len(book.executions) for book in books) == 7
     assert all(len(book.executions) == len(book.events) for book in books)
     assert last.hashcode == 16_012_236_961_469_281_692
     # Every book is keyed by the ISIN its inputs state, else their ticker:
@@ -832,6 +855,63 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
         getattr(operation.into_leaf(), "partyids", Identifiers()).get_from("tech:clientid") == "OMSX1"
         for operation in operations
     )
+
+
+FILLS = [
+    b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30.000|11=A1|55=AAPL|54=1|38=100|10=0|",
+    b"8=FIX.4.4|35=8|49=T|56=S|34=1|52=20260102-10:15:30.500|11=A1|37=O1|150=0|39=0|38=100|14=0|151=100|54=1|55=AAPL|10=0|",
+    b"8=FIX.4.4|35=8|49=T|56=S|34=2|52=20260102-10:15:31.000|11=A1|37=O1|17=E1|150=F|39=1|38=100|32=40|31=10|14=40|151=60|54=1|55=AAPL|10=0|",
+    # The fill delivered again at a later instant: a hop.
+    b"8=FIX.4.4|35=8|49=T|56=S|34=3|52=20260102-10:15:31.200|11=A1|37=O1|17=E1|150=F|39=1|38=100|32=40|31=10|14=40|151=60|54=1|55=AAPL|10=0|",
+    # A status reply repeating the last quantity.
+    b"8=FIX.4.4|35=8|49=T|56=S|34=4|52=20260102-10:15:32.000|11=A1|37=O1|17=0|150=I|39=1|38=100|32=40|31=10|14=40|151=60|54=1|55=AAPL|10=0|",
+    # A bust of the fill.
+    b"8=FIX.4.4|35=8|49=T|56=S|34=5|52=20260102-10:15:33.000|11=A1|37=O1|17=E3|19=E1|150=H|39=1|38=100|32=40|31=10|14=0|151=100|54=1|55=AAPL|10=0|",
+    # A fill of the whole order.
+    b"8=FIX.4.4|35=8|49=T|56=S|34=6|52=20260102-10:15:34.000|11=A1|37=O1|17=E4|150=F|39=2|38=100|32=100|31=10|14=100|151=0|54=1|55=AAPL|10=0|",
+    # Its copy five seconds later, stating no status and no total.
+    b"8=FIX.4.4|35=8|49=T|56=S|34=7|52=20260102-10:15:39.000|11=A1|37=O1|17=E4|150=F|38=100|32=100|31=10|151=0|54=1|55=AAPL|10=0|",
+    # The next order under the same identifier.
+    b"8=FIX.4.4|35=D|49=S|56=T|34=2|52=20260102-10:16:00.000|11=A1|55=AAPL|54=1|38=50|10=0|",
+]
+
+
+def test_the_lifecycle_counts_each_fill_once_and_takes_a_bust_back(
+    seed_batch: FixRegistry,
+) -> None:
+    # The lifecycle counts an order's fills once by ExecID(17) over the
+    # chain's first stated total (decision 26), as
+    # `rust/fix/tests/root/enrich.rs` pins it: a fill redelivered at a later
+    # instant counts nothing, a status reply repeating its quantity counts
+    # nothing, a trade cancel takes the fill it names back, a fill that
+    # leaves nothing ends the chain, and a copy of it after the chain ended
+    # starts no chain from a count; the next order under the same
+    # ClOrdID(11) starts afresh.
+    codec = _fixed_batch(seed_batch)
+    walked = list(codec.lifecycle(list(codec.parse_lines(FILLS))))
+    orders = [held for held in walked if held.marketdatakind is MarketDataKind.ORDR]
+    assert len(orders) == 9
+    order, ack, fill, again, status, bust, filled, copy_, next_ = orders
+
+    def read(held: FixMsg) -> tuple[object, object, object, State]:
+        def number(value: Scalar | None) -> object:
+            return None if value is None else value.as_py()
+
+        return (number(held.cumqty), number(held.leavesqty), number(held.quantity), held.state)
+
+    assert ack.prevuuid == order.uuid
+    assert read(fill) == (40, 60, 60, State.PARTIALLY_FILLED)
+    assert read(again) == read(fill), "counted nothing"
+    assert again.prevuuid == fill.uuid
+    assert read(status) == read(fill), "a status reply counts nothing"
+    assert read(bust)[:2] == (0, 100), "the fill taken back"
+    assert bust.state.is_live()
+    assert read(filled) == (100, 0, 0, State.FILLED)
+    assert filled.prevuuid == bust.uuid
+    assert copy_.prevuuid is None, "a copy of an ended chain's fill"
+    assert copy_.state is State.FILLED
+    assert next_.prevuuid is None, "afresh"
+    assert next_.ordqty is not None and next_.ordqty.as_py() == 50
 
 
 def test_lifecycled_two_sided_trade_streams_executions_and_no_book(
@@ -867,11 +947,12 @@ def test_lifecycled_two_sided_trade_streams_executions_and_no_book(
     by_side = {execution["side"]: execution for execution in rows}
     assert set(by_side) == {Side.BUYS, Side.SELL}
     buy, sell = by_side[Side.BUYS], by_side[Side.SELL]
-    # A trade-capture side states no price and no quantity: its last
-    # executed price and quantity are lastpx and lastqty, and the two
-    # nullable columns carry the null.
+    # A trade-capture side states no price: its last executed price is
+    # lastpx, and the nullable column carries the null. Its quantity is what
+    # it executed, its lastqty (decision 27: one definition of the quantity
+    # per kind, available on an order, executed on an execution).
     assert (buy["price"], sell["price"]) == (None, None)
-    assert (buy["quantity"], sell["quantity"]) == (None, None)
+    assert (buy["quantity"], sell["quantity"]) == (decimal.Decimal("4"), decimal.Decimal("6"))
     assert (buy["lastpx"], sell["lastpx"]) == (
         decimal.Decimal("101.25"),
         decimal.Decimal("101.25"),

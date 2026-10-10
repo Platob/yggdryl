@@ -7354,6 +7354,77 @@ impl Operation for FixMsg {
         self.registry.parent_of(kind)
     }
 
+    /// What this report is of a fill, read off its own tags and never off
+    /// the lifecycle state: FIX 4.2's `ExecTransType(20)` where it states a
+    /// cancel (`1`, a bust), a correction (`2`) or a status (`3`, no fill) -
+    /// a FIX 4.2 bust or correction states the original's `ExecType(150)`
+    /// beside it - else `ExecType(150)` says what the report is,
+    /// `ExecID(17)` names the fill, `ExecRefID(19)` the fill a bust or
+    /// a correction refers to, `LastQty(32)` its quantity, and
+    /// `MultiLegReportingType(442)` `2` marks a leg's report, which counts
+    /// nothing: its quantity is in leg units and the multi-leg report
+    /// carries the parent's. A report of an execution
+    /// ([`Self::reports_execution`]) under a stated `ExecID` - never FIX's
+    /// `0`, a status reply's - is a new fill of its `LastQty`, of the rise
+    /// in `CumQty(14)` where it states none; under no identifier it is
+    /// unidentified; a trade cancel is a bust of `ExecRefID` and a trade
+    /// correct a correction of it to `LastQty`; everything else -
+    /// acknowledgements, status replies, restatements, replaces, cancels,
+    /// done-for-days - is no fill, whatever `LastQty` it repeats.
+    fn fill_of(&self) -> yggdryl_market::graph::Fill {
+        use yggdryl_market::graph::Fill;
+        let word = |tag: i32| {
+            self.indexed_by_tag(tag)
+                .and_then(|held| held.as_str().map(Str::from))
+        };
+        if self
+            .indexed_by_tag(442)
+            .is_some_and(|held| held.as_str() == Some("2") || held.as_i64() == Some(2))
+        {
+            return Fill::NotAFill;
+        }
+        let lastqty = self.get_lastqty();
+        match (word(20).as_deref(), word(150).as_deref()) {
+            (Some("1"), _) | (_, Some("H")) => {
+                word(19).map_or(Fill::NotAFill, |refid| Fill::Bust { refid })
+            }
+            (Some("2"), _) | (_, Some("G")) => match (word(19), lastqty) {
+                (Some(refid), Some(qty)) => Fill::Correct { refid, qty },
+                _ => Fill::NotAFill,
+            },
+            (Some("3"), _) => Fill::NotAFill,
+            _ if self.reports_execution() => {
+                let qty = lastqty.unwrap_or(Decimal::ZERO);
+                match self.get_identifiers().get(&IdType::ExecId) {
+                    Some(execid) if execid != "0" => Fill::New {
+                        execid: Str::from(execid),
+                        qty,
+                    },
+                    _ if qty.is_positive() => Fill::Unidentified { qty },
+                    _ => Fill::NotAFill,
+                }
+            }
+            _ => Fill::NotAFill,
+        }
+    }
+
+    /// Whether the ended state the message reads is its own word rather
+    /// than the reading of a trade report's `LeavesQty(151)` of nothing: a
+    /// `FILLED` an `ExecutionReport` of `ExecType(150)` `F` or `G` reads
+    /// where it states nothing left - the status the parse derives where
+    /// `OrdStatus(39)` is absent, and the same status where the venue wrote
+    /// it - is the venue's remainder, which the lifecycle walk's count may
+    /// contradict: the exchange-side frame of a fill states the child's
+    /// remainder. Every other state is its own word.
+    fn states_end(&self) -> bool {
+        let leaves_nothing = *self.get_state() == State::Filled
+            && self
+                .indexed_by_tag(150)
+                .is_some_and(|held| matches!(held.as_str(), Some("F" | "G")))
+            && self.lifted.leavesqty().is_some_and(|left| left.is_zero());
+        !leaves_nothing
+    }
+
     /// The registry's own answer: an identifier whose type's `FIX:idmap`
     /// entry follows, or a parent of one, which travels with its base.
     fn is_followed_identifier(&self, id: &Identifier) -> bool {

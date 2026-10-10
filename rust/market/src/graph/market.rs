@@ -30,12 +30,15 @@ use crate::securityid::{SymbolCode, embedded};
 use crate::{IdKey, IdType, Identifier, Identifiers, Side, TimeInForce};
 use yggdryl::CodeValue;
 use yggdryl::graph::{Element, Event};
+use yggdryl::implementer::warned;
 use yggdryl::implementer::{
     Staged, earliest, fold_event_instants, follow_timed, latest, merge_element,
     merge_event_element, merge_timed, moved, restate_event, right_is_reference, stated,
 };
 use yggdryl::xxhash::Xxh3;
-use yggdryl::{Ccy, Cfi, Decimal, Isin, Mic, Result, Str, Unit};
+use yggdryl::{Ccy, Cfi, Decimal, Isin, Mic, Result, State, Str, Unit, Uuid};
+
+use super::facts::reports_fills;
 
 /// Free-form facts a market element carries beside its typed ones: never an
 /// identifier, which has a typed home in [`Market::get_securityids`] or an
@@ -105,7 +108,9 @@ pub fn empty_fxrates() -> &'static FxRates {
 /// | a predecessor's `ordqty`, `cumqty`, `avgpx`, followed | an operation's follower stating none of them: what its chain ordered, traded and at what average - never a last fill, which no rise in `cumqty` invents | |
 /// | `lastpx`, `spotrate`, `forwardpoints` | | the third, where two are stated: `lastpx` is spot plus points |
 /// | an operation's `ordqty`, `cumqty`, `leavesqty`, `cxlqty` and its state | | the standing its state leaves them in ([`Operation::get_ordqty`]): working, the third of `ordqty`, `cumqty`, `leavesqty` - fresh, asked for or acknowledged, `leavesqty` and `ordqty` each other while nothing traded; filled, `leavesqty` 0 and `cumqty` and `ordqty` each other; ended any other way, `leavesqty` 0 and the third of `ordqty`, `cumqty`, `cxlqty` - canceled, done for the day, expired, `cxlqty` the rest of what was ordered. A state unstated implies none of it, and an execution or a trade reads as working whatever its state |
-/// | `leavesqty` | the quantity of an order: what is still open is what it is about - never an execution's or a trade's, whose quantity is its own | |
+/// | `leavesqty` | the quantity of an order, a quote or a book entry: what is still available is what it is about | |
+/// | `lastqty` | the quantity of an execution or a trade ([`MarketDataKind::is_recorded`](crate::MarketDataKind) less a book): what executed is what it is about, so one definition holds per kind - available on an order, executed on a fill | |
+/// | a chain's fills, walked | a lifecycle walk counts an order chain's fills once by execution identifier over the chain's first stated total ([`Operation::fill_of`]): a repeated identifier adds nothing, `cumqty` is the count, `leavesqty` the accepted order quantity less it, and a partial state whose count reaches that quantity reads `FILLED` | |
 /// | `cumqty`, `lastqty`, `lastpx` | | `avgpx`, the last price, where all that traded is the last, positive fill |
 /// | `cficode` | | a detailed code over another describing one instrument, what that one says where it says nothing; a coarse code states nothing |
 ///
@@ -714,6 +719,608 @@ fn follow_hidden<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
     this.get_hiddenqty().is_some()
 }
 
+/// What a statement reports of a fill, as its holder reads it off its own
+/// words ([`Operation::fill_of`]): the one classification the lifecycle
+/// walk's fill accounting trusts. The walk counts each fill of an order's
+/// chain once by its execution identifier, over the chain's first stated
+/// total, and reads the order's `cumqty` and `leavesqty` off the count.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Fill {
+    /// A fill of `qty` under the execution identifier `execid`, the venue's
+    /// first statement of it as far as the report says; a `qty` of zero says
+    /// the fill is the rise in the stated `cumqty` over the chain's count,
+    /// which the accounting reads where the report states no `lastqty`.
+    New { execid: Str, qty: Decimal },
+    /// A bust of the fill `refid` names - FIX `ExecType(150)` `H`, a
+    /// `TRADE_CANCEL`: that fill's quantity is taken back off the count.
+    Bust { refid: Str },
+    /// A correction of the fill `refid` names - `ExecType` `G`, a
+    /// `TRADE_CORRECT`: that fill's quantity becomes `qty`.
+    Correct { refid: Str, qty: Decimal },
+    /// A fill the report states a quantity for but no identifier: counted
+    /// nowhere, since the walk cannot tell it from a resend, and warned.
+    Unidentified { qty: Decimal },
+    /// Not a fill: an acknowledgement, a status reply, a restatement, a
+    /// replace, a cancel, a done-for-day, a pending report, a leg of a
+    /// multi-leg report - whatever `lastqty` it repeats.
+    NotAFill,
+}
+
+/// What a report states of its own fill before anything is followed - the
+/// venue's words alone, read before a walk's `with_previous` carries the
+/// chain's `cumqty` and identifiers onto it.
+#[derive(Clone, Debug)]
+pub(crate) struct OwnFills {
+    cumqty: Option<Decimal>,
+    leavesqty: Option<Decimal>,
+    ordqty: Option<Decimal>,
+    hiddenqty: Option<Decimal>,
+    execid: Option<Str>,
+    secondaryexecid: Option<Str>,
+    /// Whether the ended state the report reads is its own word
+    /// ([`Operation::states_end`]).
+    states_end: bool,
+    fill: Fill,
+}
+
+impl OwnFills {
+    /// The report's own words.
+    pub(crate) fn read<E: Event + Operation + ?Sized>(this: &E) -> Self {
+        let ids = this.get_identifiers();
+        Self {
+            cumqty: this.get_cumqty(),
+            leavesqty: this.get_leavesqty(),
+            ordqty: this.get_ordqty(),
+            hiddenqty: this.get_hiddenqty(),
+            execid: ids.get(&IdType::ExecId).map(Str::from),
+            secondaryexecid: ids.get(&IdType::SecondaryExecId).map(Str::from),
+            states_end: this.states_end(),
+            fill: this.fill_of(),
+        }
+    }
+
+    /// Whether the report says of its fill what `other` says.
+    pub(crate) fn repeats(&self, other: &Self) -> bool {
+        self.fill == other.fill
+    }
+
+    /// The execution identifiers the report states, its own then the
+    /// exchange's.
+    pub(crate) fn ids(&self) -> impl Iterator<Item = &Str> {
+        self.execid.iter().chain(self.secondaryexecid.iter())
+    }
+}
+
+/// One fill a chain counted: its identifier, the quantity counted under it
+/// and the identity of the statement that counted it - stamped once that
+/// statement is settled, so a later statement of the same fill is another
+/// statement of that one.
+#[derive(Clone, Debug)]
+struct Counted {
+    id: Str,
+    qty: Decimal,
+    uuid: Uuid,
+}
+
+/// What a chain remembers of its fills: each fill counted by its execution
+/// identifier with the quantity counted under it, what they add up to over
+/// the chain's anchor - the total the chain's first stated `cumqty` opened
+/// on, what traded before the walk saw the chain - and the order quantity
+/// the venue accepted. The first fill is held inline and the rest sorted by
+/// identifier, so a chain of one fill - an order filled by its first report,
+/// an execution, which is the one fill it reports - costs no allocation and a
+/// report's lookup is one comparison and one binary search. Bounded at
+/// [`Self::MAX_COUNTED`] fills: past it a fill is counted into the total and
+/// not remembered, warned once per kind, so a later copy of it would count
+/// again - said in the warning.
+#[derive(Clone, Debug)]
+pub(crate) struct Fills {
+    first: Option<Counted>,
+    more: Vec<Counted>,
+    /// The sum of every counted quantity.
+    sum: Decimal,
+    /// Whether a fill was ever counted: the count is a total only then or
+    /// once an anchor stands.
+    filled: bool,
+    anchor: Option<Decimal>,
+    ordqty: Option<Decimal>,
+    /// The fills counted since the last stamp, their statement's identity
+    /// not yet settled.
+    unstamped: u8,
+}
+
+impl Default for Fills {
+    fn default() -> Self {
+        Self {
+            first: None,
+            more: Vec::new(),
+            sum: Decimal::ZERO,
+            filled: false,
+            anchor: None,
+            ordqty: None,
+            unstamped: 0,
+        }
+    }
+}
+
+impl Fills {
+    /// The fills one chain remembers at most: one venue's fills of one order
+    /// in a day, with room.
+    pub(crate) const MAX_COUNTED: usize = 4096;
+
+    /// Whether the chain counted nothing and anchored on nothing.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.first.is_none() && self.anchor.is_none()
+    }
+
+    /// The fill counted under `id`.
+    fn get(&self, id: &str) -> Option<&Counted> {
+        if let Some(first) = &self.first
+            && first.id == id
+        {
+            return Some(first);
+        }
+        self.more
+            .binary_search_by(|held| held.id.as_str().cmp(id))
+            .ok()
+            .map(|at| &self.more[at])
+    }
+
+    fn get_mut(&mut self, id: &str) -> Option<&mut Counted> {
+        if self.first.as_ref().is_some_and(|first| first.id == id) {
+            return self.first.as_mut();
+        }
+        self.more
+            .binary_search_by(|held| held.id.as_str().cmp(id))
+            .ok()
+            .map(|at| &mut self.more[at])
+    }
+
+    /// The identity of the statement that counted a fill under `id`, where
+    /// one did and the statement is settled.
+    pub(crate) fn counted_by(&self, id: &str) -> Option<Uuid> {
+        self.get(id)
+            .map(|held| held.uuid)
+            .filter(|uuid| !uuid.is_nil())
+    }
+
+    /// Remembers `id` as counted at `qty`, where the ledger has room: whether
+    /// it was remembered. Appended where it sorts last, inserted otherwise.
+    fn remember(&mut self, id: &Str, qty: Decimal) -> bool {
+        let counted = Counted {
+            id: id.clone(),
+            qty,
+            uuid: Uuid::default(),
+        };
+        if self.first.is_none() {
+            self.first = Some(counted);
+        } else {
+            if self.more.len() + 1 >= Self::MAX_COUNTED {
+                return false;
+            }
+            match self
+                .more
+                .binary_search_by(|held| held.id.as_str().cmp(id.as_str()))
+            {
+                Ok(_) => return true,
+                Err(at) => self.more.insert(at, counted),
+            }
+        }
+        self.unstamped += 1;
+        true
+    }
+
+    /// Counts a fill of `qty` under `own`'s identifiers, warned under `kind`
+    /// where the ledger is full.
+    fn count(&mut self, own: &OwnFills, qty: Decimal, kind: &str, code: &str) {
+        self.sum = self.sum.checked_add(qty).unwrap_or(self.sum);
+        self.filled = true;
+        for id in own.ids() {
+            if !self.remember(id, qty) {
+                warned!(
+                    "lifecycle ledger full: a fill counted and not remembered",
+                    kind,
+                    "{code}: fill {id} of {qty} counted past {} remembered fills; a later copy of it would count again",
+                    Self::MAX_COUNTED
+                );
+            }
+        }
+    }
+
+    /// Moves the quantity counted under `id` by `delta`.
+    fn move_counted(&mut self, id: &str, delta: Decimal) {
+        if let Some(held) = self.get_mut(id) {
+            held.qty = held.qty.checked_add(delta).unwrap_or(held.qty);
+        }
+        self.sum = self.sum.checked_add(delta).unwrap_or(self.sum);
+    }
+
+    /// What the chain has traded: the anchor plus every counted quantity,
+    /// nothing before the first fill and the first stated total.
+    pub(crate) fn consumed(&self) -> Option<Decimal> {
+        (self.filled || self.anchor.is_some()).then(|| {
+            self.anchor
+                .unwrap_or(Decimal::ZERO)
+                .checked_add(self.sum)
+                .unwrap_or(self.sum)
+        })
+    }
+
+    /// Adopts `stated` as the chain's first stated total where none stands
+    /// and the chain counted no fill yet: the anchor is what traded before
+    /// the count. Adoption runs only upward from a count of nothing - a
+    /// total stated once fills were counted is the count's to agree with,
+    /// warned where it does not, never adopted - and nothing where the
+    /// count already exceeds it; whether an anchor stands.
+    fn anchor_on(&mut self, stated: Decimal) -> bool {
+        if self.anchor.is_some() {
+            return true;
+        }
+        if self.filled {
+            return false;
+        }
+        match stated
+            .checked_sub(self.sum)
+            .filter(|held| !held.is_negative())
+        {
+            Some(before) => {
+                self.anchor = Some(before);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Stamps the statement `uuid` onto every fill counted since the last
+    /// stamp.
+    pub(crate) fn stamp(&mut self, uuid: Uuid) {
+        if self.unstamped == 0 {
+            return;
+        }
+        self.unstamped = 0;
+        if let Some(first) = &mut self.first
+            && first.uuid.is_nil()
+        {
+            first.uuid = uuid;
+        }
+        for held in &mut self.more {
+            if held.uuid.is_nil() {
+                held.uuid = uuid;
+            }
+        }
+    }
+
+    /// Takes every fill `other` remembers into this ledger: what a chain
+    /// ended again under the same base cross code, category and side leaves
+    /// behind.
+    pub(crate) fn absorb(&mut self, other: Self) {
+        for held in other.first.into_iter().chain(other.more) {
+            if self.get(&held.id).is_some() {
+                continue;
+            }
+            if self.first.is_none() {
+                self.first = Some(held);
+            } else if self.more.len() + 1 < Self::MAX_COUNTED
+                && let Err(at) = self
+                    .more
+                    .binary_search_by(|kept| kept.id.as_str().cmp(held.id.as_str()))
+            {
+                self.more.insert(at, held);
+            }
+        }
+    }
+}
+
+/// What the accounting of one statement answered: whether it moved
+/// anything on the statement, and the settled statement that already
+/// counted the fill this one reports, where one did.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Accounted {
+    pub(crate) moved: bool,
+    pub(crate) repeated: Option<Uuid>,
+}
+
+/// The states a count reaching the order quantity turns into `FILLED`: the
+/// ones that say some of the order traded and it is still working, and the
+/// carrying-on states the fold leaves a fill's report in over a chain that
+/// was replaced, updated, restated or amended - following keeps the higher
+/// rank, so a partial fill after a `REPLACED` reads `REPLACED`.
+fn is_partial(state: State) -> bool {
+    matches!(
+        state,
+        State::InProgress
+            | State::PartiallyFilled
+            | State::Trade
+            | State::Updated
+            | State::Replaced
+            | State::Restated
+            | State::Amended
+    )
+}
+
+/// Whether `state` asks for something the venue has not answered - the
+/// pending band, or a cancel, a replace or a reversal awaiting its answer -
+/// so what it states of the order quantity is not yet the accepted one.
+fn awaits_answer(state: State) -> bool {
+    state.is_pending() || state.rank() == 60
+}
+
+/// The one fill accounting of a lifecycle walk: `this` as the statement
+/// after what the chain `fills` remembers, its own words `own` read before
+/// anything was followed, `kept` the live element's hidden part before this
+/// statement.
+///
+/// An order's statement counts the fill it reports once by its execution
+/// identifier: a fill the chain already counted - under either identifier
+/// of either statement - adds nothing, moves no quantity of the chain and
+/// promotes nothing; a new one adds its quantity, a bust takes the fill it
+/// names back, a correction replaces it, a fill naming no identifier is
+/// counted nowhere and warned. The chain's first stated total is adopted
+/// once as its anchor while it counted no fill - what traded before the
+/// walk saw the chain - and from
+/// there the count is the order's `cumqty`, its `leavesqty` the accepted
+/// order quantity less it, floored at nothing: a stated total that
+/// disagrees is warned under the kind and does not move the ledger, since a
+/// cumulative quantity only rises but for a bust or a correction, which the
+/// ledger does itself. A count reaching the accepted order quantity turns a
+/// partial state into `FILLED`, never the reverse: a stated `FILLED` whose
+/// count falls short stays `FILLED` and is warned, while an ended state the
+/// holder reads off a remainder rather than states as its own word - a FIX
+/// trade report's `FILLED` that its `LeavesQty(151)` of nothing reads - reads as
+/// the partial fill the count says it is, over a chain the walk counted
+/// before it; a chain's first statement stands as its holder reads it. An overfill - a count past the
+/// order quantity - leaves nothing and promotes nothing, warned. An
+/// execution or a trade is the fill it reports: its chain remembers its
+/// identifier alone, so a second statement of it under another instant is
+/// another statement of the first; any other kind reports no fill. Every
+/// quantity is written through the statement's own setter with `overwrite`,
+/// so a holder marks it stated.
+pub(crate) fn account_fills<E: Event + Operation + ?Sized>(
+    this: &mut E,
+    own: &OwnFills,
+    kept: Option<Decimal>,
+    fills: &mut Fills,
+) -> Accounted {
+    let kind = this.marketdatakind();
+    let mut accounted = Accounted::default();
+    if kind != crate::MarketDataKind::Order {
+        if reports_fills(kind) {
+            for id in own.ids() {
+                match fills.get(id) {
+                    Some(counted) if !counted.uuid.is_nil() => {
+                        accounted.repeated = Some(counted.uuid);
+                    }
+                    Some(_) => {}
+                    None => {
+                        fills.remember(id, Decimal::ZERO);
+                    }
+                }
+            }
+        }
+        return accounted;
+    }
+    let subject = kind.as_str();
+    let mut state = *this.get_state();
+    // Whether the chain stated anything of its fills before this statement:
+    // a count is the order's only over what the walk saw of it.
+    let known = fills.anchor.is_some() || fills.filled;
+    // 2. The accepted order quantity: a request's or a pending report's
+    // moves it only where the chain states none yet.
+    if let Some(ordered) = own.ordqty
+        && (fills.ordqty.is_none() || !awaits_answer(state))
+    {
+        fills.ordqty = Some(ordered);
+    }
+    // The total the venue states: a report whose ended state is its
+    // parse's reading of the quantities states none of its own, its
+    // `cumqty` being that reading's.
+    let total = own.cumqty.filter(|_| own.states_end);
+    // 3. The fill, against the ledger: `delta` is what this statement
+    // moved the count by.
+    let mut delta: Option<Decimal> = None;
+    match &own.fill {
+        Fill::New { execid, qty } => {
+            if let Some(counted) = own.ids().find_map(|id| fills.get(id)) {
+                accounted.repeated = Some(counted.uuid);
+            } else {
+                let qty = if qty.is_zero() {
+                    total
+                        .zip(fills.consumed())
+                        .and_then(|(stated, held)| stated.checked_sub(held))
+                        .filter(|rise| !rise.is_negative())
+                } else {
+                    Some(*qty)
+                };
+                match qty {
+                    Some(qty) => {
+                        // A capture opened mid-life: the first stated total
+                        // less this fill is what traded before.
+                        if let Some(stated) = total
+                            && fills.anchor.is_none()
+                            && let Some(before) = stated.checked_sub(qty)
+                        {
+                            fills.anchor_on(before);
+                        }
+                        fills.count(own, qty, subject, this.get_crosscode());
+                        delta = Some(qty);
+                    }
+                    None => warned!(
+                        "lifecycle fill states no quantity: counted nowhere",
+                        subject,
+                        "{code}: fill {execid} states no last quantity and no total the chain's count reads a rise from",
+                        code = this.get_crosscode()
+                    ),
+                }
+            }
+        }
+        Fill::Bust { refid } => {
+            match fills.get(refid).map(|held| held.qty) {
+                Some(busted) => {
+                    let back = Decimal::ZERO.checked_sub(busted).unwrap_or(Decimal::ZERO);
+                    fills.move_counted(refid, back);
+                    delta = Some(back);
+                }
+                None => warned!(
+                    "lifecycle bust names no counted fill: nothing moves",
+                    subject,
+                    "{code}: a bust of fill {refid}, which the chain never counted",
+                    code = this.get_crosscode()
+                ),
+            }
+            for id in own.ids() {
+                fills.remember(id, Decimal::ZERO);
+            }
+        }
+        Fill::Correct { refid, qty } => {
+            match fills.get(refid).map(|held| held.qty) {
+                Some(was) => {
+                    let diff = qty.checked_sub(was).unwrap_or(Decimal::ZERO);
+                    fills.move_counted(refid, diff);
+                    delta = Some(diff);
+                }
+                None => {
+                    warned!(
+                        "lifecycle correction names no counted fill: counted as the fill",
+                        subject,
+                        "{code}: a correction of fill {refid} to {qty}, which the chain never counted",
+                        code = this.get_crosscode()
+                    );
+                    fills.sum = fills.sum.checked_add(*qty).unwrap_or(fills.sum);
+                    fills.filled = true;
+                    fills.remember(refid, *qty);
+                    delta = Some(*qty);
+                }
+            }
+            for id in own.ids() {
+                fills.remember(id, Decimal::ZERO);
+            }
+        }
+        Fill::Unidentified { qty } => warned!(
+            "lifecycle fill states no execution identifier: counted nowhere",
+            subject,
+            "{code}: a fill of {qty} naming no execution identifier, which the chain cannot tell from a resend",
+            code = this.get_crosscode()
+        ),
+        Fill::NotAFill => {}
+    }
+    // 4. The anchor: the chain's first stated total, adopted once while it
+    // counted no fill - a statement reporting no fill anchors on it.
+    if delta.is_none()
+        && let Some(stated) = total
+        && fills.anchor.is_none()
+    {
+        fills.anchor_on(stated);
+    }
+    let consumed = fills.consumed();
+    let disagrees = |stated: Option<Decimal>| {
+        stated
+            .zip(consumed)
+            .filter(|(stated, count)| stated != count)
+    };
+    // An ended state stands where the holder states it, and on a chain's
+    // first statement, which the walk has nothing to count against; one its
+    // parse derived over a chain the walk counted reads as the partial fill
+    // the count says it is.
+    let mut corrected = false;
+    if !state.is_live() {
+        let short = consumed
+            .zip(fills.ordqty)
+            .is_some_and(|(count, ordered)| count < ordered);
+        if !own.states_end && short && known {
+            this.set_state(State::PartiallyFilled);
+            state = State::PartiallyFilled;
+            corrected = true;
+            accounted.moved = true;
+        } else {
+            if let Some((stated, count)) = disagrees(total) {
+                warned!(
+                    "lifecycle fill total disagrees with the count: the count stands",
+                    subject,
+                    "{code}: an ended report states {stated} traded where the chain counted {count}",
+                    code = this.get_crosscode()
+                );
+            }
+            return accounted;
+        }
+    }
+    let takes_count = delta.is_some() || corrected;
+    // 5. The cumulative quantity: the count's where this statement moved it
+    // or states none, the venue's own number where it disagrees on a
+    // statement that counted nothing.
+    if let Some(count) = consumed {
+        if let Some((stated, _)) = disagrees(total) {
+            warned!(
+                "lifecycle fill total disagrees with the count: the count stands",
+                subject,
+                "{code}: a report states {stated} traded where the chain counted {count}",
+                code = this.get_crosscode()
+            );
+        }
+        if (total.is_none() || takes_count) && this.get_cumqty() != Some(count) {
+            this.set_cumqty(Some(count), true);
+            accounted.moved = true;
+        }
+    }
+    // 6. What is left: the accepted order quantity less the count, floored
+    // at nothing - an overfill is warned and promotes nothing.
+    if let Some(ordered) = fills.ordqty
+        && let Some(traded) = this.get_cumqty()
+    {
+        let left = ordered.checked_sub(traded);
+        let overfilled = left.is_some_and(|left| left.is_negative());
+        let left = left
+            .filter(|left| !left.is_negative())
+            .unwrap_or(Decimal::ZERO);
+        if takes_count {
+            if overfilled {
+                warned!(
+                    "lifecycle fills exceed the order quantity: nothing left, the state stands",
+                    subject,
+                    "{code}: the chain counted {traded} against {ordered} ordered",
+                    code = this.get_crosscode()
+                );
+            }
+            if this.get_leavesqty() != Some(left) {
+                this.set_leavesqty(Some(left), true);
+                accounted.moved = true;
+            }
+        } else if let Some(stated) = own.leavesqty {
+            if stated != left {
+                warned!(
+                    "lifecycle stated leaves disagree with the order quantity less the count: left as stated",
+                    subject,
+                    "{code}: a report states {stated} left where {ordered} ordered less {traded} traded leaves {left}",
+                    code = this.get_crosscode()
+                );
+            }
+        } else if this.get_leavesqty() != Some(left) {
+            this.set_leavesqty(Some(left), true);
+            accounted.moved = true;
+        }
+        // 7. The state: a partial fill with nothing left is filled - after
+        // a fill, a bust or a correction, never a restatement.
+        if delta.is_some() && ordered.is_positive() && traded == ordered && is_partial(state) {
+            this.set_state(State::Filled);
+            accounted.moved = true;
+        }
+    }
+    // 8. The hidden part: what the live element kept back, less what this
+    // statement counted - a repeated fill takes nothing off it twice.
+    if own.hiddenqty.is_none()
+        && let Some(kept) = kept
+    {
+        let hidden = kept
+            .checked_sub(delta.unwrap_or(Decimal::ZERO))
+            .filter(|left| !left.is_negative())
+            .unwrap_or(Decimal::ZERO);
+        if this.get_hiddenqty() != Some(hidden) {
+            this.set_hiddenqty(Some(hidden), true);
+            accounted.moved = true;
+        }
+    }
+    accounted
+}
+
 /// The type `leading` states, else the one `other` does: a type stated as
 /// none takes the other.
 fn stated_type(
@@ -899,6 +1506,34 @@ pub trait Operation: Market {
     /// reads it.
     fn parent_of(&self, kind: &IdType) -> Option<(IdType, usize)> {
         kind.parent_of()
+    }
+    /// What this statement reports of a fill ([`Fill`]), read off the
+    /// holder's own words and never off the lifecycle state, which cannot
+    /// tell a fill from a status reply that reads `PARTIALLY_FILLED`: a
+    /// positive `lastqty` under an `execid` is a new fill, one under no
+    /// identifier an unidentified one, anything else no fill. A holder
+    /// whose wire says more overrides it - a FIX message reads its
+    /// `ExecType(150)`, `ExecRefID(19)` and `MultiLegReportingType(442)`.
+    /// What a lifecycle walk counts an order chain's fills by.
+    fn fill_of(&self) -> Fill {
+        match self.get_lastqty().filter(|qty| qty.is_positive()) {
+            Some(qty) => match self.get_identifiers().get(&IdType::ExecId) {
+                Some(execid) if execid != "0" => Fill::New {
+                    execid: Str::from(execid),
+                    qty,
+                },
+                _ => Fill::Unidentified { qty },
+            },
+            None => Fill::NotAFill,
+        }
+    }
+    /// Whether the ended state this statement reads is the holder's own
+    /// word: always, for a plain event, whose state is its own fact; a FIX
+    /// message but where it is the `FILLED` a trade report's
+    /// `LeavesQty(151)` of nothing reads - the venue's remainder, which a
+    /// lifecycle walk's count may contradict.
+    fn states_end(&self) -> bool {
+        true
     }
     /// Stands this operation under the identity of `live`, the live
     /// statement of the chain a lifecycle states it in: a sided operation

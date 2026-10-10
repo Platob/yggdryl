@@ -25,9 +25,12 @@ use yggdryl::State;
 /// | 531 | `MassCancelResponse` |
 ///
 /// `OrdStatus` and `ExecType` agree on every value they share, so one table
-/// answers both: the one [`State::from_spelling`] reads a wire code by. A
-/// warning a quote status gives - a locked or crossed market - states no
-/// state, and neither does a code a set does not define.
+/// answers both: the one [`State::from_spelling`] reads a wire code by, and
+/// a word on either tag that is no wire code - a bridge logging
+/// `ORDSTATUS=partfilled`, `EXECTYPE=trade` - is read as the state's own
+/// spelling through [`State::from_spelling`] (decision 29). A warning a
+/// quote status gives - a locked or crossed market - states no state, and
+/// neither does a code a set does not define.
 ///
 /// ```
 /// # yggdryl_fix::install().unwrap();
@@ -35,6 +38,7 @@ use yggdryl::State;
 /// use yggdryl_fix::state;
 ///
 /// assert_eq!(state::from_status(39, "1"), Some(State::PartiallyFilled));
+/// assert_eq!(state::from_status(39, "partfilled"), Some(State::PartiallyFilled));
 /// assert_eq!(state::from_status(1036, "1"), Some(State::Acknowledged));
 /// assert_eq!(state::from_status(1036, "2"), Some(State::DontKnow));
 /// assert_eq!(state::from_status(87, "0"), Some(State::Allocated));
@@ -44,7 +48,10 @@ use yggdryl::State;
 pub fn from_status(tag: i32, code: &str) -> Option<State> {
     let code = code.trim();
     let table: &[(&str, State)] = match tag {
-        39 | 150 => return yggdryl::implementer::state_from_wire_code(code),
+        39 | 150 => {
+            return yggdryl::implementer::state_from_wire_code(code)
+                .or_else(|| State::from_spelling(code));
+        }
         1036 => EXEC_ACK_STATUS,
         939 => TRD_RPT_STATUS,
         297 => QUOTE_STATUS,

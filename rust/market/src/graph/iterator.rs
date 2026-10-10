@@ -7,13 +7,14 @@ use std::iter::FusedIterator;
 use std::vec;
 
 use super::Market;
-use super::market::base_crosscode;
+use super::facts::reports_fills;
+use super::market::{Accounted, Fills, OwnFills, base_crosscode};
 use crate::{IdType, Identifiers};
 use crate::{MarketDataKind, Side};
 use yggdryl::graph::Element;
 use yggdryl::implementer::InstantSequence;
 use yggdryl::implementer::warned;
-use yggdryl::{State, Uuid};
+use yggdryl::{State, Str, Uuid};
 
 /// States a market's fill as none - its last price and quantity and the
 /// parts of a fill's price - each a statement, which nothing the others
@@ -28,12 +29,13 @@ pub(super) fn clear_fill<E: Market + ?Sized>(market: &mut E) {
 }
 
 pub(crate) mod sealed {
+    use super::super::market::{Accounted, Fills, OwnFills, account_fills};
     use super::super::{MarketData, Operation};
     use super::clear_fill;
     use crate::{IdType, Identifiers};
     use crate::{MarketDataKind, Side};
-    use yggdryl::State;
     use yggdryl::graph::{Element, Event};
+    use yggdryl::{Decimal, State};
 
     /// [`Walked::walked_origin_of`] over one holder's own parentage: the
     /// base `kind` is a parent of, where that base is a chain identity and
@@ -56,7 +58,10 @@ pub(crate) mod sealed {
     /// `E: Event + Operation + Clone` answers through its own traits; a
     /// `MarketData` answers through its four operation-event variants and a
     /// FIX message, and is not walked otherwise, so any other variant is
-    /// yielded as it came and never enters the live map.
+    /// yielded as it came and never enters the live map. The fill ledger
+    /// it reads and writes is the walk's own, so the trait names
+    /// crate-private types a caller never holds.
+    #[allow(private_interfaces)]
     pub trait Walked: Element + Clone {
         /// [`Event::get_transunix`]; `None` for an element that states no
         /// instant, which the walk yields where it reads it.
@@ -119,6 +124,21 @@ pub(crate) mod sealed {
         fn walked_restamp(&mut self);
         /// [`super::super::market::fill_execution`].
         fn walked_fill_execution(&mut self);
+        /// The element's own words of its fill, read before anything is
+        /// followed ([`OwnFills::read`]); `None` for an element the walk
+        /// does not chain.
+        fn walked_own_fills(&self) -> Option<OwnFills>;
+        /// The fill accounting of this statement against its chain's
+        /// ledger ([`account_fills`]); nothing for an element the walk does
+        /// not chain.
+        fn walked_account_fills(
+            &mut self,
+            own: &OwnFills,
+            kept: Option<Decimal>,
+            fills: &mut Fills,
+        ) -> Accounted;
+        /// [`Market::get_hiddenqty`](super::super::Market::get_hiddenqty).
+        fn walked_hiddenqty(&self) -> Option<Decimal>;
         /// Clears the fill the element last reported - its last price, the
         /// two FX parts of it and its last quantity - leaving what it
         /// traded in all: what an expiration, which reports no fill, keeps
@@ -151,6 +171,7 @@ pub(crate) mod sealed {
         fn walked_kind(&self) -> MarketDataKind;
     }
 
+    #[allow(private_interfaces)]
     impl<E: Event + Operation + Clone> Walked for E {
         fn walked_transunix(&self) -> Option<i64> {
             Some(self.get_transunix())
@@ -218,6 +239,20 @@ pub(crate) mod sealed {
         fn walked_fill_execution(&mut self) {
             let _ = super::super::market::fill_execution(self);
         }
+        fn walked_own_fills(&self) -> Option<OwnFills> {
+            Some(OwnFills::read(self))
+        }
+        fn walked_account_fills(
+            &mut self,
+            own: &OwnFills,
+            kept: Option<Decimal>,
+            fills: &mut Fills,
+        ) -> Accounted {
+            account_fills(self, own, kept, fills)
+        }
+        fn walked_hiddenqty(&self) -> Option<Decimal> {
+            self.get_hiddenqty()
+        }
         fn walked_clear_fill(&mut self) {
             clear_fill(self);
         }
@@ -238,6 +273,7 @@ pub(crate) mod sealed {
         }
     }
 
+    #[allow(private_interfaces)]
     impl Walked for MarketData {
         fn walked_transunix(&self) -> Option<i64> {
             self.as_event().map(|event| event.get_transunix())
@@ -362,6 +398,23 @@ pub(crate) mod sealed {
                 let _ = super::super::market::fill_execution(operation);
             }
         }
+        fn walked_own_fills(&self) -> Option<OwnFills> {
+            self.as_event_operation().map(OwnFills::read)
+        }
+        fn walked_account_fills(
+            &mut self,
+            own: &OwnFills,
+            kept: Option<Decimal>,
+            fills: &mut Fills,
+        ) -> Accounted {
+            match self.as_event_operation_mut() {
+                Some(operation) => account_fills(operation, own, kept, fills),
+                None => Accounted::default(),
+            }
+        }
+        fn walked_hiddenqty(&self) -> Option<Decimal> {
+            self.as_event_operation()?.get_hiddenqty()
+        }
         fn walked_clear_fill(&mut self) {
             if let Some(operation) = self.as_event_operation_mut() {
                 clear_fill(operation);
@@ -469,6 +522,28 @@ enum Source<E, I> {
 /// no live identity is yielded as it came, and stands. What the walk yields
 /// is always the caller's own copy: the live element is a clone the walk
 /// keeps, never a reference into it.
+///
+/// An order's chain counts the fills it reports once by execution
+/// identifier ([`Operation::fill_of`](super::Operation::fill_of)), over the
+/// total its first statement stated - what traded before the walk saw the
+/// chain: a fill whose identifier the chain already counted adds nothing,
+/// moves no quantity of the chain and promotes nothing; a new one adds its
+/// `lastqty`, a bust takes the fill it names back, a correction replaces
+/// it. The count is the order's `cumqty`, its `leavesqty` the accepted order
+/// quantity less it - floored at nothing, an overfill warned - and a
+/// partial fill whose count reaches that quantity reads `FILLED`, never the
+/// reverse: a stated `FILLED` whose count falls short stays `FILLED`,
+/// warned, while an ended state that is no word of its holder's own - a
+/// FIX trade report's `FILLED` that its `LeavesQty(151)` of nothing reads
+/// ([`Operation::states_end`]) - reads, over a chain the walk counted, as
+/// the partial fill the count says it is. A stated total that
+/// disagrees with the count is warned once per kind and never adopted. The
+/// fills of a chain that ended stay findable for
+/// [`Self::with_window_ns`] of event time, so a copy of one of them logged
+/// at another hop and dated apart - a resend, a frame hop - starts no live
+/// chain from a count: an order's report of it is yielded as it came,
+/// outside every chain, and a second statement of an execution is another
+/// statement of the first, which a deduplicating caller yields once.
 ///
 /// Every walked element leaves stating when its lifecycle was created: one
 /// stating no creation takes its chain's - the earliest the fold keeps - or,
@@ -654,6 +729,8 @@ pub struct EventIterator<E, I> {
     /// Whether the walk places the source elements it reads, rather than
     /// keeping the places they came with.
     placing: bool,
+    /// The fills of the chains ended within the window ([`Tombstones`]).
+    tombstones: Tombstones,
 }
 
 /// A chain the walk keeps alive: its cross element, within one market data
@@ -673,6 +750,201 @@ struct Live<E> {
     element: E,
     arrived: Uuid,
     passed: Vec<(Uuid, E)>,
+    /// The chain's fill ledger ([`Fills`]): every fill it counted, by
+    /// execution identifier, over its first stated total.
+    fills: Fills,
+}
+
+/// The fills of the chains that ended within the walk's window, under the
+/// chain they ended - its base cross code, its category and its side - so a
+/// late copy of one of them - the same fill logged at another hop, dated
+/// apart - restates the ended chain rather than starting a live one from a
+/// count, while a fill of another chain under the same base - the other
+/// side of one match under one execution identifier - stays its own. Held
+/// for [`EventIterator::with_window_ns`] of event time past the instant the
+/// chain ended, swept whenever the table has doubled since the last sweep,
+/// so remembering costs amortized constant time and the table holds at most
+/// twice what the window does; the chain ended last is held inline, so a
+/// walk over one report - an order filled by its first report, an
+/// execution - remembers it without allocating.
+#[derive(Debug)]
+struct Tombstones {
+    /// The window in nanoseconds of event time; nonpositive remembers none.
+    span: i64,
+    /// The chain ended last.
+    last: Option<Tomb>,
+    /// Every other chain ended within the window, by base cross code: the
+    /// chains of one base, each of its own category and side, linked.
+    held: HashMap<Str, Tomb>,
+    /// The size past which the table is swept again.
+    sweep_at: usize,
+}
+
+/// One ended chain's fills, under its base cross code, its category and its
+/// side, dated at the instant it ended; `next` the next chain ended under
+/// the same base, of another category or side.
+#[derive(Debug)]
+struct Tomb {
+    base: Str,
+    kind: MarketDataKind,
+    side: Side,
+    at: i64,
+    fills: Fills,
+    next: Option<Box<Tomb>>,
+}
+
+impl Tomb {
+    fn new(base: &str, kind: MarketDataKind, side: Side, at: i64, fills: Fills) -> Self {
+        Self {
+            base: Str::from(base),
+            kind,
+            side,
+            at,
+            fills,
+            next: None,
+        }
+    }
+
+    /// Whether this is the chain ended under `base`, `kind` and `side`.
+    fn is(&self, base: &str, kind: MarketDataKind, side: Side) -> bool {
+        self.kind == kind && self.side == side && self.base == base
+    }
+
+    /// The chain of `kind` and `side` linked from this one, this one included.
+    fn find_mut(&mut self, kind: MarketDataKind, side: Side) -> Option<&mut Self> {
+        if self.kind == kind && self.side == side {
+            return Some(self);
+        }
+        self.next.as_deref_mut()?.find_mut(kind, side)
+    }
+
+    /// This chain and every one linked from it.
+    fn chain(&self) -> impl Iterator<Item = &Self> {
+        std::iter::successors(Some(self), |tomb| tomb.next.as_deref())
+    }
+
+    /// Unlinks every chain after this one that ended before `horizon`.
+    fn prune_next(&mut self, horizon: i64) {
+        if let Some(mut next) = self.next.take() {
+            next.prune_next(horizon);
+            self.next = if next.at >= horizon {
+                Some(next)
+            } else {
+                next.next.take()
+            };
+        }
+    }
+
+    /// Takes the fills of a chain ended again under the same key.
+    fn absorb(&mut self, at: i64, fills: Fills) {
+        self.at = self.at.max(at);
+        self.fills.absorb(fills);
+    }
+}
+
+impl Tombstones {
+    /// The fewest chains the table holds before it is swept at all.
+    const SWEEP_FLOOR: usize = 1_024;
+
+    fn new(span: i64) -> Self {
+        Self {
+            span,
+            last: None,
+            held: HashMap::new(),
+            sweep_at: Self::SWEEP_FLOOR,
+        }
+    }
+
+    /// Remembers the `fills` of a chain of `kind` and `side` under `base`
+    /// that ended at `at`, where they counted anything and the window
+    /// remembers: a chain ended under a key already held - a later
+    /// incarnation of it - adds its fills to the ones held.
+    fn bury(
+        &mut self,
+        base: &str,
+        kind: MarketDataKind,
+        side: Side,
+        at: i64,
+        fills: Fills,
+        watermark: i64,
+    ) {
+        if self.span <= 0 || fills.is_empty() {
+            return;
+        }
+        let horizon = watermark.saturating_sub(self.span);
+        let Some(last) = &mut self.last else {
+            self.last = Some(Tomb::new(base, kind, side, at, fills));
+            return;
+        };
+        if last.is(base, kind, side) {
+            last.absorb(at, fills);
+            return;
+        }
+        if let Some(held) = self
+            .held
+            .get_mut(base)
+            .and_then(|head| head.find_mut(kind, side))
+        {
+            held.absorb(at, fills);
+            return;
+        }
+        // The chain ended before this one moves to the table, where it
+        // stays until the window passes it.
+        let mut moved = std::mem::replace(last, Tomb::new(base, kind, side, at, fills));
+        if moved.at >= horizon {
+            match self.held.get_mut(moved.base.as_str()) {
+                Some(head) => {
+                    moved.next = head.next.take();
+                    head.next = Some(Box::new(moved));
+                }
+                None => {
+                    self.held.insert(moved.base.clone(), moved);
+                }
+            }
+        }
+        if self.held.len() >= self.sweep_at {
+            self.held.retain(|_, head| {
+                head.prune_next(horizon);
+                if head.at >= horizon {
+                    return true;
+                }
+                match head.next.take() {
+                    Some(next) => {
+                        *head = *next;
+                        true
+                    }
+                    None => false,
+                }
+            });
+            self.sweep_at = (self.held.len() * 2).max(Self::SWEEP_FLOOR);
+        }
+    }
+
+    /// The settled statement that counted one of `own`'s fills in a chain
+    /// of `kind` ended under `base` within the window, where one did: the
+    /// chain of `side`, or of any side where either states none.
+    fn counted_by(
+        &self,
+        base: &str,
+        kind: MarketDataKind,
+        side: Side,
+        own: &OwnFills,
+        watermark: i64,
+    ) -> Option<Uuid> {
+        if self.span <= 0 {
+            return None;
+        }
+        let horizon = watermark.saturating_sub(self.span);
+        let last = self.last.as_ref().filter(|last| last.base == base);
+        last.into_iter()
+            .chain(self.held.get(base).into_iter().flat_map(Tomb::chain))
+            .filter(|tomb| {
+                tomb.kind == kind
+                    && (tomb.side == side || side == Side::Unknown || tomb.side == Side::Unknown)
+                    && tomb.at >= horizon
+            })
+            .find_map(|tomb| own.ids().find_map(|id| tomb.fills.counted_by(id)))
+    }
 }
 
 impl<E, I> EventIterator<E, I>
@@ -715,7 +987,23 @@ where
             watermark: None,
             sequence: InstantSequence::default(),
             placing: false,
+            tombstones: Tombstones::new(Self::DEFAULT_WINDOW_NS),
         }
+    }
+
+    /// The window of event time an ended chain's fills are remembered for
+    /// by default: one minute, the FIX codec's deduplication window.
+    pub const DEFAULT_WINDOW_NS: i64 = 60_000_000_000;
+
+    /// The walk remembering the fills of a chain for `window_ns` nanoseconds
+    /// of event time past the instant the chain ended, so a copy of one of
+    /// them logged at another hop and dated apart restates the ended chain
+    /// rather than starting one afresh; a window of zero or less remembers
+    /// none.
+    #[must_use]
+    pub fn with_window_ns(mut self, window_ns: i64) -> Self {
+        self.tombstones = Tombstones::new(window_ns);
+        self
     }
 
     /// The walk placing every source element it reads by content among
@@ -761,8 +1049,10 @@ where
     }
 
     /// Records `element` as the live one under `identity` where it is still
-    /// alive, its names with it, and retires the identity where it is not.
-    fn settle(&mut self, identity: Chain, element: &E, arrived: Uuid) {
+    /// alive, its names and its chain's fill ledger with it, and retires the
+    /// identity where it is not, the ledger into the tombstones.
+    fn settle(&mut self, identity: Chain, element: &E, arrived: Uuid, mut fills: Fills) {
+        fills.stamp(element.get_uuid());
         if let Some(deadline) = self
             .alive
             .get(&identity)
@@ -855,30 +1145,47 @@ where
                     element: element.clone(),
                     arrived,
                     passed,
+                    fills,
                 },
             );
             if let Some(deadline) = element.walked_exprunix() {
                 self.expirations.insert((deadline, identity));
             }
-        } else if let Some(live) = self.retire(identity) {
-            // The step that ends the chain, and the statements it moved past
-            // at this instant, stay the chain's until the walk passes it.
+        } else {
             let instant = element.walked_transunix();
-            if self.retired_at != instant {
-                self.retired.clear();
-                self.retired_at = instant;
-            }
-            if live.element.walked_transunix() == instant {
-                self.retired.extend(
-                    live.passed
-                        .into_iter()
-                        .map(|(held, statement)| (held, identity, statement)),
-                );
-                if live.arrived != arrived {
-                    self.retired.push((live.arrived, identity, live.element));
+            if let Some(live) = self.retire(identity) {
+                // The step that ends the chain, and the statements it moved
+                // past at this instant, stay the chain's until the walk
+                // passes it.
+                if self.retired_at != instant {
+                    self.retired.clear();
+                    self.retired_at = instant;
                 }
+                if live.element.walked_transunix() == instant {
+                    self.retired.extend(
+                        live.passed
+                            .into_iter()
+                            .map(|(held, statement)| (held, identity, statement)),
+                    );
+                    if live.arrived != arrived {
+                        self.retired.push((live.arrived, identity, live.element));
+                    }
+                }
+                self.retired.push((arrived, identity, element.clone()));
             }
-            self.retired.push((arrived, identity, element.clone()));
+            // The ended chain's fills stay findable for the window, whether
+            // the chain lived or its first statement ended it.
+            if let Some(at) = instant {
+                let watermark = self.watermark.unwrap_or(at).max(at);
+                self.tombstones.bury(
+                    base_crosscode(element.get_crosscode()),
+                    identity.1,
+                    element.walked_side(),
+                    at,
+                    fills,
+                    watermark,
+                );
+            }
         }
     }
 
@@ -1031,8 +1338,17 @@ where
         {
             return None;
         }
-        let previous = self.retire(identity)?.element;
+        let live = self.retire(identity)?;
         self.watermark = Some(self.watermark.map_or(deadline, |held| held.max(deadline)));
+        let previous = live.element;
+        self.tombstones.bury(
+            base_crosscode(previous.get_crosscode()),
+            identity.1,
+            previous.walked_side(),
+            deadline,
+            live.fills,
+            self.watermark.unwrap_or(deadline),
+        );
         let mut expired = previous.clone();
         expired.walked_set_transunix(deadline);
         expired.walked_set_state(State::Expired);
@@ -1101,6 +1417,16 @@ where
             rekeyed(&mut element, statement, chain);
             return element;
         }
+        // The statement's own words of its fill, read before following
+        // carries the chain's total and identifiers onto it; the chain's
+        // ledger taken out of the live record for the step and handed back
+        // at the settle, never cloned.
+        let own = element.walked_own_fills();
+        let mut fills = self
+            .alive
+            .get_mut(&identity)
+            .map(|live| std::mem::take(&mut live.fills))
+            .unwrap_or_default();
         let mut element = match self.alive.get(&identity) {
             Some(live) if live.arrived == arrived => element.walked_restating(&live.element),
             Some(live) if element.is_before(&live.element) => {
@@ -1110,19 +1436,31 @@ where
                 element.walked_fill_execution();
                 rekeyed(&mut element, &live.element, identity);
                 created(&mut element, None);
+                if let Some(live) = self.alive.get_mut(&identity) {
+                    live.fills = fills;
+                }
                 return element;
             }
             Some(live) => {
                 // What the statement said, read before the fold: following
                 // keeps the higher rank of the two, so a `NEW` over a live
                 // `ACTIVE`, `RUNNING` or `REPLACED` no longer reads `NEW`.
-                let stated_new = element.walked_state() == Some(&State::New);
+                let stated = element.walked_state().copied();
+                let stated_new = stated == Some(State::New);
+                let kept = live.element.walked_hiddenqty();
                 let mut element = element
                     .clone()
                     .with_previous(&live.element)
                     .unwrap_or(element);
-                // A `NEW` stated over a live element that is itself new -
-                // or carrying on, or restated - is that element updated.
+                // The chain's fill accounting over what following answered,
+                // then today's refinement: a `NEW` stated over a live
+                // element that is itself new - or carrying on, or restated -
+                // is that element updated.
+                let accounted = match &own {
+                    Some(own) => element.walked_account_fills(own, kept, &mut fills),
+                    None => Accounted::default(),
+                };
+                let mut moved = accounted.moved;
                 if stated_new
                     && live
                         .element
@@ -1130,12 +1468,56 @@ where
                         .is_some_and(|held| held.is_new_like())
                 {
                     element.walked_set_state(State::Updated);
+                    moved = true;
+                }
+                if moved {
                     element.finalize();
+                }
+                // An execution is the one fill it reports: a second
+                // statement of it saying what the first said - the same
+                // fill in the same state - is another statement of the
+                // first; one saying something else of it, a correction,
+                // stays a statement of its own.
+                if let Some(counted_by) = accounted.repeated
+                    && reports_fills(kind)
+                    && stated == live.element.walked_state().copied()
+                    && own.as_ref().is_some_and(|own| {
+                        live.element
+                            .walked_own_fills()
+                            .is_some_and(|held| own.repeats(&held))
+                    })
+                {
+                    element.set_uuid(counted_by);
                 }
                 element
             }
             None => {
                 element.walked_fill_execution();
+                // A fill of a chain that ended within the window: a copy
+                // logged at another hop and dated apart restates that chain
+                // - an execution the statement that counted it - and starts
+                // no live chain from a count.
+                if let Some(own) = &own
+                    && let Some(counted_by) = self.tombstones.counted_by(
+                        base_crosscode(element.get_crosscode()),
+                        kind,
+                        element.walked_side(),
+                        own,
+                        self.watermark.unwrap_or(i64::MIN),
+                    )
+                {
+                    created(&mut element, None);
+                    if reports_fills(kind) {
+                        element.set_uuid(counted_by);
+                    }
+                    return element;
+                }
+                // A chain's first statement anchors its ledger.
+                if let Some(own) = &own
+                    && element.walked_account_fills(own, None, &mut fills).moved
+                {
+                    element.finalize();
+                }
                 element
             }
         };
@@ -1155,7 +1537,7 @@ where
         } else {
             (element.get_crossuuid(), element.walked_kind())
         };
-        self.settle(identity, &element, arrived);
+        self.settle(identity, &element, arrived, fills);
         element
     }
 
@@ -1554,7 +1936,12 @@ pub mod internals {
         E: Walked,
         I: Iterator<Item = E>,
     {
-        walk.settle((identity, element.walked_kind()), element, arrived);
+        walk.settle(
+            (identity, element.walked_kind()),
+            element,
+            arrived,
+            super::Fills::default(),
+        );
     }
 
     /// Retire the element alive under `identity`, of whichever category,

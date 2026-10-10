@@ -4354,13 +4354,19 @@ mod lifecycle_identifiers {
     /// by that sending clock - and every one derives its cross hash from
     /// its stored cross code and, where it states one, its cross element
     /// from that hash; every follower stands under its predecessor's code
-    /// and cross element, and no message cites two live chains.
+    /// and cross element, and no message cites two live chains. 40 and 43
+    /// since P12 (decisions 26 and 29, D45.8): the frame hops' executions of
+    /// fills 461 and 467 restate the executions already walked, which the
+    /// window yields once and a walk remembering no window - and so no
+    /// ended chain's fills - answers as chains of their own, and order
+    /// `00079132557GLXC0`, `PARTIALLY_FILLED` at 472 of 600 by its distinct
+    /// fills, expires at its `ExpireTime(126)`, one delivery more.
     #[test]
     fn every_walked_row_derives_its_cross_identity_from_its_code() {
         crate::install::installed();
         let walk = walked(&codec());
-        assert_eq!(walk.len(), 41);
-        assert_eq!(walked(&codec().with_dedup_window_ms(0)).len(), 42);
+        assert_eq!(walk.len(), 40);
+        assert_eq!(walked(&codec().with_dedup_window_ms(0)).len(), 43);
         let mut coded = 0;
         for message in &walk {
             let code = message.get_crosscode();
@@ -4382,8 +4388,10 @@ mod lifecycle_identifiers {
         }
         // 28 since decision 21 yields the frame hop of order
         // `00079132558GLXC0`'s fill and its execution, both coded, as
-        // deliveries of their own; it was 26.
-        assert_eq!(coded, 28);
+        // deliveries of their own; it was 26. 27 since P12 (D45.8): the frame
+        // hops' two coded executions restate the ones walked before them,
+        // and order `00079132557GLXC0`'s expiry, coded, is one more.
+        assert_eq!(coded, 27);
         let mut followers = 0;
         for message in &walk {
             let Some(previous) = message.get_prevuuid() else {
@@ -4397,7 +4405,11 @@ mod lifecycle_identifiers {
             assert_eq!(message.get_crossuuid(), previous.get_crossuuid());
             followers += 1;
         }
-        assert_eq!(followers, 5);
+        // 7 since P12 (decisions 26 and 29): order `00079132557GLXC0` stays
+        // alive at 472 of 600 by its distinct fills, so the client-side
+        // restatement of fill 467 follows the order rather than starting a
+        // chain, and the order's expiry follows that. It was 5.
+        assert_eq!(followers, 7);
         assert!(!walk.iter().any(conflicted));
     }
 
