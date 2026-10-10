@@ -62,6 +62,9 @@ def test_a_spelling_a_status_and_a_message_type_read_to_one_member() -> None:
     assert State.from_spelling("not a state") is None
     assert State.from_fix_status(39, "8") is State.REJECTED
     assert State.from_fix_status(150, "F") is State.TRADE
+    # A word on 39 or 150 that is no wire code reads as the state's own
+    # spelling: a bridge's ORDSTATUS=partfilled (decision 29).
+    assert State.from_fix_status(39, "partfilled") is State.PARTIALLY_FILLED
     assert State.from_fix_status(87, "6") is State.PENDING_ALLOCATION
     assert State.from_spelling("approved") is State.APPROVED
     assert State.from_fix_status(55, "8") is None

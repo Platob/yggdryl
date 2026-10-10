@@ -44,6 +44,12 @@ fn every_fix_status_field_answers_by_its_own_code_set() {
         (531, "0", Some(State::Rejected)),
         (531, "7", Some(State::Canceled)),
         (531, "C", Some(State::Canceled)),
+        // A word on `OrdStatus` or `ExecType` that is no wire code reads as
+        // the state's own spelling - a bridge's short word (decision 29).
+        (39, "partfilled", Some(State::PartiallyFilled)),
+        (150, "trade", Some(State::Trade)),
+        (39, "DoneDay", Some(State::DoneForDay)),
+        (39, "nonsense", None),
         // A code a set does not define, and a tag no status is read off.
         (1036, "9", None),
         (54, "1", None),

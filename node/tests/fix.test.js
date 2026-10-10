@@ -3916,13 +3916,14 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(buy.marketdatakind, MarketDataKind.EXEC)
     assert.equal(sell.marketdatakind, MarketDataKind.EXEC)
     assert.equal(buy.state, State.FILLED)
-    // A trade-capture side states no price and no quantity: its last
-    // executed price and quantity are `lastpx` and `lastqty`, and the two
-    // nullable columns carry the null.
+    // A trade-capture side states no price: its last executed price is
+    // `lastpx`, and the nullable column carries the null. Its quantity is
+    // what it executed, its `lastqty` (decision 27: one definition of the
+    // quantity per kind, available on an order, executed on an execution).
     assert.equal(buy.price, null)
     assert.equal(sell.price, null)
-    assert.equal(buy.quantity, null)
-    assert.equal(sell.quantity, null)
+    assert.equal(BigInt(buy.quantity.toString()), 4n * 10n ** 18n)
+    assert.equal(BigInt(sell.quantity.toString()), 6n * 10n ** 18n)
     assert.equal(BigInt(buy.lastpx.toString()), 10125n * 10n ** 16n)
     assert.equal(BigInt(sell.lastpx.toString()), 10125n * 10n ** 16n)
     assert.equal(BigInt(buy.lastqty.toString()), 4n * 10n ** 18n)
@@ -4874,20 +4875,32 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // 21 dated a message by its official clock only less than half a second
     // from its SendingTime(52): the frame hop of order 00079132558GLXC0's
     // fill, its TransactTime(60) 743 ms off, is dated by its sending clock,
-    // so it and its execution are twins of nothing.
+    // so it and its execution are twins of nothing. It is 40 since P12
+    // counted each order chain's fills once by execution identifier
+    // (decision 26) and remembered an ended chain's fills for the codec's
+    // window (D45.8): the frame hops' two executions - of order
+    // 00079132558GLXC0's fill and of order 00079132557GLXC0's fill 467 -
+    // restate the executions already walked and the window yields each once;
+    // and order 557, whose exchange-side frames state the child's
+    // LeavesQty(151) of nothing while its distinct fills count 472 of 600,
+    // stays PARTIALLY_FILLED and expires at its ExpireTime(126), the second
+    // expiry (decision 29).
     const walked = [...codec.lifecycle(messages)]
     const expired = walked.filter((message) => message.state === 'EXPIRED')
     const retained = walked.filter((message) => message.state !== 'EXPIRED')
-    assert.equal(retained.length, 40)
-    assert.equal(expired.length, 1)
-    assert.equal(walked.length, 41)
+    assert.equal(retained.length, 38)
+    assert.equal(expired.length, 2)
+    assert.equal(walked.length, 40)
     // A walk remembering nothing answers the one twin as well, an identity it
-    // had already answered, and nothing else.
+    // had already answered - and, remembering no ended chain's fills either
+    // (D45.8), the frame hops' two executions as chains of their own.
     const every = [...codec.withDedupWindowMs(null).lifecycle(messages)]
-    assert.equal(every.length, 42)
+    assert.equal(every.length, 43)
     const seen = new Set()
     const once = every.filter((message) => !seen.has(message.uuid) && seen.add(message.uuid))
-    assert.deepEqual(once.map((message) => message.uuid), walked.map((message) => message.uuid))
+    assert.equal(once.length, walked.length + 2)
+    const onceIds = new Set(once.map((message) => message.uuid))
+    assert.ok(walked.every((message) => onceIds.has(message.uuid)))
 
     const counts = (held) => {
       const found = new Map()
@@ -4902,27 +4915,37 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const removed = Object.fromEntries(
       [...inputCounts].map(([type, count]) => [type, count - (retainedCounts.get(type) ?? 0)]).filter(([, count]) => count > 0),
     )
-    // The 56 split executions fold into eight (A12): 54 + 48; and the twin
+    // The 56 split executions fold into six (A12): 54 + 50; and the twin
     // the window yields once - a cancel reject. Of the ten typeless rows nine
     // are deliveries of their own. The window also yielded a report and an
     // execution once, 104 reports removed, until decision 21 dated that fill's
-    // frame hop by its sending clock.
-    assert.deepEqual(removed, { 8: 102, '': 1, D: 1, cancelreject: 7 })
+    // frame hop by its sending clock. They folded into eight, 54 + 48, until
+    // P12 (D45.8) read the frame hops' executions of fills 461 and 467 as
+    // restatements of the executions walked before them.
+    assert.deepEqual(removed, { 8: 104, '': 1, D: 1, cancelreject: 7 })
 
     // The default cross-code chains five retained bridge messages, each
     // stating its predecessor. It was six until a lifecycle chained within
     // one market data kind: the order placed under XM8NNITE383 no longer
     // follows the typeless FIXML row naming that ClOrdID, while the two
     // execution reports of no fill that follow a report before them are
-    // filed as their orders' reports and follow it still.
-    assert.equal(walked.filter((message) => message.prevuuid !== null).length, 5)
+    // filed as their orders' reports and follow it still. Seven since P12
+    // (decisions 26 and 29): order 00079132557GLXC0 stays alive at 472 of
+    // 600 by its distinct fills, so the client-side restatement of fill 467
+    // follows the order rather than starting a chain, and the order's
+    // expiry follows that.
+    assert.equal(walked.filter((message) => message.prevuuid !== null).length, 7)
     // seqnum > 0 now marks a place after another event of the same instant:
     // split executions beside their reports - and beside the trade - and
     // same-instant chain steps. It was 12 until decision 21 dated the frame
     // hop of order 00079132558GLXC0's fill by its sending clock: that hop and
     // the execution split off beside it are yielded now, not twins, and the
-    // execution stands after its report.
-    assert.equal(walked.filter((message) => message.seqnum > 0).length, 13)
+    // execution stands after its report. Twelve since P12 (D45.8): the
+    // frame hops' executions of fills 461 and 467, each after its report,
+    // restate the walked ones and are yielded once, while order
+    // 00079132557GLXC0's expiry shares the NOVN order's deadline and stands
+    // after it.
+    assert.equal(walked.filter((message) => message.seqnum > 0).length, 12)
     // A walked message descends from the whole chain before it. A fully merged
     // delivery keeps every observation's source, with each source belonging to
     // one output; only the twins the window yields once take their own
@@ -4943,8 +4966,12 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // Two sources fewer are lost since decision 21: the frame hop of order
     // 00079132558GLXC0's fill and its execution, dated by their sending clock,
     // are yielded rather than twins and keep the sources they name; it was 4.
-    assert.equal(new Set(retainedSources).size, inputSources.size - 2)
+    // Ten since P12 (D45.8): the frame hops' executions of fills 461 and 467,
+    // restating the executions walked before them, are yielded once and the
+    // eight sources they alone named go with them.
+    assert.equal(new Set(retainedSources).size, inputSources.size - 10)
 
+    // The NOVN order's expiry, first of the two at their one deadline.
     const [expiry] = expired
     const predecessor = retained.find((message) => message.uuid === expiry.prevuuid)
     assert.ok(predecessor)
@@ -4959,7 +4986,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const rows = codec.lifecycleArrowReader(codec.arrowReader(schema, messages))
     const chained = [...codec.messages(rows)]
     assert.equal(chained.length, walked.length)
-    assert.equal(chained.filter((message) => message.prevuuid !== null).length, 5)
+    assert.equal(chained.filter((message) => message.prevuuid !== null).length, 7)
 
     // Row intake preserves recorded identity; the lifecycle event clock,
     // facts and chain topology agree on both doors.
@@ -5041,8 +5068,12 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // than half a second from its `SendingTime(52)`: the frame hop of order
     // `00079132558GLXC0`'s fill, its `TransactTime(60)` 743 ms off, is dated
     // by its sending clock, so it and its execution are twins of nothing.
+    // 40 since P12 (decisions 26 and 29, D45.8): the frame hops' executions
+    // of fills 461 and 467 restate the walked ones, and order
+    // 00079132557GLXC0, PARTIALLY_FILLED at 472 of 600 by its distinct
+    // fills, expires at its ExpireTime(126).
     const walked = [...codec.lifecycle(messages)]
-    assert.equal(walked.length, 41)
+    assert.equal(walked.length, 40)
 
     // Twenty-three deliveries are market data - eight fills, the eight
     // reports they were split off, now their orders' reports, three orders,
@@ -5054,23 +5085,29 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // the executions its parse splits off (A12). Twenty-one until decision
     // 21, which made a fill and a report the window yielded once deliveries
     // of their own.
+    // Twenty-two since P12 (decision 26, D45.8): seven executions, the
+    // frame hops' two restating the walked ones, and fifteen order events,
+    // order 00079132557GLXC0's expiry among them.
     const operations = [...codec.marketData(walked)]
-    assert.equal(operations.length, 23)
+    assert.equal(operations.length, 22)
     const census = {}
     for (const operation of operations) census[operation.kind] = (census[operation.kind] ?? 0) + 1
-    assert.deepEqual(census, { execution_event: 9, order_event: 14 })
-    // A walk remembering nothing answers the same deliveries: none repeats
-    // an identity already there.
+    assert.deepEqual(census, { execution_event: 7, order_event: 15 })
+    // A walk remembering nothing remembers no ended chain's fills either
+    // (D45.8), so the frame hops' two executions are chains of their own
+    // there, identities of their own beside the same deliveries.
     const every = [...codec.marketData([...codec.withDedupWindowMs(null).lifecycle(messages)])]
-    assert.equal(every.length, 23)
+    assert.equal(every.length, 24)
     const seen = new Set()
     const once = every.filter((operation) => !seen.has(operation.uuid) && seen.add(operation.uuid))
-    assert.deepEqual(once.map((operation) => operation.uuid), operations.map((operation) => operation.uuid))
+    assert.equal(once.length, operations.length + 2)
+    const onceIds = new Set(once.map((operation) => operation.uuid))
+    assert.ok(operations.every((operation) => onceIds.has(operation.uuid)))
 
     // Every order folds into a book and every execution is recorded among
     // its book's events - a fill moved its book through its order's report
     // already - so a book stands at every instant an order states, and one
-    // where only an execution does, an event-only book: twelve books, the
+    // where only an execution does, an event-only book: thirteen books, the
     // NOVN order's three steps each its book's instant, each a delta book -
     // with no grid and no snapshot input no book is complete. The last two
     // hold nothing: the unpriced order's cancel request and the reject that
@@ -5082,9 +5119,13 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // number `XX0000000001` is one order and the execution its parse split
     // off, at one instant, of an instrument no registry knows, so neither
     // holds an instcode and both are pruned before the walk - the book of
-    // that instant with them (a masked number keys no book).
+    // that instant with them (a masked number keys no book). Thirteen again
+    // since P12 (decisions 26 and 29) beside decision 16: order
+    // 00079132557GLXC0, PARTIALLY_FILLED at 472 of 600 by its distinct fills
+    // rather than FILLED by its exchange-side frames' 151=0, expires at its
+    // ExpireTime(126), and its expiry is a book of its own instant.
     const books = [...new graph.BookIterator(operations, 0)]
-    assert.equal(books.length, 12)
+    assert.equal(books.length, 13)
     assert.ok(books.every((book) => !book.isComplete))
     assert.equal(operations.filter((operation) => operation.instcode === null).length, 2)
     const last = books[books.length - 1]

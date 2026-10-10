@@ -246,7 +246,7 @@ impl Standing {
 /// order's do, and its quantity is the fill's own, never what the order has
 /// left. The one reading the standing, the quantity following what is left
 /// and the settle of an order's quantities share.
-fn reports_fills(kind: MarketDataKind) -> bool {
+pub(super) fn reports_fills(kind: MarketDataKind) -> bool {
     matches!(
         kind,
         MarketDataKind::Execution
@@ -341,8 +341,23 @@ impl MarketFacts {
     /// Stamps the category of the leaf that holds these facts, storing the
     /// cross code under it.
     pub(crate) fn set_marketdatakind(&mut self, kind: MarketDataKind) {
+        let before = self.kind;
         self.kind = kind;
         self.reprefix();
+        // The quantity by the kind's rule: an execution's or a trade's is
+        // the fill it reports, every other kind's what is still available,
+        // so a holder refiled from one rule to the other moves it.
+        if reports_fills(before) != reports_fills(kind) {
+            let (was, now) = if reports_fills(kind) {
+                (self.leavesqty, self.lastqty)
+            } else {
+                (self.lastqty, self.leavesqty)
+            };
+            let held = self.quantity;
+            if follow(&mut self.quantity, was.as_ref(), now.as_ref()) {
+                self.quantity_moved(held, None);
+            }
+        }
     }
 
     /// Writes one bid or ask fact, allocating the holder on the first stated
@@ -796,7 +811,12 @@ impl MarketFacts {
     /// fact in turn runs once they are all stated.
     pub(crate) fn settle_orders(&mut self) {
         self.orders_moved(None);
-        if !reports_fills(self.kind) && fill(&mut self.quantity, self.leavesqty.as_ref()) {
+        let own = if reports_fills(self.kind) {
+            self.lastqty
+        } else {
+            self.leavesqty
+        };
+        if fill(&mut self.quantity, own.as_ref()) {
             self.quantity_moved(None, None);
         }
     }
@@ -807,6 +827,19 @@ impl MarketFacts {
     fn leaves_moved(&mut self, before: Option<Decimal>) {
         let after = self.leavesqty;
         if before != after && !reports_fills(self.kind) {
+            let was = self.quantity;
+            if follow(&mut self.quantity, before.as_ref(), after.as_ref()) {
+                self.quantity_moved(was, None);
+            }
+        }
+    }
+
+    /// The last fill moved from `before`: the quantity an execution or a
+    /// trade is about is what executed, so it moves with it - never an
+    /// order's, whose quantity is what it has left.
+    fn fill_moved(&mut self, before: Option<Decimal>) {
+        let after = self.lastqty;
+        if before != after && reports_fills(self.kind) {
             let was = self.quantity;
             if follow(&mut self.quantity, before.as_ref(), after.as_ref()) {
                 self.quantity_moved(was, None);
@@ -1227,7 +1260,8 @@ impl Market for MarketFacts {
 
     fn set_lastqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
         if lands(&self.lastqty, &qty, self.lastqty.is_none(), overwrite) {
-            self.lastqty = qty;
+            let before = std::mem::replace(&mut self.lastqty, qty);
+            self.fill_moved(before);
             self.orders_moved(Some(Fact::Lastqty));
         }
     }

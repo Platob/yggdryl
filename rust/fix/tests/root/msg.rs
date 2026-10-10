@@ -3755,3 +3755,92 @@ fn a_row_reads_a_long_digest_as_its_bits_and_refuses_a_negative_place() {
     .to_string();
     assert!(error.contains("$.seqnum"), "{error}");
 }
+
+/// What a report is of a fill, read off its own tags: a trade under a
+/// stated `ExecID(17)` is a new fill of its `LastQty(32)`, a status reply
+/// repeating the quantity under FIX's `0` is no fill, a trade cancel a bust
+/// of its `ExecRefID(19)`, a trade correct a correction of it, a leg of a
+/// multi-leg report no fill, a trade naming no identifier an unidentified
+/// one, and FIX 4.2's `ExecTransType(20)` says what the report is
+/// whatever `150` it states beside.
+#[test]
+fn a_report_reads_what_it_is_of_a_fill_off_its_own_tags() {
+    crate::install::installed();
+    use yggdryl_market::graph::Fill;
+    let (_, reader) = reader();
+    let dec = |text: &str| -> Decimal { text.parse().unwrap() };
+    let fill_of = |body: &str| {
+        let line = format!("8=FIX.4.4|35=8|52=20260921-10:00:00|37=O1|55=AAPL|54=1|{body}10=0|");
+        reader
+            .sole_line(line.as_bytes())
+            .expect("one report")
+            .fill_of()
+    };
+    assert_eq!(
+        fill_of("150=F|39=1|17=E1|32=40|14=40|151=60|38=100|"),
+        Fill::New {
+            execid: "E1".into(),
+            qty: dec("40")
+        }
+    );
+    assert_eq!(
+        fill_of("150=F|39=1|17=E1|14=40|151=60|38=100|"),
+        Fill::New {
+            execid: "E1".into(),
+            qty: dec("0")
+        },
+        "no last quantity: the rise in the total"
+    );
+    assert_eq!(
+        fill_of("150=I|39=1|17=0|32=40|14=40|151=60|"),
+        Fill::NotAFill
+    );
+    assert_eq!(fill_of("150=0|39=0|17=E1|32=40|"), Fill::NotAFill);
+    assert_eq!(
+        fill_of("150=H|39=1|17=E3|19=E2|32=40|"),
+        Fill::Bust { refid: "E2".into() }
+    );
+    assert_eq!(fill_of("150=H|39=1|17=E3|32=40|"), Fill::NotAFill);
+    assert_eq!(
+        fill_of("150=G|39=1|17=E3|19=E1|32=50|"),
+        Fill::Correct {
+            refid: "E1".into(),
+            qty: dec("50")
+        }
+    );
+    assert_eq!(fill_of("150=G|39=1|17=E3|19=E1|"), Fill::NotAFill);
+    assert_eq!(fill_of("150=F|39=1|17=E1|32=40|442=2|"), Fill::NotAFill);
+    assert_eq!(
+        fill_of("150=F|39=1|32=40|"),
+        Fill::Unidentified { qty: dec("40") }
+    );
+    assert_eq!(
+        fill_of("20=1|39=1|17=E3|19=E2|32=40|"),
+        Fill::Bust { refid: "E2".into() }
+    );
+    // FIX 4.2 states the original's `ExecType(150)` beside a bust, a
+    // correction or a status: `ExecTransType(20)` says what the report is.
+    assert_eq!(
+        fill_of("20=1|150=2|39=1|17=E3|19=E1|32=40|"),
+        Fill::Bust { refid: "E1".into() }
+    );
+    assert_eq!(
+        fill_of("20=2|150=1|39=1|17=E3|19=E1|32=50|"),
+        Fill::Correct {
+            refid: "E1".into(),
+            qty: dec("50")
+        }
+    );
+    assert_eq!(
+        fill_of("20=3|150=1|39=1|17=E4|32=40|14=40|151=60|"),
+        Fill::NotAFill,
+        "a status reply repeating its last fill"
+    );
+    assert_eq!(
+        fill_of("20=0|150=1|39=1|17=E1|32=40|14=40|151=60|"),
+        Fill::New {
+            execid: "E1".into(),
+            qty: dec("40")
+        }
+    );
+}

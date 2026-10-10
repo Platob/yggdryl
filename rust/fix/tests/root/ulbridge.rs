@@ -487,7 +487,17 @@ mod dataset {
                 .collect::<Vec<_>>()
         };
         let whole = walk(&codec);
-        assert_eq!(whole.len(), 41);
+        // It is 40 since P12 counted each order chain's fills once by
+        // execution identifier (decision 26) and remembered an ended chain's
+        // fills for the codec's window (D45.8): the frame hops' two
+        // executions - of order `00079132558GLXC0`'s fill and of order
+        // `00079132557GLXC0`'s fill 467 - restate the executions already
+        // walked and the window yields each once; and order 557, whose
+        // exchange-side frames state the child's `LeavesQty(151)` of nothing
+        // while its distinct fills count 472 of 600, stays `PARTIALLY_FILLED`
+        // and expires at its `ExpireTime(126)`, one delivery the walk makes
+        // (decision 29). It was 41.
+        assert_eq!(whole.len(), 40);
         // The window yields each identity once: a walk remembering none also
         // answers the one twin it restated, an identity it had already
         // answered, and nothing else. It was three twins until decision 21
@@ -496,15 +506,20 @@ mod dataset {
         // `00079132558GLXC0`'s fill states its `TransactTime(60)` 743 ms
         // after its sending clock, so it and the execution split off it are
         // dated by that clock and are twins of nothing.
+        // A walk remembering none also remembers no ended chain's fills
+        // (D45.8: the walk takes the window's span), so the frame hops' two
+        // executions start chains of their own, identities of their own:
+        // the window's walk is that walk less those two.
         let every = walk(&codec.clone().with_dedup_window_ms(0));
-        assert_eq!(every.len(), 42);
+        assert_eq!(every.len(), 43);
         let mut seen = std::collections::HashSet::new();
         let once: Vec<_> = every
             .iter()
             .copied()
             .filter(|held| seen.insert(held.0))
             .collect();
-        assert_eq!(once, whole);
+        assert_eq!(once.len(), whole.len() + 2);
+        assert!(whole.iter().all(|held| once.contains(held)));
         assert_eq!(walk(&codec.clone().with_sorted_lifecycle(true)), whole);
     }
 
@@ -608,13 +623,24 @@ mod dataset {
         // `TransactTime(60)` stands 743 ms after its sending clock, is dated
         // by that clock, so it and its execution are deliveries of their own
         // rather than twins of the hops the transaction still dates.
-        assert_eq!(direct.len(), 41);
+        // It is 40 since P12 counted each order chain's fills once by
+        // execution identifier (decision 26) and remembered an ended chain's
+        // fills for the codec's window (D45.8): the frame hops' two
+        // executions - of order `00079132558GLXC0`'s fill and of order
+        // `00079132557GLXC0`'s fill 467 - restate the executions already
+        // walked and the window yields each once; and order 557, whose
+        // exchange-side frames state the child's `LeavesQty(151)` of nothing
+        // while its distinct fills count 472 of 600, stays `PARTIALLY_FILLED`
+        // and expires at its `ExpireTime(126)`, one delivery the walk makes
+        // (decision 29). It was 41.
+        assert_eq!(direct.len(), 40);
+        // The NOVN order's expiry and, since P12, order 557's.
         assert_eq!(
             direct
                 .iter()
                 .filter(|message| *message.get_state() == yggdryl::State::Expired)
                 .count(),
-            1
+            2
         );
         let arrow = codec
             .messages(codec.lifecycle_arrow_reader(reader).unwrap())
@@ -749,8 +775,12 @@ mod dataset {
         // 28 since decision 21 made the frame hop of order
         // `00079132558GLXC0`'s fill and its execution - a `TransactTime(60)`
         // 743 ms after their `SendingTime(52)`, dated by the sending clock -
-        // deliveries of their own rather than twins; it was 26.
-        assert_eq!((unions, events), (28, 28));
+        // deliveries of their own rather than twins; it was 26. 27 since
+        // P12 (D45.8): the frame hops' two executions restate the
+        // executions already walked and the window yields each once, while
+        // order 557's expiry, which the walk makes, names its live
+        // message's lines.
+        assert_eq!((unions, events), (27, 27));
         let stated = |messages: Vec<FixMsg>| {
             let schema = super::format_target(&registry());
             messages
@@ -1503,7 +1533,17 @@ mod dataset {
             .lifecycle(messages)
             .collect::<yggdryl::Result<Vec<_>>>()
             .expect("the capture walks");
-        assert_eq!(walked.len(), 41);
+        // It is 40 since P12 counted each order chain's fills once by
+        // execution identifier (decision 26) and remembered an ended chain's
+        // fills for the codec's window (D45.8): the frame hops' two
+        // executions - of order `00079132558GLXC0`'s fill and of order
+        // `00079132557GLXC0`'s fill 467 - restate the executions already
+        // walked and the window yields each once; and order 557, whose
+        // exchange-side frames state the child's `LeavesQty(151)` of nothing
+        // while its distinct fills count 472 of 600, stays `PARTIALLY_FILLED`
+        // and expires at its `ExpireTime(126)`, one delivery the walk makes
+        // (decision 29). It was 41.
+        assert_eq!(walked.len(), 40);
         let (operations, refused): (Vec<_>, Vec<_>) =
             codec.market_data(walked.clone()).partition(Result::is_ok);
         let operations: Vec<MarketData> = operations.into_iter().map(Result::unwrap).collect();
@@ -1527,9 +1567,17 @@ mod dataset {
         // Twenty-one until decision 21, a fill and its report the window
         // yielded once: their frame hop is dated by its sending clock since,
         // its `TransactTime(60)` 743 ms off, and is a twin of nothing.
-        assert_eq!(operations.len(), 23);
-        // A walk remembering nothing answers the same deliveries: none
-        // repeats an identity already there.
+        // Twenty-two since P12 (decision 26, D45.8): the frame hops'
+        // executions of fills 461 and 467 restate the executions walked
+        // before them, so the window yields each once, and order 557 -
+        // `PARTIALLY_FILLED` at 472 of 600 by its distinct fills, its
+        // exchange-side frames' `151=0` the child's - expires at its
+        // `ExpireTime(126)`, one more order event.
+        assert_eq!(operations.len(), 22);
+        // A walk remembering nothing remembers no ended chain's fills
+        // either (D45.8), so the frame hops' two executions are chains of
+        // their own there, identities of their own beside the same
+        // deliveries.
         let every: Vec<MarketData> = codec
             .market_data(
                 codec
@@ -1541,20 +1589,23 @@ mod dataset {
             )
             .collect::<yggdryl::Result<_>>()
             .expect("every delivery reads");
-        assert_eq!(every.len(), 23);
+        assert_eq!(every.len(), 24);
         let mut seen = std::collections::HashSet::new();
         let once: Vec<&MarketData> = every
             .iter()
             .filter(|operation| seen.insert(operation.get_uuid()))
             .collect();
-        assert_eq!(once, operations.iter().collect::<Vec<_>>());
+        assert_eq!(once.len(), operations.len() + 2);
+        assert!(operations.iter().all(|held| once.contains(&held)));
         let mut census: BTreeMap<&str, usize> = BTreeMap::new();
         for operation in &operations {
             *census.entry(operation.kind().as_str()).or_default() += 1;
         }
+        // Seven executions, the frame hops' two restating the walked ones,
+        // and fifteen order events, order 557's expiry among them (P12).
         assert_eq!(
             census,
-            BTreeMap::from([("execution_event", 9), ("order_event", 14)])
+            BTreeMap::from([("execution_event", 7), ("order_event", 15)])
         );
         let at = |operation: &MarketData| {
             let event: &dyn Event = match operation {
@@ -1582,7 +1633,7 @@ mod dataset {
         // touched among them, an event-only book. The Sell order of
         // `2454` states no price and is refused nowhere: its cancel request
         // and the reject that ends it are each the delta of a book of its
-        // own instant, and neither book holds anything. Twelve books come
+        // own instant, and neither book holds anything. Thirteen books come
         // out - the NOVN order's three steps each its book's instant - each
         // a delta book - with no grid and no snapshot input no book is
         // complete, a code's first following no book - and the last is the
@@ -1605,7 +1656,12 @@ mod dataset {
                 .expect("a book iterator")
                 .collect::<yggdryl::Result<Vec<_>>>()
                 .expect("every operation folds");
-        assert_eq!(books.len(), 12);
+        // Thirteen since P12 (decisions 26 and 29) beside decision 16: order
+        // `00079132557GLXC0`, `PARTIALLY_FILLED` at 472 of 600 by its
+        // distinct fills rather than `FILLED` by its exchange-side frames'
+        // `151=0`, expires at its `ExpireTime(126)`, and its expiry is a
+        // book of its own instant - one book more than decision 16 left.
+        assert_eq!(books.len(), 13);
         assert!(books.iter().all(|book| !book.is_complete()));
         let key = |operation: &MarketData| {
             (
@@ -1631,9 +1687,9 @@ mod dataset {
             .map(key)
             .collect();
         assert_eq!(stood, booked);
-        // Four of those instants each hold one order that ended before its
+        // Three of those instants each hold one order that ended before its
         // book held it: one first reported filled, with nothing left to rest
-        // and no live entry to continue, two restating the fill that ended an
+        // and no live entry to continue, one restating the fill that ended an
         // order its book stopped holding at an earlier instant, and the
         // reject ending the unpriced `2454` order; the other order first
         // reported filled is the masked line's, pruned with its book
@@ -1644,7 +1700,12 @@ mod dataset {
         // three until decision 21: the frame hop of order
         // `00079132558GLXC0`'s fill, dated by its sending clock, now first
         // reports it filled and the hop its transaction dates restates it,
-        // and the reject stands at an instant of its own.
+        // and the reject stands at an instant of its own. It was five until
+        // decision 16 pruned the masked line and P12 (decisions 26 and 29)
+        // made order `00079132557GLXC0`'s client-side restatement of fill
+        // 467 restate no ended order - the order, `PARTIALLY_FILLED` at 472
+        // of 600 by its distinct fills, is still alive - each taking one:
+        // three since the two stand together.
         let ended: Vec<&MarketData> = operations
             .iter()
             .filter(|operation| {
@@ -1666,8 +1727,8 @@ mod dataset {
             .collect();
         assert_eq!(
             ended.len(),
-            4,
-            "one ended order alone at each of four instants"
+            3,
+            "one ended order alone at each of three instants"
         );
         for order in ended {
             let MarketData::OrderEvent(event) = order else {
@@ -1980,7 +2041,12 @@ mod dataset {
                 lifted += 1;
             }
         }
-        assert_eq!((carried, lifted), (72, 68));
+        // (67, 61) since P12 (D45.8): the frame hops' executions of fills
+        // 461 and 467, which carried five and three keys and lifted seven
+        // and two, restate the executions walked before them and the window
+        // yields each once, while order `00079132557GLXC0`'s expiry, which
+        // the walk now makes, carries three and lifts two. It was (72, 68).
+        assert_eq!((carried, lifted), (67, 61));
         let of_line = |seqnum: u64| {
             lines
                 .iter()

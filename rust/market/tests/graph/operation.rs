@@ -582,7 +582,8 @@ fn a_copy_into_its_own_kind_states_every_fact_its_source_does() {
     fill.set_leavesqty(Some(decimal("60")), true);
     fill.finalize();
     assert_eq!(fill.get_ordqty(), Some(decimal("100")));
-    assert_eq!(fill.get_quantity(), None);
+    // What executed is an execution's quantity (decision 27).
+    assert_eq!(fill.get_quantity(), Some(decimal("40")));
     assert_eq!(ExecutionEvent::from(&fill), fill);
 
     let mut canceled = OrderEvent::at(1_700_000_000_000_000_000);

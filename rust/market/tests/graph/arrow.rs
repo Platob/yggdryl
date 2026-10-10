@@ -1550,7 +1550,9 @@ fn a_null_cell_states_nothing() {
 }
 
 /// A price or a quantity an operation does not state is a null cell, and a
-/// null cell read back is none stated.
+/// null cell read back is none stated. An execution reporting a fill states
+/// its quantity - what executed is what it is about (decision 27) - so the
+/// unstated one reports none.
 #[test]
 fn an_operation_stating_no_price_or_quantity_round_trips_as_null() {
     crate::install::installed();
@@ -1561,7 +1563,6 @@ fn an_operation_stating_no_price_or_quantity_round_trips_as_null() {
     unstated.set_side(Side::read("Buy").unwrap(), true);
     unstated.set_state(State::read("Filled").unwrap());
     unstated.set_lastpx(Some(Decimal::from_int(105)), true);
-    unstated.set_lastqty(Some(Decimal::from_int(15)), true);
     unstated.finalize();
     assert_eq!(
         (unstated.get_price(), unstated.get_quantity()),
@@ -1569,20 +1570,18 @@ fn an_operation_stating_no_price_or_quantity_round_trips_as_null() {
     );
     let expected = MarketData::from(unstated);
     let batch = written(vec![expected.clone()]);
-    for name in ["price", "quantity"] {
+    for name in ["price", "quantity", "lastqty"] {
         assert_eq!(
             batch.column_by_name(name).unwrap().null_count(),
             1,
             "{name}"
         );
     }
-    for name in ["lastpx", "lastqty"] {
-        assert_eq!(
-            batch.column_by_name(name).unwrap().null_count(),
-            0,
-            "{name}"
-        );
-    }
+    assert_eq!(
+        batch.column_by_name("lastpx").unwrap().null_count(),
+        0,
+        "lastpx"
+    );
     let actual = read(batch_reader(batch.schema(), [batch])).unwrap();
     assert_eq!(actual, [expected]);
 }

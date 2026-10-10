@@ -1129,7 +1129,8 @@ impl<I: Iterator<Item = Result<FixMsg>>> Walked<I> {
         Self {
             walk: yggdryl_market::implementer::event_iterator_with_placing(
                 EventIterator::new(Prepared::new(intake, registry), true)
-                    .with_snapshot_ns(snapshot_ns),
+                    .with_snapshot_ns(snapshot_ns)
+                    .with_window_ns(window_ns),
                 true,
             ),
             window: Window::new(window_ns),

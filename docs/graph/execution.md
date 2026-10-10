@@ -9,7 +9,7 @@
 | Types | `Execution = OperationElement<ExecutionKind>`, `ExecutionEvent = OperationEvent<ExecutionKind>`: the [operation leaf contract](order.md#contract), filed under `EXEC` |
 | `is_execution` | always true, whatever the state; the [walk](event.md#lifecycle-walk) fills an absent [`execunix`](market.md#contract) with the event's instant, and following keeps the later execution clock |
 | A chain of its own | the walk joins an execution to no chain by a name or a base code: it follows only under its own cross code, and a chain matches within one market data kind, so a fill never restates, follows or ends its order under a shared code |
-| What traded | `lastpx`, `lastqty`, `avgpx`, `cumqty`, `leavesqty`; never `price` or `quantity`, which are what an element states ([Market](market.md#contract)): an execution's quantity is its own, and neither its `leavesqty` nor its order's ever becomes it. Its state says what it reports, so its order quantities fill one another as a working order's do ([by state](market.md#order-quantities-by-state)) |
+| What traded | `lastpx`, `lastqty`, `avgpx`, `cumqty`, `leavesqty`; never `price`, which is what an element states ([Market](market.md#contract)). Its `quantity` is what executed, its `lastqty` ([one quantity per kind](market.md#one-quantity-per-kind)), quoted on its side - a buy's `bidqty`, a sell's `askqty` - a quantity it states standing over it; neither its `leavesqty` nor its order's ever becomes it. Its state says what it reports, so its order quantities fill one another as a working order's do ([by state](market.md#order-quantities-by-state)) |
 | From FIX | an execution report, an order's or a quote's report and each side of a trade that report a fill split off an execution message at the parse: `EXEC`, state `FILLED`, an identity of its own, chained under its `ExecID(17)` as given, else `TradeID=<TradeID(1003)>`, else `<report code>|Execution=<digest>`, on its side (`8:1:E-1`), its source's identity among its sources; the report keeps its own state (`PARTIALLY_FILLED`) and is its order's report (`ORDR`, `QUOT` where it names a `QuoteID`); an execution report of no fill - a new, a cancel, a reject, an expiry - is its order's (or quote's) leaf alone, so a venue's cancel takes the entry off its book, and only an `ExecutionAcknowledgement` (`BN`) or a `DontKnowTrade` (`Q`) is no leaf at all; an `ExecutionEvent` read off a FIX message reads `FILLED` unless a book message deleted it ([FIX](../fix/message.md#market-data)) |
 | Following an order | a leaf's own `with_previous` follows its own kind only; through [`MarketData`](market-data.md#marketdata) an execution follows the order it fills and keeps its kind, taking what [an operation follows](operation.md#following-and-merging) |
 | In a trade | a [`TradeEvent`](trade.md) is made of executions at the trade's instant, each on the side it states - `UKNW` included, a fill nobody said the side of |
@@ -49,9 +49,12 @@ The fill of an Apple order a quarter second after it was placed.
     fill.insert_identifier(Identifier::new(IdKey::base(IdType::ExecId), "X-1")?)?;
     fill.finalize();
     assert!(fill.is_execution());
-    // What traded is never a price or a quantity the execution states: its
-    // `leavesqty` is what its order has left, never its own quantity.
-    assert_eq!((fill.get_price(), fill.get_quantity()), (None, None));
+    // What traded is never a price the execution states; its quantity is
+    // what executed, its `lastqty`, quoted on its side - never its
+    // `leavesqty`, which is what its order has left.
+    assert_eq!(fill.get_price(), None);
+    assert_eq!(fill.get_quantity(), Some(Decimal::from_int(100)));
+    assert_eq!(fill.get_bidqty(), Some(Decimal::from_int(100)));
 
     // It follows the order it fills, and stays an execution.
     let followed = MarketData::from(fill)
@@ -96,9 +99,12 @@ The fill of an Apple order a quarter second after it was placed.
         identifiers=[Identifier("execid", "X-1")],
     )
     assert fill.is_execution
-    # What traded is never a price or a quantity the execution states: its
-    # `leavesqty` is what its order has left, never its own quantity.
-    assert fill.price is None and fill.quantity is None
+    # What traded is never a price the execution states; its quantity is
+    # what executed, its `lastqty`, quoted on its side - never its
+    # `leavesqty`, which is what its order has left.
+    assert fill.price is None
+    assert fill.quantity is not None and fill.quantity.as_py() == 100
+    assert fill.bidqty is not None and fill.bidqty.as_py() == 100
 
     # It follows the order it fills, and stays an execution.
     followed = graph.MarketData(fill).with_previous(graph.MarketData(order))
@@ -140,10 +146,12 @@ The fill of an Apple order a quarter second after it was placed.
       identifiers: [new Identifier('execid', 'X-1')],
     })
     assert.equal(fill.isExecution, true)
-    // What traded is never a price or a quantity the execution states: its
-    // `leavesqty` is what its order has left, never its own quantity.
+    // What traded is never a price the execution states; its quantity is
+    // what executed, its `lastqty`, quoted on its side - never its
+    // `leavesqty`, which is what its order has left.
     assert.equal(fill.price, null)
-    assert.equal(fill.quantity, null)
+    assert.equal(fill.quantity, '100')
+    assert.equal(fill.bidqty, '100')
 
     // It follows the order it fills, and stays an execution.
     const followed = new graph.MarketData(fill).withPrevious(new graph.MarketData(order))

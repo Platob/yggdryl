@@ -38,7 +38,7 @@ capture, sorts it by event time, folds duplicate deliveries, places each
 message by content among the messages of its instant (a content repeated
 there keeps its place), chains it to the live one of its order within its own `marketdatakind`, side and instrument - by one identifier of the same type and value, every type of its `identifiers` but a shared one (`trdmatchid`, `quotereqid`, `mdreqid`, a parent slot), and by the first value a lineage field names, `OrigClOrdID(41)`, `OrigTradeID(1126)`, `TradeReportRefID(572)` - (`crossuuid`,
 `prevuuid`; an order and an execution under one cross code are two chains), re-keys it onto its chain's side and first cross code, takes every bridge `metadata` key of the chain it does not state
-and the ids its dictionary follows, each with its parents, states a message citing two live chains as a conflict - a `FixAnomaly` under `crosscode`, warned once per kind - rather than picking one, and learns instrument associations.
+and the ids its dictionary follows, each with its parents, states a message citing two live chains as a conflict - a `FixAnomaly` under `crosscode`, warned once per kind - rather than picking one, counts an order's fills once each by `ExecID(17)` (or `SecondaryExecID(527)`) over the chain's first stated `CumQty(14)` - `cumqty`/`leavesqty` the count's, a repeated fill, a status reply (`150=I`, `17=0`) and a leg's report (`442=2`) counting nothing, a bust (`150=H`, `ExecRefID(19)`) taking a fill back, a correction (`150=G`) replacing it, a partial fill whose count reaches the order quantity reading `FILLED`, and an ended chain's fills remembered for the window so a late copy starts no chain - and learns instrument associations.
 Nothing chains unasked.
 
 The dictionary is data, not code: the committed FIX Latest dictionary
@@ -268,6 +268,16 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     item, yielded after the messages before it, and it ends the stream.
 
 ## Pitfalls
+
+- A lifecycle message's `cumqty`, `leavesqty` and `state` are the walk's
+  count, never recomputed by hand: a stated `CumQty(14)` that disagrees with
+  the count of distinct `ExecID(17)` values is warned and adopted nowhere,
+  so a bridge's exchange-side frame stating `151=0` for a child order leaves
+  the parent `PARTIALLY_FILLED` at its count. The fixed row's `cumqty`,
+  `leavesqty` and `ordstatus` columns stay the wire's tags 14, 151 and 39; read
+  the count off the message (`msg.cumqty`, `msg.leavesqty`, `msg.state`).
+  An execution's and a trade's `quantity` is what executed, its `lastqty`;
+  an order's is what it has left.
 
 - An Iceberg table widens the two `uint64` digests to `decimal(20, 0)` unless
   the fixed row's `hashcode` and `crosshashcode` columns state

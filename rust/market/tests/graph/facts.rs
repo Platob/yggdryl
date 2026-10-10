@@ -339,3 +339,43 @@ mod internal {
         }
     }
 }
+
+/// The one definition of the quantity per kind (decision 27): an execution's
+/// or a trade's is the fill it reports, `lastqty`, an order's what it has
+/// left; a holder refiled from one kind to the other moves it by the new
+/// kind's rule.
+#[test]
+fn the_quantity_follows_the_last_fill_on_a_fill_reporting_kind_alone() {
+    use yggdryl::graph::Event;
+    use yggdryl_market::graph::Operation;
+    crate::install::installed();
+    let dec = |text: &str| -> Decimal { text.parse().unwrap() };
+    let mut fill = yggdryl_market::graph::ExecutionEvent::at(1);
+    fill.set_lastqty(Some(dec("40")), true);
+    assert_eq!(fill.get_quantity(), Some(dec("40")));
+    fill.set_lastqty(Some(dec("45")), true);
+    assert_eq!(fill.get_quantity(), Some(dec("45")), "moves with the fill");
+    fill.set_quantity(Some(dec("50")), true);
+    fill.set_lastqty(Some(dec("60")), true);
+    assert_eq!(
+        fill.get_quantity(),
+        Some(dec("50")),
+        "a stated quantity stands"
+    );
+
+    let mut order = OrderEvent::at(1);
+    order.set_state(yggdryl::State::PartiallyFilled);
+    order.set_ordqty(Some(dec("100")), true);
+    order.set_lastqty(Some(dec("40")), true);
+    order.set_cumqty(Some(dec("40")), true);
+    assert_eq!(order.get_quantity(), Some(dec("60")), "what is left");
+
+    let mut hit = yggdryl_market::graph::ExecutionEvent::at(1);
+    hit.set_side(Side::Sell, true);
+    hit.set_lastqty(Some(dec("7")), true);
+    assert_eq!(
+        (hit.get_quantity(), hit.get_askqty()),
+        (Some(dec("7")), Some(dec("7"))),
+        "a sided execution quotes what executed on its side"
+    );
+}

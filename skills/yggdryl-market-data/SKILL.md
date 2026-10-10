@@ -146,11 +146,16 @@ Hold these facts:
   `Operation` setter takes a trailing `overwrite: bool`: `false` lands only
   where the fact is unstated, `true` states it. A change carries what it
   implies - a buyer's price and quantity are its bid, a side moves the quote
-  and a sided cross code, `leavesqty` is the quantity, an order's `ordqty`,
+  and a sided cross code, `leavesqty` is an order's quantity and `lastqty` an
+  execution's or a trade's (one `quantity` per kind: what is still available,
+  or what executed), an order's `ordqty`,
   `cumqty` and `leavesqty` fill one another by its state (`LeavesQty = OrderQty
   - CumQty` while it works, `0` once done, the rest `cxlqty` when canceled) -
   and the binding constructors run the same fills. Every fill is a column, so
-  a row read back answers it unchanged; never recompute one by hand.
+  a row read back answers it unchanged; never recompute one by hand. Along an
+  `EventIterator` walk an order chain counts its fills once by `execid`
+  (`Operation::fill_of`): `cumqty` and `leavesqty` are the count's and a
+  partial fill whose count reaches `ordqty` reads `FILLED`.
 - **Books are folded, complete or delta.** `BookIterator` folds a sorted
   stream into one `BookEvent` per book and instant that moved it. A book
   folds orders and quotes into its sides (`MarketDataKind::is_booked`,
