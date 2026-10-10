@@ -45,3 +45,11 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
     marketdatatype and if any identifier of current is in previous" - answered "Kind": the current
     element matches a previous alive element of the same `MarketDataKind`, of the same side where
     the kind is sided (ORDR, EXEC), sharing at least one identifier the current states.
+13. P8 (D41), answered 2026-10-10 ~06:00 UTC: a shared identifier is the same type and value
+    (orderid=A matches orderid=A, never clordid=A); every identifier type counts but quotereqid,
+    mdreqid and a bridge's parent-order slot. The design's other recommendations stand (the conflict
+    kept for two cited chains, the quote tag slot dropped, the follow flags unchanged).
+14. P7 (D40): the CFI moves into `securityids` as the one hold map - every row's `securityids` cell
+    gains `cfi=..`, re-pinned once with its sentence, the digests feeding it under its own name
+    (no hash moves); on the FIX row tag 461's column keeps the registry's name `cficode`, market rows
+    say `cfi`.
