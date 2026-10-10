@@ -61,8 +61,12 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
 16. P9b, right after P9 (its own commit): a book is keyed by the instrument's code - the book's
     cross code `3:0:{instcode}` - "Make then book use the instcode as crosscode and check correct
     book iterator generations". A real-ISIN security's book keeps its key (`3:0:<isin>` is its
-    instcode); an FX book moves to `3:0:IF:EUR/USD`, a derivative's to its `class:body` code; an
-    element with no instrument (a ticker-only security) keeps today's fallback, its ticker, else
-    `Isin::NONE`. The book iterator's generation is verified adversarially (one book stream per
+    instcode); an FX book moves to `3:0:IF:EUR/USD`, a derivative's to its `class:body` code. Then
+    refined: "Only instcode, filterout messages with non attributed instcode. Since all isin should
+    have clear [auto] created instrument in registry" - the book key is the `instcode` alone, no
+    fallback to the ISIN, the ticker or `Isin::NONE`; an element with no `instcode` is pruned before
+    the book walk (as an unrecorded kind is), and every element stating a real ISIN gets its
+    instrument auto-created and its `instcode` filled, so only a ticker-only or code-less element
+    goes unbooked. The book iterator's generation is verified adversarially (one book stream per
     instrument, withdrawals across keys, snapshot ticks whole, the medallion's books table).
     This supersedes the cross-code decision's item 5 (books keyed by the code deferred).
