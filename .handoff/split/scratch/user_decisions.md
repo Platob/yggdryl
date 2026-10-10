@@ -110,3 +110,18 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
     message's `transunix` only where its gap to `SendingTime(52)` is LESS than the delay
     (`within`: strict), the default delay 500 ms (`FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS`, was
     1,000 inclusive); a nonpositive delay still admits only equality. Its own small commit.
+22. P10: "optimize then the instrument registry to push snapshots every hours and handle correctly
+    expired instruments like futures or options or others inferring at maximum the maturity dates
+    but also check its correct time leveraging the fact that we know the instrument country to
+    timezone". Read as: the registry publishes a snapshot of its instruments once per hour of event
+    time (the medallion's instruments stage writes per hour, not per message batch); an instrument
+    with a maturity (future, option, forward, bond, ...) expires: its maturity inferred as far as
+    the facts allow (MaturityDate(541), MaturityMonthYear(200) with MaturityDay(205) or the
+    contract's rule - a week code, the month's third Friday where the venue's rule says so -, a
+    settle date, a tenor from the trade date), its expiry instant the maturity's end of day in the
+    instrument's own timezone (the country of its market or of issue -> its zone, the crate's
+    bundled IANA registry), and the expiry recorded as an instrument event whose state says it
+    expired; a statement after expiry is checked against it.
+23. P10: "make then instrument registry unique by unix instcode and mic since its events now" - the
+    registry's rows (instrument events) are unique by `(transunix, instcode, mic)`: one version per
+    instant per key, sorted by the instant (decision 19), the current instrument the latest.
