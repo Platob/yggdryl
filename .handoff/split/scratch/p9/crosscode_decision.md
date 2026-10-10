@@ -93,7 +93,7 @@ Digests computed with the reference XXH3 (`python/.venv` xxhash 4.0.1, seed 0, t
 | --- | --- | --- | --- | --- | --- |
 | Apple common stock, US0378331005, CFI ESVUFR | `US0378331005` | 12 | `27e376388c8738fd` | `0751ad36-5cf7-4b90-a684-97f910de04d1` | - |
 | Apple before its CFI is known (ESXXXX, or none) | `US0378331005` | 12 | same | same - D40.3's `xxh3_128(isin)` byte for byte | - |
-| Apple on a ticker-only feed (no ISIN) | none | - | - | no instrument; `instrumentuuid` null, the book keyed `3:0:AAPL` as today | - |
+| Apple on a ticker-only feed (no ISIN) | none | - | - | no instrument; `instrumentcode` null, the book keyed `3:0:AAPL` as today | - |
 | EURO STOXX 50 index, EU0009658145 (CFI TI....) | `EU0009658145` | 12 | `fe3a11ff3d28a176` | `a12e6b6d-e671-1288-33fa-826e6c0e1431` | - |
 | EUR/USD spot (parse derives CFI IFXXXP, fix/forex.rs:188) | `IF:EUR/USD` | 10 | `f4bd070ccad3d90f` | `f321b727-ba38-79b3-deef-7802c15140ed` | `QYLTVIRYHNX5` |
 | EUR/USD 3M outright forward (JFTXFP) | `JF:EUR/USD:M3` | 13 | `817c2b867e12a51a` | `26bc7f23-4ee6-ebc8-dfbd-af8ea5ffd9c3` | `QYIJ9KBCDDV1` |
@@ -179,9 +179,9 @@ nothing new; one hash family (XXH3), one Luhn, no `from_v8`.
 | `crosshashcode` | `crosshash(crosscode)`, XXH3-64 (element.rs:516-520), through `sync_cross` (element.rs:275-289). |
 | `crossuuid` | `Uuid::new(xxh128(crosscode))` - D40.5's raw 128-bit digest, no version bits. D40.5 spells `Uuid::from_u128`; the constructor that keeps every bit is `Uuid::new(u128)` (uuid.rs:441), and `from_v8` would clobber six (uuid.rs:565-567). Two digests over one stack buffer: the low half of XXH3-128 equals XXH3-64 only for 1-3 bytes and past 240 (`rust/tests/xxhash/mod_.rs:19-33`), so neither is derived from the other, and a pin says "two digests per instrument creation", never "one". |
 | `uuid` | `= crossuuid`: an element in no chain is a chain of one (element.rs:297-302), and an instrument is a thing, not a statement of one. `finalize` is `sync_cross(); uuid = crossuuid; hashcode = digest().as_u64()`. Two statements of one instrument carry one uuid, which `Element::merge_with` requires (element.rs:352), so the trait's own fold merges them. |
-| `hashcode` | the content code: `Element::digest` (the cross code fed first, element.rs:321-327) continued in `feed`'s framing (name NUL bytes NUL, element.rs:524-529) with every fact the instrument states through its typed accessors - `securityids`, `identifiers` (sorted, as `feed_market` feeds them, market.rs:1142-1145), the CFI whole, country, currency, the underlying's uuid, the legs' uuids, each characteristic as its canonical bytes (`Scalar::write_bytes`: a `Date32` count, a `Decimal` at scale 18, the seven-byte `Forex`), the listings, `aliasuuids`. It moves when a ticker, a listing, an LEI or a refined CFI is learned; `uuid` does not. It is what the medallion merge compares to decide whether a stored instrument row is rewritten. |
+| `hashcode` | the content code: `Element::digest` (the cross code fed first, element.rs:321-327) continued in `feed`'s framing (name NUL bytes NUL, element.rs:524-529) with every fact the instrument states through its typed accessors - `securityids`, `identifiers` (sorted, as `feed_market` feeds them, market.rs:1142-1145), the CFI whole, country, currency, the underlying's uuid, the legs' uuids, each characteristic as its canonical bytes (`Scalar::write_bytes`: a `Date32` count, a `Decimal` at scale 18, the seven-byte `Forex`), the listings, `aliascodes`. It moves when a ticker, a listing, an LEI or a refined CFI is learned; `uuid` does not. It is what the medallion merge compares to decide whether a stored instrument row is rewritten. |
 | `srcuuids` | provenance, never fed (element.rs:304-311): the uuid of the event that created the instrument and of the last event that moved a fact, two at most - D40.6's rule, so no instrument accumulates every event that touched it. |
-| `instrumentuuid` | on every market, book and event row: the resolved instrument's `crossuuid`, `uuid` (`arrow.uuid` over `FixedSizeBinary(16)`), nullable - the user's spelling of D40.3's `instuuid`, tag `65_054` renamed and never renumbered (D40.1); a market fact with a holder and a setter taking `overwrite`, fed to the row's `hashcode` like every fact, filled along a chain by `following_market`, and no longer a provided reading. The row's own `uuid` is untouched: `time_uuid` seeds it with the row's own `crosshashcode` (element.rs:1250-1253), the order's or quote's `{kind}:{side}:{base}`. |
+| `instrumentcode` | on every market, book and event row: the resolved instrument's `crosscode` itself, `utf8`, nullable - the user's decision of 2026-10-10 (the market column is the code, not a uuid), tag `65_054`; a market fact with a holder (`Option<Str>`, inline to 23 bytes, one shared `Arc<str>` beyond, so a copy is a byte copy or a refcount) and a setter taking `overwrite`, fed to the row's `hashcode` like every fact, filled along a chain by `following_market`. A reader resolves the instrument by its code - the instrument table's own key - and the instrument's `crossuuid` is that code's digest, so the code carries both. The row's own `uuid` is untouched: `time_uuid` seeds it with the row's own `crosshashcode` (element.rs:1250-1253), the order's or quote's `{kind}:{side}:{base}`. |
 
 For a real-ISIN security `crossuuid` is D40.3's `Uuid::from_u128(xxh3_128(isin))` byte for byte,
 so P7's column and P9's are one value and no cash row written under P7 moves.
@@ -205,7 +205,7 @@ function of facts a message states and the legs are sorted; a second statement m
 body (an option with no strike, an `OM` with no 201, a future with no month, an underlying no
 instrument keys) is created under the `isin` production with `placeholder = true`; when a message
 spells its body, the instrument is re-keyed once to its `class:body` code - `set_crosscode`,
-`finalize`, the old uuid pushed into `aliasuuids` (sorted, unique, like `srcuuids`), the real ISIN
+`finalize`, the old code pushed into `aliascodes` (sorted, unique), the real ISIN
 kept in `securityids` at rank 2, no `QY` number minted. A real-ISIN instrument created
 unclassified that later shows a derivative body is the same path. Nothing else re-keys: a
 restated strike, expiry, pair or settle that disagrees with a held key is another instrument, and
@@ -221,11 +221,11 @@ putting one in the key would re-key every option and future the day a feed first
 forward quoted by rolling tenor and the same contract stated by its settlement date are two
 instruments, which cannot collide and do not merge.
 
-**`instrumentuuid` on stored market rows stays valid** because it is the instrument's
-`crossuuid`, which no fact moves, and the one re-key is reconcilable: the surviving instrument
-row carries `aliasuuids`, the table builds its alias index from that column at load (old uuid ->
-survivor) so a lookup by either resolves, and a gold join reads `instrumentuuid = uuid or
-instrumentuuid in aliasuuids`; a medallion stage re-run rewrites `instrumentuuid` on the rows of
+**`instrumentcode` on stored market rows stays valid** because it is the instrument's
+`crosscode`, which no fact moves, and the one re-key is reconcilable: the surviving instrument
+row carries `aliascodes`, the table builds its alias index from that column at load (old code ->
+survivor) so a lookup by either resolves, and a gold join reads `instrumentcode = crosscode or
+instrumentcode in aliascodes`; a medallion stage re-run rewrites `instrumentcode` on the rows of
 the rebuilt window alone (every silver stage overwrites its 15-minute window, medallion.py:94),
 rows outside it keeping the value they were written with. There are no alias rows: an alias row
 re-finalized would have `sync_cross` overwrite the `crossuuid` it points with (element.rs:275-289),
@@ -239,8 +239,8 @@ today, isin_registry.rs:1620) and in the lifecycle (the table under its lock):
 - A row stating a real ISIN: the twelve canonical bytes of the `isin` cell packed to an `i128`
   the way `DataType::fixed_ascii(12).ascii_packed` packs them (ascii.rs:277-285: big-endian,
   NUL-padded, ordered as the text), the `DataType` hoisted once - a copy, not a parse - probed in
-  the table's `HashMap<i128, Slot>`; a hit copies 16 bytes into `instrumentuuid`. No digest, no
-  allocation.
+  the table's `HashMap<i128, Slot>`; a hit clones the held code into `instrumentcode` (a byte copy for an ISIN, a refcount for a
+  code past 23 bytes). No digest, no allocation.
 - An FX row: `FxSymbol::from_symbol` already runs allocation-free and memoized per symbol text in
   `FxMemo` (fix/forex.rs:45-48); the memo value gains the instrument slot, so a row pays the one
   map hit it pays today, and the `derived:isin` insert is the `Vec` insert `derived:forex` already
@@ -255,10 +255,11 @@ today, isin_registry.rs:1620) and in the lifecycle (the table under its lock):
   for the mint, one `Instrument` allocation. Order of a microsecond, amortized to nothing.
 - A fact learned on a held instrument: `Cfi::refined` over six stack bytes, `Identifiers::merge`
   where the message outranks what is held, one 64-bit content digest - only where something moved.
-- A follower in the lifecycle: 16 bytes copied from its chain, as every unstated market fact.
-- Arrow: `instrumentuuid` is `FixedSizeBinary(16)` - fixed width, so equality, a join to the
-  instrument table, a hash partition and Arrow's row format read 16 bytes with no offsets. The
-  variable-length code lives on the instrument table alone, one row per instrument,
+- A follower in the lifecycle: the code cloned from its chain, as every unstated market fact.
+- Arrow: `instrumentcode` is `utf8`, the instrument table's key as written, readable in every
+  market table and joined to the instrument table on `crosscode` with no lookup; a stored column
+  of it repeats few distinct values, which Parquet's dictionary pages hold once. The instrument
+  table has one row per instrument,
   `PARTITION:by truncate(crosscode, 2)` - the ISIN's country prefix for a security, the CFI
   category and group for everything else, two letters either way, the successor of
   `truncate(isin, 2)` (isin_registry.rs:278) - `SORT:by crosscode`.
@@ -274,7 +275,7 @@ today, isin_registry.rs:1620) and in the lifecycle (the table under its lock):
 
 `silver.record_keeping.instruments` stops being the ISIN registry's snapshot (one row per ISIN and
 market) and holds one row per Instrument element: the six element columns (`uuid` = `crossuuid`,
-`crosscode`, `hashcode`, `crosshashcode`, `srcuuids`), `aliasuuids`, `placeholder`, `cfi`,
+`crosscode`, `hashcode`, `crosshashcode`, `srcuuids`), `aliascodes`, `placeholder`, `cfi`,
 `country`, `currency`, `securityids` and `identifiers` (the sorted `map<utf8, utf8>`,
 identifier.rs:1183-1195), `underlying` (`uuid`, nullable), `legs` (`serie<uuid>`), the typed
 characteristics as one struct (`forex`, `settle`, `settle2`, `expiry: date32`, `strike: decimal`,
@@ -285,7 +286,7 @@ with `hashcode` the change detector, so an unchanged instrument rewrites nothing
 and read before any parse, which is also what settles most classes at first sight.
 
 Market rows (`silver.fix_messages`, the books, the orders, quotes and executions) carry
-`instrumentuuid`. No back-compat (AGENTS.md): silver is replayed from bronze. Nothing written
+`instrumentcode`. No back-compat (AGENTS.md): silver is replayed from bronze. Nothing written
 under P7 moves for a real-ISIN security (D42.4); P7 rows of FX and derivatives hold null and are
 filled by the replay. The book's `3:0:{isin}` identity moves only where the lifted `isin` cell
 moves - an FX book gains its `QY` key where it had a ticker - with the one sentence D40.6's re-pin
@@ -308,7 +309,7 @@ already carries.
 - `stable`'s `{cc}:{venue securityid}` and `FF:TI:SX5E:...` by symbol: a key that moves the day
   the facts arrive; the placeholder and the seed are the one path.
 - `packed`'s alias rows: a row whose `crossuuid` is set by hand is re-derived by its own
-  `sync_cross`; the survivor's `aliasuuids` has one owner.
+  `sync_cross`; the survivor's `aliascodes` has one owner.
 - `packed`'s venue-order legs: a reversed spread mints a second instrument; the side is the
   order's.
 - `fixed`'s and `readable`'s nesting of the underlying's or a leg's uuid, and `readable`'s swap
@@ -338,7 +339,7 @@ and moves with every other cross identity when P7 lands D40.5; tag `65_054` is P
 1. A real-ISIN security is keyed by its ISIN alone (`US0378331005`), the CFI a fact beside it;
    the CFI letters key only what no agency numbers. The literal `ES:US0378331005` costs: one
    `XX:` -> `ES:` re-key per instrument first met unclassified, every D40.3 `instuuid` moving, and
-   `aliasuuids` on most securities.
+   `aliascodes` on most securities.
 2. The minted prefix is `QY` (user-assigned, listed nowhere, meaning nothing outside the crate),
    not `ZZ`; the rustdoc of `is_listed_prefix` says so beside its `ZZ` sentence.
 3. Multiplier and exercise style stay out of the key: a mini and a standard contract, or an
@@ -350,13 +351,13 @@ and moves with every other cross identity when P7 lands D40.5; tag `65_054` is P
 5. `book_crosscode` is unchanged in P9 (the lifted `isin`, real or `QY`, else the ticker, else
    `Isin::NONE`); keying books by the instrument's code (`3:0:IF:EUR/USD`) is a later slice that
    moves every book identity once.
-6. The column and tag `65_054` are spelled `instrumentuuid` (D40.3's `instuuid` renamed, never
-   renumbered), a holder with a setter taking `overwrite`, filled from the instrument's
-   `crossuuid`.
-7. A ticker-only security has no instrument and a null `instrumentuuid` until an ISIN is learned;
+6. Decided by the user: the market column and tag `65_054` are `instrumentcode`, the
+   instrument's `crosscode` as text (`utf8`), a holder with a setter taking `overwrite`; P7's
+   planned `instuuid` is dropped.
+7. A ticker-only security has no instrument and a null `instrumentcode` until an ISIN is learned;
    a derivative whose underlying no instrument keys, or whose body a message does not spell, is a
    placeholder under its real ISIN or, with none, has no instrument.
 8. Strategy legs sorted bytewise with an `n*` ratio prefix where `LegRatioQty(623)` is not 1;
    one level of nesting.
-9. The one re-key (placeholder -> body) is reconciled by the survivor's `aliasuuids` and a stage
+9. The one re-key (placeholder -> body) is reconciled by the survivor's `aliascodes` and a stage
    re-run of the window, never by rewriting rows outside it.
