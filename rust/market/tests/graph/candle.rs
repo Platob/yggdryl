@@ -42,6 +42,7 @@ fn quote(
     let mut quote = QuoteEvent::at(unix);
     quote.set_crosscode(code.to_owned());
     quote.set_ticker(Some(SmolStr::new(ticker)), true);
+    quote.set_instcode(Some(yggdryl::Str::new(ticker)), true);
     quote.set_side(yggdryl_market::Side::read(side).unwrap(), true);
     quote.set_price(Some(price.parse().unwrap()), true);
     quote.set_quantity(Some(Decimal::from_int(quantity)), true);
@@ -69,7 +70,7 @@ fn candles(operations: Vec<MarketData>, options: CandleOptions) -> Vec<Candle> {
 fn empty_candles(instants: &[i64], options: CandleOptions) -> Vec<Candle> {
     let books = instants
         .iter()
-        .map(|unix| Ok(BookEvent::new(*unix, "ACME")))
+        .map(|unix| Ok(BookEvent::keyed(*unix, "ACME")))
         .collect::<Vec<_>>();
     CandleIterator::new(books.into_iter(), options)
         .collect::<yggdryl::Result<Vec<_>>>()
@@ -186,10 +187,10 @@ fn the_zone_is_stated_beside_the_interval() {
 fn an_unsorted_stream_is_refused_at_the_book_and_the_walk_fuses() {
     crate::install::installed();
     let books = vec![
-        Ok(BookEvent::new(2_000, "ACME")),
-        Ok(BookEvent::new(2_000, "ACME")),
-        Ok(BookEvent::new(1_000, "ACME")),
-        Ok(BookEvent::new(3_000, "ACME")),
+        Ok(BookEvent::keyed(2_000, "ACME")),
+        Ok(BookEvent::keyed(2_000, "ACME")),
+        Ok(BookEvent::keyed(1_000, "ACME")),
+        Ok(BookEvent::keyed(3_000, "ACME")),
     ];
     let mut candles = CandleIterator::new(books.into_iter(), CandleOptions::new(MINUTE).unwrap());
     let error = candles.next().unwrap().unwrap_err().to_string();
@@ -205,13 +206,13 @@ fn an_unsorted_stream_is_refused_at_the_book_and_the_walk_fuses() {
 fn a_source_error_follows_the_completed_buckets_and_fuses() {
     crate::install::installed();
     let books = vec![
-        Ok(BookEvent::new(10 * SECOND, "ACME")),
-        Ok(BookEvent::new(70 * SECOND, "ACME")),
+        Ok(BookEvent::keyed(10 * SECOND, "ACME")),
+        Ok(BookEvent::keyed(70 * SECOND, "ACME")),
         Err(yggdryl::Error::InvalidRecord {
             path: "$.source".into(),
             reason: "the source failed".into(),
         }),
-        Ok(BookEvent::new(80 * SECOND, "ACME")),
+        Ok(BookEvent::keyed(80 * SECOND, "ACME")),
     ];
     let mut candles = CandleIterator::new(books.into_iter(), CandleOptions::new(MINUTE).unwrap());
     let first = candles.next().unwrap().unwrap();
@@ -370,21 +371,63 @@ fn two_cross_codes_interleave_and_emit_in_cross_code_order() {
     assert_eq!(candles[1].ticker.as_deref(), Some("IBM"));
 }
 
+/// A book states the ticker its inputs stated, and a book keyed by a code
+/// whose inputs stated none states none on its candle, which keeps the
+/// book's stored code (decision 16).
 #[test]
 fn a_book_stating_no_ticker_states_none_on_its_candle() {
     crate::install::installed();
     let candles = empty_candles(&[10 * SECOND], CandleOptions::new(MINUTE).unwrap());
     assert_eq!(candles.len(), 1);
-    assert_eq!(candles[0].ticker.as_deref(), Some("ACME"));
-    let untickered = vec![Ok(BookEvent::new(10 * SECOND, ""))];
+    assert_eq!(candles[0].ticker.as_deref(), None);
+    let untickered = vec![Ok(BookEvent::keyed(10 * SECOND, "US0378331005"))];
     let candles = CandleIterator::new(untickered.into_iter(), CandleOptions::new(MINUTE).unwrap())
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
     assert_eq!(candles[0].ticker, None);
     assert_eq!(
-        candles[0].crosscode, "3:0:XX0000000000",
-        "an empty symbol keys the book by the number that states none"
+        candles[0].crosscode, "3:0:US0378331005",
+        "a book keyed by a code is the candle's code"
     );
+}
+
+/// Candles are keyed by the book: two codes interleaved emit one candle per
+/// code and bucket, in code order, under `3:0:{instcode}`, and a code-less
+/// quote, pruned before any book, is in no candle (decision 16).
+#[test]
+fn candles_are_keyed_by_the_book_and_a_codeless_quote_is_in_none() {
+    crate::install::installed();
+    let coded = |unix: i64, code: &str, id: &str, price: &str| {
+        let mut quote = quote(unix, "ACME", id, "Buy", price, 5);
+        quote.set_instcode(Some(yggdryl::Str::new(code)), true);
+        quote.finalize();
+        quote
+    };
+    let mut codeless = quote(30 * SECOND, "ACME", "X-B", "Buy", "50", 5);
+    codeless.set_instcode(None, true);
+    codeless.finalize();
+    let operations = vec![
+        coded(10 * SECOND, "US0378331005", "S-B", "100"),
+        coded(10 * SECOND, "IF:EUR/USD", "F-B", "1.1"),
+        coded(20 * SECOND, "US0378331005", "S-B", "101"),
+        codeless,
+        coded(70 * SECOND, "IF:EUR/USD", "F-B", "1.2"),
+    ];
+    let candles = candles(operations, CandleOptions::from_spelling("1m").unwrap());
+    assert_eq!(
+        candles
+            .iter()
+            .map(|candle| (candle.crosscode.as_str(), candle.start, candle.books))
+            .collect::<Vec<_>>(),
+        [
+            ("3:0:IF:EUR/USD", 0, 1),
+            ("3:0:US0378331005", 0, 2),
+            ("3:0:IF:EUR/USD", MINUTE, 1),
+        ],
+        "no candle of the pruned quote's ticker"
+    );
+    assert_eq!(candles[1].bid, Some(ohlc("100", "101", "100", "101")));
+    assert_eq!(candles[1].ticker.as_deref(), Some("ACME"));
 }
 
 #[test]
@@ -563,9 +606,9 @@ fn a_refused_book_follows_the_candles_of_the_bucket_it_completed() {
     // stream moved past is emitted, then the refusal, then nothing.
     let folded = || {
         let stream = vec![
-            Ok(BookEvent::new(10 * SECOND, "ACME")),
-            Ok(BookEvent::new(20 * SECOND, "ACME")),
-            Ok(BookEvent::new(i64::MAX, "ACME")),
+            Ok(BookEvent::keyed(10 * SECOND, "ACME")),
+            Ok(BookEvent::keyed(20 * SECOND, "ACME")),
+            Ok(BookEvent::keyed(i64::MAX, "ACME")),
         ];
         CandleIterator::new(stream.into_iter(), CandleOptions::new(MINUTE).unwrap())
     };
@@ -798,7 +841,7 @@ fn candles_from_delta_books_equal_candles_from_complete_books() {
     assert!(books.iter().all(|book| !book.is_complete()));
     let mut whole: Vec<BookEvent> = Vec::with_capacity(books.len());
     for book in &books {
-        let origin = BookEvent::new(book.get_transunix(), book.get_crosscode());
+        let origin = BookEvent::keyed(book.get_transunix(), book.get_crosscode());
         let previous = whole.last().unwrap_or(&origin);
         whole.push(book.clone().with_previous(previous).unwrap());
     }

@@ -734,6 +734,7 @@ impl Fold {
 /// let quote = |unix: i64, code: &str, side: &str, price: &str| -> yggdryl::Result<MarketData> {
 ///     let mut quote = QuoteEvent::at(unix);
 ///     quote.set_crosscode(code.to_owned());
+///     quote.set_instcode(Some("ACME".into()), true);
 ///     quote.set_ticker(Some("ACME".into()), true);
 ///     quote.set_side(Side::read(side).expect("a shipped side"), true);
 ///     quote.set_price(Some(price.parse()?), true);

@@ -1582,7 +1582,7 @@ mod dataset {
         // touched among them, an event-only book. The Sell order of
         // `2454` states no price and is refused nowhere: its cancel request
         // and the reject that ends it are each the delta of a book of its
-        // own instant, and neither book holds anything. Thirteen books come
+        // own instant, and neither book holds anything. Twelve books come
         // out - the NOVN order's three steps each its book's instant - each
         // a delta book - with no grid and no snapshot input no book is
         // complete, a code's first following no book - and the last is the
@@ -1593,31 +1593,51 @@ mod dataset {
         // clock and is a book of that instant beside the one its transaction
         // still dates, and the `2454` reject, sent a whole second after the
         // transaction it states, stands a second after its cancel request
-        // rather than at its instant.
+        // rather than at its instant. It was thirteen until decision 16
+        // keyed a book by the instcode alone: the capture's one line stating
+        // the masked number `XX0000000001` (`35=UL`, `52=20260814-12:46:58`)
+        // is one order and the execution its parse split off, at one
+        // instant, of an instrument no registry knows, so neither holds an
+        // instcode and both are pruned before the walk - the book of that
+        // instant with them (a masked number keys no book, decision 16).
         let books: Vec<yggdryl_market::graph::BookEvent> =
             BookIterator::new(operations.clone().into_iter().map(Ok), 0)
                 .expect("a book iterator")
                 .collect::<yggdryl::Result<Vec<_>>>()
                 .expect("every operation folds");
-        assert_eq!(books.len(), 13);
+        assert_eq!(books.len(), 12);
         assert!(books.iter().all(|book| !book.is_complete()));
-        let key = |operation: &MarketData| (operation.book_crosscode().to_owned(), at(operation));
+        let key = |operation: &MarketData| {
+            (
+                operation.get_instcode().unwrap_or("").to_owned(),
+                at(operation),
+            )
+        };
         let stood: BTreeSet<(String, i64)> = books
             .iter()
-            .map(|book| (book.book_crosscode().to_owned(), book.get_transunix()))
+            .map(|book| {
+                (
+                    book.get_instcode().unwrap().to_owned(),
+                    book.get_transunix(),
+                )
+            })
             .collect();
         assert_eq!(stood.len(), books.len(), "one book per book and instant");
         let booked: BTreeSet<(String, i64)> = operations
             .iter()
-            .filter(|operation| operation.marketdatakind().is_recorded())
+            .filter(|operation| {
+                operation.marketdatakind().is_recorded() && operation.get_instcode().is_some()
+            })
             .map(key)
             .collect();
         assert_eq!(stood, booked);
-        // Five of those instants each hold one order that ended before its
-        // book held it: two first reported filled, with nothing left to rest
+        // Four of those instants each hold one order that ended before its
+        // book held it: one first reported filled, with nothing left to rest
         // and no live entry to continue, two restating the fill that ended an
         // order its book stopped holding at an earlier instant, and the
-        // reject ending the unpriced `2454` order. Each places nothing - what
+        // reject ending the unpriced `2454` order; the other order first
+        // reported filled is the masked line's, pruned with its book
+        // (decision 16). Each places nothing - what
         // was alive before it is alive after it - yet each is the one order
         // in the delta of the book of its instant, the fill it reports,
         // where it reports one, recorded among that book's events. It was
@@ -1631,20 +1651,23 @@ mod dataset {
                 let MarketData::OrderEvent(event) = operation else {
                     return false;
                 };
-                !event.get_state().is_live()
+                event.get_instcode().is_some()
+                    && !event.get_state().is_live()
                     && books
                         .iter()
                         .find(|book| {
-                            (book.book_crosscode().to_owned(), book.get_transunix())
-                                == key(operation)
+                            (
+                                book.get_instcode().unwrap().to_owned(),
+                                book.get_transunix(),
+                            ) == key(operation)
                         })
                         .is_some_and(|book| book.orddelta().count() == 1)
             })
             .collect();
         assert_eq!(
             ended.len(),
-            5,
-            "one ended order alone at each of five instants"
+            4,
+            "one ended order alone at each of four instants"
         );
         for order in ended {
             let MarketData::OrderEvent(event) = order else {
@@ -1656,7 +1679,12 @@ mod dataset {
             );
             let book = books
                 .iter()
-                .find(|book| (book.book_crosscode().to_owned(), book.get_transunix()) == key(order))
+                .find(|book| {
+                    (
+                        book.get_instcode().unwrap().to_owned(),
+                        book.get_transunix(),
+                    ) == key(order)
+                })
                 .expect("the book of its instant");
             let delta = book
                 .delta()
@@ -1685,8 +1713,9 @@ mod dataset {
             panic!("the trade capture's execution alone")
         };
         assert_eq!(trade_book.controls().count(), 0);
-        // Every execution of the capture is an event of exactly one book,
-        // and no book records an order or a quote among its events.
+        // Every execution of the capture stating an instcode is an event of
+        // exactly one book - the masked line's, stating none, of none - and
+        // no book records an order or a quote among its events.
         assert_eq!(
             books
                 .iter()
@@ -1695,8 +1724,18 @@ mod dataset {
             operations
                 .iter()
                 .filter(|operation| operation.marketdatakind()
-                    == yggdryl_market::MarketDataKind::Execution)
+                    == yggdryl_market::MarketDataKind::Execution
+                    && operation.get_instcode().is_some())
                 .count()
+        );
+        assert_eq!(
+            operations
+                .iter()
+                .filter(|operation| operation.marketdatakind().is_recorded()
+                    && operation.get_instcode().is_none())
+                .count(),
+            2,
+            "the masked line's order and execution alone hold no instcode"
         );
         assert!(
             books.iter().all(|book| book.controls().count() == 0
@@ -1705,17 +1744,23 @@ mod dataset {
         assert_eq!(trade_fill.get_side(), yggdryl_market::Side::Unknown);
         let last = books.last().expect("a last book");
         assert_eq!(last.get_ticker(), Some("2454"));
-        // Keyed by its instrument's ISIN, which it holds as its `isin`
-        // security identifier beside the ticker its first input stated.
+        // Keyed by its instrument's code - the ISIN the lifecycle filled,
+        // the book's own `instcode` - which it holds as its `isin` security
+        // identifier beside the ticker its first input stated.
         assert_eq!(last.get_isincode(), Some("TW0002454006"));
-        assert_eq!(last.book_crosscode(), "TW0002454006");
+        assert_eq!(last.get_instcode(), Some("TW0002454006"));
         assert_eq!(last.get_crosscode(), "3:0:TW0002454006");
-        // Every book is keyed by the ISIN its inputs state, else their
-        // ticker: the masked line's number keys its own book, the
-        // ticker-only HOLN line stands in Holcim's book through the
-        // registry's ticker index, and the trade capture's execution, of an
-        // instrument no order names, opens that instrument's book of its own.
-        let keys: BTreeSet<&str> = books.iter().map(|book| book.book_crosscode()).collect();
+        // Every book is keyed by the instcode the lifecycle filled from the
+        // ISIN its inputs state: the ticker-only HOLN line stands in
+        // Holcim's book through the registry's ticker index, the trade
+        // capture's execution, of an instrument no order names, opens that
+        // instrument's book of its own, and the masked line's number keys
+        // no book - its instrument unknown, its instcode none, it is pruned
+        // before the walk (a masked number keys no book, decision 16).
+        let keys: BTreeSet<&str> = books
+            .iter()
+            .map(|book| book.get_instcode().unwrap())
+            .collect();
         assert_eq!(
             keys,
             BTreeSet::from([
@@ -1725,7 +1770,6 @@ mod dataset {
                 "EZN11TD1F7K3",
                 "TW0001605004",
                 "TW0002454006",
-                "XX0000000001",
             ])
         );
         assert!(last.limits(yggdryl_market::Side::Buy).next().is_none());
@@ -1738,7 +1782,7 @@ mod dataset {
         // request is the delta of the book before it, which holds nothing
         // either.
         let cancelled = &books[books.len() - 2];
-        assert_eq!(cancelled.book_crosscode(), last.book_crosscode());
+        assert_eq!(cancelled.get_instcode(), last.get_instcode());
         assert_eq!(cancelled.alive().count(), 0);
         assert_eq!(last.delta().count(), 1, "its exit alone");
         let delta: Vec<&yggdryl_market::graph::MarketData> =
@@ -1854,7 +1898,7 @@ mod dataset {
         for operation in &operations {
             for typed in TYPED {
                 let disagreeing = typed == "omsdealerorderid"
-                    && operation.book_crosscode() == "CH0012005267"
+                    && operation.get_instcode() == Some("CH0012005267")
                     && operation
                         .get_metadata()
                         .get(typed)

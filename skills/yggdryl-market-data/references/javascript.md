@@ -29,7 +29,7 @@ const order = new graph.OrderEvent(T, {
   price: '189.50',
   quantity: 100,
   currency: 'USD',
-  ticker: 'AAPL',
+  ticker: 'AAPL', instcode: 'AAPL',
   // An identifier is a source, a type and a value, unique by `src:type`; a code is held to its type's shape.
   securityids: [new Identifier('isin', 'US0378331005')],
   identifiers: [new Identifier('orderid', 'O-1001')],
@@ -80,7 +80,7 @@ assert.ok(event.intoElement().equals(order))
 // holds both sides, BOTH.
 const quote = new graph.QuoteEvent(T, {
   crosscode: 'Q-7',
-  ticker: 'AAPL',
+  ticker: 'AAPL', instcode: 'AAPL',
   bidpx: '189.48',
   bidqty: 300,
   bidccy: 'USD',
@@ -92,7 +92,7 @@ assert.deepEqual([quote.side, quote.crosscode], ['BOTH', '14:0:Q-7'])
 assert.deepEqual([quote.askpx, quote.askqty, quote.marketdatakind], ['189.52', '100', 'QUOT'])
 
 // An offer: tagged `SELL`, its price is its ask leg; a quote's code stays under side 0.
-const offer = new graph.QuoteEvent(T, { crosscode: 'Q-8', ticker: 'AAPL', side: 'SELL', price: '189.52', quantity: 100 })
+const offer = new graph.QuoteEvent(T, { crosscode: 'Q-8', ticker: 'AAPL', instcode: 'AAPL', side: 'SELL', price: '189.52', quantity: 100 })
 assert.deepEqual([offer.crosscode, offer.askpx], ['14:0:Q-8', '189.52'])
 // Placed in a book by its control; the scope is a fact, the rest walk-time.
 const entry = offer.withBook(new graph.BookRef({ action: 'new', position: 1, scope: 'L2' }))
@@ -218,7 +218,7 @@ const T = 1_700_000_000_000_000_000n
 const fill = (code, side, unix = T) => new graph.ExecutionEvent(unix, {
   crosscode: code, side, lastpx: '189.50', lastqty: 100,
 })
-const root = new graph.OrderEvent(T, { crosscode: 'T-1', ticker: 'AAPL' })
+const root = new graph.OrderEvent(T, { crosscode: 'T-1', ticker: 'AAPL', instcode: 'AAPL' })
 const trade = graph.TradeEvent.fromParts(root, [fill('E-SELL', 'SELL'), fill('E-BUYS', 'BUYS')])
 assert.deepEqual(trade.executions.map((execution) => execution.crosscode), ['8:1:E-BUYS', '8:2:E-SELL'])
 assert.equal(trade.isExecution, true)
@@ -315,8 +315,9 @@ fs.rmSync(directory, { recursive: true, force: true })
 
 `new graph.BookIterator(items, snapshotMillis = 0, filter = undefined)` folds
 sorted orders and quotes into one `BookEvent` per instant and book key that
-moved it - the instrument's ISIN, else its ticker, else `XX0000000000` -
-recording every execution among its `events()` and pruning every trade. A
+moved it - the input's `instcode`, the instrument's cross code, alone -
+recording every execution among its `events()` and pruning every trade and
+every input stating no `instcode`. A
 book is complete (`isComplete`) only at a snapshot tick; every other book is a
 delta book - its `delta()` and `events()` beside the top of book they settled
 on - and `withPrevious` over the complete book before it rebuilds it whole. `filter` - a predicate over the `marketdata` row - narrows what folds.
@@ -328,10 +329,10 @@ const { Identifier, graph } = require('yggdryl')
 const T = 1_700_000_000_000_000_000n
 const SECOND = 1_000_000_000n
 const bid = (unix, code, price, quantity) => new graph.OrderEvent(unix, {
-  crosscode: code, ticker: 'AAPL', side: 'BUYS', price, quantity, state: 'NEW',
+  crosscode: code, ticker: 'AAPL', instcode: 'AAPL', side: 'BUYS', price, quantity, state: 'NEW',
 })
 const fill = new graph.ExecutionEvent(T + SECOND, {
-  crosscode: 'E-1', ticker: 'AAPL', side: 'BUYS', lastpx: '189.52', lastqty: 100,
+  crosscode: 'E-1', ticker: 'AAPL', instcode: 'AAPL', side: 'BUYS', lastpx: '189.52', lastqty: 100,
 })
 const stream = [bid(T, 'B-1', '189.48', 300), bid(T + SECOND, 'B-2', '189.49', 200), fill]
 
@@ -357,14 +358,13 @@ assert.equal(gridded.length, 3)
 assert.ok(gridded.every((book) => book.isComplete))
 // A filter narrows what folds: one keeping the execution alone folds its book.
 assert.equal([...new graph.BookIterator(stream, 0, "marketdatakind = 'EXEC'")].length, 1)
-// The book key: the instrument's ISIN, else the ticker, else `XX0000000000`.
-const [keyless] = new graph.BookIterator([new graph.OrderEvent(T, { crosscode: 'L-1', side: 'SELL' })])
-assert.deepEqual([keyless.crosscode, keyless.ticker], ['3:0:XX0000000000', null])
+// The book key: the instrument's code alone; an input stating none is pruned.
+assert.deepEqual([...new graph.BookIterator([new graph.OrderEvent(T, { crosscode: 'L-1', side: 'SELL', ticker: 'AAPL' })])], [])
 const listed = new graph.OrderEvent(T, {
-  crosscode: 'L-2', side: 'SELL', ticker: 'AAPL', securityids: [new Identifier('isin', 'US0378331005')],
+  crosscode: 'L-2', side: 'SELL', ticker: 'AAPL', instcode: 'US0378331005', securityids: [new Identifier('isin', 'US0378331005')],
 })
 const [book] = new graph.BookIterator([listed])
-assert.deepEqual([book.crosscode, book.isincode, book.ticker], ['3:0:US0378331005', 'US0378331005', 'AAPL'])
+assert.deepEqual([book.crosscode, book.instcode, book.isincode, book.ticker], ['3:0:US0378331005', 'US0378331005', 'US0378331005', 'AAPL'])
 // Out of order is no error: the operation dated before its book is left out,
 // with a warning on standard error (unless a `logging` handler takes it).
 assert.equal([...new graph.BookIterator([...stream].reverse())].length, 1)
@@ -388,7 +388,7 @@ const { Side, graph } = require('yggdryl')
 
 const T = 1_700_000_000_000_000_000n
 const entry = (code, side, price, quantity, tradable) => new graph.OrderEvent(T, {
-  crosscode: code, ticker: 'AAPL', side, price, quantity, tradable,
+  crosscode: code, ticker: 'AAPL', instcode: 'AAPL', side, price, quantity, tradable,
 })
 const book = new graph.BookEvent(T, 'AAPL').withOperations([
   entry('B-0', 'BUYS', '189.49', 10, false),
@@ -433,12 +433,12 @@ const { graph } = require('yggdryl')
 
 const T = 1_700_000_000_000_000_000n
 const order = (code, side, price) => new graph.OrderEvent(T, {
-  crosscode: code, ticker: 'AAPL', side, price, quantity: 100,
+  crosscode: code, ticker: 'AAPL', instcode: 'AAPL', side, price, quantity: 100,
 })
 const book = new graph.BookEvent(T, 'AAPL').withOperations([order('B-1', 'BUYS', '189.48'), order('A-1', 'SELL', '189.52')])
 assert.equal(book.alive().length, 2)
 
-const control = graph.SnapshotEvent.snapshot(new graph.OrderEvent(T + 1_000_000_000n, { ticker: 'AAPL' }))
+const control = graph.SnapshotEvent.snapshot(new graph.OrderEvent(T + 1_000_000_000n, { ticker: 'AAPL', instcode: 'AAPL' }))
 assert.equal(control.book.action, 'snapshot')
 const after = book.withOperations([control])
 assert.deepEqual(after.alive(), [])
@@ -502,8 +502,8 @@ const { fix, graph } = require('yggdryl')
 // `config/fix` of a yggdryl checkout (see the yggdryl-fix skill).
 const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
 const lines = [
-  '8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|',
-  '8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|',
+  '8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|',
+  '8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|',
 ]
 const capture = [...codec.parseLines(lines)]
 
@@ -537,7 +537,7 @@ const { Serie, graph } = require('yggdryl')
 const T = 1_700_000_000_000_000_000n
 const SECOND = 1_000_000_000n
 const quote = (unix, code, side, price, quantity) => new graph.QuoteEvent(unix, {
-  crosscode: code, ticker: 'AAPL', side, price, quantity, state: 'NEW',
+  crosscode: code, ticker: 'AAPL', instcode: 'AAPL', side, price, quantity, state: 'NEW',
 })
 const stream = [
   quote(T, 'B1', 'BUYS', '189.48', 300),

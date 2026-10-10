@@ -229,6 +229,14 @@ pub fn base_crosscode(code: &str) -> &str {
     crate::graph::market::base_crosscode(code)
 }
 
+/// `graph::book::booked`: whether a book walk takes `input` - a recorded
+/// kind stating an `instcode` - a code-less recorded input warned of; the
+/// FIX book door's admission before it expands a message.
+#[inline]
+pub fn booked<E: crate::graph::Market + Element + ?Sized>(input: &E) -> bool {
+    crate::graph::book::booked(input)
+}
+
 /// `graph::market::merge_operation_event`: the facts an operation on the
 /// market takes from another statement of itself; whether any moved.
 #[inline]

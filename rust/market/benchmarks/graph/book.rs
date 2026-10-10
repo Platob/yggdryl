@@ -18,6 +18,7 @@ fn entry(unix: i64, side: &str, level: usize, quantity: i64) -> MarketData {
     let mut event = QuoteEvent::at(unix);
     event.set_crosscode(format!("{name}-{level}"));
     event.set_ticker(Some(SmolStr::new("BENCH")), true);
+    event.set_instcode(Some(yggdryl::Str::new("BENCH")), true);
     event.set_side(Side::read(side).expect("a shipped side"), true);
     event.set_price(Some(Decimal::from_int(price)), true);
     event.set_quantity(Some(Decimal::from_int(quantity)), true);
@@ -63,7 +64,7 @@ fn at_touch(unix: i64, side: &str, slot: usize, quantity: i64) -> MarketData {
 
 /// A book of [`entries`].
 fn book(levels: usize) -> BookEvent {
-    let mut book = BookEvent::new(1, "BENCH");
+    let mut book = BookEvent::keyed(1, "BENCH");
     book.add_operations(entries(levels))
         .expect("the bench depth");
     book
@@ -186,7 +187,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .expect("a walk")
             .collect::<yggdryl::Result<Vec<_>>>()
             .expect("the walk's books");
-        let origin = BookEvent::new(books[0].get_transunix(), books[0].get_crosscode());
+        let origin = BookEvent::keyed(books[0].get_transunix(), books[0].get_crosscode());
         let first = books[0]
             .clone()
             .with_previous(&origin)

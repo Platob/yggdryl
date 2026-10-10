@@ -105,7 +105,7 @@ fn books_of(reader: yggdryl::arrow::BatchReader) -> Vec<BookEvent> {
             let book = if book.is_complete() {
                 book
             } else {
-                let origin = BookEvent::new(book.get_transunix(), book.get_crosscode());
+                let origin = BookEvent::keyed(book.get_transunix(), book.get_crosscode());
                 let previous = last.get(book.get_crosscode()).unwrap_or(&origin);
                 book.with_previous(previous)
                     .expect("a delta book rebuilds over the book before it")
@@ -128,7 +128,7 @@ fn folded(leaves: Vec<MarketData>) -> Vec<BookEvent> {
             let whole = if book.is_complete() {
                 book
             } else {
-                let origin = BookEvent::new(book.get_transunix(), book.get_crosscode());
+                let origin = BookEvent::keyed(book.get_transunix(), book.get_crosscode());
                 let previous = last.get(book.get_crosscode()).unwrap_or(&origin);
                 book.with_previous(previous)
                     .expect("a delta book rebuilds over the book before it")
@@ -336,12 +336,12 @@ fn an_order_a_venue_ends_by_execution_report_leaves_its_book() {
         ("C", State::Expired),
     ] {
         let report = format!(
-            "8=FIX.4.4|35=8|52=20260921-10:00:01|17=E-{status}|37=O1|11=C1|150={status}|39={status}|55=AAPL|54=1|38=10|44=100|151=0|14=0|10=0|"
+            "8=FIX.4.4|35=8|52=20260921-10:00:01|17=E-{status}|37=O1|11=C1|150={status}|39={status}|55=AAPL|48=US0378331005|22=4|54=1|38=10|44=100|151=0|14=0|10=0|"
         );
         let capture = messages(
             &codec,
             &[
-                b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=10|40=2|44=100|10=0|",
+                b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|48=US0378331005|22=4|54=1|38=10|40=2|44=100|10=0|",
                 report.as_bytes(),
             ],
         );
@@ -814,9 +814,9 @@ fn a_capture_records_each_execution_in_its_book_and_folds_none() {
     crate::install::installed();
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
     let lines: [&[u8]; 3] = [
-        b"8=FIX.4.4|35=D|52=20260921-09:59:59|11=C-9|55=AAPL|54=1|44=10.5|38=100|326=17|10=0|",
-        b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=F|55=AAPL|54=1|38=100|14=40|32=40|31=10.5|10=0|",
-        b"8=FIX.4.4|35=AE|52=20260921-10:00:01|571=T1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:01|552=2|54=1|1427=BUY-EXEC|1009=4|54=2|1427=SELL-EXEC|1009=6|10=0|",
+        b"8=FIX.4.4|35=D|52=20260921-09:59:59|11=C-9|55=AAPL|48=US0378331005|22=4|54=1|44=10.5|38=100|326=17|10=0|",
+        b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=F|55=AAPL|48=US0378331005|22=4|54=1|38=100|14=40|32=40|31=10.5|10=0|",
+        b"8=FIX.4.4|35=AE|52=20260921-10:00:01|571=T1|150=F|55=AAPL|48=US0378331005|22=4|32=10|31=101.25|60=20260921-10:00:01|552=2|54=1|1427=BUY-EXEC|1009=4|54=2|1427=SELL-EXEC|1009=6|10=0|",
     ];
     let messages: Vec<FixMsg> = lines
         .iter()
@@ -889,12 +889,178 @@ fn a_capture_records_each_execution_in_its_book_and_folds_none() {
     assert_eq!(held, expected, "each execution once");
 }
 
-/// An FX pair's book is keyed by the number this crate mints for its
-/// instrument `IF:EUR/USD`, which the parse derives as the row's ISIN:
-/// every spelling of the pair, and a ticker-only FX symbol, join the one
-/// book (the FX book took its minted number, D42).
+/// A raw parse whose later report omits the instrument leaves the entry
+/// it ends alive: the cancel states neither `SecurityID(48)` nor a code,
+/// so it is pruned and the order rests on; walked, the lifecycle fills the
+/// cancel's code from its chain and the order leaves its book. Walk the
+/// lifecycle's output wherever a report may omit what its order stated
+/// (a code-less report is pruned, decision 16).
 #[test]
-fn an_fx_pairs_book_is_keyed_by_its_minted_number() {
+fn a_raw_cancel_stating_no_instrument_leaves_its_order_alive_and_a_walked_one_ends_it() {
+    crate::install::installed();
+    let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
+    let lines: [&[u8]; 2] = [
+        b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|48=US0378331005|22=4|54=1|38=10|44=100|40=2|10=0|",
+        b"8=FIX.4.4|35=8|52=20260921-10:00:01|17=E1|37=O1|11=C1|150=4|39=4|55=AAPL|54=1|38=10|44=100|151=0|10=0|",
+    ];
+    let messages: Vec<FixMsg> = lines
+        .iter()
+        .flat_map(|line| codec.parse_line(line).unwrap())
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    let alive_bids = |books: Vec<BookEvent>| {
+        books
+            .iter()
+            .map(|book| alive(book, true).len())
+            .collect::<Vec<_>>()
+    };
+    let raw = books_of(
+        codec
+            .book_arrow_reader(messages.clone(), 0, None)
+            .expect("a book stream"),
+    );
+    assert_eq!(
+        alive_bids(raw),
+        [1],
+        "raw: the cancel is pruned, the order rests on"
+    );
+    let walked = books_of(
+        codec
+            .book_arrow_reader(codec.lifecycle(messages), 0, None)
+            .expect("a book stream"),
+    );
+    assert_eq!(
+        alive_bids(walked),
+        [1, 0],
+        "walked: the cancel ends the order"
+    );
+}
+
+/// A raw parse books each statement by what it states alone: an order
+/// booked by its ISIN whose cancel report states only its ticker stays
+/// alive in its book, the report pruned as code-less, while the walk the
+/// lifecycle answers fills the report's code and ends the order there (a
+/// code-less element is pruned, decision 16; walk lifecycle output).
+#[test]
+fn a_raw_parse_keeps_an_order_whose_ticker_only_cancel_it_prunes() {
+    crate::install::installed();
+    let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
+    let lines: [&[u8]; 3] = [
+        b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|48=US0378331005|22=4|54=1|38=10|44=100|40=2|10=0|",
+        b"8=FIX.4.4|35=8|52=20260921-10:00:01|37=O1|11=C1|17=X1|150=4|39=4|55=AAPL|54=1|38=10|10=0|",
+        b"8=FIX.4.4|35=D|52=20260921-10:00:03|11=C2|55=AAPL|48=US0378331005|22=4|54=2|38=5|44=101|40=2|10=0|",
+    ];
+    let messages: Vec<FixMsg> = lines
+        .iter()
+        .flat_map(|line| codec.parse_line(line).unwrap())
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    let standing = |books: Vec<BookEvent>| {
+        books
+            .iter()
+            .map(|book| {
+                let mut codes: Vec<String> = alive(book, true)
+                    .into_iter()
+                    .chain(alive(book, false))
+                    .map(|entry| entry.get_crosscode().to_owned())
+                    .collect();
+                codes.sort();
+                codes
+            })
+            .collect::<Vec<_>>()
+    };
+    let raw = standing(books_of(
+        codec
+            .book_arrow_reader(messages.clone(), 0, None)
+            .expect("a book stream"),
+    ));
+    assert_eq!(
+        raw,
+        [vec!["10:1:C1"], vec!["10:1:C1", "10:2:C2"]],
+        "raw: the ticker-only cancel is pruned and the order stays alive"
+    );
+    let walked = standing(books_of(
+        codec
+            .book_arrow_reader(codec.lifecycle(messages), 0, None)
+            .expect("a book stream"),
+    ));
+    assert_eq!(
+        walked,
+        [vec!["10:1:C1"], vec![], vec!["10:2:C2"]],
+        "walked: the cancel ends the order in its book"
+    );
+}
+
+/// A book message stating its instrument inside each `NoMDEntries(268)`
+/// occurrence - FIX 4.4's `X` layout, `Symbol(55)` and `SecurityID(48)`
+/// beside each entry - books every entry in its own instrument's book: the
+/// entry's identifier is its leaf's, the leaf's `instcode` the real ISIN
+/// it states, so one message reaching two instruments opens two books, raw
+/// or walked, and an entry stating no identifier under a message stating
+/// none is pruned at the walk's pull (every element stating a real ISIN is
+/// booked, decision 16).
+#[test]
+fn a_book_messages_entries_are_booked_by_the_instrument_each_states() {
+    crate::install::installed();
+    let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
+    let lines: [&[u8]; 2] = [
+        b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|48=US0378331005|22=4|54=1|38=10|44=100|40=2|10=0|",
+        b"8=FIX.4.4|35=X|52=20260921-10:00:01|268=3|\
+279=0|269=0|278=B1|55=AAPL|48=US0378331005|22=4|270=101|271=11|\
+279=0|269=1|278=A1|55=HOLN|48=CH0012214059|22=4|270=60|271=5|\
+279=0|269=0|278=Z1|55=ZZZZ|270=1|271=1|10=0|",
+    ];
+    let messages: Vec<FixMsg> = lines
+        .iter()
+        .flat_map(|line| codec.parse_line(line).unwrap())
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(
+        messages[1].get_instcode(),
+        None,
+        "the message states no instrument of its own"
+    );
+    let keys = |books: &[BookEvent]| {
+        books
+            .iter()
+            .map(|book| {
+                (
+                    book.get_crosscode().to_owned(),
+                    book.get_instcode().map(str::to_owned),
+                    alive(book, true).len(),
+                    alive(book, false).len(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let owned = |rows: [(&str, &str, usize, usize); 3]| {
+        rows.map(|(key, code, bids, asks)| (key.to_owned(), Some(code.to_owned()), bids, asks))
+    };
+    let expected = owned([
+        ("3:0:US0378331005", "US0378331005", 1, 0),
+        ("3:0:CH0012214059", "CH0012214059", 0, 1),
+        ("3:0:US0378331005", "US0378331005", 2, 0),
+    ]);
+    let raw = books_of(
+        codec
+            .book_arrow_reader(messages.clone(), 0, None)
+            .expect("a book stream"),
+    );
+    assert_eq!(keys(&raw), expected, "raw: each entry in its own book");
+    let walked = books_of(
+        codec
+            .book_arrow_reader(codec.lifecycle(messages), 0, None)
+            .expect("a book stream"),
+    );
+    assert_eq!(keys(&walked), expected, "walked: the same books");
+}
+
+/// An FX pair's book is keyed by its instrument's code `IF:EUR/USD`, which
+/// the parse writes as the message's `instcode` beside the number it mints
+/// as the row's ISIN: every spelling of the pair, and a ticker-only FX
+/// symbol, join the one book (the FX book took its code, decision 16).
+#[test]
+fn an_fx_pairs_book_is_keyed_by_its_code() {
     crate::install::installed();
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
     let lines: [&[u8]; 2] = [
@@ -925,17 +1091,24 @@ fn an_fx_pairs_book_is_keyed_by_its_minted_number() {
             )
         })
         .collect();
-    assert_eq!(
-        keyed,
-        [("3:0:QYLTVIRYHNX5", 1, 0), ("3:0:QYLTVIRYHNX5", 1, 1)]
+    assert_eq!(keyed, [("3:0:IF:EUR/USD", 1, 0), ("3:0:IF:EUR/USD", 1, 1)]);
+    assert!(
+        books
+            .iter()
+            .all(|book| book.get_instcode() == Some("IF:EUR/USD")
+                && book.get_isincode() == Some("QYLTVIRYHNX5")),
+        "the book's instcode cell is its key, the minted number a fact beside it"
     );
 }
 
-/// A chain stated first by its ticker and then under its instrument's ISIN,
-/// the ordinary FIX shape (`Symbol(55)` on the order and `SecurityID(48)`
-/// on a later statement), rests in one book: the restatement withdraws the
-/// entry from the ticker book and opens it in the instrument's, where the
-/// instrument's other orders go.
+/// A chain stated first by its ticker alone and then under its
+/// instrument's ISIN, the ordinary FIX shape (`Symbol(55)` on the order and
+/// `SecurityID(48)` on a later statement), rests in one book: the first
+/// statement names no instrument the lifecycle knows, holds no `instcode`
+/// and is pruned before the walk; the chain is booked from the statement
+/// whose code the parse wrote, in the instrument's book, where the
+/// instrument's other orders go (a code-less element is pruned, decision
+/// 16).
 #[test]
 fn a_chain_restated_under_its_isin_rests_in_the_instruments_book_alone() {
     crate::install::installed();
@@ -950,6 +1123,11 @@ fn a_chain_restated_under_its_isin_rests_in_the_instruments_book_alone() {
         .flat_map(|line| codec.parse_line(line).unwrap())
         .collect::<yggdryl::Result<_>>()
         .unwrap();
+    assert_eq!(
+        messages[0].get_instcode(),
+        None,
+        "the first statement holds no code to be booked by"
+    );
     let books = books_of(
         codec
             .book_arrow_reader(codec.lifecycle(messages), 0, None)
@@ -967,22 +1145,13 @@ fn a_chain_restated_under_its_isin_rests_in_the_instruments_book_alone() {
         .collect();
     assert_eq!(
         keyed,
-        [
-            ("3:0:ACME", 1, 0),
-            ("3:0:ACME", 0, 0),
-            ("3:0:US0378331005", 1, 0),
-            ("3:0:US0378331005", 1, 1),
-        ]
+        [("3:0:US0378331005", 1, 0), ("3:0:US0378331005", 1, 1)],
+        "the ticker-only statement opens no book"
     );
     assert_eq!(
-        text(operation_of(alive(&books[3], true)[0]).get_price()),
+        text(operation_of(alive(&books[1], true)[0]).get_price()),
         Some("101".to_owned()),
         "the restatement stands in the instrument's book"
-    );
-    assert_eq!(
-        *operation_of(books[1].delta().next().unwrap()).get_state(),
-        State::Removed,
-        "the ticker book's delta withdraws the entry"
     );
 }
 
@@ -995,9 +1164,9 @@ fn a_quote_status_report_stating_a_cancel_removes_the_quote_from_its_book() {
     crate::install::installed();
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
     let lines: [&[u8]; 3] = [
-        b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|",
-        b"8=FIX.4.4|35=Z|52=20260921-10:00:01|117=Q1|298=1|55=AAPL|10=0|",
-        b"8=FIX.4.4|35=AI|52=20260921-10:00:02|117=Q1|55=AAPL|297=4|10=0|",
+        b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|48=US0378331005|22=4|15=USD|132=99|134=7|133=101|135=8|10=0|",
+        b"8=FIX.4.4|35=Z|52=20260921-10:00:01|117=Q1|298=1|55=AAPL|48=US0378331005|22=4|10=0|",
+        b"8=FIX.4.4|35=AI|52=20260921-10:00:02|117=Q1|55=AAPL|48=US0378331005|22=4|297=4|10=0|",
     ];
     let messages: Vec<FixMsg> = lines
         .iter()
@@ -1047,7 +1216,7 @@ fn a_two_sided_quote_is_one_message_holding_both_legs() {
     crate::install::installed();
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
     let messages: Vec<FixMsg> = codec
-        .parse_line(b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|188=98.5|189=0.5|326=17|10=0|")
+        .parse_line(b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|48=US0378331005|22=4|15=USD|132=99|134=7|133=101|135=8|188=98.5|189=0.5|326=17|10=0|")
         .unwrap()
         .collect::<yggdryl::Result<_>>()
         .unwrap();
@@ -1099,7 +1268,7 @@ fn a_bid_only_quote_rests_on_the_bid_alone() {
     crate::install::installed();
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
     let messages: Vec<FixMsg> = codec
-        .parse_line(b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q2|55=AAPL|15=USD|132=99|134=7|10=0|")
+        .parse_line(b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q2|55=AAPL|48=US0378331005|22=4|15=USD|132=99|134=7|10=0|")
         .unwrap()
         .collect::<yggdryl::Result<_>>()
         .unwrap();
@@ -1377,10 +1546,10 @@ fn codec_streams_fix_messages_through_books_into_arrow_with_coherent_prices() {
     crate::install::installed();
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
     let snapshot = codec
-        .sole_line(b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|326=17|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|")
+        .sole_line(b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|326=17|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|")
         .unwrap();
     let update = codec
-        .sole_line(b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|326=17|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|")
+        .sole_line(b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|326=17|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|")
         .unwrap();
     // The message is a book message; each leaf it expands into states its
     // own category below.
@@ -1455,19 +1624,19 @@ fn codec_book_admission_skips_noncontributing_records_between_market_events() {
     crate::install::installed();
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
     let admitted = [
-        b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|44=100|38=5|10=0|".as_slice(),
-        b"8=FIX.4.4|35=S|52=20260921-10:00:01|117=Q1|55=AAPL|54=2|133=101|135=7|10=0|".as_slice(),
-        b"8=FIX.4.4|35=8|52=20260921-10:00:02|17=E1|37=O1|55=AAPL|54=1|31=100|32=2|150=F|10=0|"
+        b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|48=US0378331005|22=4|54=1|44=100|38=5|10=0|".as_slice(),
+        b"8=FIX.4.4|35=S|52=20260921-10:00:01|117=Q1|55=AAPL|48=US0378331005|22=4|54=2|133=101|135=7|10=0|".as_slice(),
+        b"8=FIX.4.4|35=8|52=20260921-10:00:02|17=E1|37=O1|55=AAPL|48=US0378331005|22=4|54=1|31=100|32=2|150=F|10=0|"
             .as_slice(),
-        b"8=FIX.4.4|35=W|52=20260921-10:00:03|55=AAPL|268=1|269=0|278=B1|270=99|271=10|10=0|"
+        b"8=FIX.4.4|35=W|52=20260921-10:00:03|55=AAPL|48=US0378331005|22=4|268=1|269=0|278=B1|270=99|271=10|10=0|"
             .as_slice(),
-        b"8=FIX.4.4|35=X|52=20260921-10:00:04|55=AAPL|268=1|279=1|269=0|278=B1|271=11|10=0|"
+        b"8=FIX.4.4|35=X|52=20260921-10:00:04|55=AAPL|48=US0378331005|22=4|268=1|279=1|269=0|278=B1|271=11|10=0|"
             .as_slice(),
     ]
     .map(|line| codec.parse_fix_line(line).unwrap());
     let ignored = [
         b"8=FIX.4.4|35=0|52=20260922-10:00:00|10=0|".as_slice(),
-        b"8=FIX.4.4|35=AE|52=20260922-10:00:00|571=T1|487=0|55=AAPL|32=1|31=100|552=1|54=1|1427=E2|1009=1|10=0|".as_slice(),
+        b"8=FIX.4.4|35=AE|52=20260922-10:00:00|571=T1|487=0|55=AAPL|48=US0378331005|22=4|32=1|31=100|552=1|54=1|1427=E2|1009=1|10=0|".as_slice(),
         b"8=FIX.4.4|35=BN|52=20260922-10:00:00|17=ACK|37=O1|1036=2|10=0|".as_slice(),
         b"8=FIX.4.4|35=AR|52=20260922-10:00:00|571=ACK|487=0|150=F|10=0|".as_slice(),
         b"8=FIX.4.4|35=AD|52=20260922-10:00:00|568=REQUEST|10=0|".as_slice(),
@@ -1542,8 +1711,8 @@ fn codec_book_admission_passes_over_a_refused_message_and_ends_on_a_source_failu
     crate::install::installed();
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
     let order = |line: &[u8]| Ok(codec.parse_fix_line(line).unwrap());
-    let first = b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|44=100|38=5|10=0|";
-    let second = b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C2|55=AAPL|54=2|44=101|38=6|10=0|";
+    let first = b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|48=US0378331005|22=4|54=1|44=100|38=5|10=0|";
+    let second = b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C2|55=AAPL|48=US0378331005|22=4|54=2|44=101|38=6|10=0|";
 
     let refused = [
         Ok(codec.parse_fix_line(b"8=FIX.4.4|35=0|10=0|").unwrap()),
@@ -1583,7 +1752,7 @@ fn codec_book_admission_passes_over_what_no_book_reads() {
     // An entry stating no incremental action is excluded, and the order
     // after it folds.
     let invalid = codec
-        .parse_fix_line(b"8=FIX.4.4|35=X|52=20260921-10:00:00|55=AAPL|268=1|279=9|269=0|278=B1|270=100|271=2|10=0|")
+        .parse_fix_line(b"8=FIX.4.4|35=X|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=1|279=9|269=0|278=B1|270=100|271=2|10=0|")
         .unwrap();
     assert!(invalid.market_data().unwrap().is_empty());
     let source = [
@@ -1591,7 +1760,7 @@ fn codec_book_admission_passes_over_what_no_book_reads() {
         invalid,
         codec
             .parse_fix_line(
-                b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|55=AAPL|54=1|44=100|38=5|10=0|",
+                b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|55=AAPL|48=US0378331005|22=4|54=1|44=100|38=5|10=0|",
             )
             .unwrap(),
     ];
@@ -1610,9 +1779,9 @@ fn book_arrow_reader_narrows_its_books_to_what_its_filter_keeps() {
     crate::install::installed();
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
     let lines: [&[u8]; 3] = [
-        b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|44=100|38=5|10=0|",
-        b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C2|55=AAPL|54=2|44=101|38=6|10=0|",
-        b"8=FIX.4.4|35=8|52=20260921-10:00:02|17=E1|37=O1|11=C1|39=1|150=F|55=AAPL|54=1|44=100|38=5|14=2|32=2|31=100|10=0|",
+        b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|48=US0378331005|22=4|54=1|44=100|38=5|10=0|",
+        b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C2|55=AAPL|48=US0378331005|22=4|54=2|44=101|38=6|10=0|",
+        b"8=FIX.4.4|35=8|52=20260921-10:00:02|17=E1|37=O1|11=C1|39=1|150=F|55=AAPL|48=US0378331005|22=4|54=1|44=100|38=5|14=2|32=2|31=100|10=0|",
     ];
     let capture = messages(&codec, &lines);
     assert!(
@@ -1659,9 +1828,9 @@ fn book_arrow_reader_narrows_its_books_to_what_its_filter_keeps() {
 /// Three messages: a bid, a message whose only entry is an opening price -
 /// `MDEntryType(269)` `4`, which no book side holds - and an offer.
 const AROUND_AN_OPENING_PRICE: [&[u8]; 3] = [
-    b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|44=100|38=5|10=0|",
-    b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=1|279=0|269=4|270=100.5|10=0|",
-    b"8=FIX.4.4|35=D|52=20260921-10:00:02|11=C2|55=AAPL|54=2|44=101|38=6|10=0|",
+    b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|48=US0378331005|22=4|54=1|44=100|38=5|10=0|",
+    b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|268=1|279=0|269=4|270=100.5|10=0|",
+    b"8=FIX.4.4|35=D|52=20260921-10:00:02|11=C2|55=AAPL|48=US0378331005|22=4|54=2|44=101|38=6|10=0|",
 ];
 
 /// An entry type no book side holds is excluded, and neither the entries
@@ -1681,7 +1850,7 @@ fn a_book_reads_past_an_entry_type_it_does_not_hold() {
 
     // Within one message, the entries beside it stand.
     let snapshot = message(
-        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=3|269=0|278=B1|270=99|271=1|269=4|270=100|269=1|278=A1|270=101|271=2|10=0|",
+        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=3|269=0|278=B1|270=99|271=1|269=4|270=100|269=1|278=A1|270=101|271=2|10=0|",
     );
     let entries = snapshot.market_data().unwrap();
     assert_eq!(
@@ -1702,9 +1871,9 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
     crate::install::installed();
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
     let messages = [
-        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=1|269=0|278=B1|37=O1|270=100|271=10|10=0|".as_slice(),
-        b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=1|279=1|269=0|278=B1|271=11|10=0|".as_slice(),
-        b"8=FIX.4.4|35=X|52=20260921-10:00:02|55=AAPL|268=1|279=5|269=1|278=B1|270=101|10=0|".as_slice(),
+        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=1|269=0|278=B1|37=O1|270=100|271=10|10=0|".as_slice(),
+        b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|268=1|279=1|269=0|278=B1|271=11|10=0|".as_slice(),
+        b"8=FIX.4.4|35=X|52=20260921-10:00:02|55=AAPL|48=US0378331005|22=4|268=1|279=5|269=1|278=B1|270=101|10=0|".as_slice(),
     ]
     .map(|line| codec.sole_line(line).unwrap());
     let reader = codec.book_arrow_reader(messages, 0, None).unwrap();
@@ -1791,8 +1960,8 @@ fn fix_delete_without_order_id_keeps_terminal_order_delta_through_book_arrow() {
     // level is a price, and a delete stating none is refused rather than
     // given a zero.
     let messages = [
-        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=1|269=0|278=B1|37=O1|270=100|271=10|10=0|".as_slice(),
-        b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=1|279=2|269=0|278=B1|10=0|".as_slice(),
+        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=1|269=0|278=B1|37=O1|270=100|271=10|10=0|".as_slice(),
+        b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|268=1|279=2|269=0|278=B1|10=0|".as_slice(),
     ]
     .map(|line| codec.sole_line(line).unwrap());
     let reader = codec.book_arrow_reader(messages, 0, None).unwrap();
@@ -1832,7 +2001,7 @@ fn lifecycled_order_versions_inherit_symbol_before_book_partitioning() {
     crate::install::installed();
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
     let first = codec
-        .sole_line(b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|44=100|38=5|10=0|")
+        .sole_line(b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|48=US0378331005|22=4|54=1|44=100|38=5|10=0|")
         .unwrap();
     let second = codec
         .sole_line(b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|54=1|44=101|38=6|10=0|")
@@ -1930,18 +2099,19 @@ fn full_refresh_expands_equal_time_entries_stably_and_types_each_one() {
 fn lifted_request_id_keeps_full_snapshot_partitions_distinct() {
     crate::install::installed();
     let initial = message(
-        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|262=REQ-1|268=1|269=0|278=B1|270=100|271=10|10=0|",
+        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|262=REQ-1|268=1|269=0|278=B1|270=100|271=10|10=0|",
     )
     .into_market_data()
     .unwrap();
     assert!(scope_of(&initial[0]).contains("MDReqID=REQ-1"));
-    let mut book = BookEvent::new(transunix(&initial[0]), "AAPL");
+    let mut book = BookEvent::keyed(transunix(&initial[0]), "US0378331005");
     book.add_operations(initial).unwrap();
 
-    let empty_other_request =
-        message(b"8=FIX.4.4|35=W|52=20260921-10:00:01|55=AAPL|262=REQ-2|268=0|10=0|")
-            .into_market_data()
-            .unwrap();
+    let empty_other_request = message(
+        b"8=FIX.4.4|35=W|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|262=REQ-2|268=0|10=0|",
+    )
+    .into_market_data()
+    .unwrap();
     assert!(scope_of(&empty_other_request[0]).contains("MDReqID=REQ-2"));
     assert!(is_full_snapshot(&empty_other_request[0]));
     book.add_operations(empty_other_request).unwrap();
@@ -2135,23 +2305,29 @@ fn borrowed_and_owned_book_expansion_share_stable_effective_time_order() {
 #[test]
 fn incremental_changes_inherit_price_or_size_the_fix_entry_did_not_restate() {
     crate::install::installed();
-    let snapshot = message(b"8=FIX.4.4|35=W|55=AAPL|268=1|269=0|278=B1|270=100|271=10|10=0|")
-        .into_market_data()
-        .unwrap();
-    let mut book = BookEvent::new(transunix(&snapshot[0]), "AAPL");
+    let snapshot = message(
+        b"8=FIX.4.4|35=W|55=AAPL|48=US0378331005|22=4|268=1|269=0|278=B1|270=100|271=10|10=0|",
+    )
+    .into_market_data()
+    .unwrap();
+    let mut book = BookEvent::keyed(transunix(&snapshot[0]), "US0378331005");
     book.add_operations(snapshot).unwrap();
 
-    let size_only = message(b"8=FIX.4.4|35=X|55=AAPL|268=1|279=1|269=0|278=B1|271=11|10=0|")
-        .into_market_data()
-        .unwrap();
+    let size_only = message(
+        b"8=FIX.4.4|35=X|55=AAPL|48=US0378331005|22=4|268=1|279=1|269=0|278=B1|271=11|10=0|",
+    )
+    .into_market_data()
+    .unwrap();
     book.add_operations(size_only).unwrap();
     let live = alive(&book, true)[0];
     assert_eq!(text(live.get_price()).as_deref(), Some("100"));
     assert_eq!(text(live.get_quantity()).as_deref(), Some("11"));
 
-    let price_only = message(b"8=FIX.4.4|35=X|55=AAPL|268=1|279=5|269=0|278=B1|270=101|10=0|")
-        .into_market_data()
-        .unwrap();
+    let price_only = message(
+        b"8=FIX.4.4|35=X|55=AAPL|48=US0378331005|22=4|268=1|279=5|269=0|278=B1|270=101|10=0|",
+    )
+    .into_market_data()
+    .unwrap();
     book.add_operations(price_only).unwrap();
     let live = alive(&book, true)[0];
     assert_eq!(text(live.get_price()).as_deref(), Some("101"));
@@ -2162,16 +2338,16 @@ fn incremental_changes_inherit_price_or_size_the_fix_entry_did_not_restate() {
 fn anonymous_incremental_changes_use_stable_position_identity_or_exclude_ambiguity() {
     crate::install::installed();
     let snapshot = message(
-        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=1|269=0|290=1|270=100|271=10|10=0|",
+        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=1|269=0|290=1|270=100|271=10|10=0|",
     )
     .into_market_data()
     .unwrap();
     let identity = snapshot[0].get_crosscode().to_owned();
-    let mut book = BookEvent::new(transunix(&snapshot[0]), "AAPL");
+    let mut book = BookEvent::keyed(transunix(&snapshot[0]), "US0378331005");
     book.add_operations(snapshot).unwrap();
 
     let change = message(
-        b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=1|279=1|269=0|290=1|271=11|10=0|",
+        b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|268=1|279=1|269=0|290=1|271=11|10=0|",
     )
     .into_market_data()
     .unwrap();
@@ -2195,23 +2371,25 @@ fn anonymous_incremental_changes_use_stable_position_identity_or_exclude_ambigui
 }
 
 /// An incremental change naming no entry and no position or level.
-const ANONYMOUS_UPDATE: &[u8] = b"8=FIX.4.4|35=X|55=AAPL|268=1|279=1|269=0|271=12|10=0|";
+const ANONYMOUS_UPDATE: &[u8] =
+    b"8=FIX.4.4|35=X|55=AAPL|48=US0378331005|22=4|268=1|279=1|269=0|271=12|10=0|";
 
 #[test]
 fn an_empty_full_refresh_clears_its_scope() {
     crate::install::installed();
     let initial = message(
-        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=1|269=0|278=B1|270=100|271=10|10=0|",
+        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=1|269=0|278=B1|270=100|271=10|10=0|",
     )
     .into_market_data()
     .unwrap();
-    let mut book = BookEvent::new(transunix(&initial[0]), "AAPL");
+    let mut book = BookEvent::keyed(transunix(&initial[0]), "US0378331005");
     book.add_operations(initial).unwrap();
     assert_eq!(alive(&book, true).len(), 1);
 
-    let empty = message(b"8=FIX.4.4|35=W|52=20260921-10:00:01|55=AAPL|268=0|10=0|")
-        .into_market_data()
-        .unwrap();
+    let empty =
+        message(b"8=FIX.4.4|35=W|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|268=0|10=0|")
+            .into_market_data()
+            .unwrap();
     assert!(matches!(empty.as_slice(), [MarketData::SnapshotEvent(_)]));
     assert!(is_full_snapshot(&empty[0]));
     assert_eq!(empty[0].get_ticker(), Some("AAPL"));
@@ -2571,29 +2749,25 @@ fn ticker_less_instruments_sharing_an_entry_id_stay_apart_where_either_states_an
             ("3:0:FR0000131104".to_owned(), vec!["70".to_owned()]),
         ])
     );
-    // One states an ISIN: the other stands in the default book's key,
-    // still apart.
+    // One states an ISIN: the other's scope is the number that states
+    // none, still apart, and it holds no instcode, so it is pruned before
+    // the walk and stands in no book (decision 16).
     assert_eq!(
         scopes(&[TOTAL, SECOND]),
         ["Symbol=FR0000120271", "Symbol=XX0000000000"]
     );
     assert_eq!(
         books(&[TOTAL, SECOND]),
-        std::collections::BTreeMap::from([
-            ("3:0:FR0000120271".to_owned(), vec!["60".to_owned()]),
-            ("3:0:XX0000000000".to_owned(), vec!["70".to_owned()]),
-        ])
+        std::collections::BTreeMap::from([("3:0:FR0000120271".to_owned(), vec!["60".to_owned()]),])
     );
-    // Neither does: the one scope they share holds one entry, the later
-    // snapshot's - the limit a ticker-less, identifier-less feed has.
+    // Neither does: the one scope they share - the limit a ticker-less,
+    // identifier-less feed has - and no book at all, both pruned for
+    // stating no instcode (decision 16).
     assert_eq!(
         scopes(&[FIRST, SECOND]),
         ["Symbol=XX0000000000", "Symbol=XX0000000000"]
     );
-    assert_eq!(
-        books(&[FIRST, SECOND]),
-        std::collections::BTreeMap::from([("3:0:XX0000000000".to_owned(), vec!["70".to_owned()])])
-    );
+    assert_eq!(books(&[FIRST, SECOND]), std::collections::BTreeMap::new());
 }
 
 /// A book message's bid and offer naming one `MDEntryID(278)` and no order
@@ -2604,7 +2778,7 @@ fn ticker_less_instruments_sharing_an_entry_id_stay_apart_where_either_states_an
 fn a_bid_and_an_offer_sharing_an_entry_id_stay_two_entries() {
     crate::install::installed();
     let leaves = message(
-        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=E1|270=99|271=5|269=1|278=E1|270=101|271=6|10=0|",
+        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=2|269=0|278=E1|270=99|271=5|269=1|278=E1|270=101|271=6|10=0|",
     )
     .into_market_data()
     .expect("two levels");
@@ -2640,7 +2814,7 @@ fn a_bid_and_an_offer_sharing_an_entry_id_stay_two_entries() {
     // The walk keeps them two chains, each under its own code, and a change
     // to the offer follows the offer alone.
     let change = message(
-        b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=1|279=1|269=1|278=E1|270=102|271=7|10=0|",
+        b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|268=1|279=1|269=1|278=E1|270=102|271=7|10=0|",
     )
     .into_market_data()
     .expect("one level");
@@ -2691,7 +2865,7 @@ fn the_entries_of_a_mass_quote_stay_apart_in_the_lifecycle_and_the_book() {
     let codec = fixed_codec(committed_registry());
     for second in ["MSFT", "AAPL"] {
         let line = format!(
-            "8=FIX.4.4|35=i|52=20260921-10:00:00|117=MQ1|296=1|302=SET1|295=2|299=E1|55=AAPL|132=99|133=101|134=10|135=10|299=E2|55={second}|132=98|134=5|10=0|"
+            "8=FIX.4.4|35=i|52=20260921-10:00:00|117=MQ1|296=1|302=SET1|295=2|299=E1|55=AAPL|48=US0378331005|22=4|132=99|133=101|134=10|135=10|299=E2|55={second}|132=98|134=5|10=0|"
         );
         let parsed: Vec<FixMsg> = codec
             .parse_lines([line.as_bytes()])
@@ -2738,8 +2912,8 @@ fn a_fill_on_one_leg_of_a_two_sided_quote_keeps_the_other() {
     crate::install::installed();
     let codec = fixed_codec(committed_registry());
     let lines: [&[u8]; 2] = [
-        b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|132=99|133=101|134=10|135=10|10=0|",
-        b"8=FIX.4.4|35=8|52=20260921-10:00:01|37=O1|117=Q1|17=X1|150=F|39=1|55=AAPL|54=1|38=10|32=4|31=99|14=4|151=6|10=0|",
+        b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|48=US0378331005|22=4|132=99|133=101|134=10|135=10|10=0|",
+        b"8=FIX.4.4|35=8|52=20260921-10:00:01|37=O1|117=Q1|17=X1|150=F|39=1|55=AAPL|48=US0378331005|22=4|54=1|38=10|32=4|31=99|14=4|151=6|10=0|",
     ];
     let parsed: Vec<FixMsg> = codec
         .parse_lines(lines)
@@ -2811,9 +2985,9 @@ fn the_codec_sorts_a_capture_before_projecting_it() {
     let unsorted = messages(
         &codec,
         &[
-            b"8=FIX.4.4|35=D|52=20260921-10:00:02|11=C2|55=AAPL|54=1|44=100|38=5|10=0|",
-            b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|54=2|133=101|135=7|10=0|",
-            b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|55=AAPL|54=1|44=99|38=5|10=0|",
+            b"8=FIX.4.4|35=D|52=20260921-10:00:02|11=C2|55=AAPL|48=US0378331005|22=4|54=1|44=100|38=5|10=0|",
+            b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|48=US0378331005|22=4|54=2|133=101|135=7|10=0|",
+            b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|55=AAPL|48=US0378331005|22=4|54=1|44=99|38=5|10=0|",
         ],
     );
     let mut sorted = unsorted.clone();
@@ -2860,8 +3034,8 @@ fn sorted_operations_never_regress_when_an_entry_clock_precedes_a_message() {
     let capture = messages(
         &codec,
         &[
-            b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|55=AAPL|54=1|44=99|38=5|10=0|",
-            b"8=FIX.4.4|35=X|52=20260921-10:00:02|55=AAPL|268=1|279=0|269=0|278=B1|270=100|271=10|272=20260921|273=10:00:00.500|10=0|",
+            b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|55=AAPL|48=US0378331005|22=4|54=1|44=99|38=5|10=0|",
+            b"8=FIX.4.4|35=X|52=20260921-10:00:02|55=AAPL|48=US0378331005|22=4|268=1|279=0|269=0|278=B1|270=100|271=10|272=20260921|273=10:00:00.500|10=0|",
         ],
     );
     assert!(
@@ -3148,6 +3322,10 @@ fn keys(value: &MarketData) -> Vec<String> {
 /// `OrdType(40)` and FIX 4.4's `MaxFloor(111)` among them: how it is priced,
 /// and the peak an iceberg shows.
 const UNMAPPED_ORDER: &[u8] = b"8=FIX.4.4|9=120|35=D|49=BUYER|56=VENUE|34=12|52=20260921-10:00:00|11=C1|1=ACC1|55=AAPL|54=1|44=100.5|38=5|40=2|18=G|21=1|111=3|60=20260921-10:00:00|10=123|";
+
+/// [`UNMAPPED_ORDER`] stating its instrument's real ISIN too, so its code
+/// is written at the parse and a book takes it.
+const UNMAPPED_LISTED_ORDER: &[u8] = b"8=FIX.4.4|9=120|35=D|49=BUYER|56=VENUE|34=12|52=20260921-10:00:00|11=C1|1=ACC1|55=AAPL|48=US0378331005|22=4|54=1|44=100.5|38=5|40=2|18=G|21=1|111=3|60=20260921-10:00:00|10=123|";
 
 #[test]
 fn a_leaf_carries_every_unmapped_field_and_no_typed_one() {
@@ -3710,7 +3888,7 @@ fn book_arrow_reader_honours_the_switch() {
     crate::install::installed();
     let live = |codec: yggdryl_fix::FixCodec| {
         let codec = codec.with_batch_row_size(1);
-        let capture = messages(&codec, &[UNMAPPED_ORDER]);
+        let capture = messages(&codec, &[UNMAPPED_LISTED_ORDER]);
         let books = books_of(
             codec
                 .book_arrow_reader(capture, 0, None)
@@ -3727,7 +3905,10 @@ fn book_arrow_reader_honours_the_switch() {
     };
     let filled = live(fixed_codec(committed_registry()));
     let bare = live(fixed_codec(committed_registry()).with_market_metadata(false));
-    assert_eq!(filled.get_metadata().len(), 2);
+    // The two unmapped fields, and the country of issue the stated ISIN
+    // spells - the line states its instrument so a book takes it (decision
+    // 16).
+    assert_eq!(filled.get_metadata().len(), 3);
     assert!(bare.get_metadata().is_empty());
     // The account is no metadata: both hold it.
     for leaf in [&filled, &bare] {
@@ -3874,7 +4055,108 @@ fn a_book_folds_one_instants_steps_of_a_chain_in_the_chains_order() {
 /// test pins that it grew rather than what it is.
 #[cfg(feature = "internals")]
 mod internal {
+    use yggdryl::graph::Element;
     use yggdryl::internals::logging_warning::count;
+    use yggdryl_fix::internals::market::expanded;
+
+    /// A book message stating no instrument of its own, its entries naming
+    /// theirs by ticker alone, is expanded and each code-less entry warned
+    /// of under its own instrument's ticker - never one key for every
+    /// instrument the message reaches (decision 16).
+    #[test]
+    fn a_book_messages_codeless_entries_are_warned_of_by_their_own_ticker() {
+        crate::install::installed();
+        const SITE: &str = "yggdryl_market::graph::book";
+        const WHAT: &str = "book input pruned: it states no instcode";
+        let codec = super::fixed_codec(super::committed_registry());
+        let line: &[u8] = b"8=FIX.4.4|35=X|52=20260921-10:00:01|268=2|\
+279=0|269=0|278=B1|55=AAPL|270=101|271=11|\
+279=0|269=1|278=A1|55=HOLN|270=60|271=5|10=0|";
+        let messages: Vec<yggdryl_fix::FixMsg> = codec
+            .parse_line(line)
+            .unwrap()
+            .collect::<yggdryl::Result<_>>()
+            .unwrap();
+        let before = [count(SITE, WHAT, "AAPL"), count(SITE, WHAT, "HOLN")];
+        let books = super::books_of(
+            codec
+                .book_arrow_reader(messages, 0, None)
+                .expect("a book stream"),
+        );
+        assert!(books.is_empty(), "no entry states a code");
+        assert_eq!(
+            [
+                count(SITE, WHAT, "AAPL") - before[0],
+                count(SITE, WHAT, "HOLN") - before[1],
+            ],
+            [1, 1],
+            "each entry counted under its own ticker"
+        );
+    }
+
+    /// The FIX walk end to end: over a line stating a real ISIN, a
+    /// ticker-only line of the instrument the walk learned from it and a
+    /// ticker-only line of an instrument nobody knows, the books are two of
+    /// one key - the second line booked by the code the lifecycle's fill
+    /// wrote - and the third, holding no `instcode`, is pruned by the
+    /// admission before it is expanded (decision 16).
+    #[test]
+    fn the_book_door_prunes_a_codeless_message_before_expanding_it() {
+        crate::install::installed();
+        use yggdryl_market::graph::Market;
+        let codec = super::fixed_codec(super::committed_registry()).with_batch_row_size(1);
+        let lines: [&[u8]; 3] = [
+            b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=H1|55=HOLN|48=CH0012214059|22=4|54=1|38=10|44=100|10=0|",
+            b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=H2|55=HOLN|54=2|38=5|44=101|10=0|",
+            b"8=FIX.4.4|35=D|52=20260921-10:00:02|11=Z1|55=ZZZZ|54=1|38=1|44=1|10=0|",
+        ];
+        let parsed: Vec<yggdryl_fix::FixMsg> = lines
+            .iter()
+            .flat_map(|line| codec.parse_line(line).unwrap())
+            .collect::<yggdryl::Result<_>>()
+            .unwrap();
+        let walked: Vec<yggdryl_fix::FixMsg> = codec
+            .lifecycle(parsed)
+            .collect::<yggdryl::Result<_>>()
+            .unwrap();
+        assert_eq!(
+            walked
+                .iter()
+                .map(|message| message.get_instcode())
+                .collect::<Vec<_>>(),
+            [Some("CH0012214059"), Some("CH0012214059"), None],
+            "the fill wrote the known ticker's code; the unknown ticker holds none"
+        );
+        let before = expanded();
+        let books = super::books_of(
+            codec
+                .book_arrow_reader(walked, 0, None)
+                .expect("a book stream"),
+        );
+        assert_eq!(
+            expanded() - before,
+            2,
+            "the code-less message is pruned before it is expanded"
+        );
+        let keyed: Vec<(&str, Option<&str>, usize, usize)> = books
+            .iter()
+            .map(|book| {
+                (
+                    book.get_crosscode(),
+                    book.get_instcode(),
+                    super::alive(book, true).len(),
+                    super::alive(book, false).len(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            keyed,
+            [
+                ("3:0:CH0012214059", Some("CH0012214059"), 1, 0),
+                ("3:0:CH0012214059", Some("CH0012214059"), 1, 1),
+            ]
+        );
+    }
     use yggdryl_fix::FixMarketIterator;
     use yggdryl_fix::FixMsg;
     use yggdryl_market::MarketDataKind;

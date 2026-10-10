@@ -29,8 +29,8 @@ IDENTIFIERS_MAP = pa.map_(
 
 def leaves() -> list[Any]:
     """One leaf of every kind, in `MarketData.kinds` order."""
-    order = graph.OrderEvent(CLOCK, crosscode="O-1", side="BUYS", price=D("101"), quantity=5, ticker="ACME")
-    quote = graph.QuoteEvent(CLOCK, crosscode="Q-1", side="SELL", price=D("102"), quantity=3, ticker="ACME")
+    order = graph.OrderEvent(CLOCK, crosscode="O-1", side="BUYS", price=D("101"), quantity=5, ticker="ACME", instcode="ACME")
+    quote = graph.QuoteEvent(CLOCK, crosscode="Q-1", side="SELL", price=D("102"), quantity=3, ticker="ACME", instcode="ACME")
     execution = graph.ExecutionEvent(CLOCK + 1, crosscode="O-1", side="BUYS", lastpx=D("101"), lastqty=5)
     trade = graph.TradeEvent.from_parts(
         graph.ExecutionEvent(CLOCK, crosscode="T-1", ticker="ACME"),
@@ -118,7 +118,7 @@ def test_book_answers_the_control_of_an_operation_or_a_snapshot() -> None:
 def test_a_fix_message_is_held_whole_and_split_where_it_is_written() -> None:
     codec = FixCodec(FixRegistry(), default_sending_time=DataType('datetime64(ns,"UTC")').scalar(CLOCK))
     message = codec.parse_fix_line(
-        b"8=FIX.4.4|35=D|49=S|56=T|34=7|52=20240102-10:15:30|11=A1|55=AAPL|54=1|38=100|44=10.5|59=1|10=0|"
+        b"8=FIX.4.4|35=D|49=S|56=T|34=7|52=20240102-10:15:30|11=A1|55=AAPL|48=US0378331005|22=4|54=1|38=100|44=10.5|59=1|10=0|"
     )
     data = graph.MarketData(message)
     assert data.kind == "fix"
@@ -511,10 +511,10 @@ def test_the_plans_the_views_are() -> None:
 def test_the_delta_and_the_events_of_held_books_are_laid_out_by_kind() -> None:
     def order(clock: int, code: str, side: str) -> graph.OrderEvent:
         return graph.OrderEvent(
-            clock, crosscode=code, side=side, price=D("101"), quantity=1, ticker="ACME", state="NEW"
+            clock, crosscode=code, side=side, price=D("101"), quantity=1, ticker="ACME", instcode="ACME", state="NEW"
         )
 
-    fill = graph.ExecutionEvent(CLOCK + 2, crosscode="E-1", side="BUYS", lastqty=1, ticker="ACME")
+    fill = graph.ExecutionEvent(CLOCK + 2, crosscode="E-1", side="BUYS", lastqty=1, ticker="ACME", instcode="ACME")
     # Three books, one per instant - the fill's an event-only delta book -
     # laid out as rows once and held: what a table of books holds.
     books = list(graph.BookIterator([order(CLOCK, "B-1", "BUYS"), order(CLOCK + 1, "A-1", "SELL"), fill]))
@@ -536,7 +536,7 @@ def test_the_delta_and_the_events_of_held_books_are_laid_out_by_kind() -> None:
     assert laid_out.column("marketdatakind").to_pylist() == [int(MarketDataKind.EXEC)]
     # A snapshot control replacing the membership is an event of the
     # complete book it made, laid out under `BOOK`.
-    control = graph.SnapshotEvent.snapshot(graph.OrderEvent(CLOCK + 3, ticker="ACME"))
+    control = graph.SnapshotEvent.snapshot(graph.OrderEvent(CLOCK + 3, ticker="ACME", instcode="ACME"))
     walked = list(graph.BookIterator([order(CLOCK, "B-1", "BUYS"), control]))
     assert [len(book.controls) for book in walked] == [0, 1]
     controlled = graph.MarketData.arrow_reader(walked).read_all()
@@ -550,10 +550,10 @@ def test_the_delta_and_the_events_of_held_books_are_laid_out_by_kind() -> None:
 
 def test_a_book_row_states_no_sources_while_its_delta_and_events_rows_do() -> None:
     lines = [f"018bcfe5-6800-7000-8000-00000000000{n}" for n in (1, 2, 3)]
-    facts: dict[str, Any] = {"price": D("101"), "quantity": 1, "ticker": "ACME", "state": "NEW"}
+    facts: dict[str, Any] = {"price": D("101"), "quantity": 1, "ticker": "ACME", "instcode": "ACME", "state": "NEW"}
     order = graph.OrderEvent(CLOCK, crosscode="B-1", side="BUYS", srcuuids=[lines[0]], **facts)
     quote = graph.QuoteEvent(CLOCK, crosscode="Q-1", side="BUYS", srcuuids=[lines[1]], **facts)
-    fill = graph.ExecutionEvent(CLOCK, crosscode="E-1", side="BUYS", lastqty=1, ticker="ACME", srcuuids=[lines[2]])
+    fill = graph.ExecutionEvent(CLOCK, crosscode="E-1", side="BUYS", lastqty=1, ticker="ACME", instcode="ACME", srcuuids=[lines[2]])
     book = graph.BookEvent(CLOCK, "ACME").with_operations([order, quote, fill])
     # A book states no sources; the events it holds keep theirs.
     assert book.srcuuids == []

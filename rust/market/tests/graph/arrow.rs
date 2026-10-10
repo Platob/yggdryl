@@ -42,6 +42,7 @@ fn operation<K: OperationKind>(
     operation.set_unit(Unit::new("share").unwrap(), true);
     operation.set_side(Side::read(side).unwrap(), true);
     operation.set_ticker(Some(SmolStr::new("ACME")), true);
+    operation.set_instcode(Some(yggdryl::Str::new("ACME")), true);
     operation.set_state(State::read(state).unwrap());
     operation
         .insert_identifier(Identifier::new(IdKey::base(ENTRY_ID), code).unwrap())
@@ -84,6 +85,7 @@ fn trade(unix: i64, code: &str) -> TradeEvent {
     let mut root = OrderEvent::at(unix);
     root.set_crosscode(code.to_owned());
     root.set_ticker(Some(SmolStr::new("ACME")), true);
+    root.set_instcode(Some(yggdryl::Str::new("ACME")), true);
     root.set_state(State::read("Filled").unwrap());
     root.finalize();
     TradeEvent::from_parts(
@@ -100,6 +102,7 @@ fn snapshot(unix: i64, code: &str) -> SnapshotEvent {
     let mut event = OrderEvent::at(unix);
     event.set_crosscode(code.to_owned());
     event.set_ticker(Some(SmolStr::new("ACME")), true);
+    event.set_instcode(Some(yggdryl::Str::new("ACME")), true);
     event.finalize();
     SnapshotEvent::snapshot(&event, Some(SmolStr::new("Symbol=ACME")))
 }
@@ -107,7 +110,7 @@ fn snapshot(unix: i64, code: &str) -> SnapshotEvent {
 /// A book of one order and one quote in its `delta`, and the execution
 /// beside them, resting on no side, among its `events`.
 fn book(unix: i64) -> BookEvent {
-    let mut book = BookEvent::new(unix, "ACME");
+    let mut book = BookEvent::keyed(unix, "ACME");
     book.add_operations([
         MarketData::from(order(unix, &format!("O-{unix}"))),
         MarketData::from(quote(unix, &format!("Q-{unix}"))),
@@ -121,7 +124,7 @@ fn book(unix: i64) -> BookEvent {
 /// its `delta`, states a walk-time control no row carries, and the snapshot
 /// control that replaced the scope's membership is among its `events`.
 fn snapshot_book(unix: i64) -> BookEvent {
-    let mut book = BookEvent::new(unix, "ACME");
+    let mut book = BookEvent::keyed(unix, "ACME");
     book.add_operations([
         MarketData::from(entry(unix, &format!("Q-{unix}"), MdUpdateAction::Snapshot)),
         MarketData::from(snapshot(unix, &format!("W-{unix}"))),
@@ -149,7 +152,7 @@ fn every_leaf() -> Vec<MarketData> {
         MarketData::from(trade(8, "T-8")),
         MarketData::from(book(9)),
         MarketData::from(snapshot_book(10)),
-        MarketData::from(BookEvent::new(11, "EMPTY")),
+        MarketData::from(BookEvent::keyed(11, "EMPTY")),
         MarketData::from(snapshot(12, "W-12")),
     ]
 }
@@ -218,7 +221,7 @@ fn resting(unix: i64, code: &str, side: &str, price: Option<i64>, quantity: i64)
 
 /// A book of two priced levels and one unpriced entry on each side.
 fn deep_book(unix: i64) -> BookEvent {
-    let mut book = BookEvent::new(unix, "ACME");
+    let mut book = BookEvent::keyed(unix, "ACME");
     book.add_operations([
         resting(unix, "B-1", "Buy", Some(101), 3),
         resting(unix, "B-2", "Buy", Some(100), 2),
@@ -829,7 +832,7 @@ fn a_dated_book_row_is_told_by_its_alive_entries() {
     );
 
     // An empty book states its entries, none, and reads back a book.
-    let empty = written(vec![MarketData::from(BookEvent::new(11, "EMPTY"))]);
+    let empty = written(vec![MarketData::from(BookEvent::keyed(11, "EMPTY"))]);
     assert!(!empty.column_by_name("alive").unwrap().is_null(0));
     let actual = read(batch_reader(empty.schema(), [empty])).unwrap();
     assert_eq!(actual[0].kind(), MarketKind::BookEvent);
@@ -1554,6 +1557,7 @@ fn an_operation_stating_no_price_or_quantity_round_trips_as_null() {
     let mut unstated = ExecutionEvent::at(5);
     unstated.set_crosscode("E-5".to_owned());
     unstated.set_ticker(Some(SmolStr::new("ACME")), true);
+    unstated.set_instcode(Some(yggdryl::Str::new("ACME")), true);
     unstated.set_side(Side::read("Buy").unwrap(), true);
     unstated.set_state(State::read("Filled").unwrap());
     unstated.set_lastpx(Some(Decimal::from_int(105)), true);
@@ -1787,7 +1791,7 @@ fn a_book_round_trips_its_price_levels() {
     assert_eq!(alive.value_length(0), 6);
 
     // An empty side is an empty list, and an operation states no levels.
-    let mut one_sided = BookEvent::new(10, "ACME");
+    let mut one_sided = BookEvent::keyed(10, "ACME");
     one_sided
         .add_operations([resting(10, "B-1", "Buy", Some(101), 3)])
         .unwrap();
@@ -1839,7 +1843,7 @@ fn a_stated_limit_that_differs_is_refused_on_its_row() {
 #[test]
 fn a_book_limit_states_whether_its_level_trades() {
     crate::install::installed();
-    let mut book = BookEvent::new(10, "ACME");
+    let mut book = BookEvent::keyed(10, "ACME");
     let stating = |code: &str, price: i64, tradable: bool| {
         let MarketData::OrderEvent(mut entry) = resting(10, code, "Buy", Some(price), 1) else {
             unreachable!("an order rests as an order");
@@ -2099,7 +2103,7 @@ fn a_complete_empty_book_stating_a_delta_and_no_snapshot_instant_reads_back_as_a
     ended.finalize();
     // The fixtures' orders state ACME's ticker: a book keyed otherwise
     // refuses them.
-    let mut book = BookEvent::new(1, "ACME");
+    let mut book = BookEvent::keyed(1, "ACME");
     book.add_operations([MarketData::from(order(1, "O-1")), MarketData::from(ended)])
         .unwrap();
     assert!(book.is_complete());
@@ -2131,7 +2135,7 @@ fn a_complete_empty_book_stating_a_delta_and_no_snapshot_instant_reads_back_as_a
         assert_eq!(read_back.events().len(), 0);
         let rebuilt = read_back
             .clone()
-            .with_previous(&BookEvent::new(1, "ACME"))
+            .with_previous(&BookEvent::keyed(1, "ACME"))
             .unwrap();
         assert!(rebuilt.is_complete());
         assert_eq!(rebuilt.alive().count(), 0);
@@ -2153,7 +2157,7 @@ fn a_delta_book_row_states_no_alive_entry_and_no_limits() {
     let values = vec![
         MarketData::from(books[0].clone()),
         MarketData::from(books[1].clone()),
-        MarketData::from(BookEvent::new(30, "EMPTY")),
+        MarketData::from(BookEvent::keyed(30, "EMPTY")),
     ];
     let batch = written(values.clone());
     for name in ["alive", "bidlimits", "asklimits"] {
@@ -2193,7 +2197,7 @@ fn a_delta_book_row_states_no_alive_entry_and_no_limits() {
         // the second over the first, each under its own identity.
         let first = actual[0]
             .clone()
-            .with_previous(&BookEvent::new(20, "ACME"))
+            .with_previous(&BookEvent::keyed(20, "ACME"))
             .unwrap();
         assert_eq!(first.get_uuid(), books[0].get_uuid());
         assert_eq!(first.alive().count(), 2);
@@ -2254,7 +2258,7 @@ fn an_event_only_book_row_reads_back_as_a_delta_book_never_a_control() {
     let delta_nulled = with_column(&batch, "delta", new_null_array(delta.data_type(), 1));
     let previous = books[0]
         .clone()
-        .with_previous(&BookEvent::new(40, "ACME"))
+        .with_previous(&BookEvent::keyed(40, "ACME"))
         .unwrap();
     assert_eq!(previous.alive().count(), 1);
     for batch in [batch.clone(), with_null_lists_emptied(&batch), delta_nulled] {
@@ -2336,6 +2340,7 @@ fn a_complete_book_whose_sides_order_a_level_differently_round_trips() {
         let mut quote = QuoteEvent::at(unix);
         quote.set_crosscode(code.to_owned());
         quote.set_ticker(Some(SmolStr::new("ACME")), true);
+        quote.set_instcode(Some(yggdryl::Str::new("ACME")), true);
         quote.set_bidpx(Some(Decimal::from_int(bid.0)), true);
         quote.set_bidqty(Some(Decimal::from_int(bid.1)), true);
         quote.set_askpx(Some(Decimal::from_int(ask.0)), true);
@@ -2344,13 +2349,13 @@ fn a_complete_book_whose_sides_order_a_level_differently_round_trips() {
         quote.finalize();
         MarketData::from(quote)
     };
-    let mut tied = BookEvent::new(1, "ACME");
+    let mut tied = BookEvent::keyed(1, "ACME");
     tied.add_operations([
         quote("Q-2", 1, (98, 5), (101, 5)),
         quote("Q-1", 1, (99, 10), (101, 20)),
     ])
     .unwrap();
-    let mut crossed_kinds = BookEvent::new(1, "ACME");
+    let mut crossed_kinds = BookEvent::keyed(1, "ACME");
     crossed_kinds
         .add_operations([
             resting(1, "A-1", "Sell", Some(101), 1),
@@ -2433,7 +2438,7 @@ fn delta_books_read_back_replay_their_ranges_and_positions() {
         .collect::<yggdryl::Result<_>>()
         .unwrap();
     let fold = |books: Vec<BookEvent>| {
-        let mut last = BookEvent::new(0, "ACME");
+        let mut last = BookEvent::keyed(0, "ACME");
         books
             .into_iter()
             .map(|book| {
@@ -2555,7 +2560,7 @@ fn a_delta_book_row_stating_another_chain_is_refused_at_its_identity() {
     let error = refusal(with_column(&batch, "prevuuid", itself));
     assert!(error.contains("$[0].uuid"), "{error}");
 
-    let empty = written(vec![MarketData::from(BookEvent::new(21, "EMPTY"))]);
+    let empty = written(vec![MarketData::from(BookEvent::keyed(21, "EMPTY"))]);
     let none = Arc::clone(empty.column_by_name("delta").unwrap());
     let error = refusal(with_column(&batch, "delta", none));
     assert!(error.contains("$[0].uuid"), "{error}");
@@ -2683,6 +2688,7 @@ fn a_batch_of_books_with_many_alive_entries_casts_to_the_stored_layout_whole() {
         let mut order = OrderEvent::at(unix);
         order.set_crosscode(code);
         order.set_ticker(Some("AAPL".into()), true);
+        order.set_instcode(Some(yggdryl::Str::new("AAPL")), true);
         order.set_side(side, true);
         order.set_price(Some(Decimal::from_int(189)), true);
         order.set_quantity(Some(Decimal::from_int(100)), true);

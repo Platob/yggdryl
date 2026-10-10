@@ -654,6 +654,7 @@ pub mod internals {
     pub use crate::global::internals as global;
     pub use crate::group_plan::internals as group_plan;
     pub use crate::identity::internals as identity;
+    pub use crate::market::internals as market;
     pub use crate::memo::internals as memo;
     pub use crate::msgtype::internals as msgtype;
     pub use crate::registry::internals as registry;

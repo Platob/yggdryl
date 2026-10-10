@@ -50,7 +50,7 @@ fn a_followers_derived_real_isin_stands_over_its_chains_masked_statement() {
     let last = &chained[2];
     assert_eq!(last.get_prevuuid(), Some(chained[0].get_uuid()));
     assert_eq!(last.get_isincode(), Some("US0378331005"));
-    assert_eq!(last.book_crosscode(), "US0378331005");
+    assert_eq!(last.get_instcode(), Some("US0378331005"));
     assert!(last.get_securityids().is_derived(&IdType::Isin));
     assert_eq!(
         last.get_securityids().get(&IdType::Cusip),

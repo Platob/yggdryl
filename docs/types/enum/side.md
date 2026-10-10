@@ -364,7 +364,7 @@ assert_eq!(Side::Buy.merge_with(Side::Unknown), Side::Buy);
     use yggdryl_market::Side;
     yggdryl_market::install()?;
 
-    let book = BookEvent::new(1, "ACME");
+    let book = BookEvent::keyed(1, "ACME");
     assert_eq!(book.get_side(), Side::Both);
     assert_eq!(book.get_crosscode(), "3:0:ACME");
 

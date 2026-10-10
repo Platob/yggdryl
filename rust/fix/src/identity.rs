@@ -483,7 +483,7 @@ pub(super) const MARKET_TAGS: [i32; 47] = [
 /// `NoMDEntries(268)` occurrence, one line per tag naming what it feeds:
 /// the reads of `Facts::record` in `market.rs`. What a book message's root
 /// states for its entries is [`BOOK_ROOT_TAGS`], a part of these.
-pub(super) const BOOK_ENTRY_TAGS: [i32; 23] = [
+pub(super) const BOOK_ENTRY_TAGS: [i32; 25] = [
     279,  // MDUpdateAction: the book control's action, and the state
     269,  // MDEntryType: the leaf's kind, and a level's side
     278,  // MDEntryID: crosscode, and the MDENTRYID alternate identifier
@@ -496,6 +496,8 @@ pub(super) const BOOK_ENTRY_TAGS: [i32; 23] = [
     273,  // MDEntryTime: transunix, creaunix or execunix
     37,   // OrderID: an order rather than a quote, and the orderid identifier
     55,   // Symbol: ticker, and the book scope
+    48,   // SecurityID: the entry's own instrument, its securityids and instcode
+    22,   // SecurityIDSource: the type its SecurityID is read under
     54,   // Side: a trade entry's side
     290,  // MDEntryPositionNo: the control's position, and crosscode
     1023, // MDPriceLevel: crosscode

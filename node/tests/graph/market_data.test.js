@@ -21,8 +21,8 @@ const LEAF_KINDS = graph.MarketData.kinds().filter((kind) => kind !== 'fix')
 
 // One leaf of every kind, in `LEAF_KINDS` order.
 function leaves() {
-  const order = new graph.OrderEvent(CLOCK, { crosscode: 'O-1', side: 'BUYS', price: '101', quantity: 5, ticker: 'ACME' })
-  const quote = new graph.QuoteEvent(CLOCK, { crosscode: 'Q-1', side: 'SELL', price: '102', quantity: 3, ticker: 'ACME' })
+  const order = new graph.OrderEvent(CLOCK, { crosscode: 'O-1', side: 'BUYS', price: '101', quantity: 5, ticker: 'ACME', instcode: 'ACME' })
+  const quote = new graph.QuoteEvent(CLOCK, { crosscode: 'Q-1', side: 'SELL', price: '102', quantity: 3, ticker: 'ACME', instcode: 'ACME' })
   const execution = new graph.ExecutionEvent(CLOCK + 1n, { crosscode: 'O-1', side: 'BUYS', lastpx: '101', lastqty: 5 })
   const trade = graph.TradeEvent.fromParts(new graph.ExecutionEvent(CLOCK, { crosscode: 'T-1', ticker: 'ACME' }), [
     new graph.ExecutionEvent(CLOCK, { crosscode: 'E-1', side: 'BUYS', lastpx: '1', lastqty: 1 }),
@@ -310,11 +310,11 @@ test('an undated row needs no clock', () => {
 
 test('a book row states no sources while its delta and events rows do', () => {
   const lines = [1, 2, 3].map((n) => `018bcfe5-6800-7000-8000-00000000000${n}`)
-  const facts = { price: '101', quantity: 1, ticker: 'ACME', state: 'NEW' }
+  const facts = { price: '101', quantity: 1, ticker: 'ACME', instcode: 'ACME', state: 'NEW' }
   const order = new graph.OrderEvent(CLOCK, { crosscode: 'B-1', side: 'BUYS', srcuuids: [lines[0]], ...facts })
   const quote = new graph.QuoteEvent(CLOCK, { crosscode: 'Q-1', side: 'BUYS', srcuuids: [lines[1]], ...facts })
   const fill = new graph.ExecutionEvent(CLOCK, {
-    crosscode: 'E-1', side: 'BUYS', lastqty: 1, ticker: 'ACME', srcuuids: [lines[2]],
+    crosscode: 'E-1', side: 'BUYS', lastqty: 1, ticker: 'ACME', instcode: 'ACME', srcuuids: [lines[2]],
   })
   const book = new graph.BookEvent(CLOCK, 'ACME').withOperations([order, quote, fill])
   // A book states no sources; the events it holds keep theirs.

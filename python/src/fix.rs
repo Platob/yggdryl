@@ -3472,11 +3472,14 @@ impl PyFixCodec {
     ///
     /// `snapshot_millis` enables epoch-aligned book snapshots, at which a
     /// complete book is emitted; every other book is a delta book, stating
-    /// its delta and its events alone. One book
-    /// is kept per book key - the instrument's ISIN, else its ticker, else
-    /// `XX0000000000`. `filter` - a `Filter`, a `Term`, an `Expression` or
-    /// the text of a predicate over the `marketdata` row - narrows what the
-    /// books fold, and never admits a kind they do not; `None` keeps every
+    /// its delta and its events alone. One book is kept per instrument's
+    /// cross code (`instcode`): a message stating none - a ticker-only line
+    /// no lifecycle filled, a masked number - is pruned before it is
+    /// expanded, and a `W` or `X` message's entries are admitted one by
+    /// one, an entry stating its own `SecurityID(48)` booked by the code it
+    /// spells. `filter` - a `Filter`, a `Term`, an `Expression` or the text
+    /// of a predicate over the `marketdata` row - narrows what the books
+    /// fold, and never admits a kind they do not; `None` keeps every
     /// booked leaf. Lifecycle enrichment is explicit: pass
     /// `codec.lifecycle(messages)` when it is wanted. Each leaf carries its
     /// message's unmapped fields where `market_metadata` says so.

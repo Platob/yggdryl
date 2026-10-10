@@ -49,6 +49,7 @@ function orderEvent(facts = {}) {
     crosscode: 'G-1',
     side: 'BUYS',
     ticker: 'ACME',
+    instcode: 'ACME',
     price: '100.25',
     currency: 'USD',
     quantity: 10,

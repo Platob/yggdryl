@@ -22,7 +22,7 @@ use yggdryl::expression::IntoFilter;
 use yggdryl::graph::{Element, Event};
 use yggdryl::implementer::warned;
 use yggdryl::xxhash::Xxh3;
-use yggdryl::{Ccy, Decimal, Error, Isin, Result, State, Unit, Uuid, i256};
+use yggdryl::{Ccy, Decimal, Error, Result, State, Str, Unit, Uuid, i256};
 
 /// The identifier type an entry's own `MDEntryID(278)` is held under.
 pub const ENTRY_ID: IdType = IdType::MdEntryId;
@@ -1944,32 +1944,22 @@ fn unsettled(stated: &MarketEventFacts, settled: &MarketEventFacts) -> Option<&'
 }
 
 impl BookEvent {
-    /// An empty book of the ticker `symbol` at one nanosecond instant: keyed
-    /// by the ticker, which it states, and taking the inputs keyed to it -
-    /// stating that ticker and no ISIN - and those stating neither ISIN nor
-    /// ticker. An empty `symbol` keys the book [`Isin::NONE`], the number
-    /// that states none, and states no ticker. A book holds both sides: its
-    /// side is [`Side::Both`].
-    #[must_use]
-    pub fn new(unix: i64, symbol: impl Into<String>) -> Self {
-        let symbol = symbol.into();
-        if symbol.is_empty() {
-            return Self::keyed(unix, Isin::NONE);
-        }
-        let mut book = Self::keyed(unix, symbol.as_str());
-        book.event.set_ticker(Some(SmolStr::new(symbol)), true);
-        book.finalize();
-        book
-    }
-
-    /// An empty book keyed `key` at one nanosecond instant: `key` is its
-    /// crosscode, what [`Market::book_crosscode`] answers for every input
-    /// it takes - an instrument's ISIN, a ticker, or [`Isin::NONE`] - and
-    /// the book states neither a ticker nor an ISIN until its first input
-    /// states each, and its side is [`Side::Both`], whatever it is set to.
-    /// The empty base every walk starts a code's books from,
-    /// which a code's first book, a delta book following no book, rebuilds
-    /// over with [`Element::with_previous`]:
+    /// An empty book keyed `key` at one nanosecond instant: `key` is the
+    /// instrument's cross code ([`Market::get_instcode`]) every input it
+    /// takes states - a real ISIN, an FX pair's `IF:EUR/USD`, a
+    /// derivative's `class:body` - which the book states as its own
+    /// `instcode`, so a book row's `instcode` cell is its key and joins the
+    /// instruments table as every other market table does; the book
+    /// states neither a ticker nor an ISIN until its first input states
+    /// each, and its side is [`Side::Both`], whatever it is set to. A key
+    /// spelled as a stored book cross code (`3:0:IBM`) is read as one: its
+    /// base is the code. An
+    /// empty `key` keys a book by nothing, whose cross code is empty, which
+    /// states no `instcode` and which takes nothing, since an input stating
+    /// no code stands in no book. The one
+    /// constructor, and the empty base every walk starts a code's books
+    /// from, which a code's first book, a delta book following no book,
+    /// rebuilds over with [`Element::with_previous`]:
     ///
     /// ```
     /// use yggdryl_market::graph::{BookEvent, BookIterator, Market, MarketData, OrderEvent};
@@ -1981,6 +1971,7 @@ impl BookEvent {
     /// #     yggdryl_market::install().unwrap();
     /// let mut order = OrderEvent::at(1);
     /// order.set_crosscode("B-1".to_owned());
+    /// order.set_instcode(Some("CH0012214059".into()), true);
     /// order.insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "CH0012214059")?)?;
     /// order.set_ticker(Some("HOLN".into()), true);
     /// order.set_side(Side::Buy, true);
@@ -1992,6 +1983,7 @@ impl BookEvent {
     ///     .next()
     ///     .expect("a book")?;
     /// assert_eq!(first.get_crosscode(), "3:0:CH0012214059");
+    /// assert_eq!(first.get_instcode(), Some("CH0012214059"));
     /// assert_eq!(first.get_isincode(), Some("CH0012214059"));
     /// assert_eq!(first.get_ticker(), Some("HOLN"));
     /// assert!(!first.is_complete());
@@ -2003,9 +1995,14 @@ impl BookEvent {
     /// ```
     #[must_use]
     pub fn keyed(unix: i64, key: impl Into<String>) -> Self {
+        let key = key.into();
         let mut event = MarketEventFacts::at(unix);
         event.set_marketdatakind(crate::MarketDataKind::Book);
-        event.set_crosscode(key.into());
+        event.set_crosscode(key);
+        // The key is read as a stored cross code is: its base is the code.
+        let code = super::market::base_crosscode(event.get_crosscode());
+        let instcode = (!code.is_empty()).then(|| Str::new(code));
+        event.set_instcode(instcode, true);
         event.set_state(State::New);
         let mut book = Self {
             event,
@@ -2102,13 +2099,13 @@ impl BookEvent {
 
     pub(super) fn validate_parts(&self) -> Result<()> {
         let key = super::market::base_crosscode(self.event.get_crosscode());
-        // The book's own facts spell its key, as every input's do.
-        if let Some(reason) = book_mismatch(key, &self.event) {
+        // The book's own facts spell its key, as every input's do - but the
+        // book keyed by nothing, which states no code and holds no input.
+        let codeless = key.is_empty() && self.event.get_instcode().is_none();
+        if !codeless && let Some(reason) = book_mismatch(key, &self.event) {
             return Err(invalid(
                 "$.crosscode",
-                format_smolstr!(
-                    "expected the book's isincode or ticker to spell its key: {reason}"
-                ),
+                format_smolstr!("expected the book's instcode to spell its key: {reason}"),
             ));
         }
         validate_symbols(key, ALIVE, self.alive())?;
@@ -2139,6 +2136,7 @@ impl BookEvent {
     /// let order = |code: &str, unix: i64, price: i64| {
     ///     let mut order = OrderEvent::at(unix);
     ///     order.set_crosscode(code.to_owned());
+    ///     order.set_instcode(Some("ACME".into()), true);
     ///     order.set_ticker(Some("ACME".into()), true);
     ///     order.set_side(Side::Buy, true);
     ///     order.set_price(Some(Decimal::from_int(price)), true);
@@ -2159,7 +2157,7 @@ impl BookEvent {
     /// assert_eq!(books[1].best_price(Side::Buy), Some(Decimal::from_int(100)));
     /// // The first is whole over the empty book a walk starts from, and the
     /// // next over it, each under its own identity.
-    /// let first = books[0].clone().with_previous(&BookEvent::new(1, "ACME")).expect("a rebuild");
+    /// let first = books[0].clone().with_previous(&BookEvent::keyed(1, "ACME")).expect("a rebuild");
     /// let rebuilt = books[1].clone().with_previous(&first).expect("a rebuild");
     /// assert!(first.is_complete() && rebuilt.is_complete());
     /// assert_eq!(rebuilt.alive().count(), 2);
@@ -2197,6 +2195,7 @@ impl BookEvent {
     /// let order = |code: &str, side: Side, price: i64| {
     ///     let mut order = OrderEvent::at(1);
     ///     order.set_crosscode(code.to_owned());
+    ///     order.set_instcode(Some("ACME".into()), true);
     ///     order.set_side(side, true);
     ///     order.set_price(Some(Decimal::from_int(price)), true);
     ///     order.set_quantity(Some(Decimal::ONE), true);
@@ -2204,7 +2203,7 @@ impl BookEvent {
     ///     order.finalize();
     ///     MarketData::from(order)
     /// };
-    /// let mut book = BookEvent::new(1, "ACME");
+    /// let mut book = BookEvent::keyed(1, "ACME");
     /// book.add_operations([
     ///     order("B-1", Side::Buy, 99),
     ///     order("A-1", Side::Sell, 101),
@@ -2258,17 +2257,19 @@ impl BookEvent {
     /// #     yggdryl_market::install().unwrap();
     /// let mut order = OrderEvent::at(1);
     /// order.set_crosscode("B-1".to_owned());
+    /// order.set_instcode(Some("ACME".into()), true);
     /// order.set_side(Side::Buy, true);
     /// order.set_price(Some(Decimal::from_int(100)), true);
     /// order.set_quantity(Some(Decimal::ONE), true);
     /// order.set_state(State::New);
     /// order.finalize();
-    /// let mut book = BookEvent::new(1, "ACME");
+    /// let mut book = BookEvent::keyed(1, "ACME");
     /// book.add_operations([MarketData::from(order)])?;
     /// // A second later an execution alone: the book records it and moves
     /// // no side.
     /// let mut fill = ExecutionEvent::at(2);
     /// fill.set_crosscode("E-1".to_owned());
+    /// fill.set_instcode(Some("ACME".into()), true);
     /// fill.set_side(Side::Buy, true);
     /// fill.set_lastqty(Some(Decimal::ONE), true);
     /// fill.finalize();
@@ -2279,7 +2280,7 @@ impl BookEvent {
     /// assert_eq!(recorded, ["8:1:E-1"]);
     /// assert_eq!(book.alive().count(), 1);
     /// // A nested book is refused by kind, the book untouched.
-    /// assert!(book.add_operations([MarketData::from(BookEvent::new(2, "ACME"))]).is_err());
+    /// assert!(book.add_operations([MarketData::from(BookEvent::keyed(2, "ACME"))]).is_err());
     /// assert_eq!(book.events().len(), 1);
     /// # Ok(())
     /// # }
@@ -2307,6 +2308,7 @@ impl BookEvent {
     /// let order = |unix: i64, code: &str, price: i64, state: State| {
     ///     let mut order = OrderEvent::at(unix);
     ///     order.set_crosscode(code.to_owned());
+    ///     order.set_instcode(Some("ACME".into()), true);
     ///     order.set_side(Side::Buy, true);
     ///     order.set_price(Some(Decimal::from_int(price)), true);
     ///     order.set_quantity(Some(Decimal::ONE), true);
@@ -2314,7 +2316,7 @@ impl BookEvent {
     ///     order.finalize();
     ///     MarketData::from(order)
     /// };
-    /// let mut book = BookEvent::new(1, "ACME");
+    /// let mut book = BookEvent::keyed(1, "ACME");
     /// book.add_operations([order(1, "B-1", 99, State::New), order(1, "B-2", 100, State::New)])?;
     /// // A second later B-1 is cancelled and B-3 placed.
     /// book.add_operations([order(2, "B-1", 99, State::Canceled), order(2, "B-3", 98, State::New)])?;
@@ -2362,22 +2364,25 @@ impl BookEvent {
     /// #     yggdryl_market::install().unwrap();
     /// let mut order = OrderEvent::at(1);
     /// order.set_crosscode("B-1".to_owned());
+    /// order.set_instcode(Some("ACME".into()), true);
     /// order.set_side(Side::Buy, true);
     /// order.set_price(Some(Decimal::from_int(100)), true);
     /// order.set_quantity(Some(Decimal::ONE), true);
     /// order.finalize();
     /// let mut quote = QuoteEvent::at(1);
     /// quote.set_crosscode("Q-1".to_owned());
+    /// quote.set_instcode(Some("ACME".into()), true);
     /// quote.set_side(Side::Sell, true);
     /// quote.set_price(Some(Decimal::from_int(101)), true);
     /// quote.set_quantity(Some(Decimal::ONE), true);
     /// quote.finalize();
     /// let mut fill = ExecutionEvent::at(1);
     /// fill.set_crosscode("E-1".to_owned());
+    /// fill.set_instcode(Some("ACME".into()), true);
     /// fill.set_side(Side::Buy, true);
     /// fill.set_lastqty(Some(Decimal::ONE), true);
     /// fill.finalize();
-    /// let mut book = BookEvent::new(1, "ACME");
+    /// let mut book = BookEvent::keyed(1, "ACME");
     /// book.add_operations([MarketData::from(order), MarketData::from(fill), MarketData::from(quote)])?;
     /// assert_eq!(book.executions().map(Element::get_crosscode).collect::<Vec<_>>(), ["8:1:E-1"]);
     /// assert_eq!(book.quotes().map(Element::get_crosscode).collect::<Vec<_>>(), ["14:0:Q-1"]);
@@ -2405,15 +2410,18 @@ impl BookEvent {
     /// #     yggdryl_market::install().unwrap();
     /// let mut order = OrderEvent::at(1);
     /// order.set_crosscode("B-1".to_owned());
+    /// order.set_instcode(Some("ACME".into()), true);
     /// order.set_side(Side::Buy, true);
     /// order.set_price(Some(Decimal::from_int(100)), true);
     /// order.set_quantity(Some(Decimal::ONE), true);
     /// order.set_state(State::New);
     /// order.finalize();
-    /// let mut book = BookEvent::new(1, "ACME");
+    /// let mut book = BookEvent::keyed(1, "ACME");
     /// book.add_operations([MarketData::from(order)])?;
     /// // A second later a full snapshot states the book empty.
-    /// let control = SnapshotEvent::snapshot(&OrderEvent::at(2), None);
+    /// let mut cleared = OrderEvent::at(2);
+    /// cleared.set_instcode(Some("ACME".into()), true);
+    /// let control = SnapshotEvent::snapshot(&cleared, None);
     /// book.add_operations([MarketData::from(control)])?;
     /// assert_eq!(book.alive().count(), 0);
     /// assert_eq!(book.delta().len(), 0);
@@ -2512,6 +2520,7 @@ impl BookEvent {
     /// let order = |code: &str, price: Option<i64>, quantity: i64, tradable: Option<bool>| {
     ///     let mut order = OrderEvent::at(1);
     ///     order.set_crosscode(code.to_owned());
+    ///     order.set_instcode(Some("ACME".into()), true);
     ///     order.set_side(Side::Buy, true);
     ///     order.set_price(price.map(Decimal::from_int), true);
     ///     order.set_quantity(Some(Decimal::from_int(quantity)), true);
@@ -2520,7 +2529,7 @@ impl BookEvent {
     ///     order.finalize();
     ///     MarketData::from(order)
     /// };
-    /// let mut book = BookEvent::new(1, "ACME");
+    /// let mut book = BookEvent::keyed(1, "ACME");
     /// book.add_operations([
     ///     order("A", Some(100), 2, None),
     ///     order("MARKET", None, 5, Some(false)),
@@ -2572,6 +2581,7 @@ impl BookEvent {
     /// let order = |code: &str, price: Option<i64>, quantity: i64| {
     ///     let mut order = OrderEvent::at(1);
     ///     order.set_crosscode(code.to_owned());
+    ///     order.set_instcode(Some("ACME".into()), true);
     ///     order.set_side(Side::Sell, true);
     ///     order.set_price(price.map(Decimal::from_int), true);
     ///     order.set_quantity(Some(Decimal::from_int(quantity)), true);
@@ -2579,7 +2589,7 @@ impl BookEvent {
     ///     order.finalize();
     ///     MarketData::from(order)
     /// };
-    /// let mut book = BookEvent::new(1, "ACME");
+    /// let mut book = BookEvent::keyed(1, "ACME");
     /// book.add_operations([
     ///     order("A", Some(102), 2),
     ///     order("B", Some(101), 3),
@@ -2624,6 +2634,7 @@ impl BookEvent {
     /// let order = |code: &str, side: &str, price: i64| {
     ///     let mut order = OrderEvent::at(1);
     ///     order.set_crosscode(code.to_owned());
+    ///     order.set_instcode(Some("ACME".into()), true);
     ///     order.set_side(Side::read(side).unwrap(), true);
     ///     order.set_price(Some(Decimal::from_int(price)), true);
     ///     order.set_quantity(Some(Decimal::from_int(1)), true);
@@ -2632,7 +2643,7 @@ impl BookEvent {
     ///     order.finalize();
     ///     MarketData::from(order)
     /// };
-    /// let mut book = BookEvent::new(1, "ACME");
+    /// let mut book = BookEvent::keyed(1, "ACME");
     /// book.add_operations([order("B", "Buy", 100), order("A", "Sell", 100)])?;
     /// assert!(book.is_locked() && !book.is_crossed());
     /// assert_eq!(book.spread(), Some(Decimal::ZERO));
@@ -2663,6 +2674,7 @@ impl BookEvent {
     /// let order = |code: &str, side: &str, price: &str| {
     ///     let mut order = OrderEvent::at(1);
     ///     order.set_crosscode(code.to_owned());
+    ///     order.set_instcode(Some("ACME".into()), true);
     ///     order.set_side(Side::read(side).unwrap(), true);
     ///     order.set_price(Some(price.parse().unwrap()), true);
     ///     order.set_quantity(Some(Decimal::from_int(1)), true);
@@ -2671,7 +2683,7 @@ impl BookEvent {
     ///     order.finalize();
     ///     MarketData::from(order)
     /// };
-    /// let mut book = BookEvent::new(1, "ACME");
+    /// let mut book = BookEvent::keyed(1, "ACME");
     /// book.add_operations([order("B", "Buy", "100")])?;
     /// assert_eq!(book.spread(), None);
     /// book.add_operations([order("A", "Sell", "100.25")])?;
@@ -2705,6 +2717,7 @@ impl BookEvent {
     /// let order = |code: &str, side: &str, price: i64, quantity: i64| {
     ///     let mut order = OrderEvent::at(1);
     ///     order.set_crosscode(code.to_owned());
+    ///     order.set_instcode(Some("ACME".into()), true);
     ///     order.set_side(Side::read(side).unwrap(), true);
     ///     order.set_price(Some(Decimal::from_int(price)), true);
     ///     order.set_quantity(Some(Decimal::from_int(quantity)), true);
@@ -2712,7 +2725,7 @@ impl BookEvent {
     ///     order.finalize();
     ///     MarketData::from(order)
     /// };
-    /// let mut book = BookEvent::new(1, "ACME");
+    /// let mut book = BookEvent::keyed(1, "ACME");
     /// assert_eq!(book.imbalance(1), None);
     /// book.add_operations([order("B", "Buy", 100, 30)])?;
     /// assert_eq!(book.imbalance(1), Some(Decimal::ONE));
@@ -2990,12 +3003,7 @@ impl BookEvent {
         foldable(&input, || SmolStr::new_static("$.operation.kind"))?;
         let key = super::market::base_crosscode(self.get_crosscode());
         if let Some(reason) = book_mismatch(key, &input) {
-            let at = if input.get_isincode().is_some() {
-                "$.operation.isincode"
-            } else {
-                "$.operation.ticker"
-            };
-            return Err(invalid(at, reason));
+            return Err(invalid("$.operation.instcode", reason));
         }
         self.adopt_instrument(&input);
         let Some(event_view) = input.as_event() else {
@@ -3446,8 +3454,9 @@ fn finalize_book_event(
 }
 
 impl Default for BookEvent {
+    /// A book keyed by nothing at the epoch: [`Self::keyed`] of an empty key.
     fn default() -> Self {
-        Self::new(0, String::new())
+        Self::keyed(0, "")
     }
 }
 
@@ -3632,18 +3641,23 @@ delegate_event!(
 );
 
 /// Books from a sorted operation stream, one per book crosscode and
-/// effective timestamp. An input's book is [`Market::book_crosscode`]: its
-/// instrument's ISIN where it holds one, else its ticker, else
-/// [`Isin::NONE`] - one book per instrument wherever an ISIN is known, and
-/// a ticker-only input joining it once the lifecycle's registry learned the
-/// pair. A book opens keyed ([`BookEvent::keyed`]) and takes its ticker and
-/// its ISIN from the first input stating each; no input moves them after.
-/// An identity restated under another key - a chain stated by its ticker
-/// alone and then, its instrument learned, under its ISIN - leaves the book
-/// it stood in through that book's delta - a snapshot's member as any
-/// other statement - removing it in state `REMOVED` and reporting no fill,
-/// and opens in its own at the same instant, so an entry rests in one book
-/// at a time.
+/// effective timestamp. An input's book is its instrument's cross code
+/// ([`Market::get_instcode`]) alone - a real ISIN, an FX pair's
+/// `IF:EUR/USD`, a derivative's `class:body` - the book's cross code
+/// `3:0:{instcode}`: one book per instrument. An input stating no code (a
+/// ticker-only line whose instrument no registry filled, a masked number,
+/// a placeholder's real ISIN before its body is learned) is pruned where it
+/// is pulled, as an unrecorded kind is, and warned of once per instrument
+/// it names, so the walk runs over
+/// lifecycle output, whose fill writes the code, or over inputs stating
+/// their own. A book opens keyed ([`BookEvent::keyed`]) and takes its
+/// ticker and its ISIN from the first input stating each; no input moves
+/// them after. An identity restated under another key (a chain stated
+/// under a placeholder's number and then, its body learned, under its
+/// derivative's code) leaves the book it stood in through that book's
+/// delta, a snapshot's member as any other statement, removing it in state
+/// `REMOVED` and reporting no fill, and opens in its own at the same
+/// instant, so an entry rests in one book at a time.
 /// Each timestamp and book is committed atomically across ordinary orders
 /// and quotes, expirations, recorded events and explicit snapshot
 /// membership.
@@ -3678,11 +3692,14 @@ delegate_event!(
 /// [`MarketDataKind::is_booked`](crate::MarketDataKind::is_booked) admits -
 /// orders, quotes and snapshot controls - records every execution among the
 /// events of its instrument's book at its instant, and prunes every other
-/// input [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded)
-/// does not admit where it is pulled, a FIX message's leaves once it is
-/// split: a pruned input touches no book, no instant and no grid, so an
-/// instant only a trade reached emits no book. [`Self::with_filter`]
-/// narrows the walk further.
+/// input where it is pulled - a kind
+/// [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded)
+/// does not admit, an input stating no `instcode` - a FIX message's leaves
+/// once it is split: a pruned input touches no book, no instant and no
+/// grid, so an instant only a trade or a code-less quote reached emits no
+/// book. An input of a recorded kind that no book folds - an undated order,
+/// a nested book - is refused by name at `$.operation.kind` whatever code
+/// it states. [`Self::with_filter`] narrows the walk further.
 pub struct BookIterator<I>
 where
     I: Iterator,
@@ -3770,10 +3787,11 @@ where
     /// This walk folding only the inputs `filter` keeps: an expression over
     /// the [`MarketData::field`] row, bound once here and answered by the
     /// expression engine over one batch per 1,024 recorded inputs the walk
-    /// pulls ahead. The kind rule prunes first, so a filter narrows what a
-    /// book folds and never admits what
+    /// pulls ahead. The admission prunes first, so a filter
+    /// narrows what a book folds and never admits what it does not - a kind
     /// [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded)
-    /// does not. A filter that keeps every row installs nothing, and the walk
+    /// refuses, an input stating no `instcode`. A filter that keeps every
+    /// row installs nothing, and the walk
     /// pulls one input at a time again.
     ///
     /// ```
@@ -3787,6 +3805,7 @@ where
     /// let order = |code: &str, side: Side, unix: i64| {
     ///     let mut order = OrderEvent::at(unix);
     ///     order.set_crosscode(code.to_owned());
+    ///     order.set_instcode(Some("ACME".into()), true);
     ///     order.set_ticker(Some("ACME".into()), true);
     ///     order.set_side(side, true);
     ///     order.set_price(Some(Decimal::from_int(100)), true);
@@ -3839,10 +3858,9 @@ where
     /// Pulls the source into [`Self::split`] until it holds a recorded leaf -
     /// or, under a filter, [`FILTERED_ROWS`] of them, which the filter then
     /// narrows as one batch - stopping at the source's end or its failure,
-    /// kept for after the leaves before it. Every input
-    /// [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded)
-    /// does not admit is dropped here, a FIX message's leaves once it is
-    /// split.
+    /// kept for after the leaves before it. Every input [`booked`] does not
+    /// admit is dropped here, a FIX message's leaves once it is split - but
+    /// a recorded kind no book folds, which reaches its refusal.
     fn pull(&mut self) {
         let wanted = if self.filter.is_some() {
             FILTERED_ROWS
@@ -3856,14 +3874,14 @@ where
             };
             match item.into() {
                 Ok(MarketData::Fix(message)) => match message.into_market_data() {
-                    Ok(leaves) => self.split.extend(leaves.into_iter().filter(recorded)),
+                    Ok(leaves) => self.split.extend(leaves.into_iter().filter(admitted)),
                     Err(error) => {
                         self.failed = Some(error);
                         break;
                     }
                 },
                 Ok(leaf) => {
-                    if recorded(&leaf) {
+                    if admitted(&leaf) {
                         self.split.push_back(leaf);
                     }
                 }
@@ -4180,7 +4198,9 @@ where
                     .is_some_and(|operation| effective_unix(operation) == unix)
                 {
                     let input = self.take_source();
-                    let symbol = input.book_crosscode().to_owned();
+                    let Some(symbol) = input.get_instcode().map(str::to_owned) else {
+                        unreachable!("a pulled input states its instcode: `booked` admitted it")
+                    };
                     touched.insert(symbol.clone());
                     // An identity restated under another key leaves the book
                     // it stood in, a snapshot's member as any other
@@ -4396,22 +4416,69 @@ const FILTERED_ROWS: usize = 1024;
 /// Whether a book states an input of `input`'s kind - folded into a side,
 /// or recorded among its events:
 /// [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded), the
-/// one rule every pruning site reads.
-fn recorded(input: &MarketData) -> bool {
+/// kind half of [`booked`], and what a hand-built book keeps of what it is
+/// handed.
+fn recorded<E: Market + ?Sized>(input: &E) -> bool {
     input.marketdatakind().is_recorded()
+}
+
+/// Whether a book walk takes `input` - the one admission every pruning site
+/// reads, [`BookIterator`]'s pull and the FIX codec's book door before it
+/// expands a message: an input of a kind a book states - folded into a
+/// side, or recorded among its events,
+/// [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded) -
+/// that states the instrument's cross code ([`Market::get_instcode`]) the
+/// book is keyed by. A recorded kind stating no code is pruned and warned
+/// of once per instrument it names - its ISIN, else its ticker, else its
+/// cross code - so the disappearance is never silent: a ticker-only line
+/// no registry filled, a masked number, a line a full registry could not
+/// learn. Any other kind is pruned in silence, as a trade is.
+pub(crate) fn booked<E: Market + Element + ?Sized>(input: &E) -> bool {
+    if !recorded(input) {
+        return false;
+    }
+    if input.get_instcode().is_some() {
+        return true;
+    }
+    let named = input
+        .get_isincode()
+        .or_else(|| input.get_ticker().filter(|ticker| !ticker.is_empty()))
+        .unwrap_or_else(|| input.get_crosscode());
+    warned!(
+        "book input pruned: it states no instcode",
+        named,
+        "a {} stating no instrument code keys no book",
+        input.marketdatakind().as_str()
+    );
+    false
+}
+
+/// What a walk's pull keeps: every input [`booked`] admits, and every
+/// input of a recorded kind that is no variant a book folds - an undated
+/// order, a nested book - whatever code it states, so the walk refuses it
+/// by name at `$.operation.kind` rather than pruning it.
+fn admitted(input: &MarketData) -> bool {
+    (recorded(input) && !is_foldable(input)) || booked(input)
+}
+
+/// Whether `input` is a variant a book states: an order or a quote, folded
+/// into a side and its delta, or an execution or a snapshot control,
+/// recorded among its events, each dated.
+fn is_foldable(input: &MarketData) -> bool {
+    matches!(
+        input,
+        MarketData::OrderEvent(_)
+            | MarketData::QuoteEvent(_)
+            | MarketData::ExecutionEvent(_)
+            | MarketData::SnapshotEvent(_)
+    )
 }
 
 /// Refuses, at `path`, every variant a book does not state: a book takes an
 /// order or a quote, folded into a side and its delta, or an execution or
 /// a snapshot control, recorded among its events, each dated.
 fn foldable(input: &MarketData, path: impl FnOnce() -> SmolStr) -> Result<()> {
-    if matches!(
-        input,
-        MarketData::OrderEvent(_)
-            | MarketData::QuoteEvent(_)
-            | MarketData::ExecutionEvent(_)
-            | MarketData::SnapshotEvent(_)
-    ) {
+    if is_foldable(input) {
         return Ok(());
     }
     Err(invalid(
@@ -4900,15 +4967,21 @@ where
 }
 
 /// Why `operation` cannot stand in the book keyed `key`; `None` where it
-/// can. One rule: the input's own key ([`Market::book_crosscode`]) - its
-/// ISIN, else its ticker - spells the book's, or the input states neither
-/// an ISIN nor a ticker, which stands in any book - a hand-built book is
-/// fed ticker-less orders. An ISIN-keyed book therefore takes two
-/// listings' tickers, which stay apart inside it by their own partition.
+/// can. One rule: the input's own key, its instrument's cross code
+/// ([`Market::get_instcode`]), spells the book's; an input stating none
+/// stands in no book, the one keyed by nothing included. An instrument's
+/// book therefore takes two listings' tickers, which stay apart inside it
+/// by their own partition.
 fn book_mismatch<E: Market + ?Sized>(key: &str, operation: &E) -> Option<SmolStr> {
-    let stated = operation.book_crosscode();
-    (stated != key && stated != Isin::NONE)
-        .then(|| format_smolstr!("expected book crosscode {key:?}, got {stated:?}"))
+    match operation.get_instcode() {
+        Some(stated) if stated == key => None,
+        Some(stated) => Some(format_smolstr!(
+            "expected book crosscode {key:?}, got {stated:?}"
+        )),
+        None => Some(format_smolstr!(
+            "expected book crosscode {key:?}, got none: the input states no instcode"
+        )),
+    }
 }
 
 /// Says that the operations of one book at one instant were left out,

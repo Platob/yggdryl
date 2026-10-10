@@ -132,13 +132,13 @@ fn a_spot_pair_states_its_class_its_currencies_and_no_market() {
     );
     // A spot symbol states no settlement type of its own.
     assert_eq!(cell(&message, 63), None);
-    // The pair keys the instrument `IF:EUR/USD`, whose number the parse
-    // mints into the derived overlay beside the pair (D42): the row's
-    // `isincode` and the book's key, under a stated ISIN whatever its rank.
+    // The pair keys the instrument `IF:EUR/USD` - the `instcode` its book
+    // is keyed by (the FX book took its code, decision 16) - whose number
+    // the parse mints into the derived overlay beside the pair (D42): the
+    // row's `isincode`, under a stated ISIN whatever its rank.
     assert_eq!(message.get_instcode(), Some("IF:EUR/USD"));
     assert_eq!(message.get_isincode(), Some("QYLTVIRYHNX5"));
     assert!(message.get_securityids().is_derived(&IdType::Isin));
-    assert_eq!(message.book_crosscode(), "QYLTVIRYHNX5");
     let numbered = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A|55=EUR/USD|22=4|48=EZ0000000003|54=1|38=1000000|10=0|")
         .expect("an order");

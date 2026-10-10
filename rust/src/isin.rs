@@ -33,8 +33,9 @@ impl Isin {
     /// The number that states none: ISO 3166's user-assigned `XX` over a
     /// national number of nothing, which closes nowhere and is listed
     /// nowhere - the lowest rank there is, so any stated number replaces it.
-    /// What a book is keyed by where its inputs state neither an ISIN nor a
-    /// ticker.
+    /// The symbol the FIX book scope spells for an element stating neither
+    /// ticker nor identifier (`Symbol=XX0000000000`); never a book's key,
+    /// which is the instrument's cross code alone.
     pub const NONE: &str = "XX0000000000";
 
     /// The two-letter prefixes ISO 6166 gives an agency rather than a

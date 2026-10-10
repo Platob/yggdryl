@@ -419,7 +419,7 @@ pub trait Market {
     /// assert_eq!(order.get_crosscode(), "10:2:ORD-1");
     ///
     /// // A book is not sided: it states side 0 whatever side it takes.
-    /// let mut book = BookEvent::new(1, "AAPL");
+    /// let mut book = BookEvent::keyed(1, "AAPL");
     /// book.set_side(Side::Buy, true);
     /// assert_eq!(book.get_crosscode(), "3:0:AAPL");
     /// ```
@@ -459,37 +459,6 @@ pub trait Market {
     /// - a projection of [`Self::get_securityids`], never a second store.
     fn get_isincode(&self) -> Option<&str> {
         self.get_securityids().get(&IdType::Isin)
-    }
-
-    /// The key of the book the element stands in: its instrument's ISIN
-    /// ([`Self::get_isincode`]) where it holds one, whatever its rank - a
-    /// masked number keys a book, since what a walk sees is what the
-    /// lifecycle already corrected - else its ticker where it states a
-    /// non-empty one, else [`Isin::NONE`], the number that states none. One
-    /// book per instrument wherever an ISIN is known, and a ticker-only
-    /// statement joins it once the lifecycle's registry has learned the
-    /// pair. Every arm borrows, so no input allocates.
-    ///
-    /// ```
-    /// use yggdryl_market::graph::{Market, OrderEvent};
-    /// use yggdryl_market::{IdKey, IdType, Identifier};
-    /// use yggdryl::Isin;
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// #     yggdryl_market::install().unwrap();
-    /// let mut order = OrderEvent::at(1);
-    /// assert_eq!(order.book_crosscode(), Isin::NONE);
-    /// order.set_ticker(Some("HOLN".into()), true);
-    /// assert_eq!(order.book_crosscode(), "HOLN");
-    /// order.insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "CH0012214059")?)?;
-    /// assert_eq!(order.book_crosscode(), "CH0012214059");
-    /// # Ok(())
-    /// # }
-    /// ```
-    fn book_crosscode(&self) -> &str {
-        self.get_isincode()
-            .or_else(|| self.get_ticker().filter(|ticker| !ticker.is_empty()))
-            .unwrap_or(Isin::NONE)
     }
 
     /// The currency an amount the element states converts from: its

@@ -1,6 +1,6 @@
 ---
 name: yggdryl-market-data
-description: Models and streams market data with yggdryl's graph layer in Rust, Python and Node.js - orders, quotes, executions and trades as dated events (OrderEvent, QuoteEvent, ExecutionEvent, TradeEvent), identities and side-keyed chains (uuid, crossuuid, with_previous / withPrevious, EventIterator), order books keyed by ISIN or ticker (BookIterator and its filter, BookEvent, delta books rebuilt with with_previous, is_complete, alive_on, limits, best_price / bestPrice, spread, depth, SnapshotEvent), OHLC candles of the best bid and ask per zone-aligned bucket (CandleIterator, CandleOptions, graph.candles, Candle.field), the Side and MarketDataKind enums and the lifted marketdata Arrow row (MarketData.arrow_reader / arrowReader, from_arrow_reader / fromArrowReader, apply_view / applyView). Use when building market events, folding them into books or candles, or persisting or querying marketdata batches.
+description: Models and streams market data with yggdryl's graph layer in Rust, Python and Node.js - orders, quotes, executions and trades as dated events (OrderEvent, QuoteEvent, ExecutionEvent, TradeEvent), identities and side-keyed chains (uuid, crossuuid, with_previous / withPrevious, EventIterator), order books keyed by the instrument's code (BookIterator and its filter, BookEvent, delta books rebuilt with with_previous, is_complete, alive_on, limits, best_price / bestPrice, spread, depth, SnapshotEvent), OHLC candles of the best bid and ask per zone-aligned bucket (CandleIterator, CandleOptions, graph.candles, Candle.field), the Side and MarketDataKind enums and the lifted marketdata Arrow row (MarketData.arrow_reader / arrowReader, from_arrow_reader / fromArrowReader, apply_view / applyView). Use when building market events, folding them into books or candles, or persisting or querying marketdata batches.
 ---
 
 # yggdryl market data
@@ -207,7 +207,7 @@ Hold these facts:
 | leaves to Arrow batches | `MarketData::arrow_reader(values, None, None)?` | `graph.MarketData.arrow_reader(values)` | `graph.MarketData.arrowReader(values)` |
 | Arrow batches to leaves | `MarketData::from_arrow_reader(reader)?` | `graph.MarketData.from_arrow_reader(source)` | `graph.MarketData.fromArrowReader(reader)` |
 | fold a sorted stream into books | `BookIterator::new(items, snapshot_millis)?`, `.with_filter("side = 'BUYS'")?` | `graph.BookIterator(items, snapshot_millis=0, filter=None)` | `new graph.BookIterator(items, snapshotMillis = 0, filter = undefined)` |
-| one book by hand | `BookEvent::new(unix, ticker)`, `add_operations(..)?` | `graph.BookEvent(unix, ticker).with_operations([...])` | `new graph.BookEvent(unix, ticker).withOperations([...])` |
+| one book by hand | `BookEvent::keyed(unix, key)`, `add_operations(..)?` | `graph.BookEvent(unix, key).with_operations([...])` | `new graph.BookEvent(unix, key).withOperations([...])` |
 | the empty book a code starts from | `BookEvent::keyed(unix, key)` | `graph.BookEvent.keyed(unix, key)` | `graph.BookEvent.keyed(unix, key)` |
 | whether a book holds its sides | `is_complete()` | `book.is_complete` | `book.isComplete` |
 | rebuild a delta book whole | `book.with_previous(&previous)` | `book.with_previous(previous)` | `book.withPrevious(previous)` |
@@ -254,14 +254,17 @@ Hold these facts:
    sorted door for a FIX capture; `EventIterator(sorted=false)` sorts a finite
    stream itself.
 5. One book per instant and book key that moved it. The key is the input's
-   instrument ISIN where it holds one, whatever its rank, else its non-empty
-   ticker, else `XX0000000000` (`Isin::NONE`, the ISIN that states none) - so
-   one instrument is one book wherever its ISIN is known, and a ticker-only
-   input joins it once a lifecycle's instruments learned the pair; an FX
-   pair's ISIN is its minted number (`3:0:QYLTVIRYHNX5`). A book opens
-   keyed and takes its ticker and its ISIN from the first input stating each.
-   An entry restated under another key - stated by its ticker, then under its
-   ISIN - leaves the book it stood in by a `REMOVED` delta and opens in its
+   `instcode` alone - the instrument's cross code: a real ISIN, an FX pair's
+   `IF:EUR/USD`, a derivative's `class:body` - so one instrument is one book,
+   and the book states the key as its own `instcode` (`3:0:IF:EUR/USD`, never
+   the pair's minted number). An input stating no `instcode` - a ticker-only
+   line no lifecycle filled, a masked number - is pruned before the walk with
+   one warning per instrument, as a trade is; a hand-built element is booked
+   only once it states a code or an `Instruments` fill gave it one, and the
+   FIX lifecycle fills every real-ISIN line's. A book opens keyed and takes
+   its ticker and its ISIN from the first input stating each. An entry
+   restated under another key - a placeholder's code, then its instrument's
+   own - leaves the book it stood in by a `REMOVED` delta and opens in its
    new one at the same instant, so an entry rests in one book at a time. A
    book is yielded where its instant recorded a `delta` or an `events` entry,
    or at a snapshot tick where it holds an entry (a snapshot emptying a book

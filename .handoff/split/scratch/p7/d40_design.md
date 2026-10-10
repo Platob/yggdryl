@@ -118,7 +118,7 @@ The registered-code columns and holders drop their `code` suffix, one spelling e
 crate tag constants `ISINCODE_TAG_NAME` -> `ISIN_TAG_NAME` and the four others, the displays `ISIN
 Code` -> `ISIN` and the five others; the Python/JavaScript properties `isincode`, `cficode`,
 `miccode`, `bloombergcode`, `figicode`, `forexcode` follow: `msg.isin`, `msg.cfi`, `msg.mic`,
-`msg.bbg`, `msg.figi`, `msg.forex`; `book_crosscode` reads the lifted `isin`); P9's `instrument`
+`msg.bbg`, `msg.figi`, `msg.forex`; the book key is the `instcode` since P9b and reads no lifted `isin`); P9's `instrument`
 row (D42.13) the same way - `cficode` -> `cfi`, `countrycode` -> `country`, `forexcode` -> `forex`,
 `eusipacode` -> `eusipa`, and the nested `listings`' `miccode` -> `mic` - with `Instrument`'s and
 `Listing`'s fields, builders and readers (`cficode()` -> `cfi()`, `forexcode()` -> `forex()`,

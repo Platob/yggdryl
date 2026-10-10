@@ -80,20 +80,22 @@ impl JsBookEvent {
 
 #[napi]
 impl JsBookEvent {
-    /// An empty book of the ticker `symbol` at `transunix` nanoseconds since
-    /// the epoch, keyed by that ticker; an empty `symbol` keys the book
-    /// `XX0000000000`, the ISIN that states none, and states no ticker.
+    /// An empty book keyed `key` at `transunix` nanoseconds since the epoch:
+    /// `key` is the instrument's cross code (`instcode`) every input it
+    /// takes states - a real ISIN, an FX pair's `IF:EUR/USD`, a derivative's
+    /// `class:body` - which the book states as its own `instcode` and stores
+    /// as its crosscode `3:0:{key}`; the book states neither a ticker nor an
+    /// ISIN until its first input states each. An empty `key` keys a book by
+    /// nothing, which takes nothing. The same door as `keyed`.
     #[napi(constructor)]
-    pub fn new(transunix: Either<BigInt, f64>, symbol: String) -> Result<Self> {
+    pub fn new(transunix: Either<BigInt, f64>, key: String) -> Result<Self> {
         let transunix = instant_of(transunix, "transunix")?;
-        Ok(Self::from_core(CoreBookEvent::new(transunix, symbol)))
+        Ok(Self::from_core(CoreBookEvent::keyed(transunix, key)))
     }
 
-    /// An empty book keyed `key` at `transunix` nanoseconds since the epoch:
-    /// `key` is its crosscode - an instrument's ISIN, a ticker, or
-    /// `XX0000000000` - and the book states neither a ticker nor an ISIN.
-    /// The empty base a code's first book, a delta book, rebuilds over
-    /// with `withPrevious`.
+    /// An empty book keyed `key` at `transunix` nanoseconds since the epoch -
+    /// `new BookEvent(transunix, key)` - the empty base a code's first book,
+    /// a delta book, rebuilds over with `withPrevious`.
     #[napi(factory)]
     pub fn keyed(transunix: Either<BigInt, f64>, key: String) -> Result<Self> {
         let transunix = instant_of(transunix, "transunix")?;
@@ -403,9 +405,10 @@ event_verbs!(JsSnapshotEvent, "SnapshotEvent");
 /// JavaScript failure crossing as one typed sentinel.
 type BookSource = Box<dyn Iterator<Item = yggdryl::Result<CoreMarketData>> + Send>;
 
-/// Books from a sorted stream of operations, one per book key and effective
-/// timestamp, pulling its items lazily from the caller's iterable. Yields
-/// `BookEvent`.
+/// Books from a sorted stream of operations, one per instrument cross code
+/// (`instcode`) and effective timestamp, pulling its items lazily from the
+/// caller's iterable; an input stating no `instcode` is pruned before it
+/// touches a book. Yields `BookEvent`.
 #[napi(js_name = "BookIterator")]
 pub struct JsBookIterator {
     inner: CoreBookIterator<BookSource>,

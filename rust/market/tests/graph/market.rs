@@ -8,11 +8,11 @@ use std::hash::Hasher;
 use smol_str::SmolStr;
 use yggdryl::graph::{Element, Event};
 use yggdryl::xxhash::Xxh3;
-use yggdryl::{Ccy, Cfi, Decimal, Isin, Mic, Unit, Uuid};
+use yggdryl::{Ccy, Cfi, Decimal, Mic, Unit, Uuid};
 use yggdryl_market::IdKey;
 use yggdryl_market::graph::{
-    BookEvent, ExecutionEvent, FxRates, Market, Operation, Order, OrderEvent, QuoteEvent,
-    SnapshotEvent, TradeEvent,
+    BookEvent, BookIterator, ExecutionEvent, FxRates, Market, MarketData, Operation, Order,
+    OrderEvent, QuoteEvent, SnapshotEvent, TradeEvent,
 };
 use yggdryl_market::{IdType, Identifier, Identifiers, Side, TimeInForce};
 
@@ -423,7 +423,6 @@ fn following_keeps_a_derived_real_isin_over_the_chains_masked_statement() {
         .following_market(&previous)
         .expect("a later event follows");
     assert_eq!(followed.get_isincode(), Some("US0378331005"));
-    assert_eq!(followed.book_crosscode(), "US0378331005");
     assert!(followed.get_securityids().is_derived(&IdType::Isin));
 
     let mut previous = order(1);
@@ -474,7 +473,6 @@ fn merging_keeps_a_derived_real_isin_over_a_restated_named_source_whichever_lead
             .merging_operation_event(other)
             .unwrap_or_else(|| this.clone());
         assert_eq!(merged.get_isincode(), Some("US0378331005"));
-        assert_eq!(merged.book_crosscode(), "US0378331005");
         assert!(merged.get_securityids().is_derived(&IdType::Isin));
     }
 }
@@ -815,16 +813,16 @@ fn every_element_stores_its_cross_code_under_its_category_and_side() {
 
     // A book is not sided: it states side 0 whatever side it takes, and a
     // `BUYS:` in its name is the name's own, never a prefix.
-    let mut book = BookEvent::new(1, "AAPL");
+    let mut book = BookEvent::keyed(1, "AAPL");
     book.set_side(Side::Buy, true);
     book.finalize();
     assert!(!book.is_sided());
     assert_eq!(book.get_crosscode(), "3:0:AAPL");
     assert_eq!(book.stored_crosscode("AAPL"), "3:0:AAPL");
-    let mut keyed = BookEvent::new(1, "XNAS:ESVUFR");
+    let mut keyed = BookEvent::keyed(1, "XNAS:ESVUFR");
     keyed.finalize();
     assert_eq!(keyed.get_crosscode(), "3:0:XNAS:ESVUFR");
-    let mut named = BookEvent::new(1, "BUYS:AAPL");
+    let mut named = BookEvent::keyed(1, "BUYS:AAPL");
     named.set_side(Side::Sell, true);
     assert_eq!(named.get_crosscode(), "3:0:BUYS:AAPL");
 
@@ -843,7 +841,7 @@ fn every_element_stores_its_cross_code_under_its_category_and_side() {
     assert_eq!(trade.get_crosscode(), "21:0:ORD-1");
     assert_eq!(trade.executions()[0].get_crosscode(), "8:2:E-1");
     assert_eq!(trade.get_crosshashcode(), crosshash("21:0:ORD-1"));
-    let mut unnamed = BookEvent::new(1, "ORD-1");
+    let mut unnamed = BookEvent::keyed(1, "ORD-1");
     unnamed.finalize();
     assert_ne!(
         trade.get_crosshashcode(),
@@ -973,10 +971,12 @@ fn a_prefix_is_replaced_never_stacked_and_an_empty_code_stays_empty() {
     empty.finalize();
     assert_eq!(empty.get_crosscode(), "");
     assert_eq!(empty.get_crosshashcode(), 0);
-    // A book is never codeless: an empty symbol keys it by the number that
-    // states none.
-    let book = BookEvent::new(1, "");
-    assert_eq!(book.get_crosscode(), "3:0:XX0000000000");
+    // A book keyed by nothing is codeless too: its cross code is empty, as
+    // an element stating an empty code keeps it, and it states no instcode
+    // (decision 16).
+    let book = BookEvent::keyed(1, "");
+    assert_eq!(book.get_crosscode(), "");
+    assert_eq!(book.get_instcode(), None);
     let snapshot = SnapshotEvent::snapshot(&empty, None);
     assert_eq!(snapshot.get_crosscode(), "");
 }
@@ -1013,46 +1013,76 @@ fn a_copy_into_another_kind_takes_the_base_under_its_own_prefix() {
     assert_eq!(ExecutionEvent::from(&sideless).get_crosscode(), "8:0:ORD-1");
 }
 
-/// A book's key is the ticker where one is stated, else the category.
+/// The key of the book an element stands in is its `instcode` alone - the
+/// code a parse or a fill wrote, a real ISIN or a `class:body` - and
+/// nothing else keys one: an element stating a real ISIN, a masked number,
+/// a ticker, a market or a classification and no code stands in no book
+/// (the book key is the instcode alone, decision 16).
 #[test]
-fn book_crosscode_is_the_isin_else_the_ticker_else_the_default() {
+fn the_book_key_is_the_instcode_alone() {
     crate::install::installed();
-    // The ISIN keys the book wherever one is held, whatever its rank, and
-    // the key is borrowed from the identifier it is.
+    let booked = |mut order: OrderEvent| {
+        order.set_side(Side::Buy, true);
+        order.set_quantity(Some(Decimal::ONE), true);
+        order.set_state(yggdryl::State::New);
+        order.finalize();
+        BookIterator::new(vec![MarketData::from(order)].into_iter(), 0)
+            .unwrap()
+            .map(|book| {
+                let book = book.unwrap();
+                (
+                    book.get_crosscode().to_owned(),
+                    book.get_instcode().map(str::to_owned),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
     let mut listed = order(1);
     listed.set_ticker(Some(SmolStr::new("ACME")), true);
     listed
         .set_securityids(securityids(&[("ISIN", "US0378331005")]), true)
         .unwrap();
-    assert_eq!(listed.book_crosscode(), "US0378331005");
-    assert!(std::ptr::eq(
-        listed.book_crosscode(),
-        listed.get_isincode().unwrap()
-    ));
+    listed.set_instcode(Some(yggdryl::Str::new("US0378331005")), true);
+    assert_eq!(
+        booked(listed.clone()),
+        [(
+            "3:0:US0378331005".to_owned(),
+            Some("US0378331005".to_owned())
+        )]
+    );
+    let mut derivative = order(1);
+    derivative.set_instcode(
+        Some(yggdryl::Str::new("OC:US0378331005:2026-12-18:200")),
+        true,
+    );
+    assert_eq!(
+        booked(derivative),
+        [(
+            "3:0:OC:US0378331005:2026-12-18:200".to_owned(),
+            Some("OC:US0378331005:2026-12-18:200".to_owned())
+        )]
+    );
+    // The ISIN, the ticker, the market and the classification key nothing.
+    listed.set_instcode(None, true);
+    assert!(booked(listed).is_empty(), "a real ISIN alone");
     let mut masked = order(1);
     masked.set_ticker(Some(SmolStr::new("ACME")), true);
     masked
         .set_securityids(securityids(&[("ISIN", "XX0000000001")]), true)
         .unwrap();
-    assert_eq!(masked.book_crosscode(), "XX0000000001");
-    // Else the ticker, where it states a non-empty one, borrowed.
+    assert!(booked(masked).is_empty(), "a masked number");
     let mut ticker = order(1);
     ticker.set_ticker(Some(SmolStr::new("ACME")), true);
-    assert_eq!(ticker.book_crosscode(), "ACME");
-    assert!(std::ptr::eq(
-        ticker.book_crosscode(),
-        ticker.get_ticker().unwrap()
-    ));
-    // Else the number that states none: the market and the classification
-    // key nothing.
-    let blank = order(2);
-    assert_eq!(blank.book_crosscode(), Isin::NONE);
-    assert_eq!(blank.book_crosscode(), "XX0000000000");
+    assert!(booked(ticker).is_empty(), "a ticker");
+    assert!(booked(order(2)).is_empty(), "nothing at all");
     let mut classified = order(3);
     classified.set_miccode(Some(Mic::new("XPAR").unwrap()), true);
     classified.set_cficode(Some(Cfi::new("ESVUFR").unwrap()), true);
     classified.set_ticker(Some(SmolStr::new("")), true);
-    assert_eq!(classified.book_crosscode(), Isin::NONE);
+    assert!(
+        booked(classified).is_empty(),
+        "a market and a classification"
+    );
 }
 
 /// Without `overwrite` a setter fills only a fact the element states
@@ -1685,7 +1715,7 @@ fn the_side_moves_a_sided_cross_code() {
     order.finalize();
     assert_eq!(order.get_crosscode(), "10:2:ORD-1");
 
-    let mut book = BookEvent::new(1, "AAPL");
+    let mut book = BookEvent::keyed(1, "AAPL");
     book.set_side(Side::Buy, true);
     assert_eq!(book.get_crosscode(), "3:0:AAPL");
 }

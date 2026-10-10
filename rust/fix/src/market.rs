@@ -14,7 +14,7 @@ use super::{FixCodec, FixEntry, FixKey, FixMsg, FixRegistry};
 use yggdryl::arrow::BatchReader;
 use yggdryl::graph::{Element, Event};
 use yggdryl::implementer::warned;
-use yggdryl::{DataType, Decimal, Error, Filter, Result, Scalar, State, TimeUnit};
+use yggdryl::{DataType, Decimal, Error, Filter, Isin, Result, Scalar, State, Str, TimeUnit};
 use yggdryl_market::graph::book::{ENTRY_ID, ENTRY_REF_ID};
 use yggdryl_market::graph::market_data::MarketMessage;
 use yggdryl_market::graph::{
@@ -23,9 +23,10 @@ use yggdryl_market::graph::{
 };
 use yggdryl_market::implementer::InstrumentTable;
 use yggdryl_market::implementer::OperationEventFacts;
-use yggdryl_market::implementer::base_crosscode;
+use yggdryl_market::implementer::{Production, base_crosscode, booked, instrument_spell_code};
 use yggdryl_market::{
-    IdKey, IdType, Identifier, Identifiers, MarketDataKind, MarketDataType, Side,
+    IdKey, IdSource, IdType, Identifier, Identifiers, MAX_CODE_WIDTH, MarketDataKind,
+    MarketDataType, Side,
 };
 
 const MD_ENTRIES: i32 = 268;
@@ -63,6 +64,8 @@ struct Facts {
     time: Option<SmolStr>,
     order_id: Option<SmolStr>,
     symbol: Option<SmolStr>,
+    security_id: Option<SmolStr>,
+    security_id_source: Option<SmolStr>,
     side: Option<SmolStr>,
     position: Option<SmolStr>,
     level: Option<SmolStr>,
@@ -94,6 +97,8 @@ impl Facts {
             273 => &mut self.time,
             37 => &mut self.order_id,
             55 => &mut self.symbol,
+            48 => &mut self.security_id,
+            22 => &mut self.security_id_source,
             54 => &mut self.side,
             290 => &mut self.position,
             1023 => &mut self.level,
@@ -131,6 +136,8 @@ impl Facts {
             time,
             order_id,
             symbol,
+            security_id,
+            security_id_source,
             side,
             position,
             level,
@@ -404,15 +411,29 @@ impl FixCodec {
     ///
     /// A book folds orders, quotes and `W`/`X` book messages into its sides
     /// and records every execution among its events - the kinds
-    /// [`MarketDataKind::is_recorded`] admits - and every other record is
-    /// ignored before it is expanded: a fill moves a book through its
-    /// order's or quote's report, which the parse splits off the execution,
-    /// so the execution stands among the events of its instant and moves
-    /// nothing, and a trade, whose fills are the executions the parse split
-    /// off, never reaches one. A quote is one entry resting on each leg it
-    /// states, its bid and its offer alike. A book message's leaves are
-    /// pruned by the same rule, so an entry reporting a trade (`269=2`) is
-    /// recorded as the execution it is and places nothing. An
+    /// [`MarketDataKind::is_recorded`] admits, each keyed by its
+    /// instrument's cross code ([`Market::get_instcode`]) - and every other
+    /// record is ignored before it is expanded: a fill
+    /// moves a book through its order's or quote's report, which the parse
+    /// splits off the execution, so the execution stands among the events
+    /// of its instant and moves nothing, and a trade, whose fills are the
+    /// executions the parse split off, never reaches one; an order, a quote
+    /// or an execution stating no `instcode` - a ticker-only line whose
+    /// instrument the lifecycle did not fill, a masked number - costs no
+    /// expansion and books nothing, warned of once per instrument it names,
+    /// so a raw parse of ticker-only lines books nothing. A quote is one
+    /// entry resting on each leg it states, its bid and its offer alike. A
+    /// `W` or `X` message is expanded and its leaves admitted by the same
+    /// rule one by one: an entry stating its own `SecurityID(48)` under its
+    /// `SecurityIDSource(22)` - FIX 4.4's layout, the instrument inside each
+    /// `NoMDEntries(268)` occurrence - is booked by the code that identifier
+    /// spells (a real ISIN), every other entry by its message's, so one
+    /// message reaches every instrument its entries name, and an entry
+    /// reporting a trade (`269=2`) is recorded as the execution it is and
+    /// places nothing. A raw parse books each statement by what it states
+    /// alone: an order booked by its ISIN whose cancel report states only
+    /// its ticker stays alive in its book, the report pruned - the walk the
+    /// lifecycle answers fills the report's code and ends the order. An
     /// admitted message is read as [`FixMarketIterator`] reads it: what it
     /// states that cannot stand is passed over with a warning, and the
     /// source's own failure follows the completed book prefix and fuses the
@@ -447,8 +468,12 @@ impl FixCodec {
         let admitted = messages
             .into_iter()
             .filter_map(|message| match message.into() {
+                // A book message is admitted whole: an entry may state its
+                // own instrument, so each of its leaves is admitted by the
+                // walk's pull. Any other message is one leaf, admitted here
+                // before it is expanded.
                 Ok(message) => (contributes_to_market(&message)
-                    && message.marketdatakind().is_recorded())
+                    && (message.marketdatakind() == MarketDataKind::Book || booked(&message)))
                 .then_some(Ok(message)),
                 failure => Some(failure),
             });
@@ -648,6 +673,8 @@ fn intake(item: Result<FixMsg>) -> Option<Result<FixMsg>> {
 /// The leaves one message moves into, each carrying its message's unmapped
 /// fields where `metadata` says so: the one owner of expansion.
 fn expand_message(message: FixMsg, metadata: bool) -> MessageOperations {
+    #[cfg(feature = "internals")]
+    internals::EXPANDED.with(|count| count.set(count.get() + 1));
     if let Some(kind) = direct_of(&message) {
         let carried = metadata.then(|| direct_unmapped(&message));
         let mut facts = OperationEventFacts::from(message);
@@ -1912,6 +1939,7 @@ fn build_book_operation(
             .map(SmolStr::new)
             .or_else(|| event.get_ticker().map(SmolStr::new));
         event.set_ticker(ticker, true);
+        lift_instrument(&mut event, &entry.facts, &place);
         let mut crosscode = scope.clone();
         push_scope(&mut crosscode, "BookSnapshot", "empty");
         event.set_crosscode(crosscode);
@@ -2088,6 +2116,7 @@ fn build_book_operation(
         .map(SmolStr::new)
         .or_else(|| event.get_ticker().map(SmolStr::new));
     event.set_ticker(ticker, true);
+    lift_instrument(&mut event, &entry.facts, &place);
     event.set_crosscode(crosscode);
 
     // The entry's own and referenced identifiers and the order it names are
@@ -2143,6 +2172,42 @@ fn build_book_operation(
     Some(operation(kind, event, Some(book)))
 }
 
+/// Takes the instrument an entry states for itself - its own
+/// `SecurityID(48)` under its `SecurityIDSource(22)` - onto its leaf: the
+/// identifier replaces the message's of its type, and the leaf's `instcode`
+/// is the code its facts then spell where they spell one alone - a real
+/// ISIN of a security - else none, the message's code naming the message's
+/// instrument. An entry stating no identifier keeps the message's; one its
+/// identifiers refuse is passed over with a warning.
+fn lift_instrument(event: &mut OperationEventFacts, facts: &Facts, place: &impl Fn() -> String) {
+    let (Some(source), Some(code)) = (
+        facts.security_id_source.as_deref(),
+        facts.security_id.as_deref(),
+    ) else {
+        return;
+    };
+    let lifted = super::msg::security_identifier(source, IdSource::Base, code).and_then(|id| {
+        // The type's base key, so the entry's own value replaces the type.
+        event.remove_securityid(&IdKey::base(id.kind().clone()))?;
+        event.insert_securityid(id)
+    });
+    if let Err(error) = lifted {
+        warned!(
+            "FIX book entry instrument not kept: the leaf's security identifiers refuse it",
+            "SecurityID",
+            "{} states SecurityID {code:?} under SecurityIDSource {source:?}: {error}",
+            place()
+        );
+        return;
+    }
+    let mut slot = [0_u8; MAX_CODE_WIDTH];
+    let spelled = match instrument_spell_code(&*event, None, None, &mut slot) {
+        Ok(Some((code, Production::Isin))) => Some(Str::new(code)),
+        _ => None,
+    };
+    event.set_instcode(spelled, true);
+}
+
 /// An entry's decimal: the typed value where the row holds one, else the
 /// text the entry states, read through the decimal's one text reader.
 fn decimal(typed: Option<&Scalar>, rendered: Option<&str>) -> Reading<Decimal> {
@@ -2190,10 +2255,11 @@ fn entry_unix(
 
 /// The scope a market-data entry stands in. Its symbol is the entry's own,
 /// else the message's ticker, else the instrument's first stated identifier
-/// (its ISIN, else its currency pair), else the book the message keys to,
-/// [`Market::book_crosscode`] - the number that states none,
-/// `XX0000000000`, for a message stating neither ticker nor identifier, so
-/// two such instruments share a scope.
+/// (its ISIN, else its currency pair), else the number that states none,
+/// [`Isin::NONE`] - `XX0000000000` for a message stating neither ticker nor
+/// identifier, so two such instruments share a scope. A component of the
+/// entry's identity, never a book key: a lifecycle-filled `instcode` moves
+/// no entry's identity between a raw parse and a walked one.
 fn book_scope<E: Market + ?Sized>(facts: &Facts, event: &E) -> String {
     let ids = event.get_securityids();
     let symbol = facts
@@ -2202,7 +2268,7 @@ fn book_scope<E: Market + ?Sized>(facts: &Facts, event: &E) -> String {
         .or_else(|| event.get_ticker())
         .or_else(|| ids.get(&IdType::Isin))
         .or_else(|| ids.get(&IdType::Forex))
-        .unwrap_or_else(|| event.book_crosscode());
+        .unwrap_or(Isin::NONE);
     let mut scope = String::new();
     push_scope(&mut scope, "Symbol", symbol);
     for (name, value) in [
@@ -2274,5 +2340,27 @@ fn invalid(path: impl Into<SmolStr>, reason: impl Into<SmolStr>) -> Error {
     Error::InvalidRecord {
         path: path.into(),
         reason: reason.into(),
+    }
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/fix/tests/root/market.rs` pins and a caller cannot reach.
+    //!
+    //! The book door's admission prunes a message before it is expanded,
+    //! which nothing a door answers shows: the pin counts the expansions the
+    //! calling thread ran, since every market door expands on the thread
+    //! that pulls it.
+    use std::cell::Cell;
+
+    thread_local! {
+        pub(super) static EXPANDED: Cell<u64> = const { Cell::new(0) };
+    }
+
+    /// How many messages this thread expanded into their leaves so far.
+    #[must_use]
+    pub fn expanded() -> u64 {
+        EXPANDED.with(Cell::get)
     }
 }

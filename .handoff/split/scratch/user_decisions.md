@@ -210,3 +210,66 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
 33. With 31: "thus first medaillon layer can accept key value inputs with this metadata field
     too" - the medallion's first (bronze) layer reads key-value log lines into that `metadata`
     column beside the FIX capture it reads today.
+34. Amends 31 and 33: "rename the text line metadata to keyvalues instead" - the text row's
+    column read from key-values is `keyvalues` (`map<utf8, utf8>`), never `metadata`; every
+    door, option, doc and the medallion bronze table spell it so.
+35. D46's readings (`p13/d46_design.md`, "Put to the user") taken by decision 24's rule, each
+    overridable: a group's own counter restated inside its entry (`<grammar><555/><555/><556/>`)
+    is a NumInGroup field in a component and is dropped too (the user's "components having the
+    numingroups fields"); nothing is logged for a dropped counter (the literal "silently"); a
+    dropped constraint's `required` carries onto the group (required where either requires it);
+    the fold's omission is gated on any fold with another dictionary (`drops.is_some()`), so
+    `merge_with`, `add_cfb_file(s)` and `add_json_file` fold without the duplicate and the
+    catalog's refusal stays for the doors that write one definition alone; the message-dropped arm
+    of `Parse::dictionary` is deleted with its sentences if the empty-type test cannot reach it.
+36. D47/D48 answered by the user (2026-10-10): "Only when asked" - `parse_keyvalues` off by
+    default, the bronze layer turning it on, today's text reads unchanged; "Plain unless needed" -
+    a single text value as itself, a repeated key the JSON array of its values, a nested or
+    JSON-opening value its JSON, one owner shared with the FIX row's maps; "Yes, read it" - a
+    double-quoted loose value (`msg="hello world"`) is one pair, escapes kept as written; "Infer by
+    default" - CSV's header and separator inferred where nothing is stated. The other readings of
+    D47/D48 taken as recommended by decision 24's rule: `keyvalues` in `bronze.log_messages` alone;
+    the header tri-state on `CsvOptions` with the shared `header()`/`set_header(bool)` unchanged; no
+    CSV intake in bronze; no preamble skip; the CSV exchange script with `duckdb` installed in its
+    job.
+37. P16, the cross identity from the creation instant (design D49; lands with P7, which moves every
+    cross identity once and whose D40.5 it supersedes): "change the crossuuid rule to take creaunix
+    and use txhash generally taking creation unix if given, else on lifecycle pass or merge with
+    different minimum creaunix reset it using the crosshashcode, also updated on crosscode or
+    crosshashcode changes" (`p16/user_instruction.md`). Read, to be settled by D49: `crossuuid` is
+    the `TxHash` of the element's `creaunix` and its `crosshashcode` - the crate's time-ordered
+    identity, as `time_uuid` couples `transunix` and `hashcode` - wherever a creation instant is
+    stated; the lifecycle walk and a merge, which keep the earliest `creaunix` of the two
+    (`fold_lifecycle`), reset `crossuuid` from the `crosshashcode` and that minimum whenever it
+    differs from the one the element held; and `sync_cross` recomputes it whenever the `crosscode`
+    or the `crosshashcode` moves. What an element stating no creation instant holds is D49's to
+    settle.
+38. Restates 37 (the user's second wording replaces the first): "change the crossuuid rule to take
+    creaunix and use txhash generally taking creation unix if given else initialize the lifecycle
+    with the transunix, else on lifecycle pass or merge with different minimum creaunix reset it
+    using the crosshashcode, also updated on crosscode or crosshashcode changes". Read: an element
+    stating no `creaunix` has its lifecycle initialized with its `transunix` - the creation instant
+    is the transaction instant of the first statement that opened the chain - so every event's
+    `crossuuid` is the `TxHash` of a creation instant and its `crosshashcode`; a walk or a merge
+    keeping an earlier `creaunix` resets it; a move of the cross code or its hash recomputes it.
+39. With 38 (P16, D49): "leverage the optimized set unix of unix and ensure to update on diffs for
+    uuid txhash or hashes to not rehash always". Read: the identities and digests an element holds
+    - `uuid` (the `TxHash` of `transunix` and `hashcode`), `crossuuid` (the `TxHash` of `creaunix`
+    and `crosshashcode`), `crosshashcode` (the XXH3-64 of the cross code) and the content
+    `hashcode` - are recomputed only where an input they read moved, through the setters that
+    already project on a set (`set_transunix`/`set_seqnum` calling `refresh_uuids`/`derive_uuids`,
+    the `moved` diff helper): a setter writing the value already held derives nothing, a cross code
+    written unchanged is not hashed again, and `sync_cross`/`finalize` read what moved rather than
+    rehashing every time. Each such skip is pinned in the allocation and benchmark rows.
+40. D49 answered by the user (2026-10-10): "Reset to new minimum" - a live chain takes an earlier
+    creaunix when one arrives and every member from then on carries the new crossuuid, members
+    already yielded keeping theirs; "Only lifecycle writes it" - the identity reads creaunix else
+    transunix, and a parse, a text read, a walk or a merge writes the column, a hand-built event
+    never passed through one keeping a null creaunix; "Read's running minimum" - a text line's
+    crossuuid takes the earliest creaunix the read has met for its object. The other D49 readings
+    taken as recommended (decision 24's rule): a code-less event keeps its own uuid and an element
+    with no instant keeps from_v8(crosshashcode), D40.5's XXH3-128 withdrawn; a pre-epoch instant
+    falls back to the code rule; InstrumentEvent's crossuuid follows the event rule, P10 joining by
+    instcode; FixMsg's content digest gated by a `digested` bit (decision 39 reaches it); the
+    CrossUuid description rewritten inside P7's regeneration; "the optimized set unix" read as the
+    projecting setters extended to set_creaunix, finalize still deriving both identities.

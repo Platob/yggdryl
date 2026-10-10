@@ -200,14 +200,16 @@ test('a stored cross code replaces another kind or side prefix and an empty code
   assert.equal(order({ crosscode: '8:2:ORD-1', side: 'BUYS' }), '10:1:ORD-1', 'the prefix is replaced')
   assert.equal(order({ crosscode: '10:1:ORD-1', side: 'BUYS' }), '10:1:ORD-1', 'a stored code is itself')
   assert.equal(order({ crosscode: '', side: 'BUYS' }), '', 'no code, no prefix')
-  // A book is never codeless: an empty symbol keys it by the ISIN that
-  // states none, and it states no ticker.
-  assert.equal(new graph.BookEvent(1, '').crosscode, '3:0:XX0000000000')
+  // A book keyed by nothing is codeless: its cross code is empty, it states
+  // no instcode and no ticker, and it takes nothing.
+  assert.equal(new graph.BookEvent(1, '').crosscode, '')
+  assert.equal(new graph.BookEvent(1, '').instcode, null)
   assert.equal(new graph.BookEvent(1, '').ticker, null)
 })
 
-test('a book states 3:0:{ticker} and every identity derives from the stored code', () => {
+test('a book states 3:0:{instcode} and every identity derives from the stored code', () => {
   assert.equal(new graph.BookEvent(1, 'AAPL').crosscode, '3:0:AAPL')
+  assert.equal(new graph.BookEvent(1, 'AAPL').instcode, 'AAPL')
   assert.equal(new graph.BookEvent(1, 'XNAS:ESVUFR').crosscode, '3:0:XNAS:ESVUFR')
   // The cross hash is the XXH3-64 of the stored, prefixed code, and the cross
   // identity follows it: the same base on the other side is another chain.

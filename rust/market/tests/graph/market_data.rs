@@ -15,6 +15,7 @@ fn order(unix: i64, code: &str) -> OrderEvent {
     let mut order = OrderEvent::at(unix);
     order.set_crosscode(code.to_owned());
     order.set_ticker(Some(SmolStr::new("ACME")), true);
+    order.set_instcode(Some(yggdryl::Str::new("ACME")), true);
     order.set_side(Side::read("Buy").unwrap(), true);
     order.set_price(Some(Decimal::from_int(100)), true);
     order.set_quantity(Some(Decimal::from_int(2)), true);
@@ -45,7 +46,7 @@ fn a_leaf_converts_back_and_another_kind_is_refused_at_the_kind() {
         message.contains("expected quote_event, got order_event"),
         "{message}"
     );
-    let book = BookEvent::new(9, "ACME");
+    let book = BookEvent::keyed(9, "ACME");
     assert_eq!(
         BookEvent::try_from(MarketData::from(book.clone())).unwrap(),
         book
@@ -232,7 +233,7 @@ fn a_book_row_writes_no_sources_of_its_own_nor_of_its_alive_entries() {
     // execution among its events, each read from a line of its own.
     let mut quote = QuoteEvent::from(&new(1, "Q-1"));
     quote.finalize();
-    let mut book = BookEvent::new(1, "ACME");
+    let mut book = BookEvent::keyed(1, "ACME");
     book.add_operations([
         sourced(MarketData::from(new(1, "O-1")), 70),
         sourced(MarketData::from(quote), 71),

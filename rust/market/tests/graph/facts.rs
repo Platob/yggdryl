@@ -194,7 +194,7 @@ fn a_ric_is_held_as_written_and_derived_like_any_source() {
 fn a_book_settles_to_both_sides_and_that_side_moves_no_leg() {
     crate::install::installed();
     let price = Some(Decimal::from_int(99));
-    let mut book = BookEvent::new(1, "ACME");
+    let mut book = BookEvent::keyed(1, "ACME");
     book.set_bidpx(price, true);
     book.set_bidqty(Some(Decimal::from_int(10)), true);
     book.set_side(Side::Buy, true);

@@ -21,7 +21,7 @@ const FALL_DAY = 1_792_886_400n * SECOND
 const OFFSET_DAY = 1_767_607_200n * SECOND
 
 function quote(unix, ticker, code, side, price, quantity, state = 'NEW') {
-  return new graph.QuoteEvent(unix, { crosscode: code, ticker, side, price, quantity, state })
+  return new graph.QuoteEvent(unix, { crosscode: code, ticker, instcode: ticker, side, price, quantity, state })
 }
 
 function books(operations) {
@@ -257,11 +257,11 @@ test('two cross codes interleave and emit in cross-code order', () => {
   )
   assert.deepEqual(folded[1].bid, ohlc('100', '101', '100', '101'))
   assert.equal(folded[1].ticker, 'IBM')
-  // A book stating no ticker states none on its candle, and an empty symbol
-  // keys the book by the ISIN that states none.
-  const [bare] = graph.candles([new graph.BookEvent(10n * SECOND, '')], '1m')
+  // A book stating no ticker states none on its candle: a book keyed by a
+  // code states none until an input does, and the code is the candle's.
+  const [bare] = graph.candles([new graph.BookEvent(10n * SECOND, 'US0378331005')], '1m')
   assert.equal(bare.ticker, null)
-  assert.equal(bare.crosscode, '3:0:XX0000000000')
+  assert.equal(bare.crosscode, '3:0:US0378331005')
 })
 
 test('buckets align to the zone: a half-hour offset, a spring forward, a fall back', () => {
@@ -455,10 +455,10 @@ test('a candle round trips through its scalar and its JSON', () => {
   assert.ok(graph.Candle.fromJSON(JSON.stringify(candle)).equals(candle))
   assert.deepEqual(JSON.parse(JSON.stringify([candle]))[0], json)
   // An empty book's candle: every optional cell null on the way out and in.
-  const [bare] = graph.candles([new graph.BookEvent(10n * SECOND, '')], '1m')
+  const [bare] = graph.candles([new graph.BookEvent(10n * SECOND, 'US0378331005')], '1m')
   assert.equal(bare.toJSON().bidopen, null)
   assert.equal(bare.toJSON().ticker, null)
-  assert.equal(bare.toJSON().crosscode, '3:0:XX0000000000')
+  assert.equal(bare.toJSON().crosscode, '3:0:US0378331005')
   assert.ok(graph.Candle.fromJSON(bare.toJSON()).equals(bare))
   assert.ok(graph.Candle.fromScalar(bare.intoScalar()).equals(bare))
 

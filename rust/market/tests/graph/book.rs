@@ -43,6 +43,7 @@ fn operation(
     let mut data = OrderEvent::at(unix);
     data.set_crosscode(identity.to_owned());
     data.set_ticker(Some(SmolStr::new(symbol)), true);
+    data.set_instcode(Some(yggdryl::Str::new(symbol)), true);
     data.set_side(Side::read(side).unwrap(), true);
     data.set_price(Some(price.parse().unwrap()), true);
     data.set_quantity(Some(Decimal::from_int(quantity)), true);
@@ -197,6 +198,7 @@ fn two_sided(
     let mut quote = QuoteEvent::at(unix);
     quote.set_crosscode(code.to_owned());
     quote.set_ticker(Some(SmolStr::new("IBM")), true);
+    quote.set_instcode(Some(yggdryl::Str::new("IBM")), true);
     if let Some((price, quantity)) = bid {
         quote.set_bidpx(Some(decimal(price)), true);
         quote.set_bidqty(Some(Decimal::from_int(quantity)), true);
@@ -250,7 +252,7 @@ fn whole(books: &[BookEvent]) -> Vec<BookEvent> {
             let whole = if book.is_complete() {
                 book.clone()
             } else {
-                let origin = BookEvent::new(book.get_transunix(), book.get_crosscode());
+                let origin = BookEvent::keyed(book.get_transunix(), book.get_crosscode());
                 book.clone()
                     .with_previous(last.get(book.get_crosscode()).unwrap_or(&origin))
                     .expect("a delta book rebuilds over the book before it")
@@ -309,7 +311,7 @@ fn resting(side: &str, code: &str, price: Option<&str>, quantity: i64) -> Market
 /// A book of `bid` and `ask`, each `(code, price, quantity)`, `None` an
 /// unpriced entry.
 fn book_of(bid: &[(&str, Option<&str>, i64)], ask: &[(&str, Option<&str>, i64)]) -> BookEvent {
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     let mut operations: Vec<MarketData> = bid
         .iter()
         .map(|(code, price, quantity)| resting("Buy", code, *price, *quantity))
@@ -337,6 +339,7 @@ fn reset_event(unix: i64, identity: &str) -> OrderEvent {
     let mut reset = OrderEvent::at(unix);
     reset.set_crosscode(identity.to_owned());
     reset.set_ticker(Some(SmolStr::new("IBM")), true);
+    reset.set_instcode(Some(yggdryl::Str::new("IBM")), true);
     reset.set_state(State::read("New").unwrap());
     reset.finalize();
     reset
@@ -370,7 +373,7 @@ fn fact(operation: &(impl Operation + ?Sized)) -> Facts {
 #[test]
 fn a_side_keeps_best_price_order_and_aggregates_exact_level_quantity() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([
         operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
         operation("quote", "IBM", "Q-1", 1, "Buy", "101", 3, "New"),
@@ -466,7 +469,7 @@ fn a_book_level_trades_unless_every_entry_there_states_it_cannot() {
             held.set_tradable(tradable, true);
         })
     };
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([
         stating("A", Some("100"), Some(false)),
         stating("B", Some("100"), None),
@@ -506,7 +509,7 @@ fn the_best_price_is_the_best_tradable_level() {
             held.set_tradable(tradable, true);
         })
     };
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([
         stating("Buy", "B-TOP", "101", 5, Some(false)),
         stating("Buy", "B-NEXT", "100", 3, None),
@@ -541,7 +544,7 @@ fn two_entries_at_one_price_are_one_limit_with_both_uuids() {
         position: Some(position),
         ..BookRef::default()
     };
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([
         operation("order", "IBM", "C", 1, "Buy", "100", 4, "New"),
         with_book(
@@ -615,7 +618,7 @@ fn spread_is_negative_when_crossed_and_none_when_one_sided() {
     let one_sided = book_of(&[("B-1", Some("103"), 1)], &[]);
     assert_eq!(one_sided.spread(), None);
     assert!(!one_sided.is_locked());
-    assert_eq!(BookEvent::new(1, "IBM").spread(), None);
+    assert_eq!(BookEvent::keyed(1, "IBM").spread(), None);
 }
 
 #[test]
@@ -630,7 +633,7 @@ fn imbalance_at_one_level_of_a_one_sided_book_is_one_or_minus_one() {
 #[test]
 fn imbalance_is_none_when_both_sides_are_empty_or_levels_is_zero() {
     crate::install::installed();
-    assert_eq!(BookEvent::new(1, "IBM").imbalance(5), None);
+    assert_eq!(BookEvent::keyed(1, "IBM").imbalance(5), None);
     let book = book_of(&[("B-1", Some("100"), 3)], &[("A-1", Some("101"), 1)]);
     assert_eq!(book.imbalance(0), None);
     assert_eq!(book.imbalance(1), Some(decimal("0.5")));
@@ -709,7 +712,7 @@ fn a_side_counts_its_levels_through_every_change() {
     let buy = |code: &str, price: &str, state: &str| {
         operation("order", "IBM", code, 1, "Buy", price, 1, state)
     };
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([
         buy("B-1", "101", "New"),
         buy("B-2", "101", "New"),
@@ -840,7 +843,7 @@ fn a_delete_from_reaches_an_unpriced_entry_after_every_priced_level() {
 #[test]
 fn book_exposes_bbo_midpoint_and_two_value_quantity_median() {
     crate::install::installed();
-    let mut book = BookEvent::new(10, "IBM");
+    let mut book = BookEvent::keyed(10, "IBM");
     book.add_operations([
         operation("quote", "IBM", "B-1", 10, "Buy", "100", 8, "New"),
         operation("quote", "IBM", "A-1", 10, "Sell", "102", 4, "New"),
@@ -868,7 +871,7 @@ fn book_exposes_bbo_midpoint_and_two_value_quantity_median() {
 #[test]
 fn full_snapshot_replaces_only_its_scope_atomically() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     let first = with_book(
         operation("quote", "IBM", "B-1", 1, "Buy", "100", 2, "New"),
         scoped("PRIMARY"),
@@ -960,49 +963,43 @@ fn iterator_emits_one_book_per_symbol_and_timestamp() {
     );
 }
 
-/// An ISIN the instruments filled moves the book an element without one
-/// stands in: unfilled, the second quote - stating the ticker alone -
-/// stands in the ticker's book while the first stands in the instrument's;
-/// filled from the first quote's row through the ticker index, both stand
-/// in the instrument's.
+/// A code-less element is pruned before the walk until the instruments
+/// fill its code: unfilled, the quote stating the ISIN and the one stating
+/// the ticker alone both hold no `instcode` and no book takes them; filled
+/// from the first quote's row through the ticker index, both stand in the
+/// instrument's book, keyed by the code the fill wrote (decision 16).
 #[test]
-fn a_ticker_a_registry_filled_files_the_element_under_the_instruments_book() {
+fn a_codeless_element_is_pruned_until_the_instruments_fill_its_code() {
     crate::install::installed();
-    let first = edited(
+    let first = codeless(edited(
         operation("quote", "HOLN", "Q-1", 1_000_000, "Buy", "100", 2, "New"),
         |operation| {
             operation
                 .insert_securityid(identifier(&IdType::Isin, "CH0012214059"))
                 .unwrap();
         },
-    );
-    let second = operation("quote", "HOLN", "Q-2", 1_000_000, "Sell", "101", 3, "New");
+    ));
+    let second = codeless(operation(
+        "quote", "HOLN", "Q-2", 1_000_000, "Sell", "101", 3, "New",
+    ));
     let books = |values: Vec<MarketData>| {
         BookIterator::new(values.into_iter(), 0)
             .unwrap()
             .map(|book| {
                 let book = book.unwrap();
                 (
-                    book.book_crosscode().to_owned(),
+                    book.get_crosscode().to_owned(),
+                    book.get_instcode().map(str::to_owned),
                     book.get_ticker().map(str::to_owned),
                     book.get_isincode().map(str::to_owned),
+                    book.delta().len(),
                 )
             })
             .collect::<Vec<_>>()
     };
-    let keyed = |key: &str, isin: Option<&str>| {
-        (
-            key.to_owned(),
-            Some("HOLN".to_owned()),
-            isin.map(str::to_owned),
-        )
-    };
-    assert_eq!(
-        books(vec![first.clone(), second.clone()]),
-        [
-            keyed("CH0012214059", Some("CH0012214059")),
-            keyed("HOLN", None)
-        ]
+    assert!(
+        books(vec![first.clone(), second.clone()]).is_empty(),
+        "a code-less element is pruned before the walk, its ISIN stated or not"
     );
 
     let mut registry = yggdryl_market::Instruments::new();
@@ -1014,7 +1011,17 @@ fn a_ticker_a_registry_filled_files_the_element_under_the_instruments_book() {
         })
         .collect::<Vec<_>>();
     assert_eq!(op(&filled[1]).get_isincode(), Some("CH0012214059"));
-    assert_eq!(books(filled), [keyed("CH0012214059", Some("CH0012214059"))]);
+    assert_eq!(op(&filled[1]).get_instcode(), Some("CH0012214059"));
+    assert_eq!(
+        books(filled),
+        [(
+            "3:0:CH0012214059".to_owned(),
+            Some("CH0012214059".to_owned()),
+            Some("HOLN".to_owned()),
+            Some("CH0012214059".to_owned()),
+            2
+        )]
+    );
 }
 
 #[test]
@@ -1245,7 +1252,7 @@ fn an_exact_grid_tick_emits_every_symbol_after_the_equal_time_source() {
 #[test]
 fn exact_nanoseconds_participate_in_book_identity_within_one_millisecond() {
     crate::install::installed();
-    let mut first = BookEvent::new(1_000_001, "IBM");
+    let mut first = BookEvent::keyed(1_000_001, "IBM");
     first
         .add_operations([operation(
             "quote", "IBM", "B", 1_000_001, "Buy", "100", 1, "New",
@@ -1260,7 +1267,7 @@ fn exact_nanoseconds_participate_in_book_identity_within_one_millisecond() {
 #[test]
 fn updates_follow_the_live_entry_and_atomic_failures_leave_the_book_unchanged() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New")])
         .unwrap();
     let first = alive(&book, true).into_iter().next().unwrap().clone();
@@ -1292,7 +1299,7 @@ fn updates_follow_the_live_entry_and_atomic_failures_leave_the_book_unchanged() 
 #[test]
 fn partial_updates_require_a_predecessor_or_complete_values_and_refs_precede_destination() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     let partial = with_book(
         operation("order", "IBM", "MISSING", 1, "Buy", "101", 3, "Replaced"),
         acting(MdUpdateAction::Change),
@@ -1346,7 +1353,7 @@ fn partial_updates_require_a_predecessor_or_complete_values_and_refs_precede_des
 #[test]
 fn partial_market_updates_continue_orders_without_restating_order_id() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([with_book(
         with_identifiers(
             operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
@@ -1385,7 +1392,7 @@ fn partial_market_updates_continue_orders_without_restating_order_id() {
 #[test]
 fn referenced_market_update_refuses_an_occupied_destination_on_the_other_side() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([
         operation("quote", "IBM", "X", 1, "Buy", "100", 2, "New"),
         operation("quote", "IBM", "Y", 1, "Sell", "101", 3, "New"),
@@ -1416,7 +1423,7 @@ fn referenced_market_update_refuses_an_occupied_destination_on_the_other_side() 
 #[test]
 fn partial_market_updates_move_between_sides_with_their_predecessor() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([with_book(
         with_identifiers(
             operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
@@ -1516,7 +1523,7 @@ fn renamed_market_entry_expires_using_its_current_identity() {
 #[test]
 fn partial_market_updates_promote_quotes_when_the_order_id_becomes_known() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([with_book(
         operation("quote", "IBM", "Q-1", 1, "Buy", "100", 2, "New"),
         acting(MdUpdateAction::New),
@@ -1547,7 +1554,7 @@ fn partial_market_updates_promote_quotes_when_the_order_id_becomes_known() {
 #[test]
 fn contradictory_market_update_order_ids_refuse_without_removing_the_predecessor() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([with_book(
         with_identifiers(
             operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
@@ -1587,7 +1594,7 @@ fn a_market_update_stating_its_order_id_lineage_continues_the_entry() {
     crate::install::installed();
     for parent in ["parentorderid", "origorderid"] {
         let parent: IdType = parent.parse().unwrap();
-        let mut book = BookEvent::new(1, "IBM");
+        let mut book = BookEvent::keyed(1, "IBM");
         book.add_operations([with_book(
             with_identifiers(
                 operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
@@ -1618,7 +1625,7 @@ fn a_market_update_stating_its_order_id_lineage_continues_the_entry() {
     }
 
     // A parent naming another order explains nothing.
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([with_book(
         with_identifiers(
             operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
@@ -1746,7 +1753,7 @@ fn a_conflicted_order_is_its_own_book_entry() {
 #[test]
 fn an_execution_is_recorded_among_the_events_and_a_trade_is_pruned() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New")])
         .unwrap();
     let before = book.clone();
@@ -1755,6 +1762,7 @@ fn an_execution_is_recorded_among_the_events_and_a_trade_is_pruned() {
     let mut root = ExecutionEvent::at(10);
     root.set_crosscode("T-1".to_owned());
     root.set_ticker(Some(SmolStr::new("IBM")), true);
+    root.set_instcode(Some(yggdryl::Str::new("IBM")), true);
     root.set_state(State::read("Filled").unwrap());
     root.finalize();
     let fill = ExecutionEvent::try_from(execution.clone()).unwrap();
@@ -1809,7 +1817,7 @@ fn an_execution_is_recorded_among_the_events_and_a_trade_is_pruned() {
 #[test]
 fn a_book_reads_its_resting_orders_its_delta_and_its_events_by_kind() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([
         operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
         operation("order", "IBM", "O-2", 1, "Sell", "101", 2, "New"),
@@ -1868,18 +1876,19 @@ fn a_book_reads_its_resting_orders_its_delta_and_its_events_by_kind() {
 #[test]
 fn a_book_holds_its_orders_and_quotes_in_its_delta_and_its_executions_in_its_events() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New")])
         .unwrap();
     let before = book.clone();
     let mut undated = Order::new();
     undated.set_crosscode("O-2".to_owned());
     undated.set_ticker(Some(SmolStr::new("IBM")), true);
+    undated.set_instcode(Some(yggdryl::Str::new("IBM")), true);
     undated.set_side(Side::Buy, true);
     undated.finalize();
     for refused in [
         MarketData::from(undated),
-        MarketData::from(BookEvent::new(2, "IBM")),
+        MarketData::from(BookEvent::keyed(2, "IBM")),
     ] {
         let kind = refused.kind();
         let error = book
@@ -1903,6 +1912,7 @@ fn a_book_holds_its_orders_and_quotes_in_its_delta_and_its_executions_in_its_eve
     let mut root = ExecutionEvent::at(2);
     root.set_crosscode("T-1".to_owned());
     root.set_ticker(Some(SmolStr::new("IBM")), true);
+    root.set_instcode(Some(yggdryl::Str::new("IBM")), true);
     root.set_state(State::read("Filled").unwrap());
     root.finalize();
     let trade = TradeEvent::from_parts(
@@ -1993,6 +2003,7 @@ fn expiry_precedes_an_equal_time_source_and_an_execution_never_enters_live_expir
     let mut execution = ExecutionEvent::at(1);
     execution.set_crosscode("E-1".to_owned());
     execution.set_ticker(Some(SmolStr::new("IBM")), true);
+    execution.set_instcode(Some(yggdryl::Str::new("IBM")), true);
     execution.set_state(State::read("Filled").unwrap());
     execution.set_exprunix(Some(2));
     execution.finalize();
@@ -2158,13 +2169,14 @@ fn future_snapshot_components_are_refused_instead_of_backdated() {
 
     op_mut(&mut future).set_snapunix(Some(4));
     future.finalize();
-    let mut direct = BookEvent::new(3, "IBM");
+    let mut direct = BookEvent::keyed(3, "IBM");
     let error = direct.add_operations([future]).unwrap_err().to_string();
     assert!(error.contains("operation[0].snapunix"), "{error}");
 
     let mut reset = ExecutionEvent::at(3);
     reset.set_crosscode("RESET-FUTURE".to_owned());
     reset.set_ticker(Some(SmolStr::new("IBM")), true);
+    reset.set_instcode(Some(yggdryl::Str::new("IBM")), true);
     reset.set_snapunix(Some(2));
     reset.finalize();
     let control = SnapshotEvent::snapshot(&reset, Some(SmolStr::new("PRIMARY")));
@@ -2274,7 +2286,7 @@ fn an_explicit_empty_snapshot_replaces_only_its_partition() {
 fn merging_books_uses_the_book_sent_last_as_reference_and_keeps_earliest_clocks() {
     crate::install::installed();
     let book = |identity: &str, side: &str, price: &str, sendunix: i64, feed: &str| {
-        let mut book = BookEvent::new(100, "IBM");
+        let mut book = BookEvent::keyed(100, "IBM");
         book.add_operations([operation(
             "quote", "IBM", identity, 100, side, price, 2, "New",
         )])
@@ -2324,11 +2336,11 @@ fn merging_books_uses_the_book_sent_last_as_reference_and_keeps_earliest_clocks(
 #[test]
 fn operation_kind_participates_in_book_identity() {
     crate::install::installed();
-    let mut order_book = BookEvent::new(1, "IBM");
+    let mut order_book = BookEvent::keyed(1, "IBM");
     order_book
         .add_operations([operation("order", "IBM", "B-1", 1, "Buy", "100", 1, "New")])
         .unwrap();
-    let mut quote_book = BookEvent::new(1, "IBM");
+    let mut quote_book = BookEvent::keyed(1, "IBM");
     quote_book
         .add_operations([operation("quote", "IBM", "B-1", 1, "Buy", "100", 1, "New")])
         .unwrap();
@@ -2352,9 +2364,9 @@ fn composite_identity_consumes_nested_uuid_without_rehashing_nested_content() {
         right_operation.get_hashcode()
     );
 
-    let mut left = BookEvent::new(1, "IBM");
+    let mut left = BookEvent::keyed(1, "IBM");
     left.add_operations([left_operation]).unwrap();
-    let mut right = BookEvent::new(1, "IBM");
+    let mut right = BookEvent::keyed(1, "IBM");
     right.add_operations([right_operation]).unwrap();
 
     assert_eq!(
@@ -2368,7 +2380,7 @@ fn composite_identity_consumes_nested_uuid_without_rehashing_nested_content() {
 #[test]
 fn restating_rederives_the_book_identity_after_holder_restatement() {
     crate::install::installed();
-    let mut live = BookEvent::new(1, "IBM");
+    let mut live = BookEvent::keyed(1, "IBM");
     live.add_operations([
         operation("quote", "IBM", "B-1", 1, "Buy", "100", 2, "New"),
         operation("quote", "IBM", "A-1", 1, "Sell", "102", 4, "New"),
@@ -2396,7 +2408,7 @@ fn restating_rederives_the_book_identity_after_holder_restatement() {
 #[test]
 fn range_deletes_are_positive_in_range_and_scope_local() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([
         with_book(
             operation("quote", "IBM", "P-1", 1, "Buy", "101", 1, "New"),
@@ -2451,7 +2463,7 @@ fn an_anonymous_new_entry_refuses_to_replace_an_occupied_position() {
         position: Some(1),
         ..BookRef::default()
     };
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     let first = anonymous(with_book(
         operation("quote", "IBM", "POSITION-1", 1, "Buy", "100", 1, "New"),
         positioned(),
@@ -2467,7 +2479,7 @@ fn an_anonymous_new_entry_refuses_to_replace_an_occupied_position() {
     assert!(error.contains("existing position"), "{error}");
     assert_eq!(book, before);
 
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     let explicit = with_book(
         operation("quote", "IBM", "EXPLICIT", 1, "Buy", "100", 1, "New"),
         positioned(),
@@ -2489,7 +2501,7 @@ fn an_anonymous_new_entry_refuses_to_replace_an_occupied_position() {
 #[test]
 fn advancing_time_clears_the_previous_delta_and_events_and_rejects_regression() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([operation("quote", "IBM", "B-1", 1, "Buy", "100", 1, "New")])
         .unwrap();
     book.set_snapunix(Some(1));
@@ -2549,7 +2561,7 @@ fn advancing_time_clears_the_previous_delta_and_events_and_rejects_regression() 
 #[test]
 fn an_entry_id_names_one_entry_per_side_and_a_change_moves_it() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([operation("order", "IBM", "O-1", 1, "Buy", "100", 1, "New")])
         .unwrap();
     let mut other = book.clone();
@@ -2595,7 +2607,7 @@ fn a_bid_and_an_offer_going_by_one_entry_id_are_two_entries() {
             &[(ENTRY_ID, "E1")],
         )
     };
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([
         level("BID-E1", 1, "Buy", "99", 5, MdUpdateAction::New),
         level("ASK-E1", 1, "Sell", "101", 6, MdUpdateAction::New),
@@ -2615,7 +2627,7 @@ fn a_bid_and_an_offer_going_by_one_entry_id_are_two_entries() {
 #[test]
 fn book_identity_includes_deeper_levels_and_book_merge_is_idempotent() {
     crate::install::installed();
-    let mut shallow = BookEvent::new(1, "IBM");
+    let mut shallow = BookEvent::keyed(1, "IBM");
     shallow
         .add_operations([operation("quote", "IBM", "B-1", 1, "Buy", "100", 1, "New")])
         .unwrap();
@@ -2626,15 +2638,15 @@ fn book_identity_includes_deeper_levels_and_book_merge_is_idempotent() {
     assert_eq!(shallow.best_price(Side::Buy), deep.best_price(Side::Buy));
     assert_ne!(shallow.get_uuid(), deep.get_uuid());
 
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([operation("quote", "IBM", "B-1", 1, "Buy", "100", 1, "New")])
         .unwrap();
     assert!(book.clone().merge_with(&book).is_none());
 
     let final_live = operation("quote", "IBM", "B", 2, "Buy", "100", 1, "New");
-    let mut direct = BookEvent::new(2, "IBM");
+    let mut direct = BookEvent::keyed(2, "IBM");
     direct.add_operations([final_live.clone()]).unwrap();
-    let mut with_history = BookEvent::new(2, "IBM");
+    let mut with_history = BookEvent::keyed(2, "IBM");
     with_history
         .add_operations([
             operation("quote", "IBM", "TRANSIENT", 2, "Buy", "99", 1, "New"),
@@ -2671,7 +2683,7 @@ fn merging_treats_a_grid_snapshot_as_authoritative() {
     reference.set_sendunix(Some(20));
     reference.finalize();
 
-    let mut supplement = BookEvent::new(2_000_000, "IBM");
+    let mut supplement = BookEvent::keyed(2_000_000, "IBM");
     supplement
         .add_operations([operation(
             "quote", "IBM", "A-X", 2_000_000, "Sell", "103", 1, "New",
@@ -2688,7 +2700,7 @@ fn merging_treats_a_grid_snapshot_as_authoritative() {
 #[test]
 fn an_empty_snapshot_reference_does_not_refill_replaced_scope_on_merge() {
     crate::install::installed();
-    let mut older = BookEvent::new(2, "IBM");
+    let mut older = BookEvent::keyed(2, "IBM");
     older
         .add_operations([
             with_book(
@@ -2745,7 +2757,7 @@ fn decimal_means_do_not_overflow_representable_results() {
     ask_operation.set_price(Some(ask), true);
     ask_operation.set_quantity(Some(Decimal::MAX), true);
     ask_operation.finalize();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([bid_operation, ask_operation]).unwrap();
     assert_eq!(
         book.bbo_midpoint(),
@@ -2784,11 +2796,11 @@ fn one_by_one_and_grouped_operations_build_the_same_depth_delta_and_events() {
         ]
     };
 
-    let mut one_by_one = BookEvent::new(5, "IBM");
+    let mut one_by_one = BookEvent::keyed(5, "IBM");
     for operation in operations() {
         one_by_one.add_operations([operation]).unwrap();
     }
-    let mut grouped = BookEvent::new(5, "IBM");
+    let mut grouped = BookEvent::keyed(5, "IBM");
     grouped.add_operations(operations()).unwrap();
 
     assert_eq!(alive(&one_by_one, true).len(), 1);
@@ -2833,24 +2845,52 @@ fn one_by_one_and_grouped_operations_build_the_same_depth_delta_and_events() {
     assert_eq!(one_by_one.bbo_midpoint(), grouped.bbo_midpoint());
 }
 
-/// A quote of `identity` stating no ticker, of the market and the
-/// classification given, finalized.
+/// `operation` stating its instrument's cross code `code` - the key of the
+/// book it stands in - finalized again around it.
+fn coded(operation: MarketData, code: &str) -> MarketData {
+    edited(operation, |held| {
+        held.set_instcode(Some(yggdryl::Str::new(code)), true);
+    })
+}
+
+/// `operation` stating no instrument code: what no registry filled, which
+/// no book takes.
+fn codeless(operation: MarketData) -> MarketData {
+    edited(operation, |held| held.set_instcode(None, true))
+}
+
+/// The placeholder code a derivative's chain is first stated under - the
+/// real ISIN it states before its body is learned - and the option's code
+/// it takes once the body is.
+const PLACEHOLDER: &str = "DE000C000001";
+const OPTION: &str = "OC:US0378331005:2026-12-18:200";
+
+/// A security's code, and an FX pair's beside the number the pair mints.
+const SECURITY: &str = "US0378331005";
+const PAIR: &str = "IF:EUR/USD";
+const PAIR_NUMBER: &str = "QYLTVIRYHNX5";
+
+/// A quote of `identity` stating no ticker and no instrument code, of the
+/// market and the classification given, finalized.
 fn unticked(identity: &str, unix: i64, mic: Option<&str>, cfi: Option<&str>) -> MarketData {
     let mut input = operation("quote", "X", identity, unix, "Buy", "100", 1, "New");
     input.set_ticker(None, true);
+    input.set_instcode(None, true);
     input.set_miccode(mic.map(|code| yggdryl::Mic::new(code).unwrap()), true);
     input.set_cficode(cfi.map(|code| yggdryl::Cfi::new(code).unwrap()), true);
     input.finalize();
     input
 }
 
-/// A quote of `identity` stating the ISIN `isin` and the ticker `ticker`,
+/// A quote of `identity` stating the ISIN `isin` - its instrument code
+/// too, as a parse writes a stated real ISIN - and the ticker `ticker`,
 /// none for an empty one, finalized.
 fn listed(identity: &str, unix: i64, isin: &str, ticker: &str) -> MarketData {
     let mut input = operation("quote", ticker, identity, unix, "Buy", "100", 1, "New");
     if ticker.is_empty() {
         input.set_ticker(None, true);
     }
+    input.set_instcode(Some(yggdryl::Str::new(isin)), true);
     op_mut(&mut input)
         .insert_securityid(identifier(&IdType::Isin, isin))
         .unwrap();
@@ -2865,33 +2905,47 @@ fn books_of(inputs: Vec<MarketData>) -> Vec<BookEvent> {
         .unwrap()
 }
 
-/// An input is booked by its instrument's ISIN where it holds one, else by
-/// its ticker, else under the number that states none, `XX0000000000`,
-/// whatever market and classification it names; the book states the
-/// ticker and the ISIN its first input stated, so an ISIN book carries its
-/// ISIN and a book keyed by nothing states neither.
+/// An input is booked by its instrument's cross code alone - a real ISIN,
+/// an FX pair's code, a derivative's - whatever ticker, market and
+/// classification it names, and the book states that code as its own
+/// `instcode` beside the ticker and the ISIN its first input stated; an
+/// input stating no code - a ticker-only quote, one stating neither - is
+/// pruned and opens no book (the FX book took its code, decision 16).
 #[test]
-fn an_input_is_booked_by_its_isin_else_its_ticker_else_the_default() {
+fn an_input_is_booked_by_its_instcode_and_a_codeless_one_is_pruned() {
     crate::install::installed();
     let books = books_of(vec![
         unticked("Q-1", 1, None, None),
         unticked("Q-2", 1, Some("XPAR"), Some("ESVUFR")),
-        operation("quote", "ACME", "Q-3", 1, "Buy", "100", 1, "New"),
-        listed("Q-4", 1, "US0378331005", ""),
+        codeless(operation("quote", "ACME", "Q-3", 1, "Buy", "100", 1, "New")),
+        listed("Q-4", 1, SECURITY, ""),
         listed("Q-5", 1, "CH0012214059", "HOLN"),
+        coded(listed("Q-6", 1, PAIR_NUMBER, "EUR/USD"), PAIR),
     ]);
-    let keys: Vec<(&str, Option<&str>, Option<&str>)> = books
+    let keys: Vec<(&str, Option<&str>)> = books
         .iter()
-        .map(|book| (book.get_crosscode(), book.get_ticker(), book.get_isincode()))
+        .map(|book| (book.get_crosscode(), book.get_instcode()))
         .collect();
     assert_eq!(
         keys,
         [
-            ("3:0:ACME", Some("ACME"), None),
-            ("3:0:CH0012214059", Some("HOLN"), Some("CH0012214059")),
-            ("3:0:US0378331005", None, Some("US0378331005")),
-            ("3:0:XX0000000000", None, None),
+            ("3:0:CH0012214059", Some("CH0012214059")),
+            ("3:0:IF:EUR/USD", Some(PAIR)),
+            ("3:0:US0378331005", Some(SECURITY)),
         ]
+    );
+    let stated: Vec<(Option<&str>, Option<&str>)> = books
+        .iter()
+        .map(|book| (book.get_ticker(), book.get_isincode()))
+        .collect();
+    assert_eq!(
+        stated,
+        [
+            (Some("HOLN"), Some("CH0012214059")),
+            (Some("EUR/USD"), Some(PAIR_NUMBER)),
+            (None, Some(SECURITY)),
+        ],
+        "the ticker and the ISIN the first input stated"
     );
     let whole = whole(&books);
     assert_eq!(
@@ -2899,43 +2953,120 @@ fn an_input_is_booked_by_its_isin_else_its_ticker_else_the_default() {
             .iter()
             .map(|book| alive(book, true).len())
             .collect::<Vec<_>>(),
-        [1, 1, 1, 2],
-        "the two inputs stating neither ISIN nor ticker share the default book"
+        [1, 1, 1],
+        "the three code-less inputs stand in no book"
     );
     for book in &whole {
         assert_eq!(
-            Some(book.book_crosscode()),
+            book.get_instcode(),
             book.get_crosscode().strip_prefix("3:0:"),
-            "a book's own facts spell its key"
+            "a book's instcode cell is its key"
         );
     }
 }
 
-/// A chain stated first by its ticker alone and then under its
-/// instrument's ISIN is one entry in one book: the restatement withdraws it
-/// from the ticker book - one entry of its delta there, removing it and reporting no
-/// fill - and opens it in the ISIN book, where the instrument's other
-/// entries go; across two instants or within one.
+/// The book keyed by nothing - `BookEvent::default()`, an empty key -
+/// states no code, takes no input, and reads back from its row as it was
+/// written; a key spelled as a stored book cross code is read as one, so
+/// `3:0:IBM` keys the book whose `instcode` is `IBM` and reads back too
+/// (the constructor reads its key as a cross code, decision 16).
 #[test]
-fn a_chain_restated_under_its_isin_leaves_its_ticker_book_for_the_instruments() {
+fn a_codeless_and_a_prefixed_key_book_read_back_from_their_rows() {
+    crate::install::installed();
+    let round_trip = |book: BookEvent| {
+        let written = MarketData::arrow_reader(vec![MarketData::from(book)], None, None).unwrap();
+        let read = MarketData::from_arrow_reader(written)
+            .unwrap()
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap();
+        let [MarketData::BookEvent(read)] = read.as_slice() else {
+            panic!("one book row reads back as one book: {read:?}");
+        };
+        (**read).clone()
+    };
+    for book in [BookEvent::default(), BookEvent::keyed(7, "")] {
+        assert_eq!((book.get_crosscode(), book.get_instcode()), ("", None));
+        assert_eq!(round_trip(book.clone()), book, "the book keyed by nothing");
+    }
+    let prefixed = BookEvent::keyed(7, "3:0:IBM");
+    assert_eq!(
+        (prefixed.get_crosscode(), prefixed.get_instcode()),
+        ("3:0:IBM", Some("IBM"))
+    );
+    assert_eq!(prefixed, BookEvent::keyed(7, "IBM"));
+    let mut held = prefixed.clone();
+    held.add_operations([operation("order", "IBM", "O-1", 7, "Buy", "100", 2, "New")])
+        .unwrap();
+    assert_eq!(
+        round_trip(held.clone()),
+        held,
+        "a prefixed key's book with an entry"
+    );
+}
+
+/// An input of a recorded kind no book folds - an undated order - is
+/// refused by name where the walk reaches it, whatever code it states: a
+/// code-less one is refused as a coded one is, never pruned in silence.
+#[test]
+fn a_walk_refuses_an_unfoldable_input_whatever_code_it_states() {
+    crate::install::installed();
+    for code in [Some("IBM"), None] {
+        let mut undated = Order::new();
+        undated.set_crosscode("O-2".to_owned());
+        undated.set_ticker(Some(SmolStr::new("IBM")), true);
+        undated.set_instcode(code.map(yggdryl::Str::new), true);
+        undated.set_side(Side::Buy, true);
+        undated.finalize();
+        let error = BookIterator::new(vec![MarketData::from(undated)].into_iter(), 0)
+            .unwrap()
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("$.operation.kind") && error.contains("expected order_event"),
+            "{code:?}: {error}"
+        );
+    }
+}
+
+/// A chain stated first under a placeholder's code and then under its
+/// derivative's is one entry in one book: the restatement withdraws it
+/// from the placeholder's book - one entry of its delta there, removing it
+/// and reporting no fill - and opens it in the derivative's, where the
+/// instrument's other entries go; across two instants or within one, and
+/// a later statement under the new key moves nothing (an entry restated
+/// under another instcode is withdrawn, decision 16).
+#[test]
+fn a_chain_restated_under_another_instcode_leaves_its_first_book() {
     crate::install::installed();
     const MS: i64 = 1_000_000;
-    let with_isin = |mut input: MarketData| {
-        op_mut(&mut input)
-            .insert_securityid(identifier(&IdType::Isin, "US0378331005"))
-            .unwrap();
-        input.finalize();
-        input
-    };
     for (second, third) in [(2 * MS, 3 * MS), (MS, 2 * MS)] {
         let books = books_of(vec![
-            operation("order", "ACME", "C1", MS, "Buy", "100", 10, "New"),
-            with_isin(operation(
-                "order", "ACME", "C1", second, "Buy", "101", 10, "Replaced",
-            )),
-            with_isin(operation(
-                "order", "ACME", "C9", third, "Sell", "105", 1, "New",
-            )),
+            coded(
+                operation("order", "ACME", "C1", MS, "Buy", "100", 10, "New"),
+                PLACEHOLDER,
+            ),
+            coded(
+                operation("order", "ACME", "C1", second, "Buy", "101", 10, "Replaced"),
+                OPTION,
+            ),
+            coded(
+                operation("order", "ACME", "C9", third, "Sell", "105", 1, "New"),
+                OPTION,
+            ),
+            coded(
+                operation(
+                    "order",
+                    "ACME",
+                    "C1",
+                    third + MS,
+                    "Buy",
+                    "102",
+                    10,
+                    "Replaced",
+                ),
+                OPTION,
+            ),
         ]);
         let whole = whole(&books);
         let keyed: Vec<(i64, &str, usize, usize)> = whole
@@ -2943,7 +3074,7 @@ fn a_chain_restated_under_its_isin_leaves_its_ticker_book_for_the_instruments() 
             .map(|book| {
                 (
                     book.get_transunix(),
-                    book.book_crosscode(),
+                    book.get_instcode().unwrap(),
                     alive(book, true).len(),
                     alive(book, false).len(),
                 )
@@ -2951,27 +3082,29 @@ fn a_chain_restated_under_its_isin_leaves_its_ticker_book_for_the_instruments() 
             .collect();
         let expected: Vec<(i64, &str, usize, usize)> = if second == MS {
             vec![
-                (MS, "ACME", 0, 0),
-                (MS, "US0378331005", 1, 0),
-                (third, "US0378331005", 1, 1),
+                (MS, PLACEHOLDER, 0, 0),
+                (MS, OPTION, 1, 0),
+                (third, OPTION, 1, 1),
+                (third + MS, OPTION, 1, 1),
             ]
         } else {
             vec![
-                (MS, "ACME", 1, 0),
-                (second, "ACME", 0, 0),
-                (second, "US0378331005", 1, 0),
-                (third, "US0378331005", 1, 1),
+                (MS, PLACEHOLDER, 1, 0),
+                (second, PLACEHOLDER, 0, 0),
+                (second, OPTION, 1, 0),
+                (third, OPTION, 1, 1),
+                (third + MS, OPTION, 1, 1),
             ]
         };
         assert_eq!(keyed, expected, "{second}");
-        let ticker_book = whole
+        let placeholder_book = whole
             .iter()
-            .rfind(|book| book.book_crosscode() == "ACME")
+            .rfind(|book| book.get_instcode() == Some(PLACEHOLDER))
             .unwrap();
-        let withdrawn = ticker_book
+        let withdrawn = placeholder_book
             .delta()
             .last()
-            .expect("the withdrawal is the last entry of the ticker book's delta");
+            .expect("the withdrawal is the last entry of the placeholder book's delta");
         assert_eq!(*op(withdrawn).get_state(), State::Removed, "{second}");
         assert_eq!(
             withdrawn.book().and_then(|book| book.action),
@@ -2986,22 +3119,37 @@ fn a_chain_restated_under_its_isin_leaves_its_ticker_book_for_the_instruments() 
         let instrument = whole.last().unwrap();
         assert_eq!(
             op(alive(instrument, true)[0]).get_price(),
-            Some(decimal("101")),
-            "{second}: the restatement stands in the instrument's book"
+            Some(decimal("102")),
+            "{second}: the restatements stand in the derivative's book"
+        );
+        assert_eq!(
+            instrument
+                .delta()
+                .map(|entry| entry.get_crosscode())
+                .collect::<Vec<_>>(),
+            ["10:1:C1"],
+            "{second}: the later statement moves nothing out of the first book"
         );
     }
 }
 
-/// A chain stated by its ticker alone and then restated under its
-/// instrument's ISIN by a snapshot's member leaves its ticker book too:
-/// the member withdraws it there - one entry of its delta, removing it - as any
-/// restatement does, so the entry rests in the instrument's book alone.
+/// A chain stated under a placeholder's code and then restated under its
+/// derivative's by a snapshot's member leaves the placeholder's book too:
+/// the member withdraws it there - one entry of its delta, removing it - as
+/// any restatement does, so the entry rests in the derivative's book alone
+/// (decision 16).
 #[test]
-fn a_chain_restated_by_a_snapshot_under_its_isin_leaves_its_ticker_book() {
+fn a_chain_restated_by_a_snapshot_under_another_instcode_leaves_its_first_book() {
     crate::install::installed();
     const MS: i64 = 1_000_000;
-    let first = operation("quote", "ACME", "C1", MS, "Buy", "100", 1, "New");
-    let mut restated = listed("C1", 2 * MS, "US0378331005", "ACME");
+    let first = coded(
+        operation("quote", "ACME", "C1", MS, "Buy", "100", 1, "New"),
+        PLACEHOLDER,
+    );
+    let mut restated = coded(
+        operation("quote", "ACME", "C1", 2 * MS, "Buy", "100", 1, "New"),
+        OPTION,
+    );
     op_mut(&mut restated).set_snapunix(Some(2 * MS));
     let books = whole(&books_of(vec![first, restated]));
     let keyed: Vec<(i64, &str, usize)> = books
@@ -3009,7 +3157,7 @@ fn a_chain_restated_by_a_snapshot_under_its_isin_leaves_its_ticker_book() {
         .map(|book| {
             (
                 book.get_transunix(),
-                book.book_crosscode(),
+                book.get_instcode().unwrap(),
                 alive(book, true).len(),
             )
         })
@@ -3017,16 +3165,16 @@ fn a_chain_restated_by_a_snapshot_under_its_isin_leaves_its_ticker_book() {
     assert_eq!(
         keyed,
         [
-            (MS, "ACME", 1),
-            (2 * MS, "ACME", 0),
-            (2 * MS, "US0378331005", 1),
+            (MS, PLACEHOLDER, 1),
+            (2 * MS, PLACEHOLDER, 0),
+            (2 * MS, OPTION, 1)
         ],
-        "the snapshot's member withdraws the entry from the ticker book"
+        "the snapshot's member withdraws the entry from the placeholder's book"
     );
     let withdrawn = books[1]
         .delta()
         .last()
-        .expect("the withdrawal is in the ticker book's delta");
+        .expect("the withdrawal is in the placeholder book's delta");
     assert_eq!(*op(withdrawn).get_state(), State::Removed);
     assert_eq!(
         (op(withdrawn).get_lastpx(), op(withdrawn).get_lastqty()),
@@ -3035,25 +3183,35 @@ fn a_chain_restated_by_a_snapshot_under_its_isin_leaves_its_ticker_book() {
     );
 }
 
-/// A snapshot member of the ticker book and the chain restated under its
-/// ISIN at one instant, the member first: the member leaves that snapshot,
-/// so the replaced membership does not put back the entry the restatement
-/// moved, and the entry rests in the instrument's book alone.
+/// A snapshot member of the placeholder's book and the chain restated
+/// under its derivative's code at one instant, the member first: the member
+/// leaves that snapshot, so the replaced membership does not put back the
+/// entry the restatement moved, and the entry rests in the derivative's
+/// book alone (decision 16).
 #[test]
 fn a_snapshot_member_then_a_restatement_at_one_instant_rests_in_one_book() {
     crate::install::installed();
     const MS: i64 = 1_000_000;
-    let first = operation("quote", "ACME", "C1", MS, "Buy", "100", 1, "New");
-    let mut member = operation("quote", "ACME", "C1", 2 * MS, "Buy", "100", 1, "New");
+    let first = coded(
+        operation("quote", "ACME", "C1", MS, "Buy", "100", 1, "New"),
+        PLACEHOLDER,
+    );
+    let mut member = coded(
+        operation("quote", "ACME", "C1", 2 * MS, "Buy", "100", 1, "New"),
+        PLACEHOLDER,
+    );
     op_mut(&mut member).set_snapunix(Some(2 * MS));
-    let restated = listed("C1", 2 * MS, "US0378331005", "ACME");
+    let restated = coded(
+        operation("quote", "ACME", "C1", 2 * MS, "Buy", "100", 1, "New"),
+        OPTION,
+    );
     let books = whole(&books_of(vec![first, member, restated]));
     let keyed: Vec<(i64, &str, usize)> = books
         .iter()
         .map(|book| {
             (
                 book.get_transunix(),
-                book.book_crosscode(),
+                book.get_instcode().unwrap(),
                 alive(book, true).len(),
             )
         })
@@ -3061,11 +3219,11 @@ fn a_snapshot_member_then_a_restatement_at_one_instant_rests_in_one_book() {
     assert_eq!(
         keyed,
         [
-            (MS, "ACME", 1),
-            (2 * MS, "ACME", 0),
-            (2 * MS, "US0378331005", 1),
+            (MS, PLACEHOLDER, 1),
+            (2 * MS, PLACEHOLDER, 0),
+            (2 * MS, OPTION, 1)
         ],
-        "the member leaves the ticker book's snapshot with the entry it states"
+        "the member leaves the placeholder book's snapshot with the entry it states"
     );
 }
 
@@ -3075,7 +3233,7 @@ fn a_snapshot_member_then_a_restatement_at_one_instant_rests_in_one_book() {
 #[test]
 fn a_negative_leg_quantity_is_refused_and_leaves_the_book_as_it_was() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([operation("order", "IBM", "B-1", 1, "Buy", "100", 1, "New")])
         .unwrap();
     let before = book.clone();
@@ -3129,9 +3287,11 @@ fn an_expiration_reports_no_fill() {
     );
 }
 
-/// A book takes only what is keyed to it - an input whose ISIN, else
-/// ticker, spells its key - and any input stating neither; the refusal
-/// names the key and the input's.
+/// A book takes only what is keyed to it - an input whose `instcode`
+/// spells its key - and refuses one stating another code or none at
+/// `$.operation.instcode`, naming the key and the input's; two listings of
+/// one instrument stand in its book, apart by their partition, and the book
+/// keyed by nothing takes nothing (decision 16).
 #[test]
 fn each_book_refuses_an_input_keyed_elsewhere() {
     crate::install::installed();
@@ -3146,54 +3306,46 @@ fn each_book_refuses_an_input_keyed_elsewhere() {
         error.contains(r#"expected book crosscode "CH0012214059", got "ACME""#),
         "{error}"
     );
-    assert!(error.contains("$.operation.ticker"), "{error}");
+    assert!(error.contains("$.operation.instcode"), "{error}");
     let error = instrument
-        .add_operations([listed("Q-3", 1, "US0378331005", "HOLN")])
+        .add_operations([listed("Q-3", 1, SECURITY, "HOLN")])
         .unwrap_err()
         .to_string();
     assert!(
         error.contains(r#"expected book crosscode "CH0012214059", got "US0378331005""#),
         "{error}"
     );
-    assert!(error.contains("$.operation.isincode"), "{error}");
+    assert!(error.contains("$.operation.instcode"), "{error}");
+    let error = instrument
+        .add_operations([unticked("Q-5", 1, Some("XPAR"), Some("ESVUFR"))])
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains(r#"expected book crosscode "CH0012214059", got none"#),
+        "{error}"
+    );
+    assert!(error.contains("$.operation.instcode"), "{error}");
     // Two listings of one instrument stand in its book, apart by their
     // partition, and the book keeps the ticker its first input stated.
     instrument
         .add_operations([listed("Q-4", 1, "CH0012214059", "HOLN.L")])
         .expect("another listing of the book's own instrument");
-    instrument
-        .add_operations([unticked("Q-5", 1, Some("XPAR"), Some("ESVUFR"))])
-        .expect("an input stating neither ISIN nor ticker");
     assert_eq!(instrument.get_ticker(), Some("HOLN"));
-    assert_eq!(alive(&instrument, true).len(), 3);
+    assert_eq!(alive(&instrument, true).len(), 2);
 
-    let mut ticker = BookEvent::new(1, "ACME");
-    ticker
-        .add_operations([unticked("Q-6", 1, None, None)])
-        .expect("a ticker book takes a ticker-less input");
-    let error = ticker
-        .add_operations([operation("quote", "MSFT", "Q-7", 1, "Buy", "100", 1, "New")])
-        .unwrap_err()
-        .to_string();
-    assert!(
-        error.contains(r#"expected book crosscode "ACME", got "MSFT""#),
-        "{error}"
-    );
-    let error = ticker
-        .add_operations([listed("Q-8", 1, "US0378331005", "ACME")])
-        .unwrap_err()
-        .to_string();
-    assert!(
-        error.contains(r#"expected book crosscode "ACME", got "US0378331005""#),
-        "{error}"
-    );
-
-    // The empty book keyed by nothing takes only inputs stating neither.
-    let mut none = BookEvent::new(1, "");
-    assert_eq!(none.get_crosscode(), "3:0:XX0000000000");
+    // The book keyed by nothing is codeless and takes nothing: no input
+    // states an empty code, and one stating none is refused everywhere.
+    let mut none = BookEvent::keyed(1, "");
+    assert_eq!(none.get_crosscode(), "");
     assert_eq!(none.get_ticker(), None);
-    none.add_operations([unticked("Q-9", 1, Some("XPAR"), Some("ESVUFR"))])
-        .expect("an input stating neither ISIN nor ticker");
+    let error = none
+        .add_operations([unticked("Q-9", 1, Some("XPAR"), Some("ESVUFR"))])
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains(r#"expected book crosscode "", got none"#),
+        "{error}"
+    );
     let error = none
         .add_operations([operation(
             "quote", "ACME", "Q-10", 1, "Buy", "100", 1, "New",
@@ -3201,19 +3353,20 @@ fn each_book_refuses_an_input_keyed_elsewhere() {
         .unwrap_err()
         .to_string();
     assert!(
-        error.contains(r#"expected book crosscode "XX0000000000", got "ACME""#),
+        error.contains(r#"expected book crosscode "", got "ACME""#),
         "{error}"
     );
 }
 
-/// An entry of the default book expires in that book, at its deadline.
+/// An entry expires in the book of its own code, at its deadline, and the
+/// book states the ISIN its one input stated and no ticker (decision 16).
 #[test]
-fn a_default_books_entry_expires_in_its_own_book() {
+fn a_books_entry_expires_in_its_own_book() {
     crate::install::installed();
-    let mut live = unticked("Q-1", 1, Some("XPAR"), Some("ESVUFR"));
+    let mut live = listed("Q-1", 1, "CH0012214059", "");
     op_mut(&mut live).set_exprunix(Some(3));
     live.finalize();
-    let books = whole(&books_of(vec![live, listed("Q-2", 5, "US0378331005", "")]));
+    let books = whole(&books_of(vec![live, listed("Q-2", 5, SECURITY, "")]));
     let keyed: Vec<(i64, &str, usize)> = books
         .iter()
         .map(|book| {
@@ -3227,13 +3380,329 @@ fn a_default_books_entry_expires_in_its_own_book() {
     assert_eq!(
         keyed,
         [
-            (1, "3:0:XX0000000000", 1),
-            (3, "3:0:XX0000000000", 0),
+            (1, "3:0:CH0012214059", 1),
+            (3, "3:0:CH0012214059", 0),
             (5, "3:0:US0378331005", 1),
         ]
     );
     assert!(books[1].get_ticker().is_none());
-    assert!(books[1].get_isincode().is_none());
+    assert_eq!(books[1].get_isincode(), Some("CH0012214059"));
+}
+
+/// Three instruments interleaved over four instants - a security, an FX
+/// pair and an option on the security, its 30-byte code - are three book
+/// streams: each book names the book of its own key before it as its
+/// `prevuuid`, no book of one key names another's, every entry stands in
+/// the book of its own code, and the option's books stand apart from its
+/// underlying's (decision 16).
+#[test]
+fn one_book_stream_per_instcode_chains_by_prevuuid() {
+    crate::install::installed();
+    const MS: i64 = 1_000_000;
+    let inputs = vec![
+        coded(
+            operation("order", "AAPL", "S-1", MS, "Buy", "100", 1, "New"),
+            SECURITY,
+        ),
+        coded(
+            operation("quote", "EUR/USD", "F-1", MS, "Buy", "1.1", 1, "New"),
+            PAIR,
+        ),
+        coded(
+            operation("order", "AAPL", "O-1", 2 * MS, "Sell", "5", 1, "New"),
+            OPTION,
+        ),
+        coded(
+            operation("order", "AAPL", "S-2", 2 * MS, "Sell", "101", 1, "New"),
+            SECURITY,
+        ),
+        coded(
+            operation("quote", "EUR/USD", "F-1", 3 * MS, "Buy", "1.2", 1, "New"),
+            PAIR,
+        ),
+        coded(
+            operation("order", "AAPL", "O-1", 3 * MS, "Sell", "6", 1, "Replaced"),
+            OPTION,
+        ),
+        coded(
+            operation("order", "AAPL", "S-1", 4 * MS, "Buy", "100", 1, "Canceled"),
+            SECURITY,
+        ),
+        coded(
+            operation("order", "AAPL", "O-2", 4 * MS, "Buy", "4", 1, "New"),
+            OPTION,
+        ),
+    ];
+    let books = BookIterator::new(inputs.into_iter(), 1)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let keys: std::collections::BTreeSet<&str> =
+        books.iter().map(|book| book.get_crosscode()).collect();
+    assert_eq!(
+        keys,
+        std::collections::BTreeSet::from([
+            "3:0:IF:EUR/USD",
+            "3:0:OC:US0378331005:2026-12-18:200",
+            "3:0:US0378331005"
+        ])
+    );
+    let per_key = |code: &str| {
+        books
+            .iter()
+            .filter(|book| book.get_instcode() == Some(code))
+            .count()
+    };
+    assert_eq!(
+        (per_key(SECURITY), per_key(PAIR), per_key(OPTION)),
+        (4, 4, 3),
+        "one book per key and instant it holds an entry at, every instant a tick"
+    );
+    let mut last: BTreeMap<&str, &BookEvent> = BTreeMap::new();
+    for book in &books {
+        assert_eq!(
+            book.get_instcode(),
+            book.get_crosscode().strip_prefix("3:0:"),
+            "a book's instcode cell is its key"
+        );
+        match last.get(book.get_crosscode()) {
+            Some(previous) => {
+                assert_eq!(book.get_prevuuid(), Some(previous.get_uuid()));
+                assert_eq!(book.get_prevunix(), Some(previous.get_transunix()));
+            }
+            None => assert_eq!(book.get_prevuuid(), None),
+        }
+        for (_, other) in last.iter().filter(|(key, _)| **key != book.get_crosscode()) {
+            assert_ne!(book.get_prevuuid(), Some(other.get_uuid()));
+        }
+        last.insert(book.get_crosscode(), book);
+    }
+    for book in whole(&books) {
+        for entry in book.alive().chain(book.delta()) {
+            assert_eq!(
+                entry.get_instcode(),
+                book.get_instcode(),
+                "an entry stands in the book of its own code"
+            );
+        }
+    }
+}
+
+/// With a grid, every keyed book is emitted whole at each tick; a code-less
+/// input between two ticks is pruned, moving no book and opening no key;
+/// and an empty book no group changed at a tick is skipped, so the next
+/// book of its key follows the last one emitted (decision 16).
+#[test]
+fn snapshot_ticks_emit_every_keyed_book_whole_and_a_pruned_input_opens_none() {
+    crate::install::installed();
+    const MS: i64 = 1_000_000;
+    let inputs = vec![
+        coded(
+            operation("order", "AAPL", "S-1", MS, "Buy", "100", 1, "New"),
+            SECURITY,
+        ),
+        coded(
+            operation("quote", "EUR/USD", "F-1", MS, "Buy", "1.1", 1, "New"),
+            PAIR,
+        ),
+        codeless(operation(
+            "quote",
+            "ACME",
+            "X-1",
+            MS + 500_000,
+            "Buy",
+            "100",
+            1,
+            "New",
+        )),
+        coded(
+            operation(
+                "order",
+                "AAPL",
+                "S-1",
+                2 * MS + 500_000,
+                "Buy",
+                "100",
+                1,
+                "Canceled",
+            ),
+            SECURITY,
+        ),
+        coded(
+            operation(
+                "quote",
+                "EUR/USD",
+                "F-2",
+                3 * MS + 500_000,
+                "Sell",
+                "1.2",
+                1,
+                "New",
+            ),
+            PAIR,
+        ),
+    ];
+    let books = BookIterator::new(inputs.into_iter(), 1)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let emitted: Vec<(i64, &str, bool)> = books
+        .iter()
+        .map(|book| {
+            (
+                book.get_transunix(),
+                book.get_instcode().unwrap(),
+                book.is_complete(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        emitted,
+        [
+            (MS, PAIR, true),
+            (MS, SECURITY, true),
+            (2 * MS, PAIR, true),
+            (2 * MS, SECURITY, true),
+            (2 * MS + 500_000, SECURITY, false),
+            (3 * MS, PAIR, true),
+            (3 * MS + 500_000, PAIR, false),
+        ],
+        "the pruned quote opens no key, and the emptied security book is skipped at 3 ms"
+    );
+    let whole = whole(&books);
+    assert_eq!(
+        alive(&whole[4], true).len(),
+        0,
+        "the cancel emptied the book"
+    );
+    assert_eq!(
+        whole[6].get_prevuuid(),
+        Some(whole[5].get_uuid()),
+        "the next book follows the last one emitted"
+    );
+}
+
+/// A code-less input is pruned where it is pulled, whatever it is - a
+/// quote stating a ticker and no code, an order stating a masked ISIN, a
+/// book message's entry stating no code - each between two booked inputs
+/// of one instant: the instant's book is the two inputs' and the pruned
+/// one is in no delta and no event; a filter narrows what remains and never
+/// admits a pruned input (decision 16).
+#[test]
+fn a_codeless_input_is_pruned_at_the_pull_and_a_filter_never_admits_it() {
+    crate::install::installed();
+    const MS: i64 = 1_000_000;
+    let masked = edited(
+        codeless(operation(
+            "order", "ACME", "M-1", MS, "Buy", "100", 1, "New",
+        )),
+        |held| {
+            held.insert_securityid(identifier(&IdType::Isin, "XX0000000001"))
+                .unwrap();
+        },
+    );
+    let entry = codeless(with_book(
+        operation("quote", "ACME", "W-1", MS, "Buy", "99", 1, "New"),
+        BookRef {
+            action: Some(MdUpdateAction::Change),
+            scope: Some(SmolStr::new("Symbol=ACME")),
+            position: Some(1),
+            entry_px: None,
+            entry_size: None,
+        },
+    ));
+    let inputs = vec![
+        coded(
+            operation("order", "ACME", "B-1", MS, "Buy", "100", 2, "New"),
+            SECURITY,
+        ),
+        codeless(operation(
+            "quote", "ACME", "Q-1", MS, "Buy", "100", 1, "New",
+        )),
+        masked,
+        entry,
+        coded(
+            operation("order", "ACME", "A-1", MS, "Sell", "101", 3, "New"),
+            SECURITY,
+        ),
+    ];
+    let books = whole(&books_of(inputs.clone()));
+    assert_eq!(books.len(), 1, "one instant, one book");
+    let book = &books[0];
+    assert_eq!(book.get_crosscode(), "3:0:US0378331005");
+    assert_eq!(
+        book.delta().map(Element::get_crosscode).collect::<Vec<_>>(),
+        ["10:1:B-1", "10:2:A-1"]
+    );
+    assert_eq!(book.events().len(), 0);
+    assert_eq!((alive(book, true).len(), alive(book, false).len()), (1, 1));
+
+    let filtered = BookIterator::new(inputs.into_iter(), 0)
+        .unwrap()
+        .with_filter("side = 'BUYS'")
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(
+        filtered[0]
+            .delta()
+            .map(Element::get_crosscode)
+            .collect::<Vec<_>>(),
+        ["10:1:B-1"],
+        "the filter keeps the booked buy and admits none of the pruned ones"
+    );
+}
+
+/// A hand-built order stating a real ISIN and no `instcode`, walked
+/// directly, is pruned: the walk holds no registry and creates nothing.
+/// The same order enriched by a registry that learned it stands in the
+/// instrument's book, keyed by the code the fill wrote; over a registry
+/// already full it learns nothing, holds no code and is pruned (decision
+/// 16).
+#[test]
+fn a_hand_built_real_isin_element_is_pruned_until_enriched() {
+    crate::install::installed();
+    const MS: i64 = 1_000_000;
+    let order = codeless(edited(
+        operation("order", "AAPL", "R-1", MS, "Buy", "100", 1, "New"),
+        |held| {
+            held.insert_securityid(identifier(&IdType::Isin, SECURITY))
+                .unwrap();
+        },
+    ));
+    assert_eq!(op(&order).get_isincode(), Some(SECURITY));
+    assert!(
+        books_of(vec![order.clone()]).is_empty(),
+        "a stated real ISIN keys no book until a fill wrote the code"
+    );
+
+    let mut registry = yggdryl_market::Instruments::new();
+    let mut learned = order.clone();
+    on_operation!(&mut learned, operation => registry.enrich(operation));
+    assert_eq!(op(&learned).get_instcode(), Some(SECURITY));
+    assert_eq!(
+        books_of(vec![learned])
+            .iter()
+            .map(|book| book.get_crosscode())
+            .collect::<Vec<_>>(),
+        ["3:0:US0378331005"]
+    );
+
+    let mut full = yggdryl_market::Instruments::new().with_max_instruments(1);
+    let mut holcim = codeless(edited(
+        operation("order", "HOLN", "H-1", MS, "Buy", "100", 1, "New"),
+        |held| {
+            held.insert_securityid(identifier(&IdType::Isin, "CH0012214059"))
+                .unwrap();
+        },
+    ));
+    on_operation!(&mut holcim, operation => full.enrich(operation));
+    assert_eq!(full.len(), 1);
+    let mut unlearned = order;
+    on_operation!(&mut unlearned, operation => full.enrich(operation));
+    assert_eq!(op(&unlearned).get_instcode(), None);
+    assert!(books_of(vec![unlearned]).is_empty());
 }
 
 #[cfg(feature = "internals")]
@@ -3244,7 +3713,35 @@ mod internal {
     use yggdryl_market::graph::{BookIterator, MarketData};
     use yggdryl_market::internals::graph_book::{scheduled_expirations, side_store};
 
-    use super::{op_mut, operation};
+    use super::{codeless, edited, identifier, op_mut, operation};
+
+    /// A recorded input pruned for stating no code is warned of once per
+    /// instrument it names - its ISIN - however many times it is pruned, so
+    /// the disappearance is never silent (decision 16).
+    #[test]
+    fn a_pruned_codeless_input_is_warned_of_once_per_instrument() {
+        crate::install::installed();
+        const SITE: &str = "yggdryl_market::graph::book";
+        const WHAT: &str = "book input pruned: it states no instcode";
+        let order = codeless(edited(
+            operation("order", "TTE", "P-1", 1_000_000, "Buy", "100", 1, "New"),
+            |held| {
+                held.insert_securityid(identifier(&yggdryl_market::IdType::Isin, "FR0000120271"))
+                    .unwrap();
+            },
+        ));
+        let before = count(SITE, WHAT, "FR0000120271");
+        let books = BookIterator::new(vec![order.clone(), order].into_iter(), 0)
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(books.is_empty());
+        assert_eq!(
+            count(SITE, WHAT, "FR0000120271") - before,
+            2,
+            "each pruned input is counted under its instrument's key"
+        );
+    }
 
     /// A walk emits a book whole sharing its sides' stores rather than
     /// copying them, and between ticks only delta books, which hold no
@@ -3386,7 +3883,7 @@ mod internal {
 #[test]
 fn the_delta_is_held_in_the_order_applied_across_both_sides() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([
         operation("order", "IBM", "A-1", 1, "Sell", "102", 1, "New"),
         operation("order", "IBM", "B-1", 1, "Buy", "100", 2, "New"),
@@ -3406,14 +3903,14 @@ fn the_delta_is_held_in_the_order_applied_across_both_sides() {
 
     // The digest reads the delta in that order: the same entries applied
     // in another order are another book.
-    let mut reordered = BookEvent::new(1, "IBM");
+    let mut reordered = BookEvent::keyed(1, "IBM");
     reordered
         .add_operations([
             operation("order", "IBM", "B-1", 1, "Buy", "100", 2, "New"),
             operation("order", "IBM", "A-1", 1, "Sell", "102", 1, "New"),
         ])
         .unwrap();
-    let mut ordered = BookEvent::new(1, "IBM");
+    let mut ordered = BookEvent::keyed(1, "IBM");
     ordered
         .add_operations([
             operation("order", "IBM", "A-1", 1, "Sell", "102", 1, "New"),
@@ -3461,6 +3958,7 @@ fn a_book_walk_records_an_execution_in_its_book_and_prunes_a_trade() {
     let mut root = ExecutionEvent::at(3);
     root.set_crosscode("T-1".to_owned());
     root.set_ticker(Some(SmolStr::new("MSFT")), true);
+    root.set_instcode(Some(yggdryl::Str::new("MSFT")), true);
     root.set_state(State::read("Filled").unwrap());
     root.finalize();
     let traded = operation("execution", "MSFT", "E-2", 3, "Sell", "200", 1, "Filled");
@@ -3554,12 +4052,12 @@ fn a_filter_narrows_the_walk_and_never_widens_it() {
 #[test]
 fn following_replays_a_side_change_in_the_order_applied() {
     crate::install::installed();
-    let mut previous = BookEvent::new(1, "IBM");
+    let mut previous = BookEvent::keyed(1, "IBM");
     previous
         .add_operations([operation("order", "IBM", "O-1", 1, "Buy", "100", 1, "New")])
         .unwrap();
 
-    let mut update = BookEvent::new(2, "IBM");
+    let mut update = BookEvent::keyed(2, "IBM");
     update
         .add_operations([
             operation("order", "IBM", "B-2", 2, "Buy", "99", 1, "New"),
@@ -3578,7 +4076,7 @@ fn following_replays_a_side_change_in_the_order_applied() {
 #[test]
 fn a_two_sided_quote_rests_on_both_sides_as_one_entry() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([two_sided(
         "Q-1",
         1,
@@ -3639,7 +4137,7 @@ fn a_two_sided_quote_rests_on_both_sides_as_one_entry() {
 #[test]
 fn a_book_holds_both_sides_whatever_it_is_set_to() {
     crate::install::installed();
-    let book = BookEvent::new(1, "ACME");
+    let book = BookEvent::keyed(1, "ACME");
     assert_eq!(book.get_side(), Side::Both);
     assert_eq!(book.get_crosscode(), "3:0:ACME");
     let keyed = BookEvent::keyed(1, "KEY");
@@ -3661,7 +4159,7 @@ fn a_book_holds_both_sides_whatever_it_is_set_to() {
     assert_eq!(books[0].get_side(), Side::Both);
     assert_eq!(books[0].get_crosscode(), "3:0:ACME");
 
-    let mut book = BookEvent::new(1, "ACME");
+    let mut book = BookEvent::keyed(1, "ACME");
     book.add_operations([
         operation("order", "ACME", "B-1", 1, "Buy", "99", 2, "New"),
         operation("order", "ACME", "A-1", 1, "Sell", "101", 3, "New"),
@@ -3699,7 +4197,7 @@ fn a_book_holds_both_sides_whatever_it_is_set_to() {
 #[test]
 fn a_quote_withdrawing_a_leg_leaves_that_side_alone() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([two_sided(
         "Q-1",
         1,
@@ -3726,7 +4224,7 @@ fn a_quote_withdrawing_a_leg_leaves_that_side_alone() {
 #[test]
 fn a_quote_follower_stating_one_leg_keeps_the_other() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([two_sided(
         "Q-1",
         1,
@@ -3761,7 +4259,7 @@ fn a_quote_follower_stating_one_leg_keeps_the_other() {
 #[test]
 fn a_quote_cancel_naming_a_live_quote_takes_it_off_both_sides() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([
         two_sided("Q-1", 1, Some(("99", 2)), Some(("101", 3)), "New"),
         operation("order", "IBM", "O-1", 1, "Buy", "98", 1, "New"),
@@ -3793,7 +4291,7 @@ fn an_entry_resting_nowhere_is_still_in_the_delta() {
     crate::install::installed();
     let nowhere =
         |code: &str, unix: i64| operation("quote", "IBM", code, unix, "Unknown", "101", 1, "New");
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New")])
         .unwrap();
     book.add_operations([nowhere("NOWHERE", 2)]).unwrap();
@@ -3805,7 +4303,7 @@ fn an_entry_resting_nowhere_is_still_in_the_delta() {
     assert_eq!(codes(book.delta()), ["14:0:NOWHERE", "10:2:O-2"]);
     assert_eq!(book.alive().count(), 2);
 
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([
         operation("quote", "IBM", "Q-1", 1, "Buy", "99", 1, "New"),
         operation("quote", "IBM", "Q-1", 1, "Buy", "99", 0, "Canceled"),
@@ -3897,7 +4395,7 @@ fn a_restatement_records_no_delta_and_emits_no_book() {
         Some(live_uuid(&whole(&books)[0], "O-1"))
     );
 
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New")])
         .unwrap();
     let before = book.clone();
@@ -3915,9 +4413,9 @@ fn a_restatement_records_no_delta_and_emits_no_book() {
 fn applying_a_statement_twice_changes_the_book_once() {
     crate::install::installed();
     let quote = two_sided("Q-1", 1, Some(("99", 2)), Some(("101", 3)), "New");
-    let mut once = BookEvent::new(1, "IBM");
+    let mut once = BookEvent::keyed(1, "IBM");
     once.add_operations([quote.clone()]).unwrap();
-    let mut twice = BookEvent::new(1, "IBM");
+    let mut twice = BookEvent::keyed(1, "IBM");
     twice
         .add_operations([quote.clone(), quote.clone()])
         .unwrap();
@@ -4049,7 +4547,7 @@ fn a_delta_book_follows_only_the_book_it_names() {
     assert!(
         books[1]
             .clone()
-            .with_previous(&BookEvent::new(1, "MSFT"))
+            .with_previous(&BookEvent::keyed(1, "MSFT"))
             .is_none()
     );
     assert!(whole[2].clone().with_previous(&whole[1]).is_none());
@@ -4196,7 +4694,7 @@ fn folding_with_previous_over_the_emitted_books_rebuilds_every_book_the_walk_hel
     for seed in [1, 7, 42] {
         let inputs = churn(seed, 96);
         // The oracle: one book, each instant's group added in turn.
-        let mut oracle = BookEvent::new(500_000, "IBM");
+        let mut oracle = BookEvent::keyed(500_000, "IBM");
         let mut held: Vec<(i64, BookEvent)> = Vec::new();
         let mut group: Vec<MarketData> = Vec::new();
         for input in inputs
@@ -4327,7 +4825,7 @@ fn an_outdated_deadline_emits_no_tick_past_the_last_input() {
 #[test]
 fn a_refused_group_undoes_an_entry_it_restated_in_place() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([
         with_identifiers(
             operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
@@ -4440,7 +4938,7 @@ fn a_deep_level_states_what_its_entries_sum_to_through_every_change() {
         operation("order", "IBM", code, unix, "Buy", price, quantity, state)
     };
     let halted = |entry: MarketData| edited(entry, |held| held.set_tradable(Some(false), true));
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations((0..DEPTH).flat_map(|at| {
         [
             bid(&format!("B-{at}"), 1, "100", 1, "New"),
@@ -4865,7 +5363,7 @@ fn an_empty_snapshot_on_an_empty_book_emits_an_empty_complete_book_holding_the_c
 #[test]
 fn a_group_at_the_snapshot_s_instant_keeps_the_snapshot_and_its_control() {
     crate::install::installed();
-    let mut book = BookEvent::new(1, "IBM");
+    let mut book = BookEvent::keyed(1, "IBM");
     book.add_operations([operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New")])
         .unwrap();
     let mut reset = reset_event(2, "RESET");
@@ -4929,7 +5427,7 @@ fn the_digest_reads_the_events_and_stays_across_emit_rebuild_and_read() {
                 .iter()
                 .map(|code| operation("execution", "IBM", code, 1, "Buy", "100", 1, "Filled")),
         );
-        let mut book = BookEvent::new(1, "IBM");
+        let mut book = BookEvent::keyed(1, "IBM");
         book.add_operations(inputs).unwrap();
         book
     };
@@ -4981,7 +5479,7 @@ fn merging_unions_the_delta_and_the_events_apart() {
             operation("execution", "IBM", "E-1", 1, "Buy", "100", 1, "Filled"),
         ];
         inputs.extend(extra);
-        let mut book = BookEvent::new(1, "IBM");
+        let mut book = BookEvent::keyed(1, "IBM");
         book.add_operations(inputs).unwrap();
         book.set_sendunix(Some(sendunix));
         book.finalize();
@@ -5122,7 +5620,7 @@ fn a_book_states_no_sources_whatever_the_events_it_holds_state() {
     assert!(stated.get_srcuuids().is_empty());
     assert_eq!(stated, books[0]);
 
-    let origin = BookEvent::new(books[0].get_transunix(), books[0].get_crosscode());
+    let origin = BookEvent::keyed(books[0].get_transunix(), books[0].get_crosscode());
     let rebuilt = books[0].clone().with_previous(&origin).expect("a rebuild");
     assert!(rebuilt.is_complete() && rebuilt.get_srcuuids().is_empty());
     assert_eq!(sources_of(rebuilt.alive()), [source(70), source(71)]);
@@ -5130,7 +5628,7 @@ fn a_book_states_no_sources_whatever_the_events_it_holds_state() {
     // Two statements of one book, the one sent later the reference: the
     // merge unions their delta and states no source.
     let statement = |entries: Vec<MarketData>, sendunix: i64| {
-        let mut book = BookEvent::new(1, "IBM");
+        let mut book = BookEvent::keyed(1, "IBM");
         book.add_operations(entries).unwrap();
         book.set_sendunix(Some(sendunix));
         book.finalize();

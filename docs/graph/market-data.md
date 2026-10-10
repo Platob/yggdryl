@@ -341,7 +341,7 @@ The one loss: a complete book holding no live entry that states a delta or an ev
     let values = vec![
         MarketData::from(undated),
         MarketData::from(order.clone()),
-        MarketData::from(BookEvent::new(1_700_000_001_000_000_000, "AAPL")),
+        MarketData::from(BookEvent::keyed(1_700_000_001_000_000_000, "AAPL")),
         MarketData::from(SnapshotEvent::snapshot(&order, None)),
     ];
 
@@ -492,6 +492,7 @@ A table of books holds the orders and quotes each book's instant applied in its 
         let mut order = OrderEvent::at(unix);
         order.set_crosscode(code.to_owned());
         order.set_ticker(Some("AAPL".into()), true);
+        order.set_instcode(Some("AAPL".into()), true);
         order.set_side(side, true);
         order.set_price(Some(Decimal::from_int(189)), true);
         order.set_quantity(Some(Decimal::from_int(100)), true);
@@ -501,6 +502,7 @@ A table of books holds the orders and quotes each book's instant applied in its 
     let mut fill = ExecutionEvent::at(T + 2);
     fill.set_crosscode("E-1".to_owned());
     fill.set_ticker(Some("AAPL".into()), true);
+    fill.set_instcode(Some("AAPL".into()), true);
     fill.set_side(Side::Buy, true);
     fill.set_lastqty(Some(Decimal::from_int(100)), true);
     fill.finalize();
@@ -533,9 +535,9 @@ A table of books holds the orders and quotes each book's instant applied in its 
     T = 1_700_000_000_000_000_000
 
     def order(unix: int, code: str, side: str) -> graph.OrderEvent:
-        return graph.OrderEvent(unix, crosscode=code, ticker="AAPL", side=side, price=Decimal("189"), quantity=100)
+        return graph.OrderEvent(unix, crosscode=code, ticker="AAPL", instcode="AAPL", side=side, price=Decimal("189"), quantity=100)
 
-    fill = graph.ExecutionEvent(T + 2, crosscode="E-1", ticker="AAPL", side="BUYS", lastqty=100)
+    fill = graph.ExecutionEvent(T + 2, crosscode="E-1", ticker="AAPL", instcode="AAPL", side="BUYS", lastqty=100)
     inputs = [order(T, "B-1", "BUYS"), order(T + 1, "A-1", "SELL"), fill]
 
     # Three books, one per instant - the fill's a delta book stating it
@@ -562,9 +564,9 @@ A table of books holds the orders and quotes each book's instant applied in its 
 
     const T = 1_700_000_000_000_000_000n
     const order = (unix, code, side) => new graph.OrderEvent(unix, {
-      crosscode: code, ticker: 'AAPL', side, price: '189', quantity: 100,
+      crosscode: code, ticker: 'AAPL', instcode: 'AAPL', side, price: '189', quantity: 100,
     })
-    const fill = new graph.ExecutionEvent(T + 2n, { crosscode: 'E-1', ticker: 'AAPL', side: 'BUYS', lastqty: 100 })
+    const fill = new graph.ExecutionEvent(T + 2n, { crosscode: 'E-1', ticker: 'AAPL', instcode: 'AAPL', side: 'BUYS', lastqty: 100 })
     const inputs = [order(T, 'B-1', 'BUYS'), order(T + 1n, 'A-1', 'SELL'), fill]
 
     // Three books, one per instant - the fill's a delta book stating it

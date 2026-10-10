@@ -315,6 +315,7 @@ fn allocation_book_operation(
     let mut event = QuoteEvent::at(unix);
     event.set_crosscode(code.into());
     event.set_ticker(Some(SmolStr::new("ALLOC")), true);
+    event.set_instcode(Some(yggdryl::Str::new("ALLOC")), true);
     event.set_side(Side::read("Buy").expect("the shipped buy side"), true);
     event.set_price(Some(Decimal::from_int(100)), true);
     event.set_quantity(Some(Decimal::from_int(quantity)), true);
@@ -324,7 +325,7 @@ fn allocation_book_operation(
 }
 
 fn allocation_book(entries: usize) -> BookEvent {
-    let mut book = BookEvent::new(1, "ALLOC");
+    let mut book = BookEvent::keyed(1, "ALLOC");
     book.add_operations(
         (0..entries).map(|index| allocation_book_operation(format!("ALLOC-{index}"), 1, 1, "New")),
     )
@@ -497,7 +498,7 @@ fn a_delta_book_rebuild_allocates_per_delta_not_per_level() {
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
         assert_eq!(books.len(), 3);
-        let origin = BookEvent::new(books[0].get_transunix(), books[0].get_crosscode());
+        let origin = BookEvent::keyed(books[0].get_transunix(), books[0].get_crosscode());
         let first = books[0].clone().with_previous(&origin).unwrap();
         let previous = books[1].clone().with_previous(&first).unwrap();
         let delta = books[2].clone();
@@ -537,7 +538,7 @@ fn a_book_row_lays_out_alike_whether_its_alive_entries_state_sources() {
             .collect::<yggdryl::Result<Vec<_>>>()
             .unwrap();
         assert_eq!(books.len(), 2);
-        let origin = BookEvent::new(books[0].get_transunix(), books[0].get_crosscode());
+        let origin = BookEvent::keyed(books[0].get_transunix(), books[0].get_crosscode());
         let first = books[0].clone().with_previous(&origin).unwrap();
         let book = books[1].clone().with_previous(&first).unwrap();
         assert_eq!(book.alive().count(), levels * 16);
@@ -627,7 +628,7 @@ fn one_book_update_does_not_allocate_per_live_entry() {
 /// four a vector grown by pushing holds in its first allocation, so a limit
 /// that grew its identities rather than collecting them shows in the count.
 fn allocation_book_levels(levels: usize) -> BookEvent {
-    let mut book = BookEvent::new(1, "ALLOC");
+    let mut book = BookEvent::keyed(1, "ALLOC");
     book.add_operations(allocation_level_entries(levels))
         .expect("the initial depth");
     book
@@ -662,6 +663,7 @@ fn allocation_level_entry(
     let mut event = QuoteEvent::at(unix);
     event.set_crosscode(format!("{name}-{level}-{slot}"));
     event.set_ticker(Some(SmolStr::new("ALLOC")), true);
+    event.set_instcode(Some(yggdryl::Str::new("ALLOC")), true);
     event.set_side(Side::read(side).expect("a shipped side"), true);
     event.set_price(Some(Decimal::from_int(price)), true);
     event.set_quantity(Some(Decimal::from_int(unix + offset)), true);
@@ -891,25 +893,27 @@ fn a_market_data_row_with_rates_reads_only_what_it_hands_back() {
     }
 }
 
-/// The key of a book is borrowed from the input whatever it states: its
-/// ISIN identifier, its ticker, or the static number that states none.
+/// The key of a book is borrowed off the input's `instcode`, whatever its
+/// length - an inline code, the 30-byte code of an option (decision 16).
 #[test]
-fn a_book_crosscode_allocates_nothing_for_any_input() {
+fn the_book_key_is_borrowed_off_the_instcode() {
     crate::install::installed();
-    let order = allocation_market_order(1);
-    let (allocations, key) = counted(|| black_box(order.book_crosscode().len()));
-    assert_eq!(key, "ALLOC".len());
-    assert_eq!(allocations, 0);
-    let listed = allocation_market_order_with_rates(1);
-    let (allocations, key) = counted(|| black_box(listed.book_crosscode().len()));
-    assert_eq!(key, "US0378331005".len());
-    assert_eq!(allocations, 0);
-    let MarketData::OrderEvent(mut blank) = allocation_market_order(1) else {
+    let MarketData::OrderEvent(mut order) = allocation_market_order(1) else {
         unreachable!("the allocation order is an order event")
     };
-    blank.set_ticker(None, true);
-    let (allocations, key) = counted(|| black_box(blank.book_crosscode().len()));
-    assert_eq!(key, yggdryl::Isin::NONE.len());
+    order.set_instcode(Some(yggdryl::Str::new("ALLOC")), true);
+    let (allocations, key) = counted(|| black_box(order.get_instcode().map_or(0, str::len)));
+    assert_eq!(key, "ALLOC".len());
+    assert_eq!(allocations, 0);
+    let MarketData::OrderEvent(mut option) = allocation_market_order_with_rates(1) else {
+        unreachable!("the allocation order is an order event")
+    };
+    option.set_instcode(
+        Some(yggdryl::Str::new("OC:US0378331005:2026-12-18:200")),
+        true,
+    );
+    let (allocations, key) = counted(|| black_box(option.get_instcode().map_or(0, str::len)));
+    assert_eq!(key, "OC:US0378331005:2026-12-18:200".len());
     assert_eq!(allocations, 0);
 }
 
@@ -951,7 +955,7 @@ fn allocation_market_books(count: usize) -> Vec<MarketData> {
     (0..count)
         .map(|index| {
             let unix = 1 + i64::try_from(index).expect("a small corpus");
-            let mut book = BookEvent::new(unix, "ALLOC");
+            let mut book = BookEvent::keyed(unix, "ALLOC");
             book.add_operations([allocation_book_operation("ALLOC-0", unix, 1, "New")])
                 .expect("one order");
             MarketData::from(book)

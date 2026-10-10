@@ -404,11 +404,11 @@ def test_messages_and_arrow_reader_invert_each_other(seed_batch: FixRegistry) ->
 def test_book_arrow_reader_streams_lifted_market_data_books(seed_batch: FixRegistry) -> None:
     codec = _fixed_batch(seed_batch, batch_row_size=1)
     snapshot = codec.parse_fix_line(
-        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|"
+        b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=2|"
         b"269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|"
     )
     update = codec.parse_fix_line(
-        b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|"
+        b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|268=2|"
         b"279=1|269=0|278=B1|270=101|271=11|"
         b"279=0|269=2|278=T1|270=101|271=2|10=0|"
     )
@@ -502,15 +502,22 @@ UNMAPPED_ORDER = (
     b"|54=1|44=100.5|38=5|40=2|18=G|21=1|111=3|60=20260921-10:00:00|10=123|"
 )
 
+# `UNMAPPED_ORDER` stating its instrument's real ISIN too, so its code is
+# known at the parse and a book takes it (decision 16).
+UNMAPPED_LISTED_ORDER = (
+    b"8=FIX.4.4|9=120|35=D|49=BUYER|56=VENUE|34=12|52=20260921-10:00:00|11=C1|1=ACC1|55=AAPL|48=US0378331005|22=4"
+    b"|54=1|44=100.5|38=5|40=2|18=G|21=1|111=3|60=20260921-10:00:00|10=123|"
+)
+
 
 def test_market_data_answer_the_sorted_captures_leaves(seed_batch: FixRegistry) -> None:
     codec = _fixed_batch(seed_batch)
     unsorted = [
         codec.parse_fix_line(line)
         for line in (
-            b"8=FIX.4.4|35=D|52=20260921-10:00:02|11=C2|55=AAPL|54=1|44=100|38=5|10=0|",
-            b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|54=2|133=101|135=7|10=0|",
-            b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|55=AAPL|54=1|44=99|38=5|10=0|",
+            b"8=FIX.4.4|35=D|52=20260921-10:00:02|11=C2|55=AAPL|48=US0378331005|22=4|54=1|44=100|38=5|10=0|",
+            b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|48=US0378331005|22=4|54=2|133=101|135=7|10=0|",
+            b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|55=AAPL|48=US0378331005|22=4|54=1|44=99|38=5|10=0|",
         )
     ]
     ordered = sorted(unsorted, key=lambda message: message.transunix)
@@ -538,9 +545,9 @@ def test_market_data_place_an_entry_clock_before_an_earlier_message(
     # The update's entry clock, 10:00:00.5, stands before the order sent at
     # 10:00:01, though the update itself was sent after it.
     capture = [
-        codec.parse_fix_line(b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|55=AAPL|54=1|44=99|38=5|10=0|"),
+        codec.parse_fix_line(b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|55=AAPL|48=US0378331005|22=4|54=1|44=99|38=5|10=0|"),
         codec.parse_fix_line(
-            b"8=FIX.4.4|35=X|52=20260921-10:00:02|55=AAPL|268=1|279=0|269=0|278=B1|270=100|271=10"
+            b"8=FIX.4.4|35=X|52=20260921-10:00:02|55=AAPL|48=US0378331005|22=4|268=1|279=0|269=0|278=B1|270=100|271=10"
             b"|272=20260921|273=10:00:00.500|10=0|"
         ),
     ]
@@ -656,9 +663,14 @@ def test_market_metadata_carries_what_no_typed_column_reads(seed_batch: FixRegis
     assert stated.uuid != bare.uuid
     assert stated.hashcode != bare.hashcode
     # The message door always carries it; the book door honours the switch.
-    # With no grid the book is a delta book: the order is its one entry.
+    # With no grid the book is a delta book: the order is its one entry. A
+    # book takes an order stating its instrument's code: the ticker-only
+    # line holds no `instcode` and is pruned before it is expanded (decision
+    # 16), the one stating its ISIN too is booked.
     assert message.market_data() == [stated]
-    [book] = MarketData.from_arrow_reader(off.book_arrow_reader([message]))
+    assert off.book_arrow_reader([message]).read_all().num_rows == 0
+    listed = off.parse_fix_line(UNMAPPED_LISTED_ORDER)
+    [book] = MarketData.from_arrow_reader(off.book_arrow_reader([listed]))
     [live] = book.as_book_event().delta  # type: ignore[union-attr]
     assert live.metadata == {}
 
@@ -791,9 +803,14 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     # cancel request: the last book is the reject's instant alone and
     # digests its one delta. Two books more since then, thirteen: that one,
     # and the book of the instant the frame hop of order 00079132558GLXC0's
-    # fill is dated at by its sending clock.
+    # fill is dated at by its sending clock. Twelve since decision 16 keyed
+    # a book by the instcode alone: the capture's one line stating the
+    # masked number XX0000000001 is one order and the execution its parse
+    # split off, at one instant, of an instrument no registry knows, so
+    # neither holds an instcode and both are pruned before the walk - the
+    # book of that instant with them (a masked number keys no book).
     books = list(graph.BookIterator(operations))
-    assert len(books) == 13
+    assert len(books) == 12
     assert not any(book.is_complete for book in books)
     cancelled, last = books[-2], books[-1]
     assert last.ticker == "2454"
@@ -802,14 +819,21 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     assert cancelled.alive == last.alive == []
     assert [delta.price for delta in [*cancelled.delta, *last.delta]] == [None, None]
     assert cancelled.events == last.events == [], "no execution touched either instant"
-    # Every execution of the capture is an event of exactly one book, and no
+    # Every execution of the capture stating an instcode is an event of
+    # exactly one book - the masked line's, stating none, of none - and no
     # book records an order or a quote among its events.
-    assert sum(len(book.executions) for book in books) == 9
+    coded = [operation for operation in operations if operation.instcode is not None]
+    assert sum(len(book.executions) for book in books) == sum(
+        1 for operation in coded if operation.marketdatakind is MarketDataKind.EXEC
+    ) == 8
+    assert sum(1 for operation in operations if operation.instcode is None) == 2, "the masked line's order and execution alone"
     assert all(len(book.executions) == len(book.events) for book in books)
     assert last.hashcode == 16_012_236_961_469_281_692
-    # Every book is keyed by the ISIN its inputs state, else their ticker:
-    # the masked line's number keys its own book, and the trade capture's
-    # execution, of an instrument no order names, opens that instrument's.
+    # Every book is keyed by the instcode the lifecycle filled from the ISIN
+    # its inputs state - the book's own `instcode` cell is its key - and the
+    # trade capture's execution, of an instrument no order names, opens that
+    # instrument's; the masked line's number keys no book (decision 16).
+    assert all(book.crosscode == f"3:0:{book.instcode}" for book in books)
     assert sorted({book.crosscode for book in books}) == [
         "3:0:CH0012005267",
         "3:0:CH0012214059",
@@ -817,7 +841,6 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
         "3:0:EZN11TD1F7K3",
         "3:0:TW0001605004",
         "3:0:TW0002454006",
-        "3:0:XX0000000001",
     ]
 
     # No leaf keys a typed fact - Account(1) is no typed fact since A1 - and
@@ -841,7 +864,7 @@ def test_lifecycled_two_sided_trade_streams_executions_and_no_book(
     messages = list(
         codec.parse_line(
             b"8=FIX.4.4|35=AE|49=SELL|56=BUY|34=7|52=20260921-10:00:00|"
-            b"571=T1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|"
+            b"571=T1|150=F|55=AAPL|48=US0378331005|22=4|32=10|31=101.25|60=20260921-10:00:00|552=2|"
             b"54=1|1427=BUY-EXEC|1009=4|37=BUY-ORDER|11=BUY-CLIENT|"
             b"54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|"
         )
@@ -903,14 +926,14 @@ def test_lifecycled_two_sided_trade_streams_executions_and_no_book(
     ("body", "fills", "books"),
     [
         (
-            b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|"
+            b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|48=US0378331005|22=4|"
             b"32=4|31=101.25|60=20260921-10:00:00|552=1|"
             b"1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|",
             [Side.UKNW],
             1,
         ),
         (
-            b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|"
+            b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|48=US0378331005|22=4|"
             b"32=0|31=101.25|60=20260921-10:00:00|552=0|10=0|",
             [],
             0,
@@ -3972,7 +3995,7 @@ def test_a_quote_states_its_bid_and_offer_and_holds_both_legs(seed: FixRegistry)
 
     # Both legs are one message: the parse never splits a quote, which holds
     # both sides, states no price of its own and its two legs under side 0.
-    [quote] = codec.parse_line(b"8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|")
+    [quote] = codec.parse_line(b"8=FIX.4.4|35=S|117=Q3|55=AAPL|48=US0378331005|22=4|132=101|133=102|10=0|")
     assert quote.side is Side.BOTH and quote.price is None
     assert quote.crosscode == "14:0:Q3"
     assert quote.bidpx is not None and quote.bidpx.as_py() == 101
@@ -3983,7 +4006,7 @@ def test_a_quote_states_its_bid_and_offer_and_holds_both_legs(seed: FixRegistry)
     assert book is not None and not book.is_complete
     assert [delta.crosscode for delta in book.delta] == ["14:0:Q3"]
     assert (book.bidpx, book.askpx) == (quote.bidpx, quote.askpx)
-    whole = book.with_previous(BookEvent.keyed(book.transunix, "AAPL"))
+    whole = book.with_previous(BookEvent.keyed(book.transunix, "US0378331005"))
     assert whole is not None
     assert [entry.crosscode for entry in whole.alive] == ["14:0:Q3"]
     assert whole.alive_on(Side.BUYS) == whole.alive_on(Side.SELL) == whole.alive
@@ -5827,6 +5850,15 @@ def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
     executions = sum(len(book.executions) for book in stored_books if book is not None)
     assert written["silver.orders"].written_rows + written["silver.quotes"].written_rows == delta > 0
     assert written["silver.executions"].written_rows == executions > 0, "executions are recorded among the events"
+    # A book is keyed by its instrument's code alone (decision 16): every
+    # book row's `instcode` is its key, stored as its cross code `3:0:{key}`,
+    # and every event a book laid out states the code it was booked under -
+    # a code-less input was pruned before the walk.
+    assert all(book is not None and book.crosscode == f"3:0:{book.instcode}" for book in stored_books)
+    for name in ("orders", "quotes", "executions"):
+        rows = StreamChunkedSerie.from_serie(silver.table(f"record_keeping.{name}").read_serie(select="instcode")).into_arrow_reader().read_all()
+        assert rows.num_rows == written[f"silver.{name}"].written_rows, name
+        assert rows.column("instcode").null_count == 0, name
 
     # Every table is laid out as the pipeline declares: the quarter-hour
     # partition the table computes, the key, the sort, the books by their

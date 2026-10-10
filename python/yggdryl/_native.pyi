@@ -8225,8 +8225,12 @@ class FixCodec:
         Lifecycle enrichment is explicit: pass ``codec.lifecycle(messages)``
         when needed. Positive ``snapshot_millis`` enables epoch-aligned
         snapshots, at which a complete book is written; every other book is a
-        delta book, stating its delta and its events alone. One book is kept per book key - the instrument's
-        ISIN, else its ticker, else ``XX0000000000``. ``filter``, a predicate
+        delta book, stating its delta and its events alone. One book is kept per instrument cross code
+        (``instcode``): a message stating none - a ticker-only line no
+        lifecycle filled, a masked number - is pruned before it is expanded,
+        and a W/X message's entries are admitted one by one, an entry
+        stating its own ``SecurityID(48)`` booked by the code it spells.
+        ``filter``, a predicate
         over the ``marketdata`` row, narrows what the books fold and never
         admits a kind they do not; ``None`` keeps every booked leaf. Each leaf
         carries its message's unmapped fields where ``market_metadata`` says
@@ -9452,15 +9456,18 @@ class BookEvent:
     answer a new book.
     """
 
-    def __init__(self, transunix: int, symbol: str) -> None:
-        """An empty book of the ticker ``symbol``, keyed by it; an empty
-        ``symbol`` keys the book ``XX0000000000`` and states no ticker."""
+    def __init__(self, transunix: int, key: str) -> None:
+        """An empty book keyed ``key`` - the instrument's cross code
+        (``instcode``) every input it takes states, which the book states as
+        its own ``instcode`` and stores as ``3:0:{key}`` - stating neither a
+        ticker nor an ISIN until its first input states each; an empty
+        ``key`` keys a book by nothing, which takes nothing."""
         ...
     @staticmethod
     def keyed(transunix: int, key: str) -> BookEvent:
-        """An empty book keyed ``key`` - an ISIN, a ticker or ``XX0000000000`` -
-        stating neither a ticker nor an ISIN: the base a code's first book, a
-        delta book, rebuilds over with ``with_previous``."""
+        """An empty book keyed ``key`` - ``BookEvent(transunix, key)`` - the
+        base a code's first book, a delta book, rebuilds over with
+        ``with_previous``."""
         ...
     @property
     def uuid(self) -> Scalar: ...

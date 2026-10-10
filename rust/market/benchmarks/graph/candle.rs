@@ -21,6 +21,7 @@ fn entry(unix: i64, side: &str, price: i64) -> MarketData {
     let mut event = QuoteEvent::at(unix);
     event.set_crosscode(name.to_owned());
     event.set_ticker(Some(SmolStr::new("BENCH")), true);
+    event.set_instcode(Some(yggdryl::Str::new("BENCH")), true);
     event.set_side(Side::read(side).expect("a shipped side"), true);
     event.set_price(Some(Decimal::from_int(price)), true);
     event.set_quantity(Some(Decimal::from_int(10)), true);
@@ -36,7 +37,7 @@ fn books(count: usize) -> Vec<BookEvent> {
         .map(|index| {
             let unix = i64::try_from(index).expect("a bench corpus") * (SECOND / 10);
             let tick = i64::try_from(index % 7).expect("a bench corpus");
-            let mut book = BookEvent::new(unix, "BENCH");
+            let mut book = BookEvent::keyed(unix, "BENCH");
             book.add_operations([
                 entry(unix, "Buy", 100_000 - tick),
                 entry(unix, "Sell", 100_001 + tick),
@@ -118,7 +119,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let fall_back: Vec<BookEvent> = (0..count)
         .map(|index| {
             let step = 2 * 3_600 * SECOND / i64::try_from(count).expect("a bench corpus");
-            BookEvent::new(
+            BookEvent::keyed(
                 FALL_DAY + i64::try_from(index).expect("a bench corpus") * step,
                 "BENCH",
             )

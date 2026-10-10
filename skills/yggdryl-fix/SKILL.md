@@ -147,8 +147,9 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    `ExecutionAcknowledgement` (`BN`) and a `DontKnowTrade` (`Q`) answer no
    leaf - they state no fact of the order. `book_arrow_reader` folds orders,
    quotes and `W`/`X` entries, pruning executions and trades before a book
-   sees them, one book per book key - the instrument's ISIN, else the ticker,
-   else `XX0000000000` - and its `filter` narrows what folds, never admitting
+   sees them, one book per instrument cross code (`instcode`) - a message
+   stating none, a ticker-only line no lifecycle filled, pruned before it is
+   expanded - and its `filter` narrows what folds, never admitting
    an execution back. It does not sort - an operation dated before its book is
    left out with a warning - and neither door runs the lifecycle for you. For a capture already landed as FIX rows,
    `market_data_arrow_reader` reads each row as its message (no line parsed
@@ -456,8 +457,8 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   instrument's cross code as `instcode` - never the wire, `CFICode(461)` or
   the message's identity. The parse writes `instcode` only where the message
   alone spells it - a stated real ISIN, a detected FX pair (`IF:EUR/USD`, its
-  minted number `QYLTVIRYHNX5` derived under `derived:isin` so its book is
-  `3:0:QYLTVIRYHNX5`) - and a parse through a codec sharing a collection fills
+  book `3:0:IF:EUR/USD`, its minted number `QYLTVIRYHNX5` derived under
+  `derived:isin` a fact beside it) - and a parse through a codec sharing a collection fills
   derived identifiers from the table its door fixed as it opened, nothing
   else, and learns nothing. Without `instruments=` each walk learns into its
   own, starting empty, and a parse fills nothing; pass one collection - bound

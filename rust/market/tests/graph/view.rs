@@ -44,6 +44,7 @@ fn operation<K: OperationKind>(
     operation.set_quantity(Some(Decimal::from_int(10 + unix)), true);
     operation.set_side(Side::read(side).unwrap(), true);
     operation.set_ticker(Some(SmolStr::new("ACME")), true);
+    operation.set_instcode(Some(yggdryl::Str::new("ACME")), true);
     operation.set_state(State::read(state).unwrap());
     operation.finalize();
     operation
@@ -68,6 +69,7 @@ fn trade(unix: i64, code: &str, executions: usize) -> TradeEvent {
     let mut root = OrderEvent::at(unix);
     root.set_crosscode(code.to_owned());
     root.set_ticker(Some(SmolStr::new("ACME")), true);
+    root.set_instcode(Some(yggdryl::Str::new("ACME")), true);
     root.set_state(State::read("Filled").unwrap());
     root.finalize();
     let parts = (0..executions)
@@ -81,7 +83,7 @@ fn trade(unix: i64, code: &str, executions: usize) -> TradeEvent {
 
 /// A book of one order and one quote.
 fn book(unix: i64) -> BookEvent {
-    let mut book = BookEvent::new(unix, "ACME");
+    let mut book = BookEvent::keyed(unix, "ACME");
     book.add_operations([
         MarketData::from(operation::<yggdryl_market::graph::OrderKind>(
             unix,

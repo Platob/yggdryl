@@ -36,7 +36,7 @@ A bucket is `interval` nanoseconds of the zone's wall clock, so a daily candle o
 | Input | an `Iterator<Item = Result<BookEvent>>` - a [`BookIterator`](book.md#book-fold) is one - sorted by `get_transunix`; a regression is refused at `$.book.transunix` (`expected an instant at or after 2000, got 1000`), a `ValueError` in Python and an `Error` in JavaScript. The bindings take `BookEvent`s or `MarketData` holding one, so a table's rows fold as they arrive; another leaf is refused by the core's own narrowing, `$.kind: expected book_event, got order`, a `TypeError` in Python |
 | Buckets | the candles of a bucket are emitted, in cross-code order, when the stream moves past the bucket and at the stream's end; an empty bucket yields no candle. The open bucket holds one fold per cross code until it closes |
 | Failure | a source error, a regression or a range refusal ends the walk: the candles of every bucket the stream moved past - the refused book's own step included - are emitted before it, the open bucket is dropped rather than emitted incomplete, the error is the last item, and the iterator fuses |
-| `crosscode`, `ticker` | the book's stored [`get_crosscode`](market.md#sides-and-cross-codes) - `3:0:` then its [book key](market.md#the-book-key), the ISIN, else the ticker, else `XX0000000000` (`3:0:ACME`, `3:0:CH0012214059`) - and the first book's `get_ticker`, null where it states none |
+| `crosscode`, `ticker` | the book's stored [`get_crosscode`](market.md#sides-and-cross-codes) - `3:0:` then its [book key](market.md#the-book-key), the instrument's `instcode` (`3:0:ACME`, `3:0:CH0012214059`) - and the first book's `get_ticker`, null where it states none |
 | `bid`, `ask` | over [`best_price(Side::Buy)`](book.md#limits) and `best_price(Side::Sell)` of every book that states one: the first opens the reading, each later one moves the close and the high or low; `None` where no book of the bucket stated one |
 | `mid`, `spread` | over `bbo_midpoint()` and `spread()` the same way, so a one-sided book contributes to neither, and a bucket whose ask side empties keeps the ask, mid and spread the earlier books read |
 | `bidqty`, `askqty` | the last book's `best_quantity` on each side - `None` when the last book has none, whatever an earlier one had |
@@ -82,6 +82,7 @@ Four books of one minute: one quote a side, restated at each book, and three fil
         let mut quote = QuoteEvent::at(unix);
         quote.set_crosscode(code.to_owned());
         quote.set_ticker(Some("ACME".into()), true);
+        quote.set_instcode(Some("ACME".into()), true);
         quote.set_side(side, true);
         quote.set_price(Some(price.parse()?), true);
         quote.set_quantity(Some(Decimal::from_int(quantity)), true);
@@ -93,6 +94,7 @@ Four books of one minute: one quote a side, restated at each book, and three fil
         let mut fill = ExecutionEvent::at(unix);
         fill.set_crosscode(code.to_owned());
         fill.set_ticker(Some("ACME".into()), true);
+        fill.set_instcode(Some("ACME".into()), true);
         fill.set_side(side, true);
         fill.set_price(Some("100".parse()?), true);
         // What the fill traded.
@@ -145,13 +147,13 @@ Four books of one minute: one quote a side, restated at each book, and three fil
 
     def quote(unix: int, code: str, side: str, price: str, quantity: int) -> graph.QuoteEvent:
         return graph.QuoteEvent(
-            unix, crosscode=code, ticker="ACME", side=side, price=Decimal(price), quantity=quantity, state="NEW"
+            unix, crosscode=code, ticker="ACME", instcode="ACME", side=side, price=Decimal(price), quantity=quantity, state="NEW"
         )
 
     def fill(unix: int, code: str, side: str, lastqty: int | None) -> graph.ExecutionEvent:
         # What the fill traded is its last quantity.
         return graph.ExecutionEvent(
-            unix, crosscode=code, ticker="ACME", side=side, price=Decimal("100"), lastqty=lastqty, state="FILLED"
+            unix, crosscode=code, ticker="ACME", instcode="ACME", side=side, price=Decimal("100"), lastqty=lastqty, state="FILLED"
         )
 
     operations = [
@@ -194,11 +196,11 @@ Four books of one minute: one quote a side, restated at each book, and three fil
 
     const SECOND = 1_000_000_000n
     const quote = (unix, code, side, price, quantity) => new graph.QuoteEvent(unix, {
-      crosscode: code, ticker: 'ACME', side, price, quantity, state: 'NEW',
+      crosscode: code, ticker: 'ACME', instcode: 'ACME', side, price, quantity, state: 'NEW',
     })
     // What the fill traded is its last quantity.
     const fill = (unix, code, side, lastqty) => new graph.ExecutionEvent(unix, {
-      crosscode: code, ticker: 'ACME', side, price: '100', lastqty, state: 'FILLED',
+      crosscode: code, ticker: 'ACME', instcode: 'ACME', side, price: '100', lastqty, state: 'FILLED',
     })
     const operations = [
       quote(10n * SECOND, 'B', 'BUYS', '100', 5),
@@ -249,7 +251,7 @@ Empty books at `00:30Z`, `01:30Z` and `02:30Z` on 2026-03-29, the day Europe/Zur
         Ok(zurich.into_local(unix / SECOND)?.rem_euclid(86_400) / 3_600)
     };
     let books = |instants: &[i64]| -> Vec<yggdryl::Result<BookEvent>> {
-        instants.iter().map(|unix| Ok(BookEvent::new(*unix, "ACME"))).collect()
+        instants.iter().map(|unix| Ok(BookEvent::keyed(*unix, "ACME"))).collect()
     };
     let instants = [DAY + 30 * 60 * SECOND, DAY + 90 * 60 * SECOND, DAY + 150 * 60 * SECOND];
 

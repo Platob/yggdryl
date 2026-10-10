@@ -17,6 +17,7 @@ fn order(unix: i64, code: &str, price: i64) -> OrderEvent {
     let mut event = OrderEvent::at(unix);
     event.set_crosscode(code.to_owned());
     event.set_ticker(Some(SmolStr::new("BENCH")), true);
+    event.set_instcode(Some(yggdryl::Str::new("BENCH")), true);
     event.set_side(Side::read("Buy").expect("a shipped side"), true);
     event.set_price(Some(Decimal::from_int(price)), true);
     event.set_quantity(Some(Decimal::from_int(10)), true);
@@ -30,6 +31,7 @@ fn execution(unix: i64, code: &str) -> ExecutionEvent {
     let mut event = ExecutionEvent::at(unix);
     event.set_crosscode(code.to_owned());
     event.set_ticker(Some(SmolStr::new("BENCH")), true);
+    event.set_instcode(Some(yggdryl::Str::new("BENCH")), true);
     event.set_side(Side::read("Sell").expect("a shipped side"), true);
     event.set_price(Some(Decimal::from_int(100)), true);
     event.set_quantity(Some(Decimal::from_int(3)), true);
@@ -58,7 +60,7 @@ fn leaves(steps: usize) -> Vec<MarketData> {
         )
         .expect("a bench trade");
         held.push(MarketData::from(trade));
-        let mut book = BookEvent::new(unix, "BENCH");
+        let mut book = BookEvent::keyed(unix, "BENCH");
         book.add_operations([
             MarketData::from(order(unix, &format!("B-{step}"), 99)),
             MarketData::from({

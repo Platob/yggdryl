@@ -604,7 +604,8 @@ leaf (a book message one per entry) and sorts them by the instant a book folds
 them at; `graph.BookIterator` then walks them, recording each execution among
 its book's `events`.
 `book_arrow_reader(messages, snapshot_millis=0, filter=None)` folds the same
-messages into book rows, one book per book key. Compose `lifecycle` in front when
+messages into book rows, one book per instrument cross code (`instcode`; a
+message stating none is pruned). Compose `lifecycle` in front when
 predecessor state matters. `market_arrow_reader` writes the sorted leaves as
 `marketdata` rows, and `market_data_arrow_reader` is its twin over batches of
 FIX rows already in Arrow.
@@ -620,8 +621,8 @@ registry = FixRegistry.from_handle(Path("config/fix"))
 codec = FixCodec(registry)
 # The update arrives before the snapshot it follows.
 lines = [
-    b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|",
-    b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|",
+    b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|",
+    b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|",
 ]
 capture = list(codec.parse_lines(lines))
 assert all(message.marketdatakind is MarketDataKind.BOOK for message in capture)
@@ -784,7 +785,10 @@ with tempfile.TemporaryDirectory() as directory:
 - `book_arrow_reader(messages, snapshot_millis=0, filter=None)` takes no mode
   beyond the grid and the filter (a `Filter`, a `Term`, an `Expression` or a
   predicate's text over the `marketdata` row): books are keyed by the
-  instrument's ISIN, else the ticker, else `XX0000000000`, and a book is
-  complete only at a grid tick or a `W` full refresh - every other row is a
+  instrument's cross code (`instcode`) alone - a message stating none, a
+  ticker-only line no lifecycle filled, is pruned before it is expanded, and a
+  `W`/`X` entry stating its own `SecurityID(48)` is booked by the code it
+  spells - and
+  a book is complete only at a grid tick or a `W` full refresh - every other row is a
   delta book, its `delta` and `events`, which `book.with_previous(previous)`
   rebuilds.

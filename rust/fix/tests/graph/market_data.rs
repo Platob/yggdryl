@@ -40,7 +40,7 @@ fn one_of_every_leaf() -> Vec<MarketData> {
         MarketData::from(QuoteEvent::from(&order(2, "Q-2"))),
         MarketData::from(execution(3, "E-3")),
         MarketData::from(TradeEvent::from_parts(&root, vec![execution(8, "E-8")]).unwrap()),
-        MarketData::from(BookEvent::new(9, "ACME")),
+        MarketData::from(BookEvent::keyed(9, "ACME")),
         MarketData::from(snapshot),
         MarketData::from(fix::messages(&fix::ORDERS[..1]).remove(0)),
     ]
@@ -133,7 +133,7 @@ fn the_book_control_is_an_operation_events_or_a_snapshots() {
         Some(MdUpdateAction::Snapshot)
     );
     assert_eq!(MarketData::from(Order::new()).book(), None);
-    assert_eq!(MarketData::from(BookEvent::new(1, "ACME")).book(), None);
+    assert_eq!(MarketData::from(BookEvent::keyed(1, "ACME")).book(), None);
 }
 
 /// A FIX message is market data as it is: it answers every trait through
@@ -163,9 +163,11 @@ mod fix {
             .expect("every frame parses")
     }
 
+    /// Two orders stating their instrument's real ISIN, so each holds the
+    /// code a book is keyed by.
     pub(super) const ORDERS: [&str; 2] = [
-        "8=FIX.4.4|35=D|52=20240102-10:00:00.000|11=C1|55=ACME|54=1|40=2|44=100|38=5|59=0|10=0|",
-        "8=FIX.4.4|35=D|52=20240102-10:00:01.000|11=C2|55=ACME|54=2|40=2|44=101|38=3|59=1|10=0|",
+        "8=FIX.4.4|35=D|52=20240102-10:00:00.000|11=C1|55=ACME|48=US0378331005|22=4|54=1|40=2|44=100|38=5|59=0|10=0|",
+        "8=FIX.4.4|35=D|52=20240102-10:00:01.000|11=C2|55=ACME|48=US0378331005|22=4|54=2|40=2|44=101|38=3|59=1|10=0|",
     ];
 
     #[test]

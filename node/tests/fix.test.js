@@ -3798,10 +3798,10 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   test('bookArrowReader streams messages through native books into lifted marketdata rows', () => {
     const codec = reading(seed(), { batchRowSize: 1 })
     const snapshot = codec.parseFixLine(Buffer.from(
-      '8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|',
+      '8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|',
     ))
     const update = codec.parseFixLine(Buffer.from(
-      '8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|',
+      '8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|',
     ))
     const reader = codec.bookArrowReader([snapshot, update])
     // The one lifted `marketdata` schema every leaf is written under: the
@@ -3850,9 +3850,9 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   test('bookArrowReader narrows its books to what its filter keeps', () => {
     const codec = reading(seed(), { batchRowSize: 1 })
     const capture = () => [
-      '8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|44=100|38=5|10=0|',
-      '8=FIX.4.4|35=D|52=20260921-10:00:01|11=C2|55=AAPL|54=2|44=101|38=6|10=0|',
-      '8=FIX.4.4|35=8|52=20260921-10:00:02|17=E1|37=O1|11=C1|39=1|150=F|55=AAPL|54=1|44=100|38=5|14=2|32=2|31=100|10=0|',
+      '8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|48=US0378331005|22=4|54=1|44=100|38=5|10=0|',
+      '8=FIX.4.4|35=D|52=20260921-10:00:01|11=C2|55=AAPL|48=US0378331005|22=4|54=2|44=101|38=6|10=0|',
+      '8=FIX.4.4|35=8|52=20260921-10:00:02|17=E1|37=O1|11=C1|39=1|150=F|55=AAPL|48=US0378331005|22=4|54=1|44=100|38=5|14=2|32=2|31=100|10=0|',
     ].flatMap((line) => [...codec.parseLine(Buffer.from(line))])
     assert.ok(capture().some((message) => message.marketdatakind === 'EXEC'))
     const books = (filter) =>
@@ -3887,7 +3887,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // `NoSides(552)` occurrence, each FILLED (A14) and read from the trade.
     const messages = [...codec.parseLine(Buffer.from(
       '8=FIX.4.4|35=AE|49=SELL|56=BUY|34=7|52=20260921-10:00:00|' +
-      '571=T1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|' +
+      '571=T1|150=F|55=AAPL|48=US0378331005|22=4|32=10|31=101.25|60=20260921-10:00:00|552=2|' +
       '54=1|1427=BUY-EXEC|1009=4|37=BUY-ORDER|11=BUY-CLIENT|' +
       '54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|',
     ))]
@@ -3938,7 +3938,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   test('a trade side without Side splits off an execution of side UKNW', () => {
     const codec = reading(seed(), { batchRowSize: 1 })
     const line = Buffer.from(
-      '8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|' +
+      '8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|48=US0378331005|22=4|' +
       '32=4|31=101.25|60=20260921-10:00:00|552=1|' +
       '1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|',
     )
@@ -5070,24 +5070,32 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // Every order folds into a book and every execution is recorded among
     // its book's events - a fill moved its book through its order's report
     // already - so a book stands at every instant an order states, and one
-    // where only an execution does, an event-only book: thirteen books, the
+    // where only an execution does, an event-only book: twelve books, the
     // NOVN order's three steps each its book's instant, each a delta book -
     // with no grid and no snapshot input no book is complete. The last two
     // hold nothing: the unpriced order's cancel request and the reject that
     // ends it, each the delta of its own instant. Eleven until decision 21
     // dated that reject, sent a second after the transaction it states, and
     // the frame hop of order `00079132558GLXC0`'s fill by their sending
-    // clocks: each stands at an instant of its own.
+    // clocks: each stands at an instant of its own; thirteen until decision
+    // 16 keyed a book by the instcode alone: the one line stating the masked
+    // number `XX0000000001` is one order and the execution its parse split
+    // off, at one instant, of an instrument no registry knows, so neither
+    // holds an instcode and both are pruned before the walk - the book of
+    // that instant with them (a masked number keys no book).
     const books = [...new graph.BookIterator(operations, 0)]
-    assert.equal(books.length, 13)
+    assert.equal(books.length, 12)
     assert.ok(books.every((book) => !book.isComplete))
+    assert.equal(operations.filter((operation) => operation.instcode === null).length, 2)
     const last = books[books.length - 1]
     assert.equal(last.ticker, '2454')
-    // Keyed by its instrument's ISIN, which it holds beside the ticker its
-    // first input stated: every book is keyed by the ISIN its inputs state,
-    // else their ticker.
+    // Keyed by its instrument's code - the ISIN the lifecycle filled, the
+    // book's own `instcode` - which it holds as its `isin` beside the ticker
+    // its first input stated; every book row's instcode is its key.
     assert.equal(last.isincode, 'TW0002454006')
+    assert.equal(last.instcode, 'TW0002454006')
     assert.equal(last.crosscode, '3:0:TW0002454006')
+    assert.ok(books.every((book) => book.crosscode === `3:0:${book.instcode}`))
     assert.deepEqual([...new Set(books.map((book) => book.crosscode))].sort(), [
       '3:0:CH0012005267',
       '3:0:CH0012214059',
@@ -5095,7 +5103,6 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       '3:0:EZN11TD1F7K3',
       '3:0:TW0001605004',
       '3:0:TW0002454006',
-      '3:0:XX0000000001',
     ])
     const cancelled = books[books.length - 2]
     assert.equal(cancelled.crosscode, last.crosscode)

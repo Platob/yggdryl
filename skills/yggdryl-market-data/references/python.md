@@ -37,7 +37,7 @@ order = graph.OrderEvent(
     price=Decimal("189.50"),
     quantity=100,
     currency="USD",
-    ticker="AAPL",
+    ticker="AAPL", instcode="AAPL",
     # An identifier is a source, a type and a value, unique by `src:type`; a code is held to its type's shape.
     securityids=[Identifier("isin", "US0378331005")],
     identifiers=[Identifier("orderid", "O-1001")],
@@ -97,7 +97,7 @@ assert event.into_element() == order
 quote = graph.QuoteEvent(
     T,
     crosscode="Q-7",
-    ticker="AAPL",
+    ticker="AAPL", instcode="AAPL",
     bidpx=Decimal("189.48"),
     bidqty=300,
     bidccy="USD",
@@ -110,7 +110,7 @@ assert quote.askpx is not None and quote.askpx.as_py() == Decimal("189.52")
 assert quote.marketdatakind is MarketDataKind.QUOT
 
 # An offer: tagged `SELL`, its price is its ask leg; a quote's code stays under side 0.
-offer = graph.QuoteEvent(T, crosscode="Q-8", ticker="AAPL", side="SELL", price=Decimal("189.52"), quantity=100)
+offer = graph.QuoteEvent(T, crosscode="Q-8", ticker="AAPL", instcode="AAPL", side="SELL", price=Decimal("189.52"), quantity=100)
 assert offer.crosscode == "14:0:Q-8"
 assert offer.askpx is not None and offer.askpx.as_py() == Decimal("189.52")
 # Placed in a book by its control; the scope is a fact, the rest walk-time.
@@ -245,7 +245,7 @@ T = 1_700_000_000_000_000_000
 def fill(code: str, side: str, unix: int = T) -> graph.ExecutionEvent:
     return graph.ExecutionEvent(unix, crosscode=code, side=side, lastpx=Decimal("189.50"), lastqty=100)
 
-root = graph.OrderEvent(T, crosscode="T-1", ticker="AAPL")
+root = graph.OrderEvent(T, crosscode="T-1", ticker="AAPL", instcode="AAPL")
 trade = graph.TradeEvent.from_parts(root, [fill("E-SELL", "SELL"), fill("E-BUYS", "BUYS")])
 assert [execution.crosscode for execution in trade.executions] == ["8:1:E-BUYS", "8:2:E-SELL"]
 assert trade.is_execution
@@ -349,8 +349,9 @@ with tempfile.TemporaryDirectory() as directory:
 
 `graph.BookIterator(items, snapshot_millis=0, filter=None)` folds sorted
 orders and quotes into one `BookEvent` per instant and book key that moved it -
-the instrument's ISIN, else its ticker, else `XX0000000000` - recording
-every execution among its `events` and pruning every trade. A book is
+the input's `instcode`, the instrument's cross code, alone - recording every
+execution among its `events` and pruning every trade and every input stating
+no `instcode`. A book is
 complete (`is_complete`) only at a snapshot tick; every other book is a delta
 book - its `delta` and `events` beside the top of book they settled on - and
 `with_previous` over the complete book before it rebuilds it whole. `filter` - a predicate over the `marketdata` row - narrows what folds.
@@ -364,9 +365,9 @@ T = 1_700_000_000_000_000_000
 SECOND = 1_000_000_000
 
 def bid(unix: int, code: str, price: str, quantity: int) -> graph.OrderEvent:
-    return graph.OrderEvent(unix, crosscode=code, ticker="AAPL", side="BUYS", price=Decimal(price), quantity=quantity, state="NEW")
+    return graph.OrderEvent(unix, crosscode=code, ticker="AAPL", instcode="AAPL", side="BUYS", price=Decimal(price), quantity=quantity, state="NEW")
 
-fill = graph.ExecutionEvent(T + SECOND, crosscode="E-1", ticker="AAPL", side="BUYS", lastpx=Decimal("189.52"), lastqty=100)
+fill = graph.ExecutionEvent(T + SECOND, crosscode="E-1", ticker="AAPL", instcode="AAPL", side="BUYS", lastpx=Decimal("189.52"), lastqty=100)
 stream = [bid(T, "B-1", "189.48", 300), bid(T + SECOND, "B-2", "189.49", 200), fill]
 
 books = list(graph.BookIterator(stream))
@@ -392,12 +393,13 @@ gridded = list(graph.BookIterator(stream, snapshot_millis=500))
 assert len(gridded) == 3 and all(book.is_complete for book in gridded)
 # A filter narrows what folds: one keeping the execution alone folds its book.
 assert len(list(graph.BookIterator(stream, filter="marketdatakind = 'EXEC'"))) == 1
-# The book key: the instrument's ISIN, else the ticker, else `XX0000000000`.
-[keyless] = graph.BookIterator([graph.OrderEvent(T, crosscode="L-1", side="SELL")])
-assert (keyless.crosscode, keyless.ticker) == ("3:0:XX0000000000", None)
-listed = graph.OrderEvent(T, crosscode="L-2", side="SELL", ticker="AAPL", securityids=[Identifier("isin", "US0378331005")])
+# The book key: the instrument's code alone; an input stating none is pruned.
+assert list(graph.BookIterator([graph.OrderEvent(T, crosscode="L-1", side="SELL", ticker="AAPL")])) == []
+listed = graph.OrderEvent(
+    T, crosscode="L-2", side="SELL", ticker="AAPL", instcode="US0378331005", securityids=[Identifier("isin", "US0378331005")]
+)
 [book] = graph.BookIterator([listed])
-assert (book.crosscode, book.isincode, book.ticker) == ("3:0:US0378331005", "US0378331005", "AAPL")
+assert (book.crosscode, book.instcode, book.isincode, book.ticker) == ("3:0:US0378331005", "US0378331005", "US0378331005", "AAPL")
 # Out of order is no error: the operation dated before its book is left out,
 # with a warning.
 assert len(list(graph.BookIterator(list(reversed(stream))))) == 1
@@ -425,7 +427,7 @@ def entry(code: str, side: str, price: str | None, quantity: int, tradable: bool
     return graph.OrderEvent(
         T,
         crosscode=code,
-        ticker="AAPL",
+        ticker="AAPL", instcode="AAPL",
         side=side,
         price=None if price is None else Decimal(price),
         quantity=quantity,
@@ -483,12 +485,12 @@ from yggdryl import graph
 T = 1_700_000_000_000_000_000
 
 def order(code: str, side: str, price: str) -> graph.OrderEvent:
-    return graph.OrderEvent(T, crosscode=code, ticker="AAPL", side=side, price=Decimal(price), quantity=100)
+    return graph.OrderEvent(T, crosscode=code, ticker="AAPL", instcode="AAPL", side=side, price=Decimal(price), quantity=100)
 
 book = graph.BookEvent(T, "AAPL").with_operations([order("B-1", "BUYS", "189.48"), order("A-1", "SELL", "189.52")])
 assert len(book.alive) == 2
 
-control = graph.SnapshotEvent.snapshot(graph.OrderEvent(T + 1_000_000_000, ticker="AAPL"))
+control = graph.SnapshotEvent.snapshot(graph.OrderEvent(T + 1_000_000_000, ticker="AAPL", instcode="AAPL"))
 assert control.book.action == "snapshot"
 after = book.with_operations([control])
 assert after.alive == []
@@ -558,8 +560,8 @@ from yggdryl.fix import FixCodec, FixRegistry
 # `config/fix` of a yggdryl checkout (see the yggdryl-fix skill).
 codec = FixCodec(FixRegistry.from_handle(Path("config/fix")))
 lines = [
-    b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|",
-    b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|",
+    b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|",
+    b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|",
 ]
 capture = list(codec.parse_lines(lines))
 
@@ -600,7 +602,7 @@ T = 1_700_000_000_000_000_000
 SECOND = 1_000_000_000
 
 def quote(unix: int, code: str, side: str, price: str, quantity: int) -> graph.QuoteEvent:
-    return graph.QuoteEvent(unix, crosscode=code, ticker="AAPL", side=side, price=Decimal(price), quantity=quantity, state="NEW")
+    return graph.QuoteEvent(unix, crosscode=code, ticker="AAPL", instcode="AAPL", side=side, price=Decimal(price), quantity=quantity, state="NEW")
 
 stream = [
     quote(T, "B1", "BUYS", "189.48", 300),

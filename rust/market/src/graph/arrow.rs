@@ -228,6 +228,7 @@ impl MarketData {
     /// let order = |unix: i64, code: &str, side: Side| {
     ///     let mut order = OrderEvent::at(unix);
     ///     order.set_crosscode(code.to_owned());
+    ///     order.set_instcode(Some("AAPL".into()), true);
     ///     order.set_ticker(Some("AAPL".into()), true);
     ///     order.set_side(side, true);
     ///     order.set_price(Some(Decimal::from_int(189)), true);
@@ -237,6 +238,7 @@ impl MarketData {
     /// };
     /// let mut fill = ExecutionEvent::at(T + 2);
     /// fill.set_crosscode("E-1".to_owned());
+    /// fill.set_instcode(Some("AAPL".into()), true);
     /// fill.set_ticker(Some("AAPL".into()), true);
     /// fill.set_side(Side::Buy, true);
     /// fill.set_lastqty(Some(Decimal::from_int(100)), true);

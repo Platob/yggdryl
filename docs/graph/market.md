@@ -15,7 +15,7 @@
 | Execution clock | `get_execunix`/`set_execunix` (`Option<i64>`): when the element last executed - the latest execution clock its lifecycle reached, nanoseconds since the Unix epoch, UTC, `None` where unknown; a market fact, not an event's: an undated order, quote or execution states one, a [text line](../media/text.md) none, and no digest feeds it. The `execunix` column is a nullable nanosecond UTC clock ([Market data](market-data.md#columns)) |
 | Bid and ask | `bidpx`, `bidqty`, `bidccy`, `askpx`, `askqty`, `askccy` ([below](#bid-and-ask)) |
 | FX rates | `get_fxrates`/`set_fxrates`/`insert_fxrate` ([below](#fx-rates)) |
-| Instrument | the security's [identifiers](#security-identifiers), `securityids`; `get_isincode`: their `isin`, borrowed; `get_cficode`/`get_miccode` + setters - a leaf keeps a [CFI](../types/codes/cfi.md) only when it is detailed (one of positions 3-6 not `X`): a coarse code states nothing, neither filling nor clearing, and a detailed code stated over another describing the same instrument takes what that one says where it says nothing ([`Cfi::refined`](../types/codes/cfi.md#two-statements-of-one-instrument)); a market of `XXXX` is unstated, so a stated one fills over it; `get_ticker`/`set_ticker`: an informal name, apart from the codes; `get_instcode`/`set_instcode(code, overwrite)`: the cross code of the [instrument](instrument.md) the element is about (`US0378331005`, `IF:EUR/USD`, `OC:US0378331005:2026-12-18:200`), held as the crate's `Str` and filled by a parse where the message alone spells it or by an [instruments fill](instrument.md#matching), never over a held one - a lookup's answer, so it is followed along a chain and fed to no digest; `book_crosscode`: the [book key](#the-book-key) |
+| Instrument | the security's [identifiers](#security-identifiers), `securityids`; `get_isincode`: their `isin`, borrowed; `get_cficode`/`get_miccode` + setters - a leaf keeps a [CFI](../types/codes/cfi.md) only when it is detailed (one of positions 3-6 not `X`): a coarse code states nothing, neither filling nor clearing, and a detailed code stated over another describing the same instrument takes what that one says where it says nothing ([`Cfi::refined`](../types/codes/cfi.md#two-statements-of-one-instrument)); a market of `XXXX` is unstated, so a stated one fills over it; `get_ticker`/`set_ticker`: an informal name, apart from the codes; `get_instcode`/`set_instcode(code, overwrite)`: the cross code of the [instrument](instrument.md) the element is about (`US0378331005`, `IF:EUR/USD`, `OC:US0378331005:2026-12-18:200`), held as the crate's `Str` and filled by a parse where the message alone spells it or by an [instruments fill](instrument.md#matching), never over a held one - a lookup's answer, so it is followed along a chain and fed to no digest, and the [book key](#the-book-key) |
 | Metadata | `get_metadata`/`set_metadata`: a `BTreeMap<SmolStr, SmolStr>` of source facts no typed column reads, keyed by name/[path](../types/paths.md); never identifier/typed; `None`/empty alike; a FIX leaf's = [`FixMsg::market_data`](../fix/message.md#market-data)'s; a follower takes the chain's keys it lacks ([below](#following-and-merging)) |
 | `fill_market` | provided, idempotent, called by `finalize` pre-digest: never invents price/quantity/`cumqty`/`leavesqty`/bid/ask/rates; [derives](#security-identifiers) the national id a canonical ISIN embeds |
 | `digest_market` | provided (`Self: Element`): extends [`Element::digest`](element.md#contract) - price, currency, quantity, unit, side, security identifiers (each fed as source, type and value under the label `securityids`), classification, market, the stop and strike prices and the shown, hidden and cancelled quantities (each only if stated), last-trade/avg/progress/FX parts, bid/ask (each only if stated), FX rates (only if any), ticker, metadata (key order); excludes `prevpx`/`prevqty`, like the predecessor's instant/identity, and `instcode`, a reading of the facts it feeds |
@@ -163,15 +163,14 @@ Every fill is part of the element, so it is a column of the [`marketdata` row](s
 
 ## The book key
 
-`book_crosscode()` is provided, and is the key of the book the element stands in - what [`BookIterator`](book.md#book-fold) keys books by, each storing it as its cross code `3:0:{key}` - borrowed, so no input allocates:
+The key of the book an element stands in is its instrument's cross code alone - `get_instcode()`, what [`BookIterator`](book.md#book-fold) keys books by, each book storing it as its cross code `3:0:{key}` and stating it as its own `instcode` - borrowed, so no input allocates:
 
-| The element states | Its book key |
+| The element states | Its book |
 | --- | --- |
-| an ISIN, as its `isin` security identifier, whatever its [rank](identifier.md#ranks) | the ISIN (`CH0012214059`): one book per instrument wherever an ISIN is known - a masked number keys a book too, since what a walk sees is what the lifecycle already corrected; an FX pair's is its [minted number](instrument.md#the-minted-number) (`3:0:QYLTVIRYHNX5` for EUR/USD), derived at the parse |
-| no ISIN and a non-empty ticker | the ticker (`HOLN`); a ticker-only statement joins its instrument's book once the lifecycle's [instruments](instrument.md) have learned the pair and filled the ISIN |
-| neither | `XX0000000000`, [`Isin::NONE`](../types/codes/isin.md#the-check-digit-and-the-rank), the number that states none |
+| an `instcode` - a real ISIN (`CH0012214059`), an FX pair's `IF:EUR/USD`, a derivative's `OC:US0378331005:2026-12-18:200` | `3:0:{instcode}`: one book per instrument, whatever ticker, market or ISIN beside it the element states; an FX pair's book is its code, never its [minted number](instrument.md#the-minted-number) |
+| no `instcode` - a ticker-only statement no [instruments fill](instrument.md#matching) resolved, a masked number such as `XX0000000001`, a line a full registry could not learn | none: the element is pruned before the walk, as a kind a book does not record is, with one deduplicated warning per instrument it names - no fallback to the ISIN, the ticker or `XX0000000000` |
 
-A chain stated by its ticker alone and then under its ISIN moves to the ISIN's book, [withdrawn](book.md#book-fold) from the ticker's. An ISIN-keyed book takes two listings' tickers, which stay apart inside it by their own partition.
+A parse writes the `instcode` where the message alone spells it - a stated real ISIN, a detected FX pair - and the lifecycle fills it from the [instrument](instrument.md) it resolved, so every element stating a real ISIN is booked once walked, and a ticker-only statement joins its instrument's book once the lifecycle's instruments have learned the pair. A chain restated under another code - a placeholder's, then its body's - moves to that code's book, [withdrawn](book.md#book-fold) from the first. A book takes two listings' tickers of one instrument, which stay apart inside it by their own partition.
 
 ## A quote's two legs
 
@@ -355,8 +354,10 @@ A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy`
     assert_eq!(order.get_isincode(), Some("US0378331005"));
     assert_eq!(order.get_securityids().get_from(&IdKey::new(IdSource::Derived, IdType::Cusip)), Some("037833100"));
     assert_eq!(order.get_metadata().get("ordtype").map(SmolStr::as_str), Some("2"));
-    // The ISIN names the book it stands in, ahead of the ticker.
-    assert_eq!(order.book_crosscode(), "US0378331005");
+    // The instrument's code - here the real ISIN the element states - is the
+    // book it stands in; a parse or an instruments fill writes it.
+    order.set_instcode(Some("US0378331005".into()), true);
+    assert_eq!(order.get_instcode(), Some("US0378331005"));
     ```
 
 === "Python"
@@ -463,7 +464,7 @@ One identifier, `O-1001`, on each side of the market: two cross codes, two chain
     // Only an order or an execution is sided: a quote, a book and a trade
     // state side 0 whatever side they take, and a trade built on the buy
     // order takes its base code under its own kind.
-    let mut book = BookEvent::new(1_700_000_000_000_000_000, "AAPL");
+    let mut book = BookEvent::keyed(1_700_000_000_000_000_000, "AAPL");
     book.set_side(Side::Buy, true);
     assert!(buy.is_sided() && !book.is_sided());
     assert_eq!(book.get_crosscode(), "3:0:AAPL");
@@ -479,13 +480,15 @@ One identifier, `O-1001`, on each side of the market: two cross codes, two chain
     assert_eq!((trade.get_crosscode(), trade.get_side()), ("21:0:O-1001", Side::Buy));
     assert_eq!(trade.executions()[0].get_crosscode(), "8:2:E-1");
 
-    // The book key: the ISIN, else the ticker, else the number that states none.
+    // The book key is the instrument's code alone: a ticker or an ISIN beside
+    // it keys nothing, and an element stating no code stands in no book.
     let mut listed = order(Side::Buy);
-    assert_eq!(listed.book_crosscode(), Isin::NONE);
     listed.set_ticker(Some("HOLN".into()), true);
-    assert_eq!(listed.book_crosscode(), "HOLN");
     listed.insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "CH0012214059")?)?;
-    assert_eq!(listed.book_crosscode(), "CH0012214059");
+    assert_eq!(listed.get_instcode(), None);
+    listed.set_instcode(Some("CH0012214059".into()), true);
+    assert_eq!(listed.get_instcode(), Some("CH0012214059"));
+    assert_eq!(listed.get_isincode(), Some("CH0012214059"));
     ```
 
 === "Python"
@@ -542,7 +545,7 @@ One identifier, `O-1001`, on each side of the market: two cross codes, two chain
     assert.equal(trade.executions[0].crosscode, '8:2:E-1')
     ```
 
-`is_sided`, `stored_crosscode` and `book_crosscode` are Rust-only; a binding reads the stored `crosscode`.
+`is_sided` and `stored_crosscode` are Rust-only; a binding reads the stored `crosscode`.
 
 ### Bid, ask and FX rates
 
@@ -926,6 +929,6 @@ An amendment states its own `desk` and leaves the `venue` the placement stated t
 ## Edges
 
 - On an order or an execution, `set_side(Side::Unknown, true)` restates the code under side `0` (`10:0:O-1001`), the base kept. On any other element the code stays under side `0` whatever side `set_side` states.
-- A ticker stated empty is none: with no ISIN either, `book_crosscode` answers `XX0000000000`.
-- An ISIN keys the book whatever its rank: a masked number keys a book of its own until the lifecycle's instruments fill the real one, which outranks it.
+- A ticker stated empty is none.
+- The `instcode` alone keys a book: a masked number such as `XX0000000001` keys none, and a ticker-only element is booked once an instruments fill gave it its instrument's code.
 - A zero rate is a statement like any other; dividing by it is the caller's refusal to make - `Decimal::checked_div` answers `None`.

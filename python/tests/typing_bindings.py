@@ -2112,6 +2112,7 @@ graph_order_event: graph.OrderEvent = graph.OrderEvent(
     quantity=100,
     currency="USD",
     ticker="IBM",
+    instcode="IBM",
     fxrates={"EUR": decimal.Decimal("1.1")},
     bidpx=decimal.Decimal("10.5"),
     bidqty=100,
@@ -2190,7 +2191,7 @@ graph_order_at: graph.OrderEvent = graph_order.at(graph_order_event.transunix)
 graph_order_with_previous: graph.Order | None = graph_order.with_previous(graph_order)
 graph_quote: graph.Quote = graph.Quote(crosscode="Q-1")
 graph_quote_event: graph.QuoteEvent = graph.QuoteEvent(
-    graph_order_event.transunix, crosscode="Q-1", side="SELL", price=11, quantity=50, ticker="IBM"
+    graph_order_event.transunix, crosscode="Q-1", side="SELL", price=11, quantity=50, ticker="IBM", instcode="IBM"
 )
 graph_quote_event_element: graph.Quote = graph_quote_event.into_element()
 graph_execution: graph.Execution = graph.Execution()
@@ -2233,7 +2234,7 @@ assert graph_book_events == [] and graph_book_controls == []
 graph_book_alive_on: list[graph.MarketData] = graph_book_with_operations.alive_on(Side.BUYS)
 graph_book_alive_on_text: list[graph.MarketData] = graph_book_with_operations.alive_on("SELL")
 graph_book_complete: bool = graph_book_with_operations.is_complete
-graph_book_keyed: graph.BookEvent = graph.BookEvent.keyed(graph_order_event.transunix, "XX0000000000")
+graph_book_keyed: graph.BookEvent = graph.BookEvent.keyed(graph_order_event.transunix, "IBM")
 graph_book_rebuilt: graph.BookEvent | None = graph_book_with_operations.with_previous(graph_book_keyed)
 graph_book_limits: list[Scalar] = graph_book_with_operations.limits(Side.BUYS)
 graph_book_best_price: Scalar | None = graph_book_with_operations.best_price("BUYS")
@@ -2384,7 +2385,7 @@ assert graph_trade_restated == graph_trade
 assert graph_book_alive[0] == graph.MarketData(graph_order_event) and len(graph_book_delta) == 2
 assert graph_book_complete and not graph_book_crossed
 assert graph_book_alive_on == [graph.MarketData(graph_order_event)]
-assert graph_book_keyed.crosscode == "3:0:XX0000000000" and graph_book_keyed.is_complete
+assert graph_book_keyed.crosscode == "3:0:IBM" and graph_book_keyed.is_complete
 assert len(graph_book_limits) == 1 and graph_book_depth is not None
 assert graph_book_best_price is not None and graph_book_best_quantity is not None
 assert graph_book_kind is MarketDataKind.BOOK

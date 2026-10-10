@@ -737,16 +737,16 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
         .with_exclude_msgtypes::<[&str; 0], &str>([]);
     let direct = market_message(
         &codec,
-        b"8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|44=100|38=5|10=0|",
+        b"8=FIX.4.4|35=D|11=C1|55=AAPL|48=US0378331005|22=4|54=1|44=100|38=5|10=0|",
     );
     let snapshot = market_message(
         &codec,
-        b"8=FIX.4.4|35=W|55=AAPL|262=REQ-1|1021=2|1180=MDP|1181=42|268=3|269=0|278=B1|270=100|271=10|290=1|269=1|278=A1|37=O1|270=101|271=12|290=1|269=2|278=T1|270=100.5|271=2|10=0|",
+        b"8=FIX.4.4|35=W|55=AAPL|48=US0378331005|22=4|262=REQ-1|1021=2|1180=MDP|1181=42|268=3|269=0|278=B1|270=100|271=10|290=1|269=1|278=A1|37=O1|270=101|271=12|290=1|269=2|278=T1|270=100.5|271=2|10=0|",
     );
     // A trade is market data as the sided executions its parse splits off
     // (A12), and is no leaf of its own: the composite trade is built over
     // those parts, as a caller holding both builds it.
-    let trade_row: &[u8] = b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=1|1427=BUY-EXEC|1009=4|37=BUY-ORDER|11=BUY-CLIENT|54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|";
+    let trade_row: &[u8] = b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|48=US0378331005|22=4|32=10|31=101.25|60=20260921-10:00:00|552=2|54=1|1427=BUY-EXEC|1009=4|37=BUY-ORDER|11=BUY-CLIENT|54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|";
     let mut trade_messages = codec
         .parse_line(trade_row)
         .expect("a FIX row")
@@ -802,7 +802,10 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
         operation.finalize();
         dense_operations.push(MarketData::from(operation));
     }
-    let mut dense_book = BookEvent::new(quote_of(&dense_operations[0]).get_transunix(), "AAPL");
+    let mut dense_book = BookEvent::keyed(
+        quote_of(&dense_operations[0]).get_transunix(),
+        "US0378331005",
+    );
     dense_book
         .add_operations(dense_operations.clone())
         .expect("the dense initial book");
@@ -896,7 +899,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
     group.throughput(Throughput::Elements(operations.len() as u64));
     group.bench_function("book_add_operations", |bencher| {
         bencher.iter_batched(
-            || (BookEvent::new(0, "AAPL"), operations.clone()),
+            || (BookEvent::keyed(0, "US0378331005"), operations.clone()),
             |(mut book, operations)| {
                 book.add_operations(black_box(operations))
                     .expect("one atomic book update");

@@ -157,8 +157,9 @@ reads a batch back as the messages that made it and
 :meth:`FixCodec.arrow_reader` writes messages as batches under a schema.
 :meth:`FixCodec.book_arrow_reader` streams sorted messages through native
 market data and books into lifted ``marketdata`` batches, one
-``book_event`` row per book and book key - the instrument's ISIN, else its
-ticker, else ``XX0000000000`` - read back by
+``book_event`` row per book and instrument cross code (``instcode``; a
+message stating none is pruned before it is expanded, a W/X entry stating
+its own ``SecurityID(48)`` booked by the code it spells) - read back by
 :meth:`yggdryl.graph.MarketData.from_arrow_reader`; ``snapshot_millis``
 selects an epoch-aligned snapshot grid, at which a complete book is
 written, every other book a delta book stating its delta and events, and

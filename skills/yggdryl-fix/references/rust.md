@@ -686,8 +686,9 @@ assert!(ack.market_data()?.is_empty());
 trade as the executions its parse split off - reads each as its one graph
 leaf (a book message one per entry) and sorts them by the instant a book folds
 them at; `BookIterator` then walks them, pruning the executions.
-`book_arrow_reader` folds the same messages into book rows, one book per book
-key, and takes a `Filter` over the `marketdata` row to narrow what folds. Compose `lifecycle` in front when predecessor state matters.
+`book_arrow_reader` folds the same messages into book rows, one book per
+instrument cross code (`instcode`; a message stating none is pruned), and
+takes a `Filter` over the `marketdata` row to narrow what folds. Compose `lifecycle` in front when predecessor state matters.
 `market_arrow_reader` writes the sorted leaves as `marketdata` rows, and
 `market_data_arrow_reader` is its twin over batches of FIX rows already in
 Arrow.
@@ -706,8 +707,8 @@ let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)
 let codec = FixCodec::new(registry.clone());
 // The update arrives before the snapshot it follows.
 let lines = [
-    "8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|",
-    "8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|",
+    "8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|48=US0378331005|22=4|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|",
+    "8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|48=US0378331005|22=4|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|",
 ];
 let capture: Vec<FixMsg> = codec.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
 assert!(capture.iter().all(|message| message.marketdatakind() == MarketDataKind::Book));
