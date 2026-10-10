@@ -84,3 +84,11 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
     future - checked for contradictions) drawn from the FIX dictionary and public standards; the
     validated facts (Bloomberg, RIC, MIC, currency, country, strike, ...) coalesced on the
     instrument by rank and propagated along the lifecycle from the central registry.
+18. P10 (with D44): "Create then the IntrumentEvent leveraging the Instrument and make registry
+    use intrumentevent to store versions". Read as: `InstrumentEvent` - the Instrument as an
+    `Event` (an instant, a state, a predecessor named by `prevuuid`), the way an order is an
+    `OrderEvent` - and the registry keeps each `(instcode, mic)` row's versions as instrument
+    events: a learn that changes an instrument's content appends a new version (its own `uuid`
+    from the graph's hashing of its content and instant, `prevuuid` the version it replaces), the
+    current instrument being the latest version per key; the store and the medallion's instruments
+    table hold the versions.
