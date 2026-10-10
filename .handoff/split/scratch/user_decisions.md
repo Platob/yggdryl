@@ -12,3 +12,16 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
    the manual `release.yml` rehearsal and the registry configuration a real publish needs (PyPI
    pending trusted publisher for `yggdryl-market`, the npm bootstrap publish, `CARGO_REGISTRY_TOKEN`
    with `publish-new` over `yggdryl-*`).
+
+# User decisions (2026-10-10 ~00:40 UTC)
+6. Release 0.1.22 from PR #209 (implemented: commit `0f411f5ce`): crates.io takes `yggdryl`,
+   `yggdryl-market`, `yggdryl-fix`; PyPI and npm keep `yggdryl`. The user: "upgrade to 0.1.22 to
+   publish before next steps with medaillon optimized working".
+7. The PR's scope before that release, in this order, each a commit read green: P9 (the
+   Instrument replacing the ISIN registry, `p9/`), P7 (D40), P8 (D41), P5R (D37); then the live
+   AWS run on the user's machine (`.handoff/next/LIVE_AWS_TEST_PROMPT.md`); then the user's merge,
+   which publishes 0.1.22. The other crates' split - M6 (S6: excel, xmla, avro, parquet, s3,
+   iceberg) and B5 (S5: the market binding packages) - and S7, S8 and S9 are postponed to a later
+   PR from `main` after the release. The user: "Include the instrument implementations and add
+   local live aws testing prompt to finalize this pr first and publish 0.1.22", then "ask to
+   finalize next implementations postponing the othe crates split", answered "All in this PR".

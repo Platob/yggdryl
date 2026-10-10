@@ -99,6 +99,16 @@ below, the list below holds.
   never at the site by hand.
 
 ## The remaining lanes, in order
+The user decided the PR's scope (`user_decisions.md` 6 and 7): release 0.1.22 is prepared
+(`0f411f5ce`); before the user merges it, P9, P7, P8 and P5R land in this PR in that order, each a
+commit read green, then the live AWS run on the user's machine (`LIVE_AWS_TEST_PROMPT.md`). M6, B5,
+S7, S8 and S9 are postponed to a later PR from `main` after the release.
+
+0. **P9 (D42)**: the Instrument replaces the ISIN registry - `rust/market/src/instrument.rs`, a graph
+   element holding every identifier mapping, the custom ISIN, forex auto-creation, the underlying and
+   the legs, the characteristics in the cross code, the market rows' `instrumentuuid`; on today's names,
+   before P7. Design: `p9/d42_design.md` and `p9/crosscode_decision.md`; the instruction
+   `p9/user_instruction.md`.
 1. **P7 (D40)**: the user's six items and their refinement - the FIX row named by the registry where
    one field states the fact whole (`transacttime`, `sendingtime`, `strikeprice`, ...); the crate's
    bands in order with the lifted band last (`instuuid`, `isin`, `cfi`, `mic`); `securityids` as the
@@ -116,9 +126,11 @@ below, the list below holds.
 3. **P5R (D37)**: `MarketMessage`, the parked patch re-targeted onto S4's paths (FIX tests under
    `rust/fix/tests/root/`) and P7's names. The brief is `p5r_manager_prompt.md`; its gate is now
    "P7 and P8 landed".
+
+Postponed to the PR after the release (in this order when it opens):
 4. **M6 (S6)**: excel and xmla, each its own commit under one push; then the avro, parquet, s3 and
    iceberg batch as one commit (the user's decision). The brief is `m6_manager_prompt.md`; its gate
-   is now "P5R landed".
+   is now "0.1.22 published and the new PR's branch cut from `main`".
 5. **B5 (S5)**: the market binding packages, with the release learning every crate. The brief is
    `b5_manager_prompt.md`.
 6. **S7** (`RecordOptions` -> `MediaOptions`) and **S8** (the expression series) are stated in

@@ -80,13 +80,18 @@ None.
 
 ## Next
 
-The slices, in the order they land, each one commit on the program branch:
+The slices, in the order they land, each one commit on the program branch. The user decided
+(`scratch/user_decisions.md` 6 and 7) that P9, P7, P8 and P5R land in this PR before release 0.1.22
+(prepared in `0f411f5ce`), then the live AWS run on the user's machine
+(`.handoff/next/LIVE_AWS_TEST_PROMPT.md`), then the user's merge; M6, B5, S7, S8 and S9 are postponed
+to a later PR from `main`:
 
+0. **P9** (D42) - the Instrument replaces the ISIN registry, on today's names; `scratch/p9/`.
 1. **P7** (D40) - the FIX row named by the registry, the lifted band last, `securityids` the one hold map with `instuuid`, the code columns renamed, `crossuuid` the XXH3-128 of the cross code, a book's sources and its code over them; inside the crates; the dump, the hash, the snapshot keys and the book identities move once with their sentences. Design: DESIGN.md "## P7: design"; the instruction `scratch/p7/user_instruction.md`.
 2. **P8** (D41) - the lifecycle matching on one common identifier, indexed, with propagation: an evidence workflow over the capture's lifecycle first, then the design in the foreground, then the implementation. `scratch/p8/user_instruction.md`.
 3. **P5R** (D37) - `MarketMessage` finished inside the crates, the parked patch `scratch/p5_on_p4.patch` re-targeted onto S4's paths and P7's names (`scratch/p5r_manager_prompt.md`, `scratch/p5_state.md`).
-4. **M6** - excel and xmla each a commit under one push, then the avro+parquet+s3+iceberg batch (`scratch/m6_manager_prompt.md`; every script re-derived on the tree it runs on).
-5. **B5** (S5), **S7**, **S8** (designed in the foreground first), **S9** on the user's go.
+4. Postponed: **M6** - excel and xmla each a commit under one push, then the avro+parquet+s3+iceberg batch (`scratch/m6_manager_prompt.md`; every script re-derived on the tree it runs on).
+5. Postponed: **B5** (S5), **S7**, **S8** (designed in the foreground first), **S9** on the user's go.
 
 The first command of every slice, from a fresh checkout of the program branch:
 
