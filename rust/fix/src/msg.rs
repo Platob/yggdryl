@@ -7364,7 +7364,7 @@ impl Operation for FixMsg {
     /// `MultiLegReportingType(442)` `2` marks a leg's report, which counts
     /// nothing: its quantity is in leg units and the multi-leg report
     /// carries the parent's. A report of an execution
-    /// ([`Self::reports_execution`]) under a stated `ExecID` - never FIX's
+    /// (`reports_execution`) under a stated `ExecID` - never FIX's
     /// `0`, a status reply's - is a new fill of its `LastQty`, of the rise
     /// in `CumQty(14)` where it states none; under no identifier it is
     /// unidentified; a trade cancel is a bust of `ExecRefID` and a trade

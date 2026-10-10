@@ -535,7 +535,7 @@ enum Source<E, I> {
 /// reverse: a stated `FILLED` whose count falls short stays `FILLED`,
 /// warned, while an ended state that is no word of its holder's own - a
 /// FIX trade report's `FILLED` that its `LeavesQty(151)` of nothing reads
-/// ([`Operation::states_end`]) - reads, over a chain the walk counted, as
+/// ([`Operation::states_end`](super::Operation::states_end)) - reads, over a chain the walk counted, as
 /// the partial fill the count says it is. A stated total that
 /// disagrees with the count is warned once per kind and never adopted. The
 /// fills of a chain that ended stay findable for

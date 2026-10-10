@@ -3840,10 +3840,15 @@ fn the_capture_read_back_from_a_lake_walks_to_the_identities_it_walks_to_in_memo
     // clocks, under identities of their own, and no window folds them -
     // under a 1,001 ms delay, the old inclusive second, the walk is 39 over
     // three twins again; the medallion's `silver.fix_messages` moved
-    // 39 -> 41 the same way.
+    // 39 -> 41 the same way. And 40 walked over 43 unfolded since decisions
+    // 26 and 29: the walk counts each fill once by its `ExecID(17)`, so
+    // order 557's copy of fill 467 follows the live order and the two
+    // frame-hop executions restate the chains a window-wide memory of
+    // ended chains still holds - the medallion's `silver.fix_messages`
+    // moved 41 -> 40 the same way.
     assert_eq!(
         (walked.len(), every.len()),
-        (41, 42),
+        (40, 43),
         "the twin folds in memory"
     );
     assert_eq!(twins(&every).len(), 1);
