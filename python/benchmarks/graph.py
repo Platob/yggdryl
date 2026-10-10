@@ -39,6 +39,7 @@ def _order_event(clock: int = CLOCK, **facts: object) -> graph.OrderEvent:
         "currency": "USD",
         "quantity": 10,
         "securityids": [Identifier("isin", "US0378331005")],
+        "instcode": "US0378331005",
         "fxrates": {"EUR": decimal.Decimal("1.1")},
     }
     base.update(facts)
