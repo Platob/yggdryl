@@ -105,3 +105,8 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
     microsecond one (Iceberg v3 `timestamptz_ns` -> `timestamptz`), with whatever else Apache
     Doris's Iceberg reader cannot read (from its type-mapping documentation), and the medallion
     example writes its tables under it.
+21. "refine transunix fix parsing rule to be by default accepting with less than 500ms gap": an
+    official transaction clock (`TransactTime(60)`, the `TrdRegTimestamp(769)` ranks) dates the
+    message's `transunix` only where its gap to `SendingTime(52)` is LESS than the delay
+    (`within`: strict), the default delay 500 ms (`FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_MS`, was
+    1,000 inclusive); a nonpositive delay still admits only equality. Its own small commit.
