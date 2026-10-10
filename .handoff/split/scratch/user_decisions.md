@@ -33,3 +33,15 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
    `65_054`) - instead of an `instrumentuuid`: "Replace the instrumentuuid of market to
    instrumentcode mapped to the instrument crosscode", then "Use instcode instead of
    instrumentcode". A re-keyed instrument keeps `aliascodes`.
+10. The Instrument holds a `metadata` map for any complementary information, and its `securityids`
+    hold the identifiers other sources state under their own `src:type` keys (`ullink:isin`,
+    `bloomberg:figi`): "Add also metadata in instrument to put any other complementary infos and
+    identifiers to put other sources securityids".
+11. A market row's `instcode` shares the instrument's one allocation of its `crosscode`: the
+    instrument holds its code once (the crate's `Str`, inline to 23 bytes, one `Arc<str>` beyond)
+    and every `instcode` it fills is a clone of it - no allocation per row: "Make the instcode share
+    single allocated from instrument crosscode".
+12. P8's match (D41): "Ensure also lifecycle fix messages match by marketdatatype, side if sided
+    marketdatatype and if any identifier of current is in previous" - answered "Kind": the current
+    element matches a previous alive element of the same `MarketDataKind`, of the same side where
+    the kind is sided (ORDR, EXEC), sharing at least one identifier the current states.

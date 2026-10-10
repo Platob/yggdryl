@@ -42,3 +42,13 @@ Open for D41 (decide on evidence, never by assumption):
 Plan: after S4 is pushed, an evidence workflow (readers on the cheaper tier over the capture's lifecycle output
 and the walk's code) -> the design D41 in the foreground -> implementation inside the crates, with
 P7 (D40) before it where the two touch the same files (the FIX row's columns), and P5R after both.
+
+## The user's refinement (2026-10-10 ~05:15 UTC), verbatim
+
+Ensure also lifecycle fix messages match by marketdatatype, side if sided marketdatatype and if any identifier of current is in previous
+
+Asked whether "marketdatatype" is the kind or the type, the user answered "Kind": a current element
+matches a previous alive element of the same `MarketDataKind`, the same `Side` where the kind is
+sided (`MarketDataKind::is_sided`: ORDR, EXEC), and at least one identifier the current states
+that the previous states too (any of its identifiers, through an index keyed by the value - no
+scan). An order replaced from limit to market stays one chain.
