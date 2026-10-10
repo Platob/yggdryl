@@ -53,3 +53,16 @@ DESIGN.md rows named, in its next results commit; no lane re-asks them.
     gains `cfi=..`, re-pinned once with its sentence, the digests feeding it under its own name
     (no hash moves); on the FIX row tag 461's column keeps the registry's name `cficode`, market rows
     say `cfi`.
+15. P9's four structural allocation rises are re-pinned once, each with the sentence naming the
+    structure that costs it (answered "Re-pin with sentence"): learning a new instrument 1 (its own
+    identifiers vector), reloading known rows 94 per batch (the nested instrument row's landing),
+    the snapshot drain 5 per row (the nested runs), the FIX lifecycle 22/16/16 (a fresh walk's
+    first learn of the instrument's storage). The per-row regressions were fixed at cause.
+16. P9b, right after P9 (its own commit): a book is keyed by the instrument's code - the book's
+    cross code `3:0:{instcode}` - "Make then book use the instcode as crosscode and check correct
+    book iterator generations". A real-ISIN security's book keeps its key (`3:0:<isin>` is its
+    instcode); an FX book moves to `3:0:IF:EUR/USD`, a derivative's to its `class:body` code; an
+    element with no instrument (a ticker-only security) keeps today's fallback, its ticker, else
+    `Isin::NONE`. The book iterator's generation is verified adversarially (one book stream per
+    instrument, withdrawals across keys, snapshot ticks whole, the medallion's books table).
+    This supersedes the cross-code decision's item 5 (books keyed by the code deferred).
